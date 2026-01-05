@@ -1,0 +1,258 @@
+"""Inventory schemas for API requests/responses."""
+from pydantic import BaseModel, Field
+from typing import Optional, List
+from datetime import datetime, date
+from decimal import Decimal
+import uuid
+
+from app.models.inventory import StockItemStatus, StockMovementType
+
+
+# ==================== STOCK ITEM SCHEMAS ====================
+
+class StockItemCreate(BaseModel):
+    """Stock item creation schema."""
+    product_id: uuid.UUID
+    variant_id: Optional[uuid.UUID] = None
+    warehouse_id: uuid.UUID
+    serial_number: Optional[str] = Field(None, max_length=100)
+    batch_number: Optional[str] = Field(None, max_length=50)
+    barcode: Optional[str] = Field(None, max_length=100)
+    purchase_price: float = 0
+    landed_cost: float = 0
+    manufacturing_date: Optional[date] = None
+    expiry_date: Optional[date] = None
+    warranty_start_date: Optional[date] = None
+    warranty_end_date: Optional[date] = None
+    rack_location: Optional[str] = Field(None, max_length=50)
+    bin_number: Optional[str] = Field(None, max_length=50)
+    quality_grade: Optional[str] = Field(None, max_length=20)
+    notes: Optional[str] = None
+
+
+class StockItemUpdate(BaseModel):
+    """Stock item update schema."""
+    status: Optional[StockItemStatus] = None
+    warehouse_id: Optional[uuid.UUID] = None
+    rack_location: Optional[str] = None
+    bin_number: Optional[str] = None
+    quality_grade: Optional[str] = None
+    inspection_status: Optional[str] = None
+    inspection_notes: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class StockItemResponse(BaseModel):
+    """Stock item response schema."""
+    id: uuid.UUID
+    product_id: uuid.UUID
+    variant_id: Optional[uuid.UUID] = None
+    warehouse_id: uuid.UUID
+    serial_number: Optional[str] = None
+    batch_number: Optional[str] = None
+    barcode: Optional[str] = None
+    status: StockItemStatus
+    purchase_price: float
+    landed_cost: float
+    manufacturing_date: Optional[date] = None
+    expiry_date: Optional[date] = None
+    warranty_start_date: Optional[date] = None
+    warranty_end_date: Optional[date] = None
+    received_date: Optional[datetime] = None
+    order_id: Optional[uuid.UUID] = None
+    allocated_at: Optional[datetime] = None
+    rack_location: Optional[str] = None
+    bin_number: Optional[str] = None
+    quality_grade: Optional[str] = None
+    inspection_status: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class StockItemDetailResponse(StockItemResponse):
+    """Detailed stock item with product and warehouse info."""
+    product_name: Optional[str] = None
+    product_sku: Optional[str] = None
+    variant_name: Optional[str] = None
+    warehouse_name: Optional[str] = None
+    warehouse_code: Optional[str] = None
+
+
+class StockItemListResponse(BaseModel):
+    """Paginated stock item list."""
+    items: List[StockItemResponse]
+    total: int
+    page: int
+    size: int
+    pages: int
+
+
+# ==================== INVENTORY SUMMARY SCHEMAS ====================
+
+class InventorySummaryResponse(BaseModel):
+    """Inventory summary response."""
+    id: uuid.UUID
+    warehouse_id: uuid.UUID
+    product_id: uuid.UUID
+    variant_id: Optional[uuid.UUID] = None
+    total_quantity: int
+    available_quantity: int
+    reserved_quantity: int
+    allocated_quantity: int
+    damaged_quantity: int
+    in_transit_quantity: int
+    reorder_level: int
+    minimum_stock: int
+    maximum_stock: int
+    average_cost: float
+    total_value: float
+    is_low_stock: bool
+    is_out_of_stock: bool
+    last_stock_in_date: Optional[datetime] = None
+    last_stock_out_date: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class InventorySummaryDetail(InventorySummaryResponse):
+    """Detailed inventory summary with product/warehouse info."""
+    product_name: Optional[str] = None
+    product_sku: Optional[str] = None
+    variant_name: Optional[str] = None
+    warehouse_name: Optional[str] = None
+    warehouse_code: Optional[str] = None
+
+
+class InventorySummaryListResponse(BaseModel):
+    """Paginated inventory summary list."""
+    items: List[InventorySummaryDetail]
+    total: int
+    page: int
+    size: int
+    pages: int
+
+
+class InventoryThresholdUpdate(BaseModel):
+    """Update inventory thresholds."""
+    reorder_level: Optional[int] = Field(None, ge=0)
+    minimum_stock: Optional[int] = Field(None, ge=0)
+    maximum_stock: Optional[int] = Field(None, ge=0)
+
+
+# ==================== STOCK MOVEMENT SCHEMAS ====================
+
+class StockMovementCreate(BaseModel):
+    """Stock movement creation (usually auto-generated)."""
+    movement_type: StockMovementType
+    warehouse_id: uuid.UUID
+    product_id: uuid.UUID
+    variant_id: Optional[uuid.UUID] = None
+    stock_item_id: Optional[uuid.UUID] = None
+    quantity: int
+    reference_type: Optional[str] = None
+    reference_id: Optional[uuid.UUID] = None
+    reference_number: Optional[str] = None
+    unit_cost: float = 0
+    notes: Optional[str] = None
+
+
+class StockMovementResponse(BaseModel):
+    """Stock movement response."""
+    id: uuid.UUID
+    movement_number: str
+    movement_type: StockMovementType
+    movement_date: datetime
+    warehouse_id: uuid.UUID
+    product_id: uuid.UUID
+    variant_id: Optional[uuid.UUID] = None
+    stock_item_id: Optional[uuid.UUID] = None
+    quantity: int
+    balance_before: int
+    balance_after: int
+    reference_type: Optional[str] = None
+    reference_id: Optional[uuid.UUID] = None
+    reference_number: Optional[str] = None
+    unit_cost: float
+    total_cost: float
+    created_by: Optional[uuid.UUID] = None
+    notes: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class StockMovementDetail(StockMovementResponse):
+    """Detailed stock movement with product/warehouse info."""
+    product_name: Optional[str] = None
+    product_sku: Optional[str] = None
+    warehouse_name: Optional[str] = None
+    serial_number: Optional[str] = None
+
+
+class StockMovementListResponse(BaseModel):
+    """Paginated stock movement list."""
+    items: List[StockMovementDetail]
+    total: int
+    page: int
+    size: int
+    pages: int
+
+
+# ==================== BULK OPERATIONS ====================
+
+class BulkStockReceiptItem(BaseModel):
+    """Item for bulk stock receipt."""
+    product_id: uuid.UUID
+    variant_id: Optional[uuid.UUID] = None
+    quantity: int = Field(..., ge=1)
+    serial_numbers: List[str] = []  # Optional list of serial numbers
+    batch_number: Optional[str] = None
+    purchase_price: float = 0
+    manufacturing_date: Optional[date] = None
+    expiry_date: Optional[date] = None
+
+
+class BulkStockReceipt(BaseModel):
+    """Bulk stock receipt (GRN)."""
+    warehouse_id: uuid.UUID
+    grn_number: str = Field(..., max_length=50)
+    purchase_order_id: Optional[uuid.UUID] = None
+    vendor_id: Optional[uuid.UUID] = None
+    items: List[BulkStockReceiptItem] = Field(..., min_length=1)
+    notes: Optional[str] = None
+
+
+class StockAllocation(BaseModel):
+    """Stock allocation for order."""
+    order_id: uuid.UUID
+    items: List[uuid.UUID]  # List of stock_item_ids to allocate
+
+
+# ==================== DASHBOARD/STATS ====================
+
+class InventoryStats(BaseModel):
+    """Inventory dashboard statistics."""
+    total_products: int
+    total_stock_items: int
+    total_stock_value: float
+    low_stock_products: int
+    out_of_stock_products: int
+    warehouses_count: int
+    pending_transfers: int
+    pending_adjustments: int
+
+
+class WarehouseStock(BaseModel):
+    """Stock summary per warehouse."""
+    warehouse_id: uuid.UUID
+    warehouse_name: str
+    warehouse_code: str
+    total_items: int
+    total_value: float
+    utilization_percent: float

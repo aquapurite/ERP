@@ -1,0 +1,389 @@
+import uuid
+from datetime import datetime
+from enum import Enum
+from typing import TYPE_CHECKING, Optional, List
+from decimal import Decimal
+
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Enum as SQLEnum, JSON
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import UUID
+
+from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.category import Category
+    from app.models.brand import Brand
+    from app.models.inventory import StockItem
+
+
+class ProductStatus(str, Enum):
+    """Product status enumeration."""
+    DRAFT = "DRAFT"
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    DISCONTINUED = "DISCONTINUED"
+    OUT_OF_STOCK = "OUT_OF_STOCK"
+
+
+class Product(Base):
+    """
+    Main product model for Consumer Durable catalog.
+    Includes pricing, warranty, and relationship to variants.
+    """
+    __tablename__ = "products"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Basic Info
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(280), unique=True, nullable=False, index=True)
+    sku: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
+    model_number: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    # Descriptions
+    short_description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    features: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # HTML/Markdown
+
+    # Relationships
+    category_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("categories.id", ondelete="RESTRICT"),
+        nullable=False
+    )
+    brand_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("brands.id", ondelete="RESTRICT"),
+        nullable=False
+    )
+
+    # Pricing (in INR, stored as Decimal for precision)
+    mrp: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        nullable=False,
+        comment="Maximum Retail Price"
+    )
+    selling_price: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        nullable=False,
+        comment="Selling price to customer"
+    )
+    dealer_price: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(12, 2),
+        nullable=True,
+        comment="Price for dealers/distributors"
+    )
+    cost_price: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(12, 2),
+        nullable=True,
+        comment="Cost price (internal)"
+    )
+
+    # Tax & Compliance
+    hsn_code: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="HSN/SAC code for GST"
+    )
+    gst_rate: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(5, 2),
+        nullable=True,
+        default=18.00,
+        comment="GST rate percentage"
+    )
+
+    # Warranty
+    warranty_months: Mapped[int] = mapped_column(
+        Integer,
+        default=12,
+        comment="Standard warranty in months"
+    )
+    extended_warranty_available: Mapped[bool] = mapped_column(Boolean, default=False)
+    warranty_terms: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Physical Attributes
+    weight_kg: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 3), nullable=True)
+    length_cm: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2), nullable=True)
+    width_cm: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2), nullable=True)
+    height_cm: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2), nullable=True)
+
+    # Inventory
+    min_stock_level: Mapped[int] = mapped_column(Integer, default=10)
+    max_stock_level: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # Status & Display
+    status: Mapped[ProductStatus] = mapped_column(
+        SQLEnum(ProductStatus),
+        default=ProductStatus.DRAFT,
+        nullable=False
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_featured: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_bestseller: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_new_arrival: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    # SEO
+    meta_title: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    meta_description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    meta_keywords: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    # Additional Data (flexible JSON storage)
+    extra_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Relationships
+    category: Mapped["Category"] = relationship("Category", back_populates="products")
+    brand: Mapped["Brand"] = relationship("Brand", back_populates="products")
+    images: Mapped[List["ProductImage"]] = relationship(
+        "ProductImage",
+        back_populates="product",
+        cascade="all, delete-orphan",
+        order_by="ProductImage.sort_order"
+    )
+    specifications: Mapped[List["ProductSpecification"]] = relationship(
+        "ProductSpecification",
+        back_populates="product",
+        cascade="all, delete-orphan",
+        order_by="ProductSpecification.sort_order"
+    )
+    variants: Mapped[List["ProductVariant"]] = relationship(
+        "ProductVariant",
+        back_populates="product",
+        cascade="all, delete-orphan"
+    )
+    documents: Mapped[List["ProductDocument"]] = relationship(
+        "ProductDocument",
+        back_populates="product",
+        cascade="all, delete-orphan"
+    )
+    stock_items: Mapped[List["StockItem"]] = relationship(
+        "StockItem",
+        back_populates="product"
+    )
+
+    @property
+    def discount_percentage(self) -> float:
+        """Calculate discount percentage from MRP."""
+        if self.mrp and self.selling_price and self.mrp > 0:
+            return float(((self.mrp - self.selling_price) / self.mrp) * 100)
+        return 0.0
+
+    @property
+    def primary_image(self) -> Optional["ProductImage"]:
+        """Get the primary product image."""
+        for img in self.images:
+            if img.is_primary:
+                return img
+        return self.images[0] if self.images else None
+
+    def __repr__(self) -> str:
+        return f"<Product(name='{self.name}', sku='{self.sku}')>"
+
+
+class ProductImage(Base):
+    """Product images with support for multiple images per product."""
+    __tablename__ = "product_images"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="CASCADE"),
+        nullable=False
+    )
+
+    image_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    thumbnail_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    alt_text: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    product: Mapped["Product"] = relationship("Product", back_populates="images")
+
+    def __repr__(self) -> str:
+        return f"<ProductImage(product_id='{self.product_id}', primary={self.is_primary})>"
+
+
+class ProductSpecification(Base):
+    """
+    Product specifications as key-value pairs.
+    Supports grouping (e.g., 'General', 'Technical', 'Dimensions').
+    """
+    __tablename__ = "product_specifications"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="CASCADE"),
+        nullable=False
+    )
+
+    group_name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        default="General",
+        comment="Specification group (e.g., General, Technical)"
+    )
+    key: Mapped[str] = mapped_column(String(100), nullable=False)
+    value: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Relationships
+    product: Mapped["Product"] = relationship("Product", back_populates="specifications")
+
+    def __repr__(self) -> str:
+        return f"<ProductSpec(key='{self.key}', value='{self.value}')>"
+
+
+class ProductVariant(Base):
+    """
+    Product variants for different configurations.
+    E.g., different capacities, colors, or sizes.
+    """
+    __tablename__ = "product_variants"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="CASCADE"),
+        nullable=False
+    )
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    sku: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
+
+    # Variant Attributes (JSON for flexibility)
+    # e.g., {"color": "Blue", "capacity": "7L", "model": "Premium"}
+    attributes: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+    # Pricing (can override parent product)
+    mrp: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    selling_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+
+    # Inventory
+    stock_quantity: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Image
+    image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    product: Mapped["Product"] = relationship("Product", back_populates="variants")
+
+    @property
+    def effective_mrp(self) -> Decimal:
+        """Get effective MRP (variant override or parent product)."""
+        return self.mrp if self.mrp else self.product.mrp
+
+    @property
+    def effective_selling_price(self) -> Decimal:
+        """Get effective selling price."""
+        return self.selling_price if self.selling_price else self.product.selling_price
+
+    def __repr__(self) -> str:
+        return f"<ProductVariant(name='{self.name}', sku='{self.sku}')>"
+
+
+class DocumentType(str, Enum):
+    """Types of product documents."""
+    MANUAL = "MANUAL"
+    BROCHURE = "BROCHURE"
+    WARRANTY_CARD = "WARRANTY_CARD"
+    SPECIFICATION_SHEET = "SPECIFICATION_SHEET"
+    INSTALLATION_GUIDE = "INSTALLATION_GUIDE"
+    VIDEO = "VIDEO"
+    OTHER = "OTHER"
+
+
+class ProductDocument(Base):
+    """
+    Product documents like manuals, brochures, warranty cards.
+    """
+    __tablename__ = "product_documents"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="CASCADE"),
+        nullable=False
+    )
+
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    document_type: Mapped[DocumentType] = mapped_column(
+        SQLEnum(DocumentType),
+        default=DocumentType.OTHER,
+        nullable=False
+    )
+    file_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    file_size_bytes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    mime_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    product: Mapped["Product"] = relationship("Product", back_populates="documents")
+
+    def __repr__(self) -> str:
+        return f"<ProductDocument(title='{self.title}', type='{self.document_type}')>"

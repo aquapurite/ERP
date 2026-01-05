@@ -1,0 +1,216 @@
+from datetime import datetime, timedelta
+from typing import Optional, Tuple
+import uuid
+
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.user import User, UserRole
+from app.core.security import (
+    verify_password,
+    get_password_hash,
+    create_access_token,
+    create_refresh_token,
+    verify_refresh_token,
+)
+from app.config import settings
+
+
+class AuthService:
+    """Authentication service for user login and token management."""
+
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def authenticate_user(
+        self,
+        email: str,
+        password: str
+    ) -> Optional[User]:
+        """
+        Authenticate a user by email and password.
+
+        Args:
+            email: User's email address
+            password: Plain text password
+
+        Returns:
+            User object if authentication successful, None otherwise
+        """
+        stmt = (
+            select(User)
+            .options(
+                selectinload(User.user_roles).selectinload(UserRole.role),
+                selectinload(User.region)
+            )
+            .where(User.email == email.lower())
+        )
+        result = await self.db.execute(stmt)
+        user = result.scalar_one_or_none()
+
+        if user is None:
+            return None
+
+        if not verify_password(password, user.password_hash):
+            return None
+
+        if not user.is_active:
+            return None
+
+        return user
+
+    async def create_tokens(
+        self,
+        user: User
+    ) -> Tuple[str, str, int]:
+        """
+        Create access and refresh tokens for a user.
+
+        Args:
+            user: The authenticated user
+
+        Returns:
+            Tuple of (access_token, refresh_token, expires_in_seconds)
+        """
+        # Additional claims to include in token
+        additional_claims = {
+            "email": user.email,
+            "roles": [role.code for role in user.roles],
+        }
+
+        access_token = create_access_token(
+            subject=user.id,
+            additional_claims=additional_claims
+        )
+
+        refresh_token = create_refresh_token(subject=user.id)
+
+        expires_in = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+
+        # Update last login time
+        user.last_login_at = datetime.utcnow()
+        await self.db.commit()
+
+        return access_token, refresh_token, expires_in
+
+    async def refresh_tokens(
+        self,
+        refresh_token: str
+    ) -> Optional[Tuple[str, str, int]]:
+        """
+        Refresh access and refresh tokens using a valid refresh token.
+
+        Args:
+            refresh_token: The JWT refresh token
+
+        Returns:
+            Tuple of (new_access_token, new_refresh_token, expires_in_seconds)
+            or None if token is invalid
+        """
+        user_id = verify_refresh_token(refresh_token)
+
+        if user_id is None:
+            return None
+
+        try:
+            user_uuid = uuid.UUID(user_id)
+        except ValueError:
+            return None
+
+        # Get user
+        stmt = (
+            select(User)
+            .options(
+                selectinload(User.user_roles).selectinload(UserRole.role),
+                selectinload(User.region)
+            )
+            .where(User.id == user_uuid)
+        )
+        result = await self.db.execute(stmt)
+        user = result.scalar_one_or_none()
+
+        if user is None or not user.is_active:
+            return None
+
+        return await self.create_tokens(user)
+
+    async def register_user(
+        self,
+        email: str,
+        password: str,
+        first_name: str,
+        last_name: Optional[str] = None,
+        phone: Optional[str] = None,
+        **kwargs
+    ) -> User:
+        """
+        Register a new user.
+
+        Args:
+            email: User's email address
+            password: Plain text password
+            first_name: User's first name
+            last_name: User's last name (optional)
+            phone: User's phone number (optional)
+            **kwargs: Additional user fields
+
+        Returns:
+            The created User object
+        """
+        password_hash = get_password_hash(password)
+
+        user = User(
+            email=email.lower(),
+            password_hash=password_hash,
+            first_name=first_name,
+            last_name=last_name,
+            phone=phone,
+            **kwargs
+        )
+
+        self.db.add(user)
+        await self.db.commit()
+        await self.db.refresh(user)
+
+        return user
+
+    async def change_password(
+        self,
+        user: User,
+        current_password: str,
+        new_password: str
+    ) -> bool:
+        """
+        Change a user's password.
+
+        Args:
+            user: The user object
+            current_password: Current password for verification
+            new_password: New password to set
+
+        Returns:
+            True if password changed successfully, False otherwise
+        """
+        if not verify_password(current_password, user.password_hash):
+            return False
+
+        user.password_hash = get_password_hash(new_password)
+        await self.db.commit()
+
+        return True
+
+    async def reset_password(
+        self,
+        user: User,
+        new_password: str
+    ) -> None:
+        """
+        Reset a user's password (admin function).
+
+        Args:
+            user: The user object
+            new_password: New password to set
+        """
+        user.password_hash = get_password_hash(new_password)
+        await self.db.commit()
