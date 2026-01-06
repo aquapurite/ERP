@@ -2118,7 +2118,9 @@ async def download_vendor_invoice(
     po_number = po.po_number if po else "N/A"
     grn_number = grn.grn_number if grn else "N/A"
 
-    status_color = "green" if invoice.status and invoice.status.value in ["VERIFIED", "PAID"] else "orange"
+    # Handle both enum and string status values
+    status_val = invoice.status.value if hasattr(invoice.status, 'value') else str(invoice.status) if invoice.status else ""
+    status_color = "green" if status_val in ["VERIFIED", "PAID", "MATCHED", "APPROVED"] else "orange"
 
     html_content = f"""
     <!DOCTYPE html>
@@ -2270,14 +2272,14 @@ async def download_vendor_invoice(
                 <h3>VENDOR DETAILS</h3>
                 <p><strong>{vendor_name}</strong></p>
                 <p>{vendor_address}</p>
-                <p>GSTIN: {invoice.vendor_gstin or 'N/A'}</p>
+                <p>GSTIN: {vendor.gstin if vendor else 'N/A'}</p>
             </div>
             <div class="info-box">
                 <h3>INVOICE DETAILS</h3>
                 <p><strong>Invoice Number:</strong> {invoice.invoice_number}</p>
                 <p><strong>Invoice Date:</strong> {invoice.invoice_date}</p>
                 <p><strong>Due Date:</strong> {invoice.due_date or 'N/A'}</p>
-                <p><strong>Status:</strong> <span style="color: {status_color}; font-weight: bold;">{invoice.status.value if invoice.status else 'N/A'}</span></p>
+                <p><strong>Status:</strong> <span style="color: {status_color}; font-weight: bold;">{status_val or 'N/A'}</span></p>
             </div>
         </div>
 
@@ -2302,7 +2304,7 @@ async def download_vendor_invoice(
                 </div>
                 <div class="amount-item">
                     <div class="label">Total Amount</div>
-                    <div class="value" style="color: #ea4335;">₹{float(invoice.total_amount or 0):,.2f}</div>
+                    <div class="value" style="color: #ea4335;">₹{float(invoice.grand_total or 0):,.2f}</div>
                 </div>
             </div>
         </div>
@@ -2333,7 +2335,7 @@ async def download_vendor_invoice(
                 </tr>
                 <tr style="background: #f5f5f5; font-weight: bold;">
                     <td>Net Payable</td>
-                    <td style="text-align: right;">₹{float(invoice.net_payable or invoice.total_amount or 0):,.2f}</td>
+                    <td style="text-align: right;">₹{float(invoice.net_payable or invoice.grand_total or 0):,.2f}</td>
                 </tr>
             </tbody>
         </table>
@@ -2342,26 +2344,26 @@ async def download_vendor_invoice(
             <h3 style="margin: 0 0 10px 0; color: #333;">3-WAY MATCH STATUS</h3>
             <p>
                 <strong>PO Match:</strong>
-                <span class="match-status {'match-yes' if invoice.po_match else 'match-no'}">
-                    {'✓ Matched' if invoice.po_match else '✗ Not Matched'}
+                <span class="match-status {'match-yes' if invoice.po_matched else 'match-no'}">
+                    {'✓ Matched' if invoice.po_matched else '✗ Not Matched'}
                 </span>
             </p>
             <p>
                 <strong>GRN Match:</strong>
-                <span class="match-status {'match-yes' if invoice.grn_match else 'match-no'}">
-                    {'✓ Matched' if invoice.grn_match else '✗ Not Matched'}
+                <span class="match-status {'match-yes' if invoice.grn_matched else 'match-no'}">
+                    {'✓ Matched' if invoice.grn_matched else '✗ Not Matched'}
                 </span>
             </p>
             <p>
                 <strong>Invoice Match:</strong>
-                <span class="match-status {'match-yes' if invoice.invoice_match else 'match-no'}">
-                    {'✓ Matched' if invoice.invoice_match else '✗ Not Matched'}
+                <span class="match-status {'match-yes' if invoice.is_fully_matched else 'match-no'}">
+                    {'✓ Matched' if invoice.is_fully_matched else '✗ Not Matched'}
                 </span>
             </p>
-            {f'<p><strong>Discrepancy:</strong> {invoice.match_discrepancy}</p>' if invoice.match_discrepancy else ''}
+            {f'<p><strong>Variance:</strong> ₹{float(invoice.matching_variance or 0):,.2f} - {invoice.variance_reason or "N/A"}</p>' if invoice.matching_variance else ''}
         </div>
 
-        <p><strong>Remarks:</strong> {invoice.remarks or 'None'}</p>
+        <p><strong>Notes:</strong> {invoice.internal_notes or 'None'}</p>
 
         <div class="signatures">
             <div class="signature-box">
