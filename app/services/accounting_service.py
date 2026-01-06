@@ -124,6 +124,7 @@ class AccountingService:
         lines: List[Dict[str, Any]],
         entry_date: Optional[datetime] = None,
         source_number: Optional[str] = None,
+        channel_id: Optional[uuid.UUID] = None,
         auto_post: bool = True,
     ) -> JournalEntry:
         """
@@ -137,6 +138,7 @@ class AccountingService:
             lines: List of line items with account_code, debit, credit, description
             entry_date: Date of entry (defaults to today)
             source_number: Source document number
+            channel_id: Sales channel ID for channel-wise P&L
             auto_post: Whether to auto-post the entry
         """
         from datetime import date as date_type
@@ -160,6 +162,7 @@ class AccountingService:
             source_id=source_id,
             source_number=source_number,
             narration=narration,
+            channel_id=channel_id,
             status=JournalEntryStatus.DRAFT,
             total_debit=Decimal("0"),
             total_credit=Decimal("0"),
@@ -243,6 +246,7 @@ class AccountingService:
                 credit_amount=line.credit_amount,
                 running_balance=new_balance,
                 narration=line.description or journal_entry.narration,
+                channel_id=journal_entry.channel_id,
             )
             self.db.add(gl_entry)
 
@@ -265,6 +269,7 @@ class AccountingService:
         total: Decimal,
         is_interstate: bool = False,
         product_type: str = "purifier",  # purifier, spare, accessory
+        channel_id: Optional[uuid.UUID] = None,
     ) -> JournalEntry:
         """
         Post journal entry for sales invoice.
@@ -327,6 +332,7 @@ class AccountingService:
             source_id=invoice_id,
             narration=f"Sales invoice to {customer_name}",
             lines=lines,
+            channel_id=channel_id,
         )
 
     async def post_cogs_entry(
@@ -335,6 +341,7 @@ class AccountingService:
         order_number: str,
         cost_amount: Decimal,
         product_type: str = "purifier",
+        channel_id: Optional[uuid.UUID] = None,
     ) -> JournalEntry:
         """
         Post COGS entry when order is shipped/delivered.
@@ -374,6 +381,7 @@ class AccountingService:
             narration=f"Cost of goods sold - Order {order_number}",
             source_number=order_number,
             lines=lines,
+            channel_id=channel_id,
         )
 
     async def post_grn_entry(
@@ -537,6 +545,7 @@ class AccountingService:
         order_id: uuid.UUID,
         order_number: str,
         provision_amount: Decimal,
+        channel_id: Optional[uuid.UUID] = None,
     ) -> JournalEntry:
         """
         Post warranty provision entry when product is sold.
@@ -566,6 +575,7 @@ class AccountingService:
             narration=f"Warranty provision - Order {order_number}",
             source_number=order_number,
             lines=lines,
+            channel_id=channel_id,
         )
 
     async def post_freight_expense(

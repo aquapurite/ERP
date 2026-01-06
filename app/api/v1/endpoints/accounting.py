@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, func, and_, or_, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -28,7 +28,11 @@ from app.schemas.accounting import (
     CostCenterCreate, CostCenterUpdate, CostCenterResponse,
     # Journal Entry
     JournalEntryCreate, JournalEntryResponse, JournalListResponse,
-    JournalEntryLineCreate, JournalApproveRequest, JournalReverseRequest,
+    JournalEntryLineCreate, JournalReverseRequest,
+    # Maker-Checker Approval
+    JournalSubmitRequest, JournalApproveRequest, JournalRejectRequest,
+    JournalApprovalResponse, PendingApprovalResponse,
+    ApprovalHistoryItem, ApprovalHistoryResponse,
     # General Ledger
     GeneralLedgerResponse, LedgerListResponse,
     # Reports
@@ -37,6 +41,7 @@ from app.schemas.accounting import (
     # Tax
     TaxConfigurationCreate, TaxConfigurationResponse,
 )
+from app.models.accounting import ApprovalLevel
 from app.api.deps import DB, CurrentUser, get_current_user, require_permissions
 from app.services.audit_service import AuditService
 
@@ -447,7 +452,7 @@ async def create_journal_entry(
                 FinancialPeriod.end_date >= journal_in.entry_date,
                 FinancialPeriod.status == PeriodStatus.OPEN,
             )
-        )
+        ).limit(1)
     )
     period = period_result.scalar_one_or_none()
 
@@ -483,13 +488,13 @@ async def create_journal_entry(
     # Create journal entry
     journal = JournalEntry(
         entry_number=entry_number,
-        journal_type=journal_in.journal_type,
+        entry_type=journal_in.entry_type,
         entry_date=journal_in.entry_date,
         period_id=period.id,
         narration=journal_in.narration,
-        reference_type=journal_in.reference_type,
-        reference_number=journal_in.reference_number,
-        reference_id=journal_in.reference_id,
+        source_type=journal_in.source_type,
+        source_number=journal_in.source_number,
+        source_id=journal_in.source_id,
         total_debit=total_debit,
         total_credit=total_credit,
         created_by=current_user.id,
@@ -516,33 +521,72 @@ async def create_journal_entry(
         if account.is_group:
             raise HTTPException(
                 status_code=400,
-                detail=f"Cannot post to group account: {account.name}"
+                detail=f"Cannot post to group account: {account.account_name}"
             )
 
         line = JournalEntryLine(
-            journal_id=journal.id,
+            journal_entry_id=journal.id,
             line_number=line_number,
             account_id=line_data.account_id,
-            account_code=account.account_code,
-            account_name=account.name,
             debit_amount=line_data.debit_amount,
             credit_amount=line_data.credit_amount,
             cost_center_id=line_data.cost_center_id,
-            narration=line_data.narration,
+            description=line_data.description,
         )
         db.add(line)
 
     await db.commit()
 
-    # Load full journal
+    # Load full journal with lines and their accounts
     result = await db.execute(
         select(JournalEntry)
-        .options(selectinload(JournalEntry.lines))
+        .options(
+            selectinload(JournalEntry.lines).selectinload(JournalEntryLine.account)
+        )
         .where(JournalEntry.id == journal.id)
     )
     journal = result.scalar_one()
 
-    return journal
+    # Build response with account info
+    lines_response = []
+    for line in journal.lines:
+        lines_response.append({
+            "id": line.id,
+            "account_id": line.account_id,
+            "description": line.description,
+            "debit_amount": line.debit_amount,
+            "credit_amount": line.credit_amount,
+            "cost_center_id": line.cost_center_id,
+            "project_id": None,
+            "line_number": line.line_number,
+            "account_code": line.account.account_code if line.account else None,
+            "account_name": line.account.account_name if line.account else None,
+        })
+
+    return {
+        "id": journal.id,
+        "entry_number": journal.entry_number,
+        "entry_type": journal.entry_type,
+        "entry_date": journal.entry_date,
+        "period_id": journal.period_id,
+        "narration": journal.narration,
+        "source_type": journal.source_type,
+        "source_id": journal.source_id,
+        "source_number": journal.source_number,
+        "status": journal.status,
+        "total_debit": journal.total_debit,
+        "total_credit": journal.total_credit,
+        "is_auto_generated": False,  # Manual entries are not auto-generated
+        "created_by": journal.created_by,
+        "posted_by": journal.posted_by,
+        "posted_at": journal.posted_at,
+        "reversed_by": None,
+        "reversed_at": None,
+        "reversal_entry_id": None,
+        "lines": lines_response,
+        "created_at": journal.created_at,
+        "updated_at": journal.updated_at,
+    }
 
 
 @router.get("/journals", response_model=JournalListResponse)
@@ -597,6 +641,64 @@ async def list_journal_entries(
     )
 
 
+@router.get("/journals/pending-approval", response_model=PendingApprovalResponse)
+async def get_pending_approvals(
+    db: DB,
+    approval_level: Optional[str] = Query(None, description="Filter by LEVEL_1, LEVEL_2, LEVEL_3"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get list of journal entries pending approval.
+
+    Returns entries grouped by approval level with counts.
+    """
+    # Base query for pending approvals
+    query = (
+        select(JournalEntry)
+        .options(selectinload(JournalEntry.creator))
+        .where(JournalEntry.status == JournalStatus.PENDING_APPROVAL)
+        .order_by(JournalEntry.submitted_at.desc())
+    )
+
+    if approval_level:
+        query = query.where(JournalEntry.approval_level == approval_level)
+
+    result = await db.execute(query)
+    entries = result.scalars().all()
+
+    # Build response items
+    items = []
+    level_counts = {"LEVEL_1": 0, "LEVEL_2": 0, "LEVEL_3": 0}
+
+    for entry in entries:
+        # Count by level
+        if entry.approval_level in level_counts:
+            level_counts[entry.approval_level] += 1
+
+        items.append(JournalApprovalResponse(
+            id=entry.id,
+            entry_number=entry.entry_number,
+            status=entry.status,
+            total_debit=entry.total_debit,
+            total_credit=entry.total_credit,
+            narration=entry.narration,
+            created_by=entry.created_by,
+            created_at=entry.created_at,
+            creator_name=_get_user_name(entry.creator),
+            submitted_by=entry.submitted_by,
+            submitted_at=entry.submitted_at,
+            approval_level=entry.approval_level,
+        ))
+
+    return PendingApprovalResponse(
+        items=items,
+        total=len(items),
+        level_1_count=level_counts["LEVEL_1"],
+        level_2_count=level_counts["LEVEL_2"],
+        level_3_count=level_counts["LEVEL_3"],
+    )
+
+
 @router.get("/journals/{journal_id}", response_model=JournalEntryResponse)
 async def get_journal_entry(
     journal_id: UUID,
@@ -617,17 +719,43 @@ async def get_journal_entry(
     return journal
 
 
-@router.post("/journals/{journal_id}/approve", response_model=JournalEntryResponse)
-async def approve_journal_entry(
+# ==================== Maker-Checker Approval Workflow ====================
+
+
+def _get_approval_level(amount: Decimal) -> str:
+    """Determine approval level based on amount thresholds."""
+    if amount <= Decimal("50000"):
+        return ApprovalLevel.LEVEL_1.value  # Up to 50,000 - Manager approval
+    elif amount <= Decimal("500000"):
+        return ApprovalLevel.LEVEL_2.value  # 50,001 to 5,00,000 - Senior Manager
+    else:
+        return ApprovalLevel.LEVEL_3.value  # Above 5,00,000 - Finance Head
+
+
+def _get_user_name(user: Optional[User]) -> Optional[str]:
+    """Get formatted user name."""
+    if not user:
+        return None
+    return f"{user.first_name} {user.last_name or ''}".strip()
+
+
+@router.post("/journals/{journal_id}/submit", response_model=JournalApprovalResponse)
+async def submit_journal_for_approval(
     journal_id: UUID,
-    request: JournalApproveRequest,
+    request: JournalSubmitRequest,
     db: DB,
     current_user: User = Depends(get_current_user),
 ):
-    """Approve or reject a journal entry."""
+    """
+    Submit a draft journal entry for approval (Maker action).
+
+    This moves the entry from DRAFT to PENDING_APPROVAL status.
+    The entry will be assigned an approval level based on the amount.
+    """
     result = await db.execute(
         select(JournalEntry)
         .options(selectinload(JournalEntry.lines))
+        .options(selectinload(JournalEntry.creator))
         .where(JournalEntry.id == journal_id)
     )
     journal = result.scalar_one_or_none()
@@ -638,20 +766,284 @@ async def approve_journal_entry(
     if journal.status != JournalStatus.DRAFT:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot approve journal in {journal.status.value} status"
+            detail=f"Only DRAFT entries can be submitted. Current status: {journal.status.value}"
         )
 
-    if request.action == "APPROVE":
-        journal.status = JournalStatus.APPROVED
-        journal.approved_by = current_user.id
-        journal.approved_at = datetime.utcnow()
-    else:
-        journal.status = JournalStatus.REJECTED
+    # Determine approval level based on amount
+    approval_level = _get_approval_level(journal.total_debit)
+
+    # Update journal for submission
+    journal.status = JournalStatus.PENDING_APPROVAL
+    journal.submitted_by = current_user.id
+    journal.submitted_at = datetime.utcnow()
+    journal.approval_level = approval_level
 
     await db.commit()
     await db.refresh(journal)
 
-    return journal
+    # Get creator name
+    creator_name = _get_user_name(journal.creator) if journal.creator else None
+
+    return JournalApprovalResponse(
+        id=journal.id,
+        entry_number=journal.entry_number,
+        status=journal.status,
+        total_debit=journal.total_debit,
+        total_credit=journal.total_credit,
+        narration=journal.narration,
+        created_by=journal.created_by,
+        created_at=journal.created_at,
+        creator_name=creator_name,
+        submitted_by=journal.submitted_by,
+        submitted_at=journal.submitted_at,
+        submitter_name=_get_user_name(current_user),
+        approval_level=journal.approval_level,
+        message=f"Journal entry submitted for {approval_level} approval"
+    )
+
+
+@router.post("/journals/{journal_id}/approve", response_model=JournalApprovalResponse)
+async def approve_journal_entry(
+    journal_id: UUID,
+    request: JournalApproveRequest,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Approve a pending journal entry (Checker action).
+
+    The approver (checker) must be different from the maker (creator).
+    If auto_post is True, the entry will be automatically posted to GL.
+    """
+    result = await db.execute(
+        select(JournalEntry)
+        .options(selectinload(JournalEntry.lines))
+        .options(selectinload(JournalEntry.creator))
+        .where(JournalEntry.id == journal_id)
+    )
+    journal = result.scalar_one_or_none()
+
+    if not journal:
+        raise HTTPException(status_code=404, detail="Journal entry not found")
+
+    if journal.status != JournalStatus.PENDING_APPROVAL:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only PENDING_APPROVAL entries can be approved. Current status: {journal.status.value}"
+        )
+
+    # Maker-Checker validation: Approver must be different from creator
+    if journal.created_by == current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Maker-Checker violation: You cannot approve your own journal entry"
+        )
+
+    # Update journal for approval
+    journal.status = JournalStatus.APPROVED
+    journal.approved_by = current_user.id
+    journal.approved_at = datetime.utcnow()
+
+    await db.commit()
+    await db.refresh(journal)
+
+    message = "Journal entry approved successfully"
+
+    # Auto-post if requested
+    if request.auto_post:
+        # Post to General Ledger
+        for line in journal.lines:
+            # Get account for running balance
+            acc_result = await db.execute(
+                select(ChartOfAccount).where(ChartOfAccount.id == line.account_id)
+            )
+            account = acc_result.scalar_one()
+
+            # Update account balance
+            if account.account_type in [AccountType.ASSET, AccountType.EXPENSE]:
+                account.current_balance += (line.debit_amount - line.credit_amount)
+            else:
+                account.current_balance += (line.credit_amount - line.debit_amount)
+
+            # Create GL entry
+            gl_entry = GeneralLedger(
+                account_id=line.account_id,
+                period_id=journal.period_id,
+                transaction_date=journal.entry_date,
+                journal_entry_id=journal.id,
+                journal_line_id=line.id,
+                debit_amount=line.debit_amount,
+                credit_amount=line.credit_amount,
+                running_balance=account.current_balance,
+                narration=line.description or journal.narration,
+                cost_center_id=line.cost_center_id,
+                channel_id=journal.channel_id,
+            )
+            db.add(gl_entry)
+
+        # Update journal to POSTED
+        journal.status = JournalStatus.POSTED
+        journal.posted_by = current_user.id
+        journal.posted_at = datetime.utcnow()
+
+        await db.commit()
+        await db.refresh(journal)
+        message = "Journal entry approved and posted to General Ledger"
+
+    return JournalApprovalResponse(
+        id=journal.id,
+        entry_number=journal.entry_number,
+        status=journal.status,
+        total_debit=journal.total_debit,
+        total_credit=journal.total_credit,
+        narration=journal.narration,
+        created_by=journal.created_by,
+        created_at=journal.created_at,
+        creator_name=_get_user_name(journal.creator),
+        submitted_by=journal.submitted_by,
+        submitted_at=journal.submitted_at,
+        approval_level=journal.approval_level,
+        approved_by=journal.approved_by,
+        approved_at=journal.approved_at,
+        approver_name=_get_user_name(current_user),
+        posted_by=journal.posted_by,
+        posted_at=journal.posted_at,
+        poster_name=_get_user_name(current_user) if journal.posted_by else None,
+        message=message
+    )
+
+
+@router.post("/journals/{journal_id}/reject", response_model=JournalApprovalResponse)
+async def reject_journal_entry(
+    journal_id: UUID,
+    request: JournalRejectRequest,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Reject a pending journal entry (Checker action).
+
+    A rejection reason is required. The entry will move back to REJECTED status
+    and can be edited and resubmitted by the maker.
+    """
+    result = await db.execute(
+        select(JournalEntry)
+        .options(selectinload(JournalEntry.lines))
+        .options(selectinload(JournalEntry.creator))
+        .where(JournalEntry.id == journal_id)
+    )
+    journal = result.scalar_one_or_none()
+
+    if not journal:
+        raise HTTPException(status_code=404, detail="Journal entry not found")
+
+    if journal.status != JournalStatus.PENDING_APPROVAL:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only PENDING_APPROVAL entries can be rejected. Current status: {journal.status.value}"
+        )
+
+    # Maker-Checker validation
+    if journal.created_by == current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Maker-Checker violation: You cannot reject your own journal entry"
+        )
+
+    # Update journal for rejection
+    journal.status = JournalStatus.REJECTED
+    journal.approved_by = current_user.id  # Record who rejected
+    journal.approved_at = datetime.utcnow()
+    journal.rejection_reason = request.reason
+
+    await db.commit()
+    await db.refresh(journal)
+
+    return JournalApprovalResponse(
+        id=journal.id,
+        entry_number=journal.entry_number,
+        status=journal.status,
+        total_debit=journal.total_debit,
+        total_credit=journal.total_credit,
+        narration=journal.narration,
+        created_by=journal.created_by,
+        created_at=journal.created_at,
+        creator_name=_get_user_name(journal.creator),
+        submitted_by=journal.submitted_by,
+        submitted_at=journal.submitted_at,
+        approval_level=journal.approval_level,
+        approved_by=journal.approved_by,
+        approved_at=journal.approved_at,
+        approver_name=_get_user_name(current_user),
+        rejection_reason=journal.rejection_reason,
+        message=f"Journal entry rejected: {request.reason}"
+    )
+
+
+@router.post("/journals/{journal_id}/resubmit", response_model=JournalApprovalResponse)
+async def resubmit_rejected_journal(
+    journal_id: UUID,
+    request: JournalSubmitRequest,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Resubmit a rejected journal entry for approval.
+
+    Only the original maker can resubmit after making necessary corrections.
+    """
+    result = await db.execute(
+        select(JournalEntry)
+        .options(selectinload(JournalEntry.creator))
+        .where(JournalEntry.id == journal_id)
+    )
+    journal = result.scalar_one_or_none()
+
+    if not journal:
+        raise HTTPException(status_code=404, detail="Journal entry not found")
+
+    if journal.status != JournalStatus.REJECTED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only REJECTED entries can be resubmitted. Current status: {journal.status.value}"
+        )
+
+    # Only original maker can resubmit
+    if journal.created_by != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the original maker can resubmit a rejected entry"
+        )
+
+    # Reset approval fields and resubmit
+    approval_level = _get_approval_level(journal.total_debit)
+    journal.status = JournalStatus.PENDING_APPROVAL
+    journal.submitted_by = current_user.id
+    journal.submitted_at = datetime.utcnow()
+    journal.approval_level = approval_level
+    journal.approved_by = None
+    journal.approved_at = None
+    journal.rejection_reason = None
+
+    await db.commit()
+    await db.refresh(journal)
+
+    return JournalApprovalResponse(
+        id=journal.id,
+        entry_number=journal.entry_number,
+        status=journal.status,
+        total_debit=journal.total_debit,
+        total_credit=journal.total_credit,
+        narration=journal.narration,
+        created_by=journal.created_by,
+        created_at=journal.created_at,
+        creator_name=_get_user_name(journal.creator),
+        submitted_by=journal.submitted_by,
+        submitted_at=journal.submitted_at,
+        submitter_name=_get_user_name(current_user),
+        approval_level=journal.approval_level,
+        message=f"Journal entry resubmitted for {approval_level} approval"
+    )
 
 
 @router.post("/journals/{journal_id}/post", response_model=JournalEntryResponse)
@@ -1034,61 +1426,163 @@ async def get_profit_loss(
     start_date: date,
     end_date: date,
     db: DB,
+    channel_id: Optional[UUID] = None,
     current_user: User = Depends(get_current_user),
 ):
-    """Get Profit & Loss statement."""
-    # Revenue
+    """
+    Get Profit & Loss statement.
+
+    Args:
+        start_date: Start date for P&L period
+        end_date: End date for P&L period
+        channel_id: Optional - filter by sales channel for channel-wise P&L
+
+    Returns overall P&L and channel breakdown if no channel_id specified.
+    """
+    from app.models.channel import SalesChannel
+
+    # Build base conditions
+    date_filter = and_(
+        GeneralLedger.transaction_date >= start_date,
+        GeneralLedger.transaction_date <= end_date,
+    )
+
+    # Add channel filter if specified
+    channel_filter = GeneralLedger.channel_id == channel_id if channel_id else True
+
+    # Revenue query
     revenue_query = select(
-        ChartOfAccount.sub_type,
+        ChartOfAccount.account_sub_type,
         func.sum(GeneralLedger.credit_amount - GeneralLedger.debit_amount).label("total")
     ).join(
         GeneralLedger, GeneralLedger.account_id == ChartOfAccount.id
     ).where(
         and_(
             ChartOfAccount.account_type == AccountType.REVENUE,
-            GeneralLedger.entry_date >= start_date,
-            GeneralLedger.entry_date <= end_date,
+            date_filter,
+            channel_filter,
         )
-    ).group_by(ChartOfAccount.sub_type)
+    ).group_by(ChartOfAccount.account_sub_type)
 
     revenue_result = await db.execute(revenue_query)
-    revenue_data = {row.sub_type.value if row.sub_type else "other": float(row.total or 0) for row in revenue_result.all()}
+    revenue_data = {row.account_sub_type.value if row.account_sub_type else "other": float(row.total or 0) for row in revenue_result.all()}
 
-    # Expenses
-    expense_query = select(
-        ChartOfAccount.sub_type,
+    # Expenses query (COGS - 5xxx accounts)
+    cogs_query = select(
+        func.sum(GeneralLedger.debit_amount - GeneralLedger.credit_amount).label("total")
+    ).join(
+        ChartOfAccount, GeneralLedger.account_id == ChartOfAccount.id
+    ).where(
+        and_(
+            ChartOfAccount.account_type == AccountType.EXPENSE,
+            ChartOfAccount.account_code.like("5%"),  # COGS accounts
+            date_filter,
+            channel_filter,
+        )
+    )
+    cogs_result = await db.execute(cogs_query)
+    cogs_total = float(cogs_result.scalar() or 0)
+
+    # Operating expenses (6xxx accounts)
+    opex_query = select(
+        ChartOfAccount.account_sub_type,
         func.sum(GeneralLedger.debit_amount - GeneralLedger.credit_amount).label("total")
     ).join(
         GeneralLedger, GeneralLedger.account_id == ChartOfAccount.id
     ).where(
         and_(
             ChartOfAccount.account_type == AccountType.EXPENSE,
-            GeneralLedger.entry_date >= start_date,
-            GeneralLedger.entry_date <= end_date,
+            ChartOfAccount.account_code.like("6%"),  # Operating expense accounts
+            date_filter,
+            channel_filter,
         )
-    ).group_by(ChartOfAccount.sub_type)
+    ).group_by(ChartOfAccount.account_sub_type)
 
-    expense_result = await db.execute(expense_query)
-    expense_data = {row.sub_type.value if row.sub_type else "other": float(row.total or 0) for row in expense_result.all()}
+    opex_result = await db.execute(opex_query)
+    opex_data = {row.account_sub_type.value if row.account_sub_type else "other": float(row.total or 0) for row in opex_result.all()}
+    opex_total = sum(opex_data.values())
+
+    # Other expenses (7xxx accounts)
+    other_exp_query = select(
+        func.sum(GeneralLedger.debit_amount - GeneralLedger.credit_amount).label("total")
+    ).join(
+        ChartOfAccount, GeneralLedger.account_id == ChartOfAccount.id
+    ).where(
+        and_(
+            ChartOfAccount.account_type == AccountType.EXPENSE,
+            ChartOfAccount.account_code.like("7%"),  # Other expense accounts
+            date_filter,
+            channel_filter,
+        )
+    )
+    other_exp_result = await db.execute(other_exp_query)
+    other_exp_total = float(other_exp_result.scalar() or 0)
 
     total_revenue = sum(revenue_data.values())
-    total_expense = sum(expense_data.values())
-    net_income = total_revenue - total_expense
+    gross_profit = total_revenue - cogs_total
+    operating_profit = gross_profit - opex_total
+    net_income = operating_profit - other_exp_total
+
+    # Get channel-wise breakdown if no specific channel requested
+    channel_breakdown = []
+    if not channel_id:
+        channel_pl_query = select(
+            SalesChannel.id,
+            SalesChannel.code,
+            SalesChannel.name,
+            func.sum(
+                case(
+                    (ChartOfAccount.account_type == AccountType.REVENUE,
+                     GeneralLedger.credit_amount - GeneralLedger.debit_amount),
+                    else_=0
+                )
+            ).label("revenue"),
+            func.sum(
+                case(
+                    (ChartOfAccount.account_type == AccountType.EXPENSE,
+                     GeneralLedger.debit_amount - GeneralLedger.credit_amount),
+                    else_=0
+                )
+            ).label("expenses")
+        ).select_from(GeneralLedger).join(
+            ChartOfAccount, GeneralLedger.account_id == ChartOfAccount.id
+        ).join(
+            SalesChannel, GeneralLedger.channel_id == SalesChannel.id
+        ).where(
+            date_filter
+        ).group_by(
+            SalesChannel.id, SalesChannel.code, SalesChannel.name
+        )
+
+        channel_result = await db.execute(channel_pl_query)
+        for row in channel_result.all():
+            channel_breakdown.append({
+                "channel_id": str(row.id),
+                "channel_code": row.code,
+                "channel_name": row.name,
+                "revenue": float(row.revenue or 0),
+                "expenses": float(row.expenses or 0),
+                "net_profit": float((row.revenue or 0) - (row.expenses or 0)),
+            })
 
     return {
         "period_start": start_date.isoformat(),
         "period_end": end_date.isoformat(),
+        "channel_id": str(channel_id) if channel_id else None,
         "revenue": {
             "breakdown": revenue_data,
             "total": total_revenue,
         },
-        "expenses": {
-            "breakdown": expense_data,
-            "total": total_expense,
+        "cost_of_goods_sold": cogs_total,
+        "gross_profit": gross_profit,
+        "operating_expenses": {
+            "breakdown": opex_data,
+            "total": opex_total,
         },
-        "gross_profit": total_revenue,  # Simplified
-        "operating_income": net_income,
+        "operating_profit": operating_profit,
+        "other_expenses": other_exp_total,
         "net_income": net_income,
+        "channel_breakdown": channel_breakdown if not channel_id else None,
     }
 
 

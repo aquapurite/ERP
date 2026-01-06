@@ -98,10 +98,10 @@ class AccountBalanceResponse(BaseModel):
 class FinancialPeriodBase(BaseModel):
     """Base schema for FinancialPeriod."""
     period_name: str = Field(..., min_length=2, max_length=50)
-    period_code: str = Field(..., min_length=4, max_length=20)
+    period_code: Optional[str] = Field(None, max_length=20)
     start_date: date
     end_date: date
-    financial_year: str = Field(..., min_length=7, max_length=10)
+    financial_year: Optional[str] = Field(None, max_length=10)
     is_year_end: bool = False
 
     @field_validator("end_date")
@@ -293,8 +293,90 @@ class JournalReverseRequest(BaseModel):
     reason: str
 
 
-# Alias for backward compatibility
-JournalApproveRequest = JournalPostRequest
+# ==================== Maker-Checker Approval Schemas ====================
+
+class ApprovalUserInfo(BaseModel):
+    """User info for approval display."""
+    id: UUID
+    name: str
+    email: str
+
+
+class JournalSubmitRequest(BaseModel):
+    """Request to submit journal entry for approval."""
+    remarks: Optional[str] = Field(None, max_length=500, description="Optional remarks for approver")
+
+
+class JournalApproveRequest(BaseModel):
+    """Request to approve a journal entry."""
+    remarks: Optional[str] = Field(None, max_length=500, description="Approval remarks")
+    auto_post: bool = Field(True, description="Automatically post to GL after approval")
+
+
+class JournalRejectRequest(BaseModel):
+    """Request to reject a journal entry."""
+    reason: str = Field(..., min_length=5, max_length=500, description="Reason for rejection")
+
+
+class JournalApprovalResponse(BaseModel):
+    """Response for approval operations."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    entry_number: str
+    status: JournalStatus
+    total_debit: Decimal
+    total_credit: Decimal
+    narration: str
+
+    # Maker info
+    created_by: UUID
+    created_at: datetime
+    creator_name: Optional[str] = None
+
+    # Submission info
+    submitted_by: Optional[UUID] = None
+    submitted_at: Optional[datetime] = None
+    submitter_name: Optional[str] = None
+
+    # Checker info
+    approval_level: Optional[str] = None
+    approved_by: Optional[UUID] = None
+    approved_at: Optional[datetime] = None
+    approver_name: Optional[str] = None
+    rejection_reason: Optional[str] = None
+
+    # Posting info
+    posted_by: Optional[UUID] = None
+    posted_at: Optional[datetime] = None
+    poster_name: Optional[str] = None
+
+    message: Optional[str] = None
+
+
+class PendingApprovalResponse(BaseModel):
+    """Response for pending approvals list."""
+    items: List[JournalApprovalResponse]
+    total: int
+    level_1_count: int = 0  # Up to 50,000
+    level_2_count: int = 0  # 50,001 to 5,00,000
+    level_3_count: int = 0  # Above 5,00,000
+
+
+class ApprovalHistoryItem(BaseModel):
+    """Single approval history entry."""
+    action: str  # CREATED, SUBMITTED, APPROVED, REJECTED, POSTED
+    performed_by: UUID
+    performed_by_name: Optional[str] = None
+    performed_at: datetime
+    remarks: Optional[str] = None
+
+
+class ApprovalHistoryResponse(BaseModel):
+    """Approval history for a journal entry."""
+    entry_id: UUID
+    entry_number: str
+    history: List[ApprovalHistoryItem]
 
 
 # ==================== GeneralLedger Schemas ====================

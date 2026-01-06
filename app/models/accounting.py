@@ -18,6 +18,7 @@ from app.database import Base
 
 if TYPE_CHECKING:
     from app.models.user import User
+    from app.models.channel import SalesChannel
 
 
 class AccountType(str, Enum):
@@ -69,9 +70,19 @@ class FinancialPeriodStatus(str, Enum):
 class JournalEntryStatus(str, Enum):
     """Journal entry status."""
     DRAFT = "DRAFT"
+    PENDING_APPROVAL = "PENDING_APPROVAL"  # Submitted for checker approval
+    APPROVED = "APPROVED"  # Approved by checker, ready to post
+    REJECTED = "REJECTED"  # Rejected by checker
     POSTED = "POSTED"
     REVERSED = "REVERSED"
     CANCELLED = "CANCELLED"
+
+
+class ApprovalLevel(str, Enum):
+    """Approval level based on amount thresholds."""
+    LEVEL_1 = "LEVEL_1"  # Up to 50,000 - Manager approval
+    LEVEL_2 = "LEVEL_2"  # 50,001 to 5,00,000 - Senior Manager approval
+    LEVEL_3 = "LEVEL_3"  # Above 5,00,000 - Finance Head approval
 
 
 class ChartOfAccount(Base):
@@ -221,10 +232,25 @@ class FinancialPeriod(Base):
         nullable=False,
         comment="e.g., FY2024-25, Q1-2024"
     )
+    period_code: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="Short code e.g., APR-2024"
+    )
+    financial_year: Mapped[Optional[str]] = mapped_column(
+        String(10),
+        nullable=True,
+        comment="e.g., 2024-2025"
+    )
     period_type: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
         comment="YEAR, QUARTER, MONTH"
+    )
+    is_year_end: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        comment="Whether this is year-end period"
     )
 
     # Date Range
@@ -402,6 +428,15 @@ class JournalEntry(Base):
     # Description
     narration: Mapped[str] = mapped_column(Text, nullable=False)
 
+    # Channel (for channel-wise P&L reporting)
+    channel_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sales_channels.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="Sales channel for channel-wise P&L"
+    )
+
     # Totals
     total_debit: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False)
     total_credit: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False)
@@ -428,18 +463,64 @@ class JournalEntry(Base):
         comment="Entry that reversed this"
     )
 
-    # Approval
+    # Maker-Checker Workflow
     created_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=False
+        nullable=False,
+        comment="Maker - who created the entry"
     )
+
+    # Submission for approval
+    submitted_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Who submitted for approval"
+    )
+    submitted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+        comment="When submitted for approval"
+    )
+
+    # Approval level based on amount
+    approval_level: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="LEVEL_1, LEVEL_2, LEVEL_3 based on amount"
+    )
+
+    # Checker approval/rejection
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Checker - who approved/rejected"
+    )
+    approved_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+        comment="When approved/rejected"
+    )
+    rejection_reason: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Reason for rejection if rejected"
+    )
+
+    # Posting
     posted_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True
+        nullable=True,
+        comment="Who posted to GL after approval"
     )
-    posted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    posted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+        comment="When posted to GL"
+    )
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -462,6 +543,10 @@ class JournalEntry(Base):
         cascade="all, delete-orphan"
     )
     creator: Mapped["User"] = relationship("User", foreign_keys=[created_by])
+    submitter: Mapped[Optional["User"]] = relationship("User", foreign_keys=[submitted_by])
+    approver: Mapped[Optional["User"]] = relationship("User", foreign_keys=[approved_by])
+    poster: Mapped[Optional["User"]] = relationship("User", foreign_keys=[posted_by])
+    channel: Mapped[Optional["SalesChannel"]] = relationship("SalesChannel")
 
     @property
     def is_balanced(self) -> bool:
@@ -619,6 +704,15 @@ class GeneralLedger(Base):
         nullable=True
     )
 
+    # Channel (for channel-wise P&L reporting)
+    channel_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sales_channels.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="Sales channel for channel-wise P&L"
+    )
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
@@ -633,6 +727,7 @@ class GeneralLedger(Base):
     )
     journal_entry: Mapped["JournalEntry"] = relationship("JournalEntry")
     period: Mapped["FinancialPeriod"] = relationship("FinancialPeriod")
+    channel: Mapped[Optional["SalesChannel"]] = relationship("SalesChannel")
 
     def __repr__(self) -> str:
         return f"<GeneralLedger(account={self.account_id}, balance={self.running_balance})>"
