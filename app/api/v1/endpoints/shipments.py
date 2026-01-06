@@ -518,7 +518,18 @@ async def mark_delivered(
     db: DB,
     current_user: CurrentUser,
 ):
-    """Mark shipment as delivered."""
+    """
+    Mark shipment as delivered with POD (Proof of Delivery).
+
+    This endpoint triggers the complete post-delivery workflow:
+    1. Updates shipment status to DELIVERED
+    2. Updates order status to DELIVERED
+    3. Posts COGS and warranty accounting entries
+    4. Creates Installation record (auto)
+    5. Creates ServiceRequest for installation (auto)
+    6. Auto-assigns technician/franchisee based on pincode
+    7. Queues customer notifications (SMS/Email)
+    """
     query = select(Shipment).where(Shipment.id == shipment_id)
     result = await db.execute(query)
     shipment = result.scalar_one_or_none()
@@ -606,6 +617,48 @@ async def mark_delivered(
             import logging
             logging.warning(f"Failed to post COGS/warranty for order {order.order_number}: {e}")
 
+    # ========== POST-DELIVERY WORKFLOW ==========
+    # Trigger automatic installation scheduling and technician assignment
+    post_delivery_result = None
+    try:
+        from app.services.post_delivery_service import PostDeliveryService
+
+        pod_data = {
+            "signature_url": data.pod_signature_url,
+            "image_url": data.pod_image_url,
+            "received_by": data.delivered_to,
+            "remarks": data.delivery_remarks,
+            "latitude": getattr(data, 'latitude', None),
+            "longitude": getattr(data, 'longitude', None),
+        }
+
+        post_delivery_service = PostDeliveryService(db)
+        post_delivery_result = await post_delivery_service.process_delivery(
+            shipment_id=str(shipment_id),
+            pod_data=pod_data
+        )
+
+        import logging
+        logging.info(
+            f"Post-delivery workflow completed for shipment {shipment.shipment_number}: "
+            f"Installation={post_delivery_result.get('installation_id')}, "
+            f"ServiceRequest={post_delivery_result.get('service_request_id')}, "
+            f"Technician={post_delivery_result.get('technician_id')}, "
+            f"Franchisee={post_delivery_result.get('franchisee_id')}"
+        )
+    except Exception as e:
+        import logging
+        logging.warning(f"Post-delivery workflow failed for shipment {shipment.shipment_number}: {e}")
+        # Don't fail the delivery marking - just log the error
+        # Installation can be created manually if auto-creation fails
+
+    # Build response with post-delivery info
+    response_message = "Shipment marked as delivered"
+    if post_delivery_result:
+        response_message += f". Installation #{post_delivery_result.get('installation_id', 'pending')[:8]} created."
+        if post_delivery_result.get('technician_id') or post_delivery_result.get('franchisee_id'):
+            response_message += " Service assigned."
+
     return ShipmentDeliveryMarkResponse(
         success=True,
         shipment_id=shipment.id,
@@ -613,7 +666,7 @@ async def mark_delivered(
         order_id=shipment.order_id,
         status=shipment.status,
         delivered_at=shipment.delivered_at,
-        message="Shipment marked as delivered",
+        message=response_message,
     )
 
 
@@ -862,6 +915,7 @@ async def download_shipping_label(
     <!DOCTYPE html>
     <html>
     <head>
+        <meta charset="UTF-8">
         <title>Shipping Label - {shipment.shipment_number}</title>
         <style>
             body {{ font-family: Arial, sans-serif; margin: 20px; }}
@@ -1032,6 +1086,7 @@ async def download_shipment_invoice(
     <!DOCTYPE html>
     <html>
     <head>
+        <meta charset="UTF-8">
         <title>Tax Invoice - {invoice_number}</title>
         <style>
             body {{ font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }}

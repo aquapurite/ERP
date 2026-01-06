@@ -1654,6 +1654,7 @@ async def download_tax_invoice(
     <!DOCTYPE html>
     <html>
     <head>
+        <meta charset="UTF-8">
         <title>Tax Invoice - {invoice.invoice_number}</title>
         <style>
             @media print {{

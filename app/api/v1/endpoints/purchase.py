@@ -1531,6 +1531,7 @@ async def download_purchase_order(
     <!DOCTYPE html>
     <html>
     <head>
+        <meta charset="UTF-8">
         <title>Purchase Order - {po.po_number}</title>
         <style>
             @media print {{
@@ -1841,6 +1842,7 @@ async def download_grn(
     <!DOCTYPE html>
     <html>
     <head>
+        <meta charset="UTF-8">
         <title>Goods Receipt Note - {grn.grn_number}</title>
         <style>
             @media print {{
@@ -2122,6 +2124,7 @@ async def download_vendor_invoice(
     <!DOCTYPE html>
     <html>
     <head>
+        <meta charset="UTF-8">
         <title>Vendor Invoice - {invoice.invoice_number}</title>
         <style>
             @media print {{
