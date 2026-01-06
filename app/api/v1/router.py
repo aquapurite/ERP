@@ -21,6 +21,7 @@ from app.api.v1.endpoints import (
     # Service Management
     service_requests,
     technicians,
+    installations,  # NEW - Installation & Warranty
     # Vendor & Procurement (NEW)
     vendors,
     purchase,
@@ -43,6 +44,17 @@ from app.api.v1.endpoints import (
     picklists,
     shipments,
     manifests,
+    serviceability,  # Pincode Serviceability & Order Allocation
+    # Call Center CRM (NEW)
+    call_center,
+    # Lead Management (NEW)
+    leads,
+    # Escalation Management (NEW)
+    escalations,
+    # Campaign Management (NEW)
+    campaigns,
+    # Franchisee CRM (NEW)
+    franchisees,
 )
 
 
@@ -133,6 +145,11 @@ api_router.include_router(
     prefix="/technicians",
     tags=["Technicians"]
 )
+api_router.include_router(
+    installations.router,
+    prefix="/installations",
+    tags=["Installations & Warranty"]
+)
 
 # ==================== Vendor & Procurement (P2P) ====================
 api_router.include_router(
@@ -218,4 +235,43 @@ api_router.include_router(
     manifests.router,
     prefix="/manifests",
     tags=["Manifests (Transporter Handover)"]
+)
+api_router.include_router(
+    serviceability.router,
+    tags=["Serviceability & Order Allocation"]
+)
+
+# ==================== Call Center CRM ====================
+api_router.include_router(
+    call_center.router,
+    prefix="/call-center",
+    tags=["Call Center CRM"]
+)
+
+# ==================== Lead Management ====================
+api_router.include_router(
+    leads.router,
+    prefix="/leads",
+    tags=["Lead Management"]
+)
+
+# ==================== Escalation Management ====================
+api_router.include_router(
+    escalations.router,
+    prefix="/escalations",
+    tags=["Escalation Management"]
+)
+
+# ==================== Campaign Management ====================
+api_router.include_router(
+    campaigns.router,
+    prefix="/campaigns",
+    tags=["Campaign Management"]
+)
+
+# ==================== Franchisee CRM ====================
+api_router.include_router(
+    franchisees.router,
+    prefix="/franchisees",
+    tags=["Franchisee CRM"]
 )
