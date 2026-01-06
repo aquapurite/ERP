@@ -9,6 +9,7 @@ from app.models.brand import Brand
 from app.models.product import (
     Product,
     ProductStatus,
+    ProductItemType,
     ProductImage,
     ProductSpecification,
     ProductVariant,
@@ -357,6 +358,7 @@ __all__ = [
     "Brand",
     "Product",
     "ProductStatus",
+    "ProductItemType",
     "ProductImage",
     "ProductSpecification",
     "ProductVariant",

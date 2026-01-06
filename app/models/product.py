@@ -25,6 +25,15 @@ class ProductStatus(str, Enum):
     OUT_OF_STOCK = "OUT_OF_STOCK"
 
 
+class ProductItemType(str, Enum):
+    """Product item type for classification."""
+    FINISHED_GOODS = "FG"      # Water Purifiers, complete products
+    SPARE_PART = "SP"          # Filters, Sub-assemblies
+    COMPONENT = "CO"           # Electrical components
+    CONSUMABLE = "CN"          # Cartridges, Membranes
+    ACCESSORY = "AC"           # Add-ons, accessories
+
+
 class Product(Base):
     """
     Main product model for Consumer Durable catalog.
@@ -43,6 +52,27 @@ class Product(Base):
     slug: Mapped[str] = mapped_column(String(280), unique=True, nullable=False, index=True)
     sku: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
     model_number: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    # Master Product File - FG/Item Code (for serialization)
+    fg_code: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        unique=True,
+        nullable=True,
+        index=True,
+        comment="Formal product code e.g., WPRAIEL001"
+    )
+    model_code: Mapped[Optional[str]] = mapped_column(
+        String(10),
+        nullable=True,
+        index=True,
+        comment="3-letter model code for barcode e.g., IEL"
+    )
+    item_type: Mapped[ProductItemType] = mapped_column(
+        SQLEnum(ProductItemType, values_callable=lambda x: [e.value for e in x], native_enum=False),
+        default=ProductItemType.FINISHED_GOODS,
+        nullable=False,
+        comment="FG=Finished Goods, SP=Spare Part, CO=Component, CN=Consumable, AC=Accessory"
+    )
 
     # Descriptions
     short_description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
@@ -105,11 +135,27 @@ class Product(Base):
     extended_warranty_available: Mapped[bool] = mapped_column(Boolean, default=False)
     warranty_terms: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    # Physical Attributes
-    weight_kg: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 3), nullable=True)
-    length_cm: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2), nullable=True)
-    width_cm: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2), nullable=True)
-    height_cm: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2), nullable=True)
+    # Physical Attributes - Dimensions & Weight
+    dead_weight_kg: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(8, 3),
+        nullable=True,
+        comment="Actual physical weight in kg"
+    )
+    length_cm: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(8, 2),
+        nullable=True,
+        comment="Length in centimeters"
+    )
+    width_cm: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(8, 2),
+        nullable=True,
+        comment="Width in centimeters"
+    )
+    height_cm: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(8, 2),
+        nullable=True,
+        comment="Height in centimeters"
+    )
 
     # Inventory
     min_stock_level: Mapped[int] = mapped_column(Integer, default=10)
@@ -194,8 +240,48 @@ class Product(Base):
                 return img
         return self.images[0] if self.images else None
 
+    @property
+    def volumetric_weight_kg(self) -> float:
+        """
+        Calculate volumetric weight using formula: (L × W × H) / 5000
+
+        This is the industry standard divisor for courier companies.
+        Dimensions must be in centimeters.
+        """
+        if self.length_cm and self.width_cm and self.height_cm:
+            volume = float(self.length_cm) * float(self.width_cm) * float(self.height_cm)
+            return round(volume / 5000, 3)
+        return 0.0
+
+    @property
+    def chargeable_weight_kg(self) -> float:
+        """
+        Calculate chargeable weight = MAX(dead_weight, volumetric_weight)
+
+        Transporters charge based on whichever is higher:
+        - Dead weight (actual physical weight)
+        - Volumetric weight (space occupied)
+        """
+        dead = float(self.dead_weight_kg) if self.dead_weight_kg else 0.0
+        volumetric = self.volumetric_weight_kg
+        return max(dead, volumetric)
+
+    @property
+    def weight_info(self) -> dict:
+        """Get complete weight information for the product."""
+        return {
+            "dead_weight_kg": float(self.dead_weight_kg) if self.dead_weight_kg else None,
+            "volumetric_weight_kg": self.volumetric_weight_kg,
+            "chargeable_weight_kg": self.chargeable_weight_kg,
+            "dimensions": {
+                "length_cm": float(self.length_cm) if self.length_cm else None,
+                "width_cm": float(self.width_cm) if self.width_cm else None,
+                "height_cm": float(self.height_cm) if self.height_cm else None,
+            }
+        }
+
     def __repr__(self) -> str:
-        return f"<Product(name='{self.name}', sku='{self.sku}')>"
+        return f"<Product(name='{self.name}', sku='{self.sku}', fg_code='{self.fg_code}')>"
 
 
 class ProductImage(Base):

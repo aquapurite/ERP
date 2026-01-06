@@ -9,7 +9,8 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.shipment import Shipment, ShipmentTracking, ShipmentStatus, PaymentMode, PackagingType
-from app.models.order import Order, OrderStatus
+from app.models.order import Order, OrderItem, OrderStatus
+from app.models.product import Product
 from app.models.transporter import Transporter
 from app.schemas.shipment import ShipmentCreate, ShipmentUpdate, ShipmentTrackingUpdate
 
@@ -120,8 +121,12 @@ class ShipmentService:
         created_by: Optional[uuid.UUID] = None
     ) -> Shipment:
         """Create new shipment from order."""
-        # Verify order exists
-        stmt = select(Order).where(Order.id == data.order_id)
+        # Verify order exists with items
+        stmt = (
+            select(Order)
+            .options(selectinload(Order.items).selectinload(OrderItem.product))
+            .where(Order.id == data.order_id)
+        )
         result = await self.db.execute(stmt)
         order = result.scalar_one_or_none()
 
@@ -134,12 +139,29 @@ class ShipmentService:
         # Generate shipment number
         shipment_number = await self.generate_shipment_number()
 
-        # Calculate volumetric weight if dimensions provided
+        # Calculate weight - use provided values or calculate from products
+        weight_kg = data.weight_kg
         volumetric_weight = None
-        if data.length_cm and data.breadth_cm and data.height_cm:
-            volumetric_weight = (data.length_cm * data.breadth_cm * data.height_cm) / 5000
+        chargeable_weight = 0.0
 
-        chargeable_weight = max(data.weight_kg, volumetric_weight or 0)
+        if data.length_cm and data.breadth_cm and data.height_cm:
+            # Calculate volumetric weight from provided dimensions
+            volumetric_weight = (data.length_cm * data.breadth_cm * data.height_cm) / 5000
+            chargeable_weight = max(weight_kg, volumetric_weight or 0)
+        elif not weight_kg or weight_kg == 0:
+            # Calculate weight from Master Product File (sum of all items)
+            total_chargeable_weight = 0.0
+            for item in order.items:
+                if item.product:
+                    # Use product's chargeable_weight_kg (computed property)
+                    product_weight = item.product.chargeable_weight_kg or 0.0
+                    total_chargeable_weight += product_weight * item.quantity
+
+            if total_chargeable_weight > 0:
+                chargeable_weight = total_chargeable_weight
+                weight_kg = total_chargeable_weight  # Use as dead weight approximation
+        else:
+            chargeable_weight = weight_kg
 
         shipment = Shipment(
             shipment_number=shipment_number,

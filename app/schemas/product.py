@@ -1,10 +1,10 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, computed_field
 from typing import Optional, List, Any
 from datetime import datetime
 from decimal import Decimal
 import uuid
 
-from app.models.product import ProductStatus, DocumentType
+from app.models.product import ProductStatus, ProductItemType, DocumentType
 
 
 # ==================== IMAGE SCHEMAS ====================
@@ -134,6 +134,11 @@ class ProductBase(BaseModel):
     sku: str = Field(..., min_length=1, max_length=50)
     model_number: Optional[str] = Field(None, max_length=100)
 
+    # Master Product File - FG/Item Code
+    fg_code: Optional[str] = Field(None, max_length=20, description="Formal product code e.g., WPRAIEL001")
+    model_code: Optional[str] = Field(None, max_length=10, description="3-letter model code for barcode e.g., IEL")
+    item_type: ProductItemType = Field(default=ProductItemType.FINISHED_GOODS, description="FG, SP, CO, CN, AC")
+
     short_description: Optional[str] = Field(None, max_length=500)
     description: Optional[str] = None
     features: Optional[str] = None
@@ -153,10 +158,11 @@ class ProductBase(BaseModel):
     extended_warranty_available: bool = False
     warranty_terms: Optional[str] = None
 
-    weight_kg: Optional[Decimal] = Field(None, ge=0)
-    length_cm: Optional[Decimal] = Field(None, ge=0)
-    width_cm: Optional[Decimal] = Field(None, ge=0)
-    height_cm: Optional[Decimal] = Field(None, ge=0)
+    # Physical Attributes - Dimensions & Weight
+    dead_weight_kg: Optional[Decimal] = Field(None, ge=0, description="Actual physical weight in kg")
+    length_cm: Optional[Decimal] = Field(None, ge=0, description="Length in centimeters")
+    width_cm: Optional[Decimal] = Field(None, ge=0, description="Width in centimeters")
+    height_cm: Optional[Decimal] = Field(None, ge=0, description="Height in centimeters")
 
     min_stock_level: int = Field(default=10, ge=0)
     max_stock_level: Optional[int] = Field(None, ge=0)
@@ -179,6 +185,14 @@ class ProductBase(BaseModel):
             raise ValueError("Selling price cannot be greater than MRP")
         return v
 
+    @field_validator("model_code")
+    @classmethod
+    def validate_model_code(cls, v):
+        """Model code should be uppercase letters only."""
+        if v is not None:
+            return v.upper()
+        return v
+
 
 class ProductCreate(ProductBase):
     """Product creation schema."""
@@ -195,6 +209,11 @@ class ProductUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=255)
     slug: Optional[str] = Field(None, max_length=280)
     model_number: Optional[str] = Field(None, max_length=100)
+
+    # Master Product File - FG/Item Code
+    fg_code: Optional[str] = Field(None, max_length=20)
+    model_code: Optional[str] = Field(None, max_length=10)
+    item_type: Optional[ProductItemType] = None
 
     short_description: Optional[str] = Field(None, max_length=500)
     description: Optional[str] = None
@@ -215,7 +234,8 @@ class ProductUpdate(BaseModel):
     extended_warranty_available: Optional[bool] = None
     warranty_terms: Optional[str] = None
 
-    weight_kg: Optional[Decimal] = None
+    # Physical Attributes - Dimensions & Weight
+    dead_weight_kg: Optional[Decimal] = Field(None, ge=0)
     length_cm: Optional[Decimal] = None
     width_cm: Optional[Decimal] = None
     height_cm: Optional[Decimal] = None
@@ -235,6 +255,14 @@ class ProductUpdate(BaseModel):
     meta_keywords: Optional[str] = None
 
     extra_data: Optional[dict] = None
+
+    @field_validator("model_code")
+    @classmethod
+    def validate_model_code(cls, v):
+        """Model code should be uppercase letters only."""
+        if v is not None:
+            return v.upper()
+        return v
 
 
 class CategoryBrief(BaseModel):
@@ -258,6 +286,14 @@ class BrandBrief(BaseModel):
         from_attributes = True
 
 
+class WeightInfo(BaseModel):
+    """Weight information including calculated fields."""
+    dead_weight_kg: Optional[float] = None
+    volumetric_weight_kg: float = 0.0
+    chargeable_weight_kg: float = 0.0
+    dimensions: dict = {}
+
+
 class ProductResponse(BaseModel):
     """Product response schema."""
     id: uuid.UUID
@@ -265,6 +301,11 @@ class ProductResponse(BaseModel):
     slug: str
     sku: str
     model_number: Optional[str] = None
+
+    # Master Product File - FG/Item Code
+    fg_code: Optional[str] = None
+    model_code: Optional[str] = None
+    item_type: ProductItemType = ProductItemType.FINISHED_GOODS
 
     short_description: Optional[str] = None
     description: Optional[str] = None
@@ -285,10 +326,15 @@ class ProductResponse(BaseModel):
     extended_warranty_available: bool
     warranty_terms: Optional[str] = None
 
-    weight_kg: Optional[Decimal] = None
+    # Physical Attributes - Dimensions & Weight
+    dead_weight_kg: Optional[Decimal] = None
     length_cm: Optional[Decimal] = None
     width_cm: Optional[Decimal] = None
     height_cm: Optional[Decimal] = None
+
+    # Computed weight fields (from model properties)
+    volumetric_weight_kg: Optional[float] = None
+    chargeable_weight_kg: Optional[float] = None
 
     status: ProductStatus
     is_active: bool
@@ -334,6 +380,9 @@ class ProductBriefResponse(BaseModel):
     name: str
     sku: str
     slug: str
+    fg_code: Optional[str] = None
+    model_code: Optional[str] = None
+    item_type: ProductItemType = ProductItemType.FINISHED_GOODS
     mrp: Decimal
     selling_price: Decimal
     primary_image_url: Optional[str] = None
@@ -341,6 +390,38 @@ class ProductBriefResponse(BaseModel):
     brand_name: str
     is_active: bool
     status: ProductStatus
+    chargeable_weight_kg: Optional[float] = None
+
+    class Config:
+        from_attributes = True
+
+
+class MasterProductFileResponse(BaseModel):
+    """Master Product File response with complete identification and weight info."""
+    id: uuid.UUID
+    fg_code: Optional[str] = None
+    model_code: Optional[str] = None
+    name: str
+    sku: str
+    item_type: ProductItemType
+    category_name: str
+    brand_name: str
+    # Dimensions
+    length_cm: Optional[float] = None
+    width_cm: Optional[float] = None
+    height_cm: Optional[float] = None
+    # Weights
+    dead_weight_kg: Optional[float] = None
+    volumetric_weight_kg: float = 0.0
+    chargeable_weight_kg: float = 0.0
+    # Pricing
+    mrp: Decimal
+    selling_price: Decimal
+    hsn_code: Optional[str] = None
+    gst_rate: Optional[Decimal] = None
+    # Status
+    status: ProductStatus
+    is_active: bool
 
     class Config:
         from_attributes = True
