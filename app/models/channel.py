@@ -1,0 +1,504 @@
+"""Sales Channel models for multi-channel commerce management.
+
+Supports: D2C Website, Mobile App, Amazon, Flipkart, Dealer Network,
+Retail Stores, Franchise, Corporate Sales, etc.
+"""
+import uuid
+from datetime import datetime
+from enum import Enum
+from typing import TYPE_CHECKING, Optional, List
+from decimal import Decimal
+
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Float, JSON
+from sqlalchemy import Enum as SQLEnum, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.warehouse import Warehouse
+    from app.models.product import Product
+
+
+class ChannelType(str, Enum):
+    """Sales channel type enumeration."""
+    D2C_WEBSITE = "D2C_WEBSITE"         # Own website (Shopify, custom)
+    D2C_APP = "D2C_APP"                 # Own mobile app
+    MARKETPLACE_AMAZON = "MARKETPLACE_AMAZON"
+    MARKETPLACE_FLIPKART = "MARKETPLACE_FLIPKART"
+    MARKETPLACE_MYNTRA = "MARKETPLACE_MYNTRA"
+    MARKETPLACE_TATACLIQ = "MARKETPLACE_TATACLIQ"
+    MARKETPLACE_JIOMART = "MARKETPLACE_JIOMART"
+    MARKETPLACE_MEESHO = "MARKETPLACE_MEESHO"
+    MARKETPLACE_OTHER = "MARKETPLACE_OTHER"
+    RETAIL_STORE = "RETAIL_STORE"       # Own retail stores
+    FRANCHISE = "FRANCHISE"             # Franchise stores
+    DEALER = "DEALER"                   # Authorized dealers
+    DISTRIBUTOR = "DISTRIBUTOR"         # Regional distributors
+    MODERN_TRADE = "MODERN_TRADE"       # Croma, Reliance Digital, Vijay Sales
+    CORPORATE = "CORPORATE"             # B2B corporate sales
+    GOVERNMENT = "GOVERNMENT"           # Govt tenders/GeM
+    EXPORT = "EXPORT"                   # International sales
+    QUICK_COMMERCE = "QUICK_COMMERCE"   # Blinkit, Zepto, Instamart
+
+
+class ChannelStatus(str, Enum):
+    """Channel status enumeration."""
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    SUSPENDED = "SUSPENDED"
+    PENDING_SETUP = "PENDING_SETUP"
+
+
+class SalesChannel(Base):
+    """
+    Sales Channel master model.
+    Manages all sales channels for omnichannel commerce.
+    """
+    __tablename__ = "sales_channels"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Identification
+    code: Mapped[str] = mapped_column(
+        String(30),
+        unique=True,
+        nullable=False,
+        index=True,
+        comment="Unique channel code e.g., AMAZON_IN, FLIPKART, D2C_WEB"
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+
+    # Type & Status
+    channel_type: Mapped[ChannelType] = mapped_column(
+        SQLEnum(ChannelType),
+        nullable=False,
+        index=True
+    )
+    status: Mapped[ChannelStatus] = mapped_column(
+        SQLEnum(ChannelStatus),
+        default=ChannelStatus.ACTIVE,
+        nullable=False
+    )
+
+    # Marketplace Integration (for marketplace channels)
+    seller_id: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="Seller ID on marketplace"
+    )
+    api_endpoint: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    api_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    api_secret: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    webhook_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    # Fulfillment Settings
+    default_warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("warehouses.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    fulfillment_type: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="SELF, FBA, FLIPKART_ASSURED, etc."
+    )
+    auto_confirm_orders: Mapped[bool] = mapped_column(Boolean, default=False)
+    auto_allocate_inventory: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Commission & Fees (for marketplace)
+    commission_percentage: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(5, 2),
+        nullable=True,
+        comment="Marketplace commission %"
+    )
+    fixed_fee_per_order: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(10, 2),
+        nullable=True
+    )
+    payment_cycle_days: Mapped[int] = mapped_column(
+        Integer,
+        default=7,
+        comment="Settlement cycle in days"
+    )
+
+    # Pricing Rules
+    price_markup_percentage: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(5, 2),
+        nullable=True,
+        comment="% markup over base price"
+    )
+    price_discount_percentage: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(5, 2),
+        nullable=True,
+        comment="% discount from MRP"
+    )
+    use_channel_specific_pricing: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        comment="Use ChannelPricing table instead of product price"
+    )
+
+    # Return Policy
+    return_window_days: Mapped[int] = mapped_column(Integer, default=7)
+    replacement_window_days: Mapped[int] = mapped_column(Integer, default=7)
+    supports_return_pickup: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Tax Settings
+    tax_inclusive_pricing: Mapped[bool] = mapped_column(Boolean, default=True)
+    collect_tcs: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        comment="TCS collection for marketplace"
+    )
+    tcs_rate: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(5, 2),
+        nullable=True,
+        comment="TCS rate (typically 1%)"
+    )
+
+    # Contact
+    contact_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    contact_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    contact_phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+
+    # Configuration (JSON for flexible settings)
+    config: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Channel-specific configuration"
+    )
+
+    # Sync Settings
+    last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    sync_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    sync_interval_minutes: Mapped[int] = mapped_column(Integer, default=30)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    default_warehouse: Mapped[Optional["Warehouse"]] = relationship("Warehouse")
+    pricing: Mapped[List["ChannelPricing"]] = relationship(
+        "ChannelPricing",
+        back_populates="channel",
+        cascade="all, delete-orphan"
+    )
+    inventory_allocation: Mapped[List["ChannelInventory"]] = relationship(
+        "ChannelInventory",
+        back_populates="channel",
+        cascade="all, delete-orphan"
+    )
+
+    @property
+    def is_marketplace(self) -> bool:
+        """Check if channel is a marketplace."""
+        return self.channel_type.value.startswith("MARKETPLACE_")
+
+    def __repr__(self) -> str:
+        return f"<SalesChannel(code='{self.code}', type='{self.channel_type}')>"
+
+
+class ChannelPricing(Base):
+    """
+    Channel-specific product pricing.
+    Allows different prices per channel (MRP - Margin model).
+    """
+    __tablename__ = "channel_pricing"
+    __table_args__ = (
+        UniqueConstraint("channel_id", "product_id", "variant_id", name="uq_channel_product_pricing"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    channel_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sales_channels.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("product_variants.id", ondelete="CASCADE"),
+        nullable=True
+    )
+
+    # Pricing
+    mrp: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    selling_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    transfer_price: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(12, 2),
+        nullable=True,
+        comment="Price for dealer/distributor channels"
+    )
+
+    # Discounts
+    discount_percentage: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
+    max_discount_percentage: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(5, 2),
+        nullable=True,
+        comment="Maximum allowed discount"
+    )
+
+    # Status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_listed: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        comment="Product listed on this channel"
+    )
+
+    # Effective dates
+    effective_from: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    effective_to: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    channel: Mapped["SalesChannel"] = relationship(
+        "SalesChannel",
+        back_populates="pricing"
+    )
+    product: Mapped["Product"] = relationship("Product")
+
+    @property
+    def margin_percentage(self) -> Decimal:
+        """Calculate margin percentage."""
+        if self.mrp > 0:
+            return ((self.mrp - self.selling_price) / self.mrp) * 100
+        return Decimal("0")
+
+    def __repr__(self) -> str:
+        return f"<ChannelPricing(channel={self.channel_id}, product={self.product_id})>"
+
+
+class ChannelInventory(Base):
+    """
+    Channel-specific inventory allocation.
+    Allows splitting inventory across channels (buffer stock).
+    """
+    __tablename__ = "channel_inventory"
+    __table_args__ = (
+        UniqueConstraint(
+            "channel_id", "warehouse_id", "product_id", "variant_id",
+            name="uq_channel_inventory"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    channel_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sales_channels.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("warehouses.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("product_variants.id", ondelete="CASCADE"),
+        nullable=True
+    )
+
+    # Allocation
+    allocated_quantity: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        comment="Quantity allocated to this channel"
+    )
+    buffer_quantity: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        comment="Safety buffer stock"
+    )
+    reserved_quantity: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        comment="Reserved for pending orders"
+    )
+
+    # Sync
+    marketplace_quantity: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        comment="Quantity synced to marketplace"
+    )
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    channel: Mapped["SalesChannel"] = relationship(
+        "SalesChannel",
+        back_populates="inventory_allocation"
+    )
+    warehouse: Mapped["Warehouse"] = relationship("Warehouse")
+    product: Mapped["Product"] = relationship("Product")
+
+    @property
+    def available_quantity(self) -> int:
+        """Calculate available quantity for this channel."""
+        return max(0, self.allocated_quantity - self.buffer_quantity - self.reserved_quantity)
+
+    def __repr__(self) -> str:
+        return f"<ChannelInventory(channel={self.channel_id}, product={self.product_id})>"
+
+
+class ChannelOrder(Base):
+    """
+    Marketplace order reference mapping.
+    Links internal order to marketplace order ID.
+    """
+    __tablename__ = "channel_orders"
+    __table_args__ = (
+        UniqueConstraint("channel_id", "channel_order_id", name="uq_channel_order"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    channel_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sales_channels.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True
+    )
+
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("orders.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Marketplace Reference
+    channel_order_id: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        index=True,
+        comment="Order ID on marketplace"
+    )
+    channel_order_item_id: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="Line item ID on marketplace"
+    )
+
+    # Financials
+    channel_selling_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    channel_shipping_fee: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"))
+    channel_commission: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"))
+    channel_tcs: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"))
+    net_receivable: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+
+    # Status Mapping
+    channel_status: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="Order status on marketplace"
+    )
+
+    # Sync
+    raw_order_data: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Raw order data from marketplace"
+    )
+    synced_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+    last_status_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Settlement
+    settlement_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    settlement_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    is_settled: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    channel: Mapped["SalesChannel"] = relationship("SalesChannel")
+
+    def __repr__(self) -> str:
+        return f"<ChannelOrder(channel_order_id='{self.channel_order_id}')>"

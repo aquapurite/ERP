@@ -81,6 +81,17 @@ class Warehouse(Base, TimestampMixin):
         foreign_keys="StockTransfer.to_warehouse_id",
         back_populates="to_warehouse"
     )
+    # WMS relationships
+    zones = relationship(
+        "WarehouseZone",
+        back_populates="warehouse",
+        cascade="all, delete-orphan"
+    )
+    bins = relationship(
+        "WarehouseBin",
+        back_populates="warehouse",
+        cascade="all, delete-orphan"
+    )
 
     @property
     def full_address(self) -> str:

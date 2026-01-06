@@ -15,21 +15,49 @@ if TYPE_CHECKING:
     from app.models.product import Product, ProductVariant
     from app.models.user import User
     from app.models.region import Region
+    from app.models.warehouse import Warehouse
+    from app.models.shipment import Shipment
+    from app.models.dealer import Dealer
 
 
 class OrderStatus(str, Enum):
-    """Order status enumeration."""
-    DRAFT = "DRAFT"
-    PENDING = "PENDING"
-    CONFIRMED = "CONFIRMED"
-    PROCESSING = "PROCESSING"
-    READY_TO_SHIP = "READY_TO_SHIP"
-    SHIPPED = "SHIPPED"
-    OUT_FOR_DELIVERY = "OUT_FOR_DELIVERY"
-    DELIVERED = "DELIVERED"
-    CANCELLED = "CANCELLED"
-    RETURNED = "RETURNED"
-    REFUNDED = "REFUNDED"
+    """Order status enumeration - Vinculum OMS style flow."""
+    # Initial states
+    NEW = "NEW"                       # Order received
+    PENDING_PAYMENT = "PENDING_PAYMENT"  # Awaiting payment confirmation
+    CONFIRMED = "CONFIRMED"           # Payment confirmed, ready for processing
+
+    # Warehouse processing states
+    ALLOCATED = "ALLOCATED"           # Inventory allocated from warehouse
+    PICKLIST_CREATED = "PICKLIST_CREATED"  # Added to picklist for picking
+    PICKING = "PICKING"               # Currently being picked
+    PICKED = "PICKED"                 # All items picked
+    PACKING = "PACKING"               # Being packed
+    PACKED = "PACKED"                 # Packing complete
+
+    # Shipping states
+    MANIFESTED = "MANIFESTED"         # Added to manifest for handover
+    READY_TO_SHIP = "READY_TO_SHIP"   # Manifest confirmed, awaiting pickup
+    SHIPPED = "SHIPPED"               # Handed to transporter
+    IN_TRANSIT = "IN_TRANSIT"         # In transit to destination
+    OUT_FOR_DELIVERY = "OUT_FOR_DELIVERY"  # Out for final delivery
+
+    # Final states
+    DELIVERED = "DELIVERED"           # Successfully delivered
+    PARTIALLY_DELIVERED = "PARTIALLY_DELIVERED"  # Some items delivered
+
+    # Return states
+    RTO_INITIATED = "RTO_INITIATED"   # Return to origin initiated
+    RTO_IN_TRANSIT = "RTO_IN_TRANSIT"  # RTO shipment in transit
+    RTO_DELIVERED = "RTO_DELIVERED"   # Returned to warehouse
+    RETURNED = "RETURNED"             # Customer return
+
+    # Cancel/Refund
+    CANCELLED = "CANCELLED"           # Order cancelled
+    REFUNDED = "REFUNDED"             # Refund processed
+
+    # Hold states
+    ON_HOLD = "ON_HOLD"               # Order on hold (payment/fraud check)
 
 
 class PaymentStatus(str, Enum):
@@ -100,7 +128,7 @@ class Order(Base):
     # Status
     status: Mapped[OrderStatus] = mapped_column(
         SQLEnum(OrderStatus),
-        default=OrderStatus.PENDING,
+        default=OrderStatus.NEW,
         nullable=False,
         index=True
     )
@@ -110,6 +138,24 @@ class Order(Base):
         SQLEnum(OrderSource),
         default=OrderSource.WEBSITE,
         nullable=False
+    )
+
+    # Warehouse (fulfillment location)
+    warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("warehouses.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="Assigned warehouse for fulfillment"
+    )
+
+    # Dealer (for B2B orders)
+    dealer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("dealers.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="For dealer/distributor orders"
     )
 
     # Pricing (all in INR)
@@ -202,9 +248,33 @@ class Order(Base):
     confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
+    # OMS tracking timestamps
+    allocated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+        comment="When inventory was allocated"
+    )
+    picked_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+        comment="When order was picked"
+    )
+    packed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+        comment="When order was packed"
+    )
+    shipped_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+        comment="When order was shipped"
+    )
+
     # Relationships
     customer: Mapped["Customer"] = relationship("Customer", back_populates="orders")
     region: Mapped[Optional["Region"]] = relationship("Region")
+    warehouse: Mapped[Optional["Warehouse"]] = relationship("Warehouse")
+    dealer: Mapped[Optional["Dealer"]] = relationship("Dealer", back_populates="orders")
     created_by_user: Mapped[Optional["User"]] = relationship("User", foreign_keys=[created_by])
     items: Mapped[List["OrderItem"]] = relationship(
         "OrderItem",
@@ -226,6 +296,11 @@ class Order(Base):
         "Invoice",
         back_populates="order",
         uselist=False
+    )
+    shipments: Mapped[List["Shipment"]] = relationship(
+        "Shipment",
+        back_populates="order",
+        cascade="all, delete-orphan"
     )
 
     @property

@@ -1,0 +1,494 @@
+"""Pydantic schemas for Accounting module."""
+from datetime import datetime, date
+from typing import Optional, List
+from decimal import Decimal
+from uuid import UUID
+from pydantic import BaseModel, Field, ConfigDict, field_validator
+
+from app.models.accounting import (
+    AccountType, AccountSubType,
+    FinancialPeriodStatus as PeriodStatus,
+    JournalEntryStatus as JournalStatus
+)
+
+
+# ==================== ChartOfAccount Schemas ====================
+
+class ChartOfAccountBase(BaseModel):
+    """Base schema for ChartOfAccount."""
+    account_code: str = Field(..., min_length=3, max_length=20)
+    account_name: str = Field(..., min_length=2, max_length=200)
+    account_type: AccountType
+    account_subtype: Optional[AccountSubType] = None
+    description: Optional[str] = None
+    parent_id: Optional[UUID] = None
+    is_header: bool = False
+    is_system: bool = False
+    normal_balance: str = Field("DEBIT", pattern="^(DEBIT|CREDIT)$")
+    currency: str = Field("INR", max_length=3)
+    is_bank_account: bool = False
+    bank_name: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    is_active: bool = True
+    allow_manual_entries: bool = True
+
+
+class ChartOfAccountCreate(ChartOfAccountBase):
+    """Schema for creating ChartOfAccount."""
+    pass
+
+
+class ChartOfAccountUpdate(BaseModel):
+    """Schema for updating ChartOfAccount."""
+    account_name: Optional[str] = None
+    description: Optional[str] = None
+    parent_id: Optional[UUID] = None
+    is_active: Optional[bool] = None
+    allow_manual_entries: Optional[bool] = None
+    bank_name: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+
+
+class ChartOfAccountResponse(ChartOfAccountBase):
+    """Response schema for ChartOfAccount."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    level: int
+    full_path: Optional[str] = None
+    opening_balance: Decimal
+    current_balance: Decimal
+    created_at: datetime
+    updated_at: datetime
+
+
+class ChartOfAccountTreeResponse(ChartOfAccountResponse):
+    """Response with children for tree view."""
+    children: List["ChartOfAccountTreeResponse"] = []
+
+
+# Alias for tree view
+ChartOfAccountTree = ChartOfAccountTreeResponse
+
+
+class AccountListResponse(BaseModel):
+    """Paginated account list response."""
+    items: List[ChartOfAccountResponse]
+    total: int
+    skip: int
+    limit: int
+
+
+class AccountBalanceResponse(BaseModel):
+    """Account balance response."""
+    account_id: UUID
+    account_code: str
+    account_name: str
+    account_type: AccountType
+    opening_balance: Decimal
+    debit_total: Decimal
+    credit_total: Decimal
+    closing_balance: Decimal
+
+
+# ==================== FinancialPeriod Schemas ====================
+
+class FinancialPeriodBase(BaseModel):
+    """Base schema for FinancialPeriod."""
+    period_name: str = Field(..., min_length=2, max_length=50)
+    period_code: str = Field(..., min_length=4, max_length=20)
+    start_date: date
+    end_date: date
+    financial_year: str = Field(..., min_length=7, max_length=10)
+    is_year_end: bool = False
+
+    @field_validator("end_date")
+    @classmethod
+    def validate_end_date(cls, v, info):
+        if "start_date" in info.data and v <= info.data["start_date"]:
+            raise ValueError("end_date must be after start_date")
+        return v
+
+
+class FinancialPeriodCreate(FinancialPeriodBase):
+    """Schema for creating FinancialPeriod."""
+    pass
+
+
+class FinancialPeriodUpdate(BaseModel):
+    """Schema for updating FinancialPeriod."""
+    status: Optional[PeriodStatus] = None
+
+
+class FinancialPeriodResponse(FinancialPeriodBase):
+    """Response schema for FinancialPeriod."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    status: PeriodStatus
+    closed_by: Optional[UUID] = None
+    closed_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class FinancialPeriodListResponse(BaseModel):
+    """Response for listing periods."""
+    items: List[FinancialPeriodResponse]
+    total: int
+
+
+# Alias for backward compatibility
+PeriodListResponse = FinancialPeriodListResponse
+
+
+# ==================== CostCenter Schemas ====================
+
+class CostCenterBase(BaseModel):
+    """Base schema for CostCenter."""
+    code: str = Field(..., min_length=2, max_length=20)
+    name: str = Field(..., min_length=2, max_length=200)
+    description: Optional[str] = None
+    parent_id: Optional[UUID] = None
+    department: Optional[str] = None
+    manager_id: Optional[UUID] = None
+    budget_amount: Optional[Decimal] = Field(None, ge=0)
+    is_active: bool = True
+
+
+class CostCenterCreate(CostCenterBase):
+    """Schema for creating CostCenter."""
+    pass
+
+
+class CostCenterUpdate(BaseModel):
+    """Schema for updating CostCenter."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    parent_id: Optional[UUID] = None
+    department: Optional[str] = None
+    manager_id: Optional[UUID] = None
+    budget_amount: Optional[Decimal] = None
+    is_active: Optional[bool] = None
+
+
+class CostCenterResponse(CostCenterBase):
+    """Response schema for CostCenter."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    actual_amount: Decimal
+    created_at: datetime
+    updated_at: datetime
+
+
+# ==================== JournalEntry Schemas ====================
+
+class JournalEntryLineBase(BaseModel):
+    """Base schema for JournalEntryLine."""
+    account_id: UUID
+    description: Optional[str] = None
+    debit_amount: Decimal = Field(Decimal("0"), ge=0)
+    credit_amount: Decimal = Field(Decimal("0"), ge=0)
+    cost_center_id: Optional[UUID] = None
+    project_id: Optional[UUID] = None
+
+
+class JournalEntryLineCreate(JournalEntryLineBase):
+    """Schema for creating JournalEntryLine."""
+    pass
+
+
+class JournalEntryLineResponse(JournalEntryLineBase):
+    """Response schema for JournalEntryLine."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    line_number: int
+    account_code: Optional[str] = None
+    account_name: Optional[str] = None
+
+
+class JournalEntryBase(BaseModel):
+    """Base schema for JournalEntry."""
+    entry_type: str = Field(..., description="MANUAL, SALES, PURCHASE, RECEIPT, PAYMENT, ADJUSTMENT, CLOSING")
+    entry_date: date
+    narration: str = Field(..., min_length=2, max_length=500)
+    source_type: Optional[str] = None
+    source_id: Optional[UUID] = None
+    source_number: Optional[str] = None
+
+
+class JournalEntryCreate(JournalEntryBase):
+    """Schema for creating JournalEntry."""
+    period_id: UUID
+    lines: List[JournalEntryLineCreate] = Field(..., min_length=2)
+
+    @field_validator("lines")
+    @classmethod
+    def validate_lines(cls, v):
+        if len(v) < 2:
+            raise ValueError("Journal entry must have at least 2 lines")
+
+        total_debit = sum(line.debit_amount for line in v)
+        total_credit = sum(line.credit_amount for line in v)
+
+        if total_debit != total_credit:
+            raise ValueError(
+                f"Journal entry must balance. Debit: {total_debit}, Credit: {total_credit}"
+            )
+        return v
+
+
+class JournalEntryUpdate(BaseModel):
+    """Schema for updating JournalEntry (only draft)."""
+    description: Optional[str] = None
+    narration: Optional[str] = None
+
+
+class JournalEntryResponse(JournalEntryBase):
+    """Response schema for JournalEntry."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    entry_number: str
+    period_id: UUID
+    status: JournalStatus
+    total_debit: Decimal
+    total_credit: Decimal
+    is_auto_generated: bool
+    created_by: Optional[UUID] = None
+    posted_by: Optional[UUID] = None
+    posted_at: Optional[datetime] = None
+    reversed_by: Optional[UUID] = None
+    reversed_at: Optional[datetime] = None
+    reversal_entry_id: Optional[UUID] = None
+    lines: List[JournalEntryLineResponse] = []
+    created_at: datetime
+    updated_at: datetime
+
+
+class JournalEntryListResponse(BaseModel):
+    """Response for listing journal entries."""
+    items: List[JournalEntryResponse]
+    total: int
+    skip: int
+    limit: int
+
+
+# Alias for backward compatibility
+JournalListResponse = JournalEntryListResponse
+
+
+class JournalPostRequest(BaseModel):
+    """Request to post a journal entry."""
+    entry_ids: List[UUID]
+
+
+class JournalReverseRequest(BaseModel):
+    """Request to reverse a journal entry."""
+    entry_id: UUID
+    reversal_date: date
+    reason: str
+
+
+# Alias for backward compatibility
+JournalApproveRequest = JournalPostRequest
+
+
+# ==================== GeneralLedger Schemas ====================
+
+class GeneralLedgerResponse(BaseModel):
+    """Response schema for GeneralLedger."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    account_id: UUID
+    period_id: UUID
+    journal_entry_id: UUID
+    entry_date: date
+    entry_number: str
+    description: Optional[str] = None
+    debit_amount: Decimal
+    credit_amount: Decimal
+    balance: Decimal
+    reference_type: Optional[str] = None
+    reference_number: Optional[str] = None
+    created_at: datetime
+
+
+class LedgerQueryRequest(BaseModel):
+    """Query parameters for ledger."""
+    account_id: UUID
+    start_date: date
+    end_date: date
+    include_opening: bool = True
+
+
+class LedgerReportResponse(BaseModel):
+    """Ledger report response."""
+    account_id: UUID
+    account_code: str
+    account_name: str
+    period_start: date
+    period_end: date
+    opening_balance: Decimal
+    entries: List[GeneralLedgerResponse]
+    total_debit: Decimal
+    total_credit: Decimal
+    closing_balance: Decimal
+
+
+class LedgerListResponse(BaseModel):
+    """Paginated ledger list response."""
+    items: List[GeneralLedgerResponse]
+    total: int
+    skip: int
+    limit: int
+    opening_balance: Decimal = Decimal("0")
+    closing_balance: Decimal = Decimal("0")
+
+
+class LedgerSummary(BaseModel):
+    """Ledger summary."""
+    total_debit: Decimal
+    total_credit: Decimal
+    balance: Decimal
+
+
+# ==================== TaxConfiguration Schemas ====================
+
+class TaxConfigurationBase(BaseModel):
+    """Base schema for TaxConfiguration."""
+    hsn_code: str = Field(..., min_length=4, max_length=8)
+    description: str = Field(..., max_length=500)
+    gst_rate: Decimal = Field(..., ge=0, le=100)
+    cgst_rate: Decimal = Field(..., ge=0, le=50)
+    sgst_rate: Decimal = Field(..., ge=0, le=50)
+    igst_rate: Decimal = Field(..., ge=0, le=100)
+    cess_rate: Decimal = Field(Decimal("0"), ge=0)
+    is_service: bool = False
+    is_exempt: bool = False
+    is_nil_rated: bool = False
+    is_non_gst: bool = False
+    reverse_charge: bool = False
+    is_active: bool = True
+
+
+class TaxConfigurationCreate(TaxConfigurationBase):
+    """Schema for creating TaxConfiguration."""
+    pass
+
+
+class TaxConfigurationUpdate(BaseModel):
+    """Schema for updating TaxConfiguration."""
+    description: Optional[str] = None
+    gst_rate: Optional[Decimal] = None
+    cgst_rate: Optional[Decimal] = None
+    sgst_rate: Optional[Decimal] = None
+    igst_rate: Optional[Decimal] = None
+    cess_rate: Optional[Decimal] = None
+    is_active: Optional[bool] = None
+
+
+class TaxConfigurationResponse(TaxConfigurationBase):
+    """Response schema for TaxConfiguration."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class TaxCalculationRequest(BaseModel):
+    """Request for tax calculation."""
+    hsn_code: str
+    taxable_value: Decimal
+    is_interstate: bool = False
+    place_of_supply_code: Optional[str] = None
+
+
+class TaxCalculationResponse(BaseModel):
+    """Response for tax calculation."""
+    hsn_code: str
+    taxable_value: Decimal
+    is_interstate: bool
+    cgst_rate: Decimal
+    cgst_amount: Decimal
+    sgst_rate: Decimal
+    sgst_amount: Decimal
+    igst_rate: Decimal
+    igst_amount: Decimal
+    cess_rate: Decimal
+    cess_amount: Decimal
+    total_tax: Decimal
+    total_amount: Decimal
+
+
+# ==================== Report Schemas ====================
+
+class TrialBalanceRequest(BaseModel):
+    """Request for trial balance."""
+    as_of_date: date
+    period_id: Optional[UUID] = None
+
+
+class TrialBalanceLineItem(BaseModel):
+    """Trial balance line item."""
+    account_id: UUID
+    account_code: str
+    account_name: str
+    account_type: AccountType
+    debit_balance: Decimal
+    credit_balance: Decimal
+
+
+class TrialBalanceResponse(BaseModel):
+    """Trial balance response."""
+    as_of_date: date
+    items: List[TrialBalanceLineItem]
+    total_debit: Decimal
+    total_credit: Decimal
+    is_balanced: bool
+
+
+# Alias for backward compatibility
+TrialBalanceItem = TrialBalanceLineItem
+
+
+class ProfitLossRequest(BaseModel):
+    """Request for P&L statement."""
+    start_date: date
+    end_date: date
+    cost_center_id: Optional[UUID] = None
+
+
+class BalanceSheetRequest(BaseModel):
+    """Request for balance sheet."""
+    as_of_date: date
+
+
+class ProfitLossResponse(BaseModel):
+    """Profit & Loss statement response."""
+    start_date: date
+    end_date: date
+    revenue: Decimal = Decimal("0")
+    cost_of_goods_sold: Decimal = Decimal("0")
+    gross_profit: Decimal = Decimal("0")
+    operating_expenses: Decimal = Decimal("0")
+    operating_income: Decimal = Decimal("0")
+    other_income: Decimal = Decimal("0")
+    other_expenses: Decimal = Decimal("0")
+    net_income: Decimal = Decimal("0")
+
+
+class BalanceSheetResponse(BaseModel):
+    """Balance Sheet response."""
+    as_of_date: date
+    total_assets: Decimal = Decimal("0")
+    total_liabilities: Decimal = Decimal("0")
+    total_equity: Decimal = Decimal("0")
+    assets: dict = {}
+    liabilities: dict = {}
+    equity: dict = {}

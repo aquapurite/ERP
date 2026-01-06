@@ -15,11 +15,15 @@ class StockItemStatus(str, Enum):
     AVAILABLE = "available"  # Ready for sale/allocation
     RESERVED = "reserved"  # Reserved for an order
     ALLOCATED = "allocated"  # Allocated to an order
+    PICKED = "picked"  # Picked from bin
+    PACKED = "packed"  # Packed and ready to ship
     IN_TRANSIT = "in_transit"  # Being transferred
+    SHIPPED = "shipped"  # Shipped to customer
     DAMAGED = "damaged"  # Damaged, needs inspection
     DEFECTIVE = "defective"  # Defective, needs return
-    SOLD = "sold"  # Sold to customer
+    SOLD = "sold"  # Sold to customer (delivered)
     RETURNED = "returned"  # Returned by customer
+    QUARANTINE = "quarantine"  # In quality hold
     SCRAPPED = "scrapped"  # Written off
 
 
@@ -69,9 +73,10 @@ class StockItem(Base, TimestampMixin):
     order_item_id = Column(UUID(as_uuid=True))
     allocated_at = Column(DateTime)
 
-    # Location within warehouse
-    rack_location = Column(String(50))  # e.g., "A1-B2-C3"
-    bin_number = Column(String(50))
+    # Location within warehouse (WMS integration)
+    bin_id = Column(UUID(as_uuid=True), ForeignKey("warehouse_bins.id"), index=True)
+    rack_location = Column(String(50))  # e.g., "A1-B2-C3" (legacy, use bin_id)
+    bin_number = Column(String(50))  # legacy, use bin_id
 
     # Quality
     quality_grade = Column(String(20))  # A, B, C etc.
@@ -88,6 +93,7 @@ class StockItem(Base, TimestampMixin):
     product = relationship("Product", back_populates="stock_items")
     variant = relationship("ProductVariant")
     warehouse = relationship("Warehouse", back_populates="stock_items")
+    bin = relationship("WarehouseBin", back_populates="stock_items")
     order = relationship("Order")
 
     def __repr__(self):

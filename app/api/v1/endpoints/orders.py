@@ -299,10 +299,10 @@ async def approve_order(
             detail="Order not found"
         )
 
-    if order.status != OrderStatus.PENDING:
+    if order.status != OrderStatus.NEW:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only pending orders can be approved"
+            detail="Only new orders can be approved"
         )
 
     order = await service.update_order_status(

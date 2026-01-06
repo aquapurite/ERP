@@ -83,6 +83,159 @@ from app.models.installation import (
     InstallationStatus,
     WarrantyClaim,
 )
+# OMS/WMS Models
+from app.models.transporter import (
+    Transporter,
+    TransporterType,
+    TransporterServiceability,
+)
+from app.models.wms import (
+    WarehouseZone,
+    WarehouseBin,
+    PutAwayRule,
+    ZoneType,
+    BinType,
+)
+from app.models.picklist import (
+    Picklist,
+    PicklistItem,
+    PicklistStatus,
+    PicklistType,
+)
+from app.models.manifest import (
+    Manifest,
+    ManifestItem,
+    ManifestStatus,
+    BusinessType,
+)
+from app.models.shipment import (
+    Shipment,
+    ShipmentTracking,
+    ShipmentStatus,
+    PaymentMode,
+    PackagingType,
+)
+# Multi-Channel Commerce
+from app.models.channel import (
+    SalesChannel,
+    ChannelType,
+    ChannelStatus,
+    ChannelPricing,
+    ChannelInventory,
+    ChannelOrder,
+)
+# Accounting & Finance
+from app.models.accounting import (
+    ChartOfAccount,
+    AccountType,
+    AccountSubType,
+    FinancialPeriod,
+    FinancialPeriodStatus as PeriodStatus,
+    CostCenter,
+    JournalEntry,
+    JournalEntryLine,
+    JournalEntryStatus as JournalStatus,
+    GeneralLedger,
+    TaxConfiguration,
+)
+# Enhanced Billing (E-Invoice)
+from app.models.billing import (
+    TaxInvoice,
+    InvoiceItem,
+    InvoiceType,
+    InvoiceStatus,
+    CreditDebitNote,
+    CreditDebitNoteItem,
+    DocumentType as NoteDocumentType,
+    NoteReason,
+    EWayBill,
+    EWayBillItem,
+    EWayBillStatus,
+    PaymentReceipt,
+    PaymentMode as BillingPaymentMode,
+    InvoiceNumberSequence,
+)
+# Dealer/Distributor
+from app.models.dealer import (
+    Dealer,
+    DealerType,
+    DealerStatus,
+    DealerTier,
+    CreditStatus,
+    DealerPricing,
+    DealerTierPricing,
+    DealerCreditLedger,
+    TransactionType as DealerTransactionType,
+    DealerTarget,
+    DealerScheme,
+    SchemeType,
+    DealerSchemeApplication,
+)
+# Commission & Incentives
+from app.models.commission import (
+    CommissionPlan,
+    CommissionType,
+    CalculationBasis,
+    CommissionCategoryRate,
+    CommissionProductRate,
+    CommissionEarner,
+    CommissionTransaction,
+    CommissionStatus,
+    CommissionPayout,
+    CommissionPayoutLine,
+    PayoutStatus,
+    AffiliateReferral,
+)
+# Unified Promotions & Channel Commissions
+from app.models.promotion import (
+    Promotion,
+    PromotionType,
+    PromotionScope,
+    DiscountApplication,
+    PromotionStatus,
+    PromotionUsage,
+    ChannelCommissionPlan,
+    ChannelCommissionCategoryRate,
+    ChannelCommissionEarning,
+    CommissionBeneficiary,
+    LoyaltyProgram,
+    ReferralProgram,
+    CustomerReferral,
+)
+# Vendor/Supplier (Procure-to-Pay)
+from app.models.vendor import (
+    Vendor,
+    VendorType,
+    VendorStatus,
+    VendorGrade,
+    PaymentTerms,
+    VendorLedger,
+    VendorTransactionType,
+    VendorContact,
+)
+# Purchase/Procurement
+from app.models.purchase import (
+    PurchaseRequisition,
+    PurchaseRequisitionItem,
+    RequisitionStatus,
+    PurchaseOrder,
+    PurchaseOrderItem,
+    POStatus,
+    GoodsReceiptNote,
+    GRNItem,
+    GRNStatus,
+    QualityCheckResult,
+    VendorInvoice,
+    VendorInvoiceStatus,
+)
+# Company/Business Entity
+from app.models.company import (
+    Company,
+    CompanyType,
+    GSTRegistrationType,
+    CompanyBranch,
+    CompanyBankAccount,
+)
 
 __all__ = [
     # Access Control
@@ -161,4 +314,133 @@ __all__ = [
     "Installation",
     "InstallationStatus",
     "WarrantyClaim",
+    # OMS/WMS - Transporter
+    "Transporter",
+    "TransporterType",
+    "TransporterServiceability",
+    # OMS/WMS - Warehouse Management
+    "WarehouseZone",
+    "WarehouseBin",
+    "PutAwayRule",
+    "ZoneType",
+    "BinType",
+    # OMS/WMS - Picklist
+    "Picklist",
+    "PicklistItem",
+    "PicklistStatus",
+    "PicklistType",
+    # OMS/WMS - Manifest
+    "Manifest",
+    "ManifestItem",
+    "ManifestStatus",
+    "BusinessType",
+    # OMS/WMS - Shipment
+    "Shipment",
+    "ShipmentTracking",
+    "ShipmentStatus",
+    "PaymentMode",
+    "PackagingType",
+    # Multi-Channel Commerce
+    "SalesChannel",
+    "ChannelType",
+    "ChannelStatus",
+    "ChannelPricing",
+    "ChannelInventory",
+    "ChannelOrder",
+    # Accounting & Finance
+    "ChartOfAccount",
+    "AccountType",
+    "AccountSubType",
+    "FinancialPeriod",
+    "PeriodStatus",
+    "CostCenter",
+    "JournalEntry",
+    "JournalEntryLine",
+    "JournalStatus",
+    "GeneralLedger",
+    "TaxConfiguration",
+    # Enhanced Billing (E-Invoice)
+    "TaxInvoice",
+    "InvoiceItem",
+    "InvoiceType",
+    "InvoiceStatus",
+    "CreditDebitNote",
+    "CreditDebitNoteItem",
+    "NoteDocumentType",
+    "NoteReason",
+    "EWayBill",
+    "EWayBillItem",
+    "EWayBillStatus",
+    "PaymentReceipt",
+    "BillingPaymentMode",
+    "InvoiceNumberSequence",
+    # Dealer/Distributor
+    "Dealer",
+    "DealerType",
+    "DealerStatus",
+    "DealerTier",
+    "CreditStatus",
+    "DealerPricing",
+    "DealerTierPricing",
+    "DealerCreditLedger",
+    "DealerTransactionType",
+    "DealerTarget",
+    "DealerScheme",
+    "SchemeType",
+    "DealerSchemeApplication",
+    # Commission & Incentives
+    "CommissionPlan",
+    "CommissionType",
+    "CalculationBasis",
+    "CommissionCategoryRate",
+    "CommissionProductRate",
+    "CommissionEarner",
+    "CommissionTransaction",
+    "CommissionStatus",
+    "CommissionPayout",
+    "CommissionPayoutLine",
+    "PayoutStatus",
+    "AffiliateReferral",
+    # Unified Promotions & Channel Commissions
+    "Promotion",
+    "PromotionType",
+    "PromotionScope",
+    "DiscountApplication",
+    "PromotionStatus",
+    "PromotionUsage",
+    "ChannelCommissionPlan",
+    "ChannelCommissionCategoryRate",
+    "ChannelCommissionEarning",
+    "CommissionBeneficiary",
+    "LoyaltyProgram",
+    "ReferralProgram",
+    "CustomerReferral",
+    # Vendor/Supplier (Procure-to-Pay)
+    "Vendor",
+    "VendorType",
+    "VendorStatus",
+    "VendorGrade",
+    "PaymentTerms",
+    "VendorLedger",
+    "VendorTransactionType",
+    "VendorContact",
+    # Purchase/Procurement
+    "PurchaseRequisition",
+    "PurchaseRequisitionItem",
+    "RequisitionStatus",
+    "PurchaseOrder",
+    "PurchaseOrderItem",
+    "POStatus",
+    "GoodsReceiptNote",
+    "GRNItem",
+    "GRNStatus",
+    "QualityCheckResult",
+    "VendorInvoice",
+    "VendorInvoiceStatus",
+    # Company/Business Entity
+    "Company",
+    "CompanyType",
+    "GSTRegistrationType",
+    "CompanyBranch",
+    "CompanyBankAccount",
 ]

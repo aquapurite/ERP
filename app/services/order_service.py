@@ -362,7 +362,7 @@ class OrderService:
             order_number=order_number,
             customer_id=data.customer_id,
             source=data.source,
-            status=OrderStatus.PENDING,
+            status=OrderStatus.NEW,
             subtotal=subtotal,
             tax_amount=tax_amount,
             discount_amount=Decimal("0.00"),
@@ -405,7 +405,7 @@ class OrderService:
         status_history = OrderStatusHistory(
             order_id=order.id,
             from_status=None,
-            to_status=OrderStatus.PENDING,
+            to_status=OrderStatus.NEW,
             changed_by=created_by,
             notes="Order created",
         )
@@ -586,7 +586,7 @@ class OrderService:
 
         # By status
         status_counts = {}
-        for status in [OrderStatus.PENDING, OrderStatus.PROCESSING,
+        for status in [OrderStatus.NEW, OrderStatus.CONFIRMED,
                        OrderStatus.DELIVERED, OrderStatus.CANCELLED]:
             stmt = select(func.count(Order.id)).where(Order.status == status)
             if base_filter:
