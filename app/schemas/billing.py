@@ -28,6 +28,7 @@ class InvoiceItemBase(BaseModel):
     mrp: Optional[Decimal] = Field(None, gt=0)
     discount_percentage: Decimal = Field(Decimal("0"), ge=0, le=100)
     gst_rate: Decimal = Field(..., ge=0, le=28)
+    cess_rate: Optional[Decimal] = Field(None, ge=0, le=100, description="GST Compensation Cess rate")
     serial_numbers: Optional[List[str]] = None
     warranty_months: Optional[int] = Field(None, ge=0)
     order_item_id: Optional[UUID] = None

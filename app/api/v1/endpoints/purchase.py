@@ -1012,6 +1012,38 @@ async def process_grn_putaway(
     await db.commit()
     await db.refresh(grn)
 
+    # Post accounting entry for GRN
+    try:
+        from app.services.accounting_service import AccountingService
+        accounting = AccountingService(db)
+
+        # Get vendor name from PO
+        vendor_name = grn.purchase_order.vendor.company_name if grn.purchase_order and grn.purchase_order.vendor else "Unknown Vendor"
+
+        # Calculate tax amounts from GRN
+        subtotal = grn.accepted_value or Decimal("0")
+        cgst = grn.cgst_amount or Decimal("0")
+        sgst = grn.sgst_amount or Decimal("0")
+        igst = grn.igst_amount or Decimal("0")
+        total = grn.total_value or subtotal
+
+        await accounting.post_grn_entry(
+            grn_id=grn.id,
+            grn_number=grn.grn_number,
+            vendor_name=vendor_name,
+            subtotal=subtotal,
+            cgst=cgst,
+            sgst=sgst,
+            igst=igst,
+            total=total,
+            is_interstate=igst > 0,
+            product_type="purifier",
+        )
+        await db.commit()
+    except Exception as e:
+        import logging
+        logging.warning(f"Failed to post accounting entry for GRN {grn.grn_number}: {e}")
+
     return grn
 
 

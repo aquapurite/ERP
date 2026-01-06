@@ -568,9 +568,43 @@ async def mark_delivered(
     order = order_result.scalar_one_or_none()
     if order:
         order.status = OrderStatus.DELIVERED
+        order.delivered_at = now
 
     await db.commit()
     await db.refresh(shipment)
+
+    # Post COGS accounting entry
+    if order:
+        try:
+            from decimal import Decimal
+            from app.services.accounting_service import AccountingService
+            accounting = AccountingService(db)
+
+            # Calculate cost based on order items (using cost_price from items)
+            # For simplicity, we estimate COGS as a percentage of selling price
+            # In production, this should come from actual product cost
+            cost_amount = Decimal(str(order.total_amount)) * Decimal("0.6")  # Approximate 60% margin
+
+            await accounting.post_cogs_entry(
+                order_id=order.id,
+                order_number=order.order_number,
+                cost_amount=cost_amount,
+                product_type="purifier",
+            )
+
+            # Also post warranty provision (2% of selling price)
+            warranty_amount = Decimal(str(order.total_amount)) * Decimal("0.02")
+            if warranty_amount > 0:
+                await accounting.post_warranty_provision(
+                    order_id=order.id,
+                    order_number=order.order_number,
+                    provision_amount=warranty_amount,
+                )
+
+            await db.commit()
+        except Exception as e:
+            import logging
+            logging.warning(f"Failed to post COGS/warranty for order {order.order_number}: {e}")
 
     return ShipmentDeliveryMarkResponse(
         success=True,

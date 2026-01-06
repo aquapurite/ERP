@@ -48,12 +48,31 @@ async def create_invoice(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new tax invoice."""
+    # Map invoice type to series code
+    series_code_map = {
+        InvoiceType.TAX_INVOICE: "INV",
+        InvoiceType.PROFORMA: "PI",
+        InvoiceType.DELIVERY_CHALLAN: "DC",
+        InvoiceType.EXPORT: "EXP",
+        InvoiceType.SEZ: "SEZ",
+        InvoiceType.DEEMED_EXPORT: "DE",
+    }
+    series_code = series_code_map.get(invoice_in.invoice_type, "INV")
+
+    # Get current financial year
+    from datetime import datetime
+    now = datetime.now()
+    if now.month >= 4:
+        financial_year = f"{now.year}-{str(now.year + 1)[2:]}"
+    else:
+        financial_year = f"{now.year - 1}-{str(now.year)[2:]}"
+
     # Generate invoice number from sequence
     sequence_result = await db.execute(
         select(InvoiceNumberSequence).where(
             and_(
-                InvoiceNumberSequence.invoice_type == invoice_in.invoice_type,
-                InvoiceNumberSequence.financial_year == invoice_in.financial_year,
+                InvoiceNumberSequence.series_code == series_code,
+                InvoiceNumberSequence.financial_year == financial_year,
                 InvoiceNumberSequence.is_active == True,
             )
         )
@@ -63,11 +82,11 @@ async def create_invoice(
     if not sequence:
         # Create default sequence
         sequence = InvoiceNumberSequence(
-            invoice_type=invoice_in.invoice_type,
-            financial_year=invoice_in.financial_year,
-            prefix=f"INV/{invoice_in.financial_year}/",
+            series_code=series_code,
+            series_name=f"{invoice_in.invoice_type.value} Series",
+            financial_year=financial_year,
+            prefix=f"{series_code}/{financial_year}/",
             current_number=0,
-            created_by=current_user.id,
         )
         db.add(sequence)
         await db.flush()
@@ -76,42 +95,59 @@ async def create_invoice(
     invoice_number = f"{sequence.prefix}{str(sequence.current_number).zfill(sequence.padding_length)}"
 
     # Determine if inter-state
-    is_inter_state = invoice_in.billing_state_code != invoice_in.shipping_state_code
+    shipping_state_code = invoice_in.shipping_state_code or invoice_in.billing_state_code
+    is_inter_state = invoice_in.billing_state_code != shipping_state_code
 
-    # Create invoice
+    # Create invoice with initial zero values (will be updated after items)
     invoice = TaxInvoice(
         invoice_number=invoice_number,
         invoice_type=invoice_in.invoice_type,
         invoice_date=invoice_in.invoice_date,
         due_date=invoice_in.due_date,
-        financial_year=invoice_in.financial_year,
         order_id=invoice_in.order_id,
         customer_id=invoice_in.customer_id,
-        dealer_id=invoice_in.dealer_id,
-        # Billing Address
-        billing_name=invoice_in.billing_name,
-        billing_gstin=invoice_in.billing_gstin,
-        billing_address=invoice_in.billing_address,
+        # Customer name (mapped from schema)
+        customer_name=invoice_in.customer_name,
+        customer_gstin=invoice_in.customer_gstin,
+        # Billing Address (mapped from schema)
+        billing_address_line1=invoice_in.billing_address_line1,
+        billing_address_line2=invoice_in.billing_address_line2,
         billing_city=invoice_in.billing_city,
         billing_state=invoice_in.billing_state,
         billing_state_code=invoice_in.billing_state_code,
         billing_pincode=invoice_in.billing_pincode,
         # Shipping Address
-        shipping_name=invoice_in.shipping_name,
-        shipping_address=invoice_in.shipping_address,
-        shipping_city=invoice_in.shipping_city,
-        shipping_state=invoice_in.shipping_state,
-        shipping_state_code=invoice_in.shipping_state_code,
-        shipping_pincode=invoice_in.shipping_pincode,
+        shipping_address_line1=invoice_in.shipping_address_line1 or invoice_in.billing_address_line1,
+        shipping_address_line2=invoice_in.shipping_address_line2,
+        shipping_city=invoice_in.shipping_city or invoice_in.billing_city,
+        shipping_state=invoice_in.shipping_state or invoice_in.billing_state,
+        shipping_state_code=shipping_state_code,
+        shipping_pincode=invoice_in.shipping_pincode or invoice_in.billing_pincode,
         # Seller Info
         seller_gstin=invoice_in.seller_gstin,
+        seller_name=invoice_in.seller_name,
+        seller_address=invoice_in.seller_address,
+        seller_state_code=invoice_in.seller_state_code,
         place_of_supply=invoice_in.place_of_supply,
-        is_inter_state=is_inter_state,
+        place_of_supply_code=invoice_in.place_of_supply_code,
+        is_interstate=is_inter_state,
+        is_reverse_charge=invoice_in.is_reverse_charge,
+        # Other charges
+        shipping_charges=invoice_in.shipping_charges,
+        packaging_charges=invoice_in.packaging_charges,
+        other_charges=invoice_in.other_charges,
         # Terms
         payment_terms=invoice_in.payment_terms,
-        delivery_terms=invoice_in.delivery_terms,
-        notes=invoice_in.notes,
+        terms_and_conditions=invoice_in.terms_and_conditions,
+        internal_notes=invoice_in.internal_notes,
+        customer_notes=invoice_in.customer_notes,
         created_by=current_user.id,
+        # Initialize totals to zero (will be updated after items are added)
+        subtotal=Decimal("0"),
+        taxable_amount=Decimal("0"),
+        total_tax=Decimal("0"),
+        grand_total=Decimal("0"),
+        amount_due=Decimal("0"),
     )
 
     db.add(invoice)
@@ -153,21 +189,26 @@ async def create_invoice(
 
         item_total = item_taxable + cgst_amount + sgst_amount + igst_amount + cess_amount
 
+        # Calculate total tax for this item
+        item_total_tax = cgst_amount + sgst_amount + igst_amount + cess_amount
+
         item = InvoiceItem(
             invoice_id=invoice.id,
-            line_number=line_number,
             product_id=item_data.product_id,
             variant_id=item_data.variant_id,
-            product_name=item_data.product_name,
-            product_description=item_data.product_description,
-            hsn_code=item_data.hsn_code,
             sku=item_data.sku,
+            item_name=item_data.item_name,
+            item_description=item_data.item_description,
+            hsn_code=item_data.hsn_code,
+            is_service=item_data.is_service,
+            serial_numbers={"serials": item_data.serial_numbers} if item_data.serial_numbers else None,
             quantity=item_data.quantity,
             uom=item_data.uom,
             unit_price=item_data.unit_price,
+            mrp=item_data.mrp,
             discount_percentage=item_data.discount_percentage,
             discount_amount=discount_amount,
-            taxable_amount=item_taxable,
+            taxable_value=item_taxable,
             gst_rate=gst_rate,
             cgst_rate=cgst_rate,
             sgst_rate=sgst_rate,
@@ -175,9 +216,12 @@ async def create_invoice(
             cgst_amount=cgst_amount,
             sgst_amount=sgst_amount,
             igst_amount=igst_amount,
-            cess_rate=item_data.cess_rate or Decimal("0"),
+            cess_rate=Decimal("0"),  # No cess for now
             cess_amount=cess_amount,
-            total_amount=item_total,
+            total_tax=item_total_tax,
+            line_total=item_total,
+            warranty_months=item_data.warranty_months,
+            order_item_id=item_data.order_item_id,
         )
         db.add(item)
 
@@ -207,9 +251,30 @@ async def create_invoice(
     invoice.total_tax = total_tax
     invoice.round_off = round_off
     invoice.grand_total = grand_total
-    invoice.balance_due = grand_total
+    invoice.amount_due = grand_total
 
     await db.commit()
+
+    # Post accounting entry for the invoice
+    try:
+        from app.services.accounting_service import AccountingService
+        accounting = AccountingService(db)
+        await accounting.post_sales_invoice(
+            invoice_id=invoice.id,
+            customer_name=invoice.customer_name,
+            subtotal=taxable_amount,
+            cgst=cgst_total,
+            sgst=sgst_total,
+            igst=igst_total,
+            total=grand_total,
+            is_interstate=is_inter_state,
+            product_type="purifier",  # Default, can be enhanced to detect from items
+        )
+        await db.commit()
+    except Exception as e:
+        # Log but don't fail invoice creation if accounting fails
+        import logging
+        logging.warning(f"Failed to post accounting entry for invoice {invoice.invoice_number}: {e}")
 
     # Load full invoice
     result = await db.execute(
@@ -579,41 +644,44 @@ async def create_eway_bill(
     # Create E-Way Bill
     ewb = EWayBill(
         invoice_id=invoice.id,
-        invoice_number=invoice.invoice_number,
-        invoice_date=invoice.invoice_date,
+        document_number=ewb_in.document_number,
+        document_date=ewb_in.document_date,
         supply_type=ewb_in.supply_type,
         sub_supply_type=ewb_in.sub_supply_type,
         document_type=ewb_in.document_type,
+        transaction_type=ewb_in.transaction_type,
         # From Address
-        from_gstin=invoice.seller_gstin,
+        from_gstin=ewb_in.from_gstin,
         from_name=ewb_in.from_name,
-        from_address=ewb_in.from_address,
+        from_address1=ewb_in.from_address1,
+        from_address2=ewb_in.from_address2,
         from_place=ewb_in.from_place,
         from_pincode=ewb_in.from_pincode,
         from_state_code=ewb_in.from_state_code,
         # To Address
-        to_gstin=invoice.billing_gstin,
-        to_name=invoice.shipping_name,
-        to_address=invoice.shipping_address,
-        to_place=invoice.shipping_city,
-        to_pincode=invoice.shipping_pincode,
-        to_state_code=invoice.shipping_state_code,
-        # Values
-        taxable_value=invoice.taxable_amount,
-        cgst_value=invoice.cgst_amount,
-        sgst_value=invoice.sgst_amount,
-        igst_value=invoice.igst_amount,
-        cess_value=invoice.cess_amount,
+        to_gstin=ewb_in.to_gstin,
+        to_name=ewb_in.to_name,
+        to_address1=ewb_in.to_address1,
+        to_address2=ewb_in.to_address2,
+        to_place=ewb_in.to_place,
+        to_pincode=ewb_in.to_pincode,
+        to_state_code=ewb_in.to_state_code,
+        # Values from invoice
         total_value=invoice.grand_total,
+        cgst_amount=invoice.cgst_amount,
+        sgst_amount=invoice.sgst_amount,
+        igst_amount=invoice.igst_amount,
+        cess_amount=invoice.cess_amount,
         # Transport
         transporter_id=ewb_in.transporter_id,
         transporter_name=ewb_in.transporter_name,
         transporter_gstin=ewb_in.transporter_gstin,
         transport_mode=ewb_in.transport_mode,
-        transport_distance=ewb_in.transport_distance,
+        distance_km=ewb_in.distance_km,
         vehicle_number=ewb_in.vehicle_number,
         vehicle_type=ewb_in.vehicle_type,
-        created_by=current_user.id,
+        transport_doc_number=ewb_in.transport_doc_number,
+        transport_doc_date=ewb_in.transport_doc_date,
     )
 
     db.add(ewb)
@@ -623,15 +691,15 @@ async def create_eway_bill(
     for invoice_item in invoice.items:
         ewb_item = EWayBillItem(
             eway_bill_id=ewb.id,
-            product_name=invoice_item.product_name,
+            product_name=invoice_item.item_name,
             hsn_code=invoice_item.hsn_code,
             quantity=invoice_item.quantity,
             uom=invoice_item.uom,
-            taxable_value=invoice_item.taxable_amount,
-            cgst_rate=invoice_item.cgst_rate,
-            sgst_rate=invoice_item.sgst_rate,
-            igst_rate=invoice_item.igst_rate,
-            cess_rate=invoice_item.cess_rate,
+            taxable_value=invoice_item.taxable_value,
+            gst_rate=invoice_item.gst_rate,
+            cgst_amount=invoice_item.cgst_amount,
+            sgst_amount=invoice_item.sgst_amount,
+            igst_amount=invoice_item.igst_amount,
         )
         db.add(ewb_item)
 
@@ -665,7 +733,7 @@ async def generate_eway_bill_number(
     if not ewb:
         raise HTTPException(status_code=404, detail="E-Way Bill not found")
 
-    if ewb.ewb_number:
+    if ewb.eway_bill_number:
         raise HTTPException(status_code=400, detail="E-Way Bill number already generated")
 
     # TODO: Integrate with GST E-Way Bill API
@@ -673,19 +741,19 @@ async def generate_eway_bill_number(
     import random
     mock_ewb_number = f"EWB{random.randint(100000000000, 999999999999)}"
 
-    ewb.ewb_number = mock_ewb_number
-    ewb.ewb_date = datetime.utcnow()
+    ewb.eway_bill_number = mock_ewb_number
+    ewb.generated_at = datetime.utcnow()
     ewb.valid_from = datetime.utcnow()
     # Validity based on distance
     from datetime import timedelta
-    if ewb.transport_distance <= 100:
+    if ewb.distance_km <= 100:
         validity_days = 1
-    elif ewb.transport_distance <= 300:
+    elif ewb.distance_km <= 300:
         validity_days = 3
-    elif ewb.transport_distance <= 500:
+    elif ewb.distance_km <= 500:
         validity_days = 5
     else:
-        validity_days = int(ewb.transport_distance / 100) + 1
+        validity_days = int(ewb.distance_km / 100) + 1
 
     ewb.valid_until = datetime.utcnow() + timedelta(days=validity_days)
     ewb.status = EWayBillStatus.GENERATED
@@ -812,6 +880,309 @@ async def list_eway_bills(
     )
 
 
+@router.get("/eway-bills/{ewb_id}/print")
+async def print_eway_bill(
+    ewb_id: UUID,
+    db: DB,
+):
+    """Generate printable E-Way Bill in HTML format."""
+    from fastapi.responses import HTMLResponse
+
+    result = await db.execute(
+        select(EWayBill)
+        .options(selectinload(EWayBill.items))
+        .where(EWayBill.id == ewb_id)
+    )
+    ewb = result.scalar_one_or_none()
+
+    if not ewb:
+        raise HTTPException(status_code=404, detail="E-Way Bill not found")
+
+    if not ewb.eway_bill_number:
+        raise HTTPException(status_code=400, detail="E-Way Bill number not yet generated")
+
+    # Format dates
+    doc_date = ewb.document_date.strftime("%d-%m-%Y") if ewb.document_date else "N/A"
+    valid_from = ewb.valid_from.strftime("%d-%m-%Y %H:%M") if ewb.valid_from else "N/A"
+    valid_until = ewb.valid_until.strftime("%d-%m-%Y %H:%M") if ewb.valid_until else "N/A"
+    generated_at = ewb.generated_at.strftime("%d-%m-%Y %H:%M") if ewb.generated_at else "N/A"
+
+    # Transport mode mapping
+    transport_modes = {"1": "Road", "2": "Rail", "3": "Air", "4": "Ship"}
+    transport_mode_text = transport_modes.get(ewb.transport_mode, "Road")
+
+    # Build items HTML
+    items_html = ""
+    for idx, item in enumerate(ewb.items, 1):
+        items_html += f"""
+        <tr>
+            <td style="text-align: center;">{idx}</td>
+            <td>{item.product_name}</td>
+            <td style="text-align: center;">{item.hsn_code}</td>
+            <td style="text-align: right;">{float(item.quantity):.2f}</td>
+            <td style="text-align: center;">{item.uom}</td>
+            <td style="text-align: right;">₹{float(item.taxable_value):,.2f}</td>
+            <td style="text-align: right;">{float(item.gst_rate):.1f}%</td>
+        </tr>
+        """
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>E-Way Bill - {ewb.eway_bill_number}</title>
+        <style>
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+            body {{ font-family: Arial, sans-serif; font-size: 12px; padding: 20px; background: #f5f5f5; }}
+            .container {{ max-width: 800px; margin: 0 auto; background: white; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+            .header {{ text-align: center; border-bottom: 3px solid #1a5276; padding-bottom: 15px; margin-bottom: 20px; }}
+            .header h1 {{ color: #1a5276; font-size: 24px; margin-bottom: 5px; }}
+            .header .subtitle {{ color: #666; font-size: 14px; }}
+            .ewb-number {{ background: #1a5276; color: white; padding: 10px 20px; font-size: 18px; font-weight: bold; display: inline-block; margin: 10px 0; border-radius: 5px; }}
+            .status {{ display: inline-block; padding: 5px 15px; border-radius: 20px; font-weight: bold; margin-left: 10px; }}
+            .status.generated {{ background: #27ae60; color: white; }}
+            .status.pending {{ background: #f39c12; color: white; }}
+            .status.cancelled {{ background: #e74c3c; color: white; }}
+            .section {{ margin-bottom: 20px; }}
+            .section-title {{ background: #ecf0f1; padding: 8px 15px; font-weight: bold; color: #2c3e50; border-left: 4px solid #1a5276; margin-bottom: 10px; }}
+            .info-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }}
+            .info-box {{ border: 1px solid #ddd; padding: 15px; border-radius: 5px; }}
+            .info-box h4 {{ color: #1a5276; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px; }}
+            .info-row {{ display: flex; margin-bottom: 5px; }}
+            .info-label {{ width: 120px; color: #666; font-weight: 500; }}
+            .info-value {{ flex: 1; color: #333; }}
+            table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+            th {{ background: #1a5276; color: white; padding: 10px; text-align: left; }}
+            td {{ padding: 8px 10px; border-bottom: 1px solid #ddd; }}
+            tr:hover {{ background: #f9f9f9; }}
+            .totals {{ text-align: right; margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 5px; }}
+            .totals .row {{ display: flex; justify-content: flex-end; margin-bottom: 5px; }}
+            .totals .label {{ width: 150px; color: #666; }}
+            .totals .value {{ width: 120px; text-align: right; font-weight: 500; }}
+            .totals .grand-total {{ font-size: 16px; font-weight: bold; color: #1a5276; border-top: 2px solid #1a5276; padding-top: 10px; margin-top: 10px; }}
+            .validity {{ background: #e8f6f3; border: 1px solid #1abc9c; padding: 15px; border-radius: 5px; margin-top: 20px; }}
+            .validity h4 {{ color: #16a085; margin-bottom: 10px; }}
+            .qr-section {{ text-align: center; margin-top: 20px; padding: 20px; border: 2px dashed #ddd; }}
+            .footer {{ text-align: center; margin-top: 20px; padding-top: 15px; border-top: 1px solid #ddd; color: #666; font-size: 10px; }}
+            @media print {{
+                body {{ background: white; padding: 0; }}
+                .container {{ box-shadow: none; }}
+                .no-print {{ display: none; }}
+            }}
+            .print-btn {{ background: #1a5276; color: white; padding: 10px 30px; border: none; cursor: pointer; font-size: 14px; border-radius: 5px; margin-bottom: 20px; }}
+            .print-btn:hover {{ background: #154360; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <button class="print-btn no-print" onclick="window.print()">🖨️ Print E-Way Bill</button>
+
+            <div class="header">
+                <h1>E-WAY BILL</h1>
+                <div class="subtitle">Generated under GST (Goods and Services Tax)</div>
+                <div class="ewb-number">{ewb.eway_bill_number}</div>
+                <span class="status {ewb.status.value.lower()}">{ewb.status.value}</span>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Document Details</div>
+                <div class="info-grid">
+                    <div class="info-box">
+                        <div class="info-row">
+                            <span class="info-label">Document No:</span>
+                            <span class="info-value"><strong>{ewb.document_number}</strong></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Document Date:</span>
+                            <span class="info-value">{doc_date}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Document Type:</span>
+                            <span class="info-value">{ewb.document_type}</span>
+                        </div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-row">
+                            <span class="info-label">Supply Type:</span>
+                            <span class="info-value">{"Outward" if ewb.supply_type == "O" else "Inward"}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Generated On:</span>
+                            <span class="info-value">{generated_at}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Distance:</span>
+                            <span class="info-value">{ewb.distance_km} KM</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Party Details</div>
+                <div class="info-grid">
+                    <div class="info-box">
+                        <h4>FROM (Consignor)</h4>
+                        <div class="info-row">
+                            <span class="info-label">GSTIN:</span>
+                            <span class="info-value"><strong>{ewb.from_gstin}</strong></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Name:</span>
+                            <span class="info-value">{ewb.from_name}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Address:</span>
+                            <span class="info-value">{ewb.from_address1}{', ' + ewb.from_address2 if ewb.from_address2 else ''}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Place/Pincode:</span>
+                            <span class="info-value">{ewb.from_place} - {ewb.from_pincode}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">State Code:</span>
+                            <span class="info-value">{ewb.from_state_code}</span>
+                        </div>
+                    </div>
+                    <div class="info-box">
+                        <h4>TO (Consignee)</h4>
+                        <div class="info-row">
+                            <span class="info-label">GSTIN:</span>
+                            <span class="info-value">{ewb.to_gstin or "Unregistered"}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Name:</span>
+                            <span class="info-value">{ewb.to_name}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Address:</span>
+                            <span class="info-value">{ewb.to_address1}{', ' + ewb.to_address2 if ewb.to_address2 else ''}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Place/Pincode:</span>
+                            <span class="info-value">{ewb.to_place} - {ewb.to_pincode}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">State Code:</span>
+                            <span class="info-value">{ewb.to_state_code}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Transport Details</div>
+                <div class="info-grid">
+                    <div class="info-box">
+                        <div class="info-row">
+                            <span class="info-label">Mode:</span>
+                            <span class="info-value">{transport_mode_text}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Transporter:</span>
+                            <span class="info-value">{ewb.transporter_name or "N/A"}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Trans. GSTIN:</span>
+                            <span class="info-value">{ewb.transporter_gstin or "N/A"}</span>
+                        </div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-row">
+                            <span class="info-label">Vehicle No:</span>
+                            <span class="info-value">{ewb.vehicle_number or "Not Updated"}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Vehicle Type:</span>
+                            <span class="info-value">{ewb.vehicle_type or "N/A"}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">LR/RR No:</span>
+                            <span class="info-value">{ewb.transport_doc_number or "N/A"}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Goods Details</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;">#</th>
+                            <th>Product Name</th>
+                            <th style="width: 80px;">HSN</th>
+                            <th style="width: 70px;">Qty</th>
+                            <th style="width: 50px;">UOM</th>
+                            <th style="width: 100px;">Taxable Value</th>
+                            <th style="width: 60px;">GST%</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {items_html}
+                    </tbody>
+                </table>
+
+                <div class="totals">
+                    <div class="row">
+                        <span class="label">CGST:</span>
+                        <span class="value">₹{float(ewb.cgst_amount):,.2f}</span>
+                    </div>
+                    <div class="row">
+                        <span class="label">SGST:</span>
+                        <span class="value">₹{float(ewb.sgst_amount):,.2f}</span>
+                    </div>
+                    <div class="row">
+                        <span class="label">IGST:</span>
+                        <span class="value">₹{float(ewb.igst_amount):,.2f}</span>
+                    </div>
+                    <div class="row">
+                        <span class="label">CESS:</span>
+                        <span class="value">₹{float(ewb.cess_amount):,.2f}</span>
+                    </div>
+                    <div class="row grand-total">
+                        <span class="label">TOTAL VALUE:</span>
+                        <span class="value">₹{float(ewb.total_value):,.2f}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="validity">
+                <h4>⏰ E-Way Bill Validity</h4>
+                <div class="info-grid" style="margin-top: 10px;">
+                    <div>
+                        <div class="info-row">
+                            <span class="info-label">Valid From:</span>
+                            <span class="info-value"><strong>{valid_from}</strong></span>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="info-row">
+                            <span class="info-label">Valid Until:</span>
+                            <span class="info-value"><strong>{valid_until}</strong></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="qr-section">
+                <p style="color: #666;">QR Code will be displayed here when integrated with GST Portal</p>
+                <p style="font-size: 10px; margin-top: 5px;">[Scan to verify E-Way Bill authenticity]</p>
+            </div>
+
+            <div class="footer">
+                <p>This is a computer generated E-Way Bill and does not require signature.</p>
+                <p>Generated by Consumer Durable ERP System | Verify at: ewaybillgst.gov.in</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(content=html_content)
+
+
 # ==================== Payment Receipts ====================
 
 @router.post("/receipts", response_model=PaymentReceiptResponse, status_code=status.HTTP_201_CREATED)
@@ -830,10 +1201,10 @@ async def create_payment_receipt(
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
-    if receipt_in.amount > invoice.balance_due:
+    if receipt_in.amount > invoice.amount_due:
         raise HTTPException(
             status_code=400,
-            detail=f"Payment amount ({receipt_in.amount}) exceeds balance due ({invoice.balance_due})"
+            detail=f"Payment amount ({receipt_in.amount}) exceeds balance due ({invoice.amount_due})"
         )
 
     # Generate receipt number
@@ -868,9 +1239,9 @@ async def create_payment_receipt(
 
     # Update invoice
     invoice.amount_paid += receipt_in.amount
-    invoice.balance_due -= receipt_in.amount
+    invoice.amount_due -= receipt_in.amount
 
-    if invoice.balance_due <= 0:
+    if invoice.amount_due <= 0:
         invoice.status = InvoiceStatus.PAID
     else:
         invoice.status = InvoiceStatus.PARTIALLY_PAID
