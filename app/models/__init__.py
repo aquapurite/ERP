@@ -237,6 +237,9 @@ from app.models.purchase import (
     QualityCheckResult,
     VendorInvoice,
     VendorInvoiceStatus,
+    VendorProformaInvoice,
+    VendorProformaItem,
+    ProformaStatus,
 )
 # Company/Business Entity
 from app.models.company import (
@@ -559,6 +562,9 @@ __all__ = [
     "QualityCheckResult",
     "VendorInvoice",
     "VendorInvoiceStatus",
+    "VendorProformaInvoice",
+    "VendorProformaItem",
+    "ProformaStatus",
     # Company/Business Entity
     "Company",
     "CompanyType",

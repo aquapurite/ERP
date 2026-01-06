@@ -6,7 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict
 
 from app.models.purchase import (
-    RequisitionStatus, POStatus, GRNStatus, VendorInvoiceStatus, QualityCheckResult
+    RequisitionStatus, POStatus, GRNStatus, VendorInvoiceStatus, QualityCheckResult, ProformaStatus
 )
 
 
@@ -98,7 +98,7 @@ class PRApproveRequest(BaseModel):
 
 class POItemBase(BaseModel):
     """Base schema for PO item."""
-    product_id: UUID
+    product_id: Optional[UUID] = None  # Nullable - vendor items may not be in our catalog
     variant_id: Optional[UUID] = None
     product_name: str
     sku: str
@@ -542,3 +542,140 @@ class PendingGRNResponse(BaseModel):
     pending_quantity: int
     pending_value: Decimal
     days_pending: int
+
+
+# ==================== Vendor Proforma Invoice Schemas ====================
+
+class VendorProformaItemBase(BaseModel):
+    """Base schema for Vendor Proforma item."""
+    product_id: Optional[UUID] = None
+    item_code: Optional[str] = None
+    description: str
+    hsn_code: Optional[str] = None
+    uom: str = "PCS"
+    quantity: int = Field(..., gt=0)
+    unit_price: Decimal = Field(..., ge=0)
+    discount_percent: Decimal = Field(Decimal("0"), ge=0, le=100)
+    gst_rate: Decimal = Field(Decimal("18"), ge=0, le=28)
+    lead_time_days: Optional[int] = None
+
+
+class VendorProformaItemCreate(VendorProformaItemBase):
+    """Schema for creating Vendor Proforma item."""
+    pass
+
+
+class VendorProformaItemResponse(VendorProformaItemBase):
+    """Response schema for Vendor Proforma item."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    proforma_id: UUID
+    discount_amount: Decimal
+    taxable_amount: Decimal
+    cgst_amount: Decimal
+    sgst_amount: Decimal
+    igst_amount: Decimal
+    total_amount: Decimal
+
+
+class VendorProformaBase(BaseModel):
+    """Base schema for Vendor Proforma Invoice."""
+    vendor_id: UUID
+    proforma_number: str = Field(..., max_length=50)
+    proforma_date: date
+    validity_date: Optional[date] = None
+    delivery_warehouse_id: Optional[UUID] = None
+    delivery_days: Optional[int] = None
+    delivery_terms: Optional[str] = None
+    payment_terms: Optional[str] = None
+    credit_days: int = 30
+    freight_charges: Decimal = Field(Decimal("0"), ge=0)
+    packing_charges: Decimal = Field(Decimal("0"), ge=0)
+    other_charges: Decimal = Field(Decimal("0"), ge=0)
+    round_off: Decimal = Field(Decimal("0"))
+    proforma_pdf_url: Optional[str] = None
+    vendor_remarks: Optional[str] = None
+    internal_notes: Optional[str] = None
+
+
+class VendorProformaCreate(VendorProformaBase):
+    """Schema for creating Vendor Proforma Invoice."""
+    proforma_number: Optional[str] = None  # Generated server-side if not provided
+    vendor_pi_number: Optional[str] = None  # Vendor's original PI/quotation number
+    requisition_id: Optional[UUID] = None
+    items: List[VendorProformaItemCreate]
+
+
+class VendorProformaUpdate(BaseModel):
+    """Schema for updating Vendor Proforma Invoice."""
+    validity_date: Optional[date] = None
+    delivery_days: Optional[int] = None
+    delivery_terms: Optional[str] = None
+    payment_terms: Optional[str] = None
+    credit_days: Optional[int] = None
+    internal_notes: Optional[str] = None
+
+
+class VendorProformaResponse(VendorProformaBase):
+    """Response schema for Vendor Proforma Invoice."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    our_reference: str
+    status: ProformaStatus
+    requisition_id: Optional[UUID] = None
+    purchase_order_id: Optional[UUID] = None
+    subtotal: Decimal
+    discount_amount: Decimal
+    discount_percent: Decimal
+    taxable_amount: Decimal
+    cgst_amount: Decimal
+    sgst_amount: Decimal
+    igst_amount: Decimal
+    total_tax: Decimal
+    grand_total: Decimal
+    received_by: Optional[UUID] = None
+    received_at: Optional[datetime] = None
+    approved_by: Optional[UUID] = None
+    approved_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
+    items: List[VendorProformaItemResponse] = []
+    created_at: datetime
+    updated_at: datetime
+
+
+class VendorProformaBrief(BaseModel):
+    """Brief vendor proforma for listing."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    our_reference: str
+    proforma_number: str
+    proforma_date: date
+    vendor_name: str
+    grand_total: Decimal
+    validity_date: Optional[date] = None
+    status: ProformaStatus
+
+
+class VendorProformaListResponse(BaseModel):
+    """Response for listing vendor proformas."""
+    items: List[VendorProformaBrief]
+    total: int
+    total_value: Decimal
+    skip: int
+    limit: int
+
+
+class VendorProformaApproveRequest(BaseModel):
+    """Request to approve/reject vendor proforma."""
+    action: str = Field(..., pattern="^(APPROVE|REJECT)$")
+    rejection_reason: Optional[str] = None
+
+
+class VendorProformaConvertToPORequest(BaseModel):
+    """Request to convert vendor proforma to PO."""
+    expected_delivery_date: Optional[date] = None
+    delivery_warehouse_id: Optional[UUID] = None
+    special_instructions: Optional[str] = None

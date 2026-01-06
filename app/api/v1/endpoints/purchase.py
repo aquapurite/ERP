@@ -14,6 +14,7 @@ from app.models.purchase import (
     PurchaseOrder, PurchaseOrderItem, POStatus,
     GoodsReceiptNote, GRNItem, GRNStatus, QualityCheckResult,
     VendorInvoice, VendorInvoiceStatus,
+    VendorProformaInvoice, VendorProformaItem, ProformaStatus,
 )
 from app.models.vendor import Vendor, VendorLedger, VendorTransactionType
 from app.models.inventory import StockItem, StockItemStatus, InventorySummary, StockMovement, StockMovementType
@@ -30,10 +31,14 @@ from app.schemas.purchase import (
     # GRN Schemas
     GoodsReceiptCreate, GoodsReceiptUpdate, GoodsReceiptResponse,
     GRNListResponse, GRNBrief, GRNQualityCheckRequest, GRNPutAwayRequest,
-    # Invoice Schemas
+    # Vendor Invoice Schemas
     VendorInvoiceCreate, VendorInvoiceUpdate, VendorInvoiceResponse,
     VendorInvoiceListResponse, VendorInvoiceBrief,
     ThreeWayMatchRequest, ThreeWayMatchResponse,
+    # Vendor Proforma Schemas
+    VendorProformaCreate, VendorProformaUpdate, VendorProformaResponse,
+    VendorProformaListResponse, VendorProformaBrief,
+    VendorProformaApproveRequest, VendorProformaConvertToPORequest,
     # Report Schemas
     POSummaryRequest, POSummaryResponse, GRNSummaryResponse, PendingGRNResponse,
 )
@@ -2374,6 +2379,739 @@ async def download_vendor_invoice(
             </div>
             <div class="signature-box">
                 <div class="signature-line">Finance Head</div>
+            </div>
+        </div>
+
+        <p style="text-align: center; font-size: 10px; color: #999; margin-top: 40px;">
+            This is a computer-generated document. Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        </p>
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(content=html_content)
+
+
+# ==================== Vendor Proforma Invoice (Quotations from Vendors) ====================
+
+@router.post("/proformas", response_model=VendorProformaResponse, status_code=status.HTTP_201_CREATED)
+async def create_vendor_proforma(
+    proforma_in: VendorProformaCreate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Create a new Vendor Proforma Invoice (quotation from vendor)."""
+    # Verify vendor exists
+    vendor = await db.get(Vendor, proforma_in.vendor_id)
+    if not vendor:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+
+    # Generate our reference number
+    today = date.today()
+    count_result = await db.execute(
+        select(func.count(VendorProformaInvoice.id)).where(
+            func.date(VendorProformaInvoice.created_at) == today
+        )
+    )
+    count = count_result.scalar() or 0
+    our_reference = f"VPI-{today.strftime('%Y%m%d')}-{str(count + 1).zfill(4)}"
+
+    # Calculate item totals
+    subtotal = Decimal("0")
+    total_discount = Decimal("0")
+    total_cgst = Decimal("0")
+    total_sgst = Decimal("0")
+    total_igst = Decimal("0")
+
+    items_to_create = []
+    for item_data in proforma_in.items:
+        base_amount = Decimal(str(item_data.quantity)) * item_data.unit_price
+        discount_amount = base_amount * (item_data.discount_percent / 100)
+        taxable_amount = base_amount - discount_amount
+
+        # Calculate GST (assuming intra-state - CGST+SGST)
+        gst_amount = taxable_amount * (item_data.gst_rate / 100)
+        cgst_amount = gst_amount / 2
+        sgst_amount = gst_amount / 2
+        igst_amount = Decimal("0")
+
+        total_amount = taxable_amount + gst_amount
+
+        subtotal += base_amount
+        total_discount += discount_amount
+        total_cgst += cgst_amount
+        total_sgst += sgst_amount
+
+        items_to_create.append({
+            "data": item_data,
+            "discount_amount": discount_amount,
+            "taxable_amount": taxable_amount,
+            "cgst_amount": cgst_amount,
+            "sgst_amount": sgst_amount,
+            "igst_amount": igst_amount,
+            "total_amount": total_amount,
+        })
+
+    taxable_amount = subtotal - total_discount
+    total_tax = total_cgst + total_sgst + total_igst
+    grand_total = taxable_amount + total_tax + proforma_in.freight_charges + proforma_in.packing_charges + proforma_in.other_charges + proforma_in.round_off
+
+    # Create proforma
+    # Use vendor_pi_number or proforma_number for the vendor's document number
+    vendor_doc_number = proforma_in.vendor_pi_number or proforma_in.proforma_number or our_reference
+
+    proforma = VendorProformaInvoice(
+        our_reference=our_reference,
+        proforma_number=vendor_doc_number,
+        proforma_date=proforma_in.proforma_date,
+        validity_date=proforma_in.validity_date,
+        status=ProformaStatus.RECEIVED,
+        vendor_id=proforma_in.vendor_id,
+        requisition_id=proforma_in.requisition_id,
+        delivery_warehouse_id=proforma_in.delivery_warehouse_id,
+        delivery_days=proforma_in.delivery_days,
+        delivery_terms=proforma_in.delivery_terms,
+        payment_terms=proforma_in.payment_terms,
+        credit_days=proforma_in.credit_days,
+        subtotal=subtotal,
+        discount_amount=total_discount,
+        discount_percent=(total_discount / subtotal * 100) if subtotal else Decimal("0"),
+        taxable_amount=taxable_amount,
+        cgst_amount=total_cgst,
+        sgst_amount=total_sgst,
+        igst_amount=total_igst,
+        total_tax=total_tax,
+        freight_charges=proforma_in.freight_charges,
+        packing_charges=proforma_in.packing_charges,
+        other_charges=proforma_in.other_charges,
+        round_off=proforma_in.round_off,
+        grand_total=grand_total,
+        proforma_pdf_url=proforma_in.proforma_pdf_url,
+        vendor_remarks=proforma_in.vendor_remarks,
+        internal_notes=proforma_in.internal_notes,
+        received_by=current_user.id,
+        received_at=datetime.utcnow(),
+    )
+
+    db.add(proforma)
+    await db.flush()
+
+    # Create items
+    for item_info in items_to_create:
+        item_data = item_info["data"]
+        item = VendorProformaItem(
+            proforma_id=proforma.id,
+            product_id=item_data.product_id,
+            item_code=item_data.item_code,
+            description=item_data.description,
+            hsn_code=item_data.hsn_code,
+            uom=item_data.uom,
+            quantity=item_data.quantity,
+            unit_price=item_data.unit_price,
+            discount_percent=item_data.discount_percent,
+            discount_amount=item_info["discount_amount"],
+            taxable_amount=item_info["taxable_amount"],
+            gst_rate=item_data.gst_rate,
+            cgst_amount=item_info["cgst_amount"],
+            sgst_amount=item_info["sgst_amount"],
+            igst_amount=item_info["igst_amount"],
+            total_amount=item_info["total_amount"],
+            lead_time_days=item_data.lead_time_days,
+        )
+        db.add(item)
+
+    await db.commit()
+
+    # Reload with items
+    result = await db.execute(
+        select(VendorProformaInvoice)
+        .options(selectinload(VendorProformaInvoice.items))
+        .where(VendorProformaInvoice.id == proforma.id)
+    )
+    proforma = result.scalar_one()
+
+    return proforma
+
+
+@router.get("/proformas", response_model=VendorProformaListResponse)
+async def list_vendor_proformas(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    vendor_id: Optional[UUID] = None,
+    proforma_status: Optional[ProformaStatus] = None,
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """List vendor proforma invoices with filters."""
+    query = select(VendorProformaInvoice).options(
+        selectinload(VendorProformaInvoice.vendor)
+    )
+
+    if vendor_id:
+        query = query.where(VendorProformaInvoice.vendor_id == vendor_id)
+    if proforma_status:
+        query = query.where(VendorProformaInvoice.status == proforma_status)
+    if from_date:
+        query = query.where(VendorProformaInvoice.proforma_date >= from_date)
+    if to_date:
+        query = query.where(VendorProformaInvoice.proforma_date <= to_date)
+
+    # Count
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await db.execute(count_query)).scalar() or 0
+
+    # Sum
+    sum_query = select(func.sum(VendorProformaInvoice.grand_total)).select_from(query.subquery())
+    total_value = (await db.execute(sum_query)).scalar() or Decimal("0")
+
+    # Paginate
+    query = query.order_by(VendorProformaInvoice.created_at.desc()).offset(skip).limit(limit)
+    result = await db.execute(query)
+    proformas = result.scalars().all()
+
+    items = []
+    for p in proformas:
+        items.append(VendorProformaBrief(
+            id=p.id,
+            our_reference=p.our_reference,
+            proforma_number=p.proforma_number,
+            proforma_date=p.proforma_date,
+            vendor_name=p.vendor.legal_name if p.vendor else "Unknown",
+            grand_total=p.grand_total,
+            validity_date=p.validity_date,
+            status=p.status,
+        ))
+
+    return VendorProformaListResponse(
+        items=items,
+        total=total,
+        total_value=total_value,
+        skip=skip,
+        limit=limit,
+    )
+
+
+@router.get("/proformas/{proforma_id}", response_model=VendorProformaResponse)
+async def get_vendor_proforma(
+    proforma_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get vendor proforma invoice details."""
+    result = await db.execute(
+        select(VendorProformaInvoice)
+        .options(
+            selectinload(VendorProformaInvoice.items),
+            selectinload(VendorProformaInvoice.vendor),
+        )
+        .where(VendorProformaInvoice.id == proforma_id)
+    )
+    proforma = result.scalar_one_or_none()
+
+    if not proforma:
+        raise HTTPException(status_code=404, detail="Vendor Proforma not found")
+
+    return proforma
+
+
+@router.put("/proformas/{proforma_id}", response_model=VendorProformaResponse)
+async def update_vendor_proforma(
+    proforma_id: UUID,
+    update_data: VendorProformaUpdate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Update vendor proforma invoice."""
+    proforma = await db.get(VendorProformaInvoice, proforma_id)
+    if not proforma:
+        raise HTTPException(status_code=404, detail="Vendor Proforma not found")
+
+    if proforma.status in [ProformaStatus.CONVERTED_TO_PO, ProformaStatus.CANCELLED]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot update proforma with status {proforma.status}"
+        )
+
+    update_dict = update_data.model_dump(exclude_unset=True)
+    for key, value in update_dict.items():
+        setattr(proforma, key, value)
+
+    await db.commit()
+    await db.refresh(proforma)
+
+    return proforma
+
+
+@router.post("/proformas/{proforma_id}/approve", response_model=VendorProformaResponse)
+async def approve_vendor_proforma(
+    proforma_id: UUID,
+    request: VendorProformaApproveRequest,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Approve or reject a vendor proforma invoice."""
+    proforma = await db.get(VendorProformaInvoice, proforma_id)
+    if not proforma:
+        raise HTTPException(status_code=404, detail="Vendor Proforma not found")
+
+    if proforma.status not in [ProformaStatus.RECEIVED, ProformaStatus.UNDER_REVIEW]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot approve/reject proforma with status {proforma.status}"
+        )
+
+    if request.action == "APPROVE":
+        proforma.status = ProformaStatus.APPROVED
+        proforma.approved_by = current_user.id
+        proforma.approved_at = datetime.utcnow()
+    else:
+        proforma.status = ProformaStatus.REJECTED
+        proforma.rejection_reason = request.rejection_reason
+
+    await db.commit()
+
+    # Reload with items
+    result = await db.execute(
+        select(VendorProformaInvoice)
+        .options(selectinload(VendorProformaInvoice.items))
+        .where(VendorProformaInvoice.id == proforma_id)
+    )
+    proforma = result.scalar_one()
+
+    return proforma
+
+
+@router.post("/proformas/{proforma_id}/convert-to-po", response_model=PurchaseOrderResponse)
+async def convert_proforma_to_po(
+    proforma_id: UUID,
+    request: VendorProformaConvertToPORequest,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Convert an approved vendor proforma invoice to a Purchase Order."""
+    result = await db.execute(
+        select(VendorProformaInvoice)
+        .options(selectinload(VendorProformaInvoice.items))
+        .where(VendorProformaInvoice.id == proforma_id)
+    )
+    proforma = result.scalar_one_or_none()
+
+    if not proforma:
+        raise HTTPException(status_code=404, detail="Vendor Proforma not found")
+
+    if proforma.status != ProformaStatus.APPROVED:
+        raise HTTPException(
+            status_code=400,
+            detail="Only approved proformas can be converted to PO"
+        )
+
+    # Generate PO number
+    today = date.today()
+    count_result = await db.execute(
+        select(func.count(PurchaseOrder.id)).where(
+            func.date(PurchaseOrder.created_at) == today
+        )
+    )
+    count = count_result.scalar() or 0
+    po_number = f"PO-{today.strftime('%Y%m%d')}-{str(count + 1).zfill(4)}"
+
+    # Get vendor
+    vendor = await db.get(Vendor, proforma.vendor_id)
+
+    # Create PO (convert Decimal values to float for SQLite compatibility)
+    po = PurchaseOrder(
+        po_number=po_number,
+        po_date=today,
+        status=POStatus.DRAFT,
+        vendor_id=proforma.vendor_id,
+        vendor_name=vendor.legal_name if vendor else "Unknown",
+        vendor_gstin=vendor.gstin if vendor else None,
+        delivery_warehouse_id=request.delivery_warehouse_id or proforma.delivery_warehouse_id,
+        expected_delivery_date=request.expected_delivery_date,
+        payment_terms=proforma.payment_terms,
+        credit_days=proforma.credit_days,
+        quotation_reference=proforma.proforma_number,
+        quotation_date=proforma.proforma_date,
+        freight_charges=float(proforma.freight_charges or 0),
+        packing_charges=float(proforma.packing_charges or 0),
+        other_charges=float(proforma.other_charges or 0),
+        special_instructions=request.special_instructions,
+        subtotal=float(proforma.subtotal or 0),
+        discount_amount=float(proforma.discount_amount or 0),
+        taxable_amount=float(proforma.taxable_amount or 0),
+        cgst_amount=float(proforma.cgst_amount or 0),
+        sgst_amount=float(proforma.sgst_amount or 0),
+        igst_amount=float(proforma.igst_amount or 0),
+        total_tax=float(proforma.total_tax or 0),
+        grand_total=float(proforma.grand_total or 0),
+        created_by=current_user.id,
+    )
+
+    db.add(po)
+    await db.flush()
+
+    # Create PO items from proforma items
+    for idx, item in enumerate(proforma.items, 1):
+        po_item = PurchaseOrderItem(
+            purchase_order_id=po.id,
+            line_number=idx,
+            product_id=item.product_id,
+            product_name=item.description,
+            sku=item.item_code or f"ITEM-{idx}",
+            hsn_code=item.hsn_code,
+            quantity_ordered=int(item.quantity),  # Convert Decimal to int for SQLite
+            uom=item.uom,
+            unit_price=float(item.unit_price),
+            discount_percentage=float(item.discount_percent or 0),
+            discount_amount=float(item.discount_amount or 0),
+            taxable_amount=float(item.taxable_amount),
+            gst_rate=float(item.gst_rate),
+            cgst_rate=float(item.gst_rate / 2),
+            sgst_rate=float(item.gst_rate / 2),
+            igst_rate=0.0,
+            cgst_amount=float(item.cgst_amount or 0),
+            sgst_amount=float(item.sgst_amount or 0),
+            igst_amount=float(item.igst_amount or 0),
+            total_amount=float(item.total_amount),
+        )
+        db.add(po_item)
+
+    # Update proforma status
+    proforma.status = ProformaStatus.CONVERTED_TO_PO
+    proforma.purchase_order_id = po.id
+
+    await db.commit()
+
+    # Reload PO with items
+    result = await db.execute(
+        select(PurchaseOrder)
+        .options(selectinload(PurchaseOrder.items))
+        .where(PurchaseOrder.id == po.id)
+    )
+    po = result.scalar_one()
+
+    return po
+
+
+@router.delete("/proformas/{proforma_id}")
+async def cancel_vendor_proforma(
+    proforma_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Cancel a vendor proforma invoice."""
+    proforma = await db.get(VendorProformaInvoice, proforma_id)
+    if not proforma:
+        raise HTTPException(status_code=404, detail="Vendor Proforma not found")
+
+    if proforma.status == ProformaStatus.CONVERTED_TO_PO:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot cancel proforma that has been converted to PO"
+        )
+
+    proforma.status = ProformaStatus.CANCELLED
+    await db.commit()
+
+    return {"message": "Vendor Proforma cancelled successfully"}
+
+
+@router.get("/proformas/{proforma_id}/download")
+async def download_vendor_proforma(
+    proforma_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Download vendor proforma invoice as printable HTML."""
+    from fastapi.responses import HTMLResponse
+
+    result = await db.execute(
+        select(VendorProformaInvoice)
+        .options(
+            selectinload(VendorProformaInvoice.items),
+            selectinload(VendorProformaInvoice.vendor),
+        )
+        .where(VendorProformaInvoice.id == proforma_id)
+    )
+    proforma = result.scalar_one_or_none()
+
+    if not proforma:
+        raise HTTPException(status_code=404, detail="Vendor Proforma not found")
+
+    vendor = proforma.vendor
+    status_val = proforma.status.value if hasattr(proforma.status, 'value') else str(proforma.status) if proforma.status else ""
+    status_color = "green" if status_val in ["APPROVED", "CONVERTED_TO_PO"] else "red" if status_val in ["REJECTED", "CANCELLED", "EXPIRED"] else "orange"
+
+    # Generate items rows
+    items_html = ""
+    for idx, item in enumerate(proforma.items, 1):
+        items_html += f"""
+        <tr>
+            <td style="text-align: center;">{idx}</td>
+            <td>
+                <strong>{item.description}</strong><br>
+                <small>Code: {item.item_code or 'N/A'} | HSN: {item.hsn_code or 'N/A'}</small>
+            </td>
+            <td style="text-align: center;">{item.quantity} {item.uom}</td>
+            <td style="text-align: right;">₹{float(item.unit_price or 0):,.2f}</td>
+            <td style="text-align: right;">{float(item.discount_percent or 0):.1f}%</td>
+            <td style="text-align: right;">₹{float(item.taxable_amount or 0):,.2f}</td>
+            <td style="text-align: center;">{float(item.gst_rate or 0):.0f}%</td>
+            <td style="text-align: right;">₹{float(item.total_amount or 0):,.2f}</td>
+        </tr>
+        """
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Vendor Proforma - {proforma.our_reference}</title>
+        <style>
+            @media print {{
+                body {{ margin: 0; padding: 20px; }}
+                .no-print {{ display: none; }}
+            }}
+            body {{
+                font-family: Arial, sans-serif;
+                max-width: 900px;
+                margin: 0 auto;
+                padding: 20px;
+                color: #333;
+            }}
+            .header {{
+                text-align: center;
+                border-bottom: 2px solid #333;
+                padding-bottom: 20px;
+                margin-bottom: 20px;
+            }}
+            .company-name {{
+                font-size: 24px;
+                font-weight: bold;
+                color: #0066cc;
+            }}
+            .document-title {{
+                font-size: 18px;
+                font-weight: bold;
+                margin-top: 10px;
+                background: #e6f0ff;
+                padding: 10px;
+            }}
+            .status-badge {{
+                display: inline-block;
+                padding: 5px 15px;
+                border-radius: 20px;
+                font-size: 12px;
+                font-weight: bold;
+                color: white;
+                background: {status_color};
+            }}
+            .info-section {{
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 20px;
+            }}
+            .info-box {{
+                width: 48%;
+                background: #f9f9f9;
+                padding: 15px;
+                border-radius: 5px;
+            }}
+            .info-box h3 {{
+                margin: 0 0 10px 0;
+                color: #0066cc;
+                font-size: 14px;
+                border-bottom: 1px solid #ddd;
+                padding-bottom: 5px;
+            }}
+            .info-box p {{
+                margin: 5px 0;
+                font-size: 12px;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 20px;
+            }}
+            th {{
+                background: #0066cc;
+                color: white;
+                padding: 10px 8px;
+                text-align: left;
+                font-size: 12px;
+            }}
+            td {{
+                border: 1px solid #ddd;
+                padding: 10px 8px;
+                font-size: 12px;
+            }}
+            .totals-section {{
+                margin-left: auto;
+                width: 350px;
+            }}
+            .totals-section table td {{
+                padding: 8px;
+            }}
+            .totals-section .grand-total {{
+                background: #e6f0ff;
+                font-size: 16px;
+                font-weight: bold;
+            }}
+            .terms-box {{
+                background: #f9f9f9;
+                padding: 15px;
+                border-radius: 5px;
+                margin-bottom: 20px;
+            }}
+            .signatures {{
+                display: flex;
+                justify-content: space-between;
+                margin-top: 60px;
+            }}
+            .signature-box {{
+                text-align: center;
+                width: 200px;
+            }}
+            .signature-line {{
+                border-top: 1px solid #333;
+                margin-top: 40px;
+                padding-top: 5px;
+            }}
+            .print-btn {{
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                padding: 10px 20px;
+                background: #0066cc;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+            }}
+        </style>
+    </head>
+    <body>
+        <button class="print-btn no-print" onclick="window.print()">Print / Save PDF</button>
+
+        <div class="header">
+            <div class="company-name">AQUAPURITE INDIA PVT LTD</div>
+            <div style="font-size: 12px; color: #666;">
+                123 Industrial Area, Sector 5, Noida, UP - 201301<br>
+                GSTIN: 09AAACA1234M1Z5
+            </div>
+            <div class="document-title">VENDOR PROFORMA INVOICE / QUOTATION</div>
+        </div>
+
+        <div style="text-align: center; margin-bottom: 20px;">
+            <span class="status-badge">{status_val}</span>
+        </div>
+
+        <div class="info-section">
+            <div class="info-box">
+                <h3>VENDOR DETAILS</h3>
+                <p><strong>{vendor.legal_name if vendor else 'N/A'}</strong></p>
+                <p>{vendor.address_line1 if vendor and vendor.address_line1 else ''} {vendor.address_line2 if vendor and vendor.address_line2 else ''}</p>
+                <p>{vendor.city if vendor else ''}, {vendor.state if vendor else ''} - {vendor.pincode if vendor else ''}</p>
+                <p>GSTIN: {vendor.gstin if vendor else 'N/A'}</p>
+                <p>PAN: {vendor.pan if vendor else 'N/A'}</p>
+            </div>
+            <div class="info-box">
+                <h3>PROFORMA DETAILS</h3>
+                <p><strong>Our Reference:</strong> {proforma.our_reference}</p>
+                <p><strong>Vendor PI Number:</strong> {proforma.proforma_number}</p>
+                <p><strong>PI Date:</strong> {proforma.proforma_date}</p>
+                <p><strong>Valid Until:</strong> {proforma.validity_date or 'Not Specified'}</p>
+                <p><strong>Delivery Days:</strong> {proforma.delivery_days or 'N/A'} days</p>
+                <p><strong>Credit Days:</strong> {proforma.credit_days or 0} days</p>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 40px;">#</th>
+                    <th>Item Description</th>
+                    <th style="width: 80px; text-align: center;">Qty</th>
+                    <th style="width: 90px; text-align: right;">Unit Price</th>
+                    <th style="width: 60px; text-align: right;">Disc%</th>
+                    <th style="width: 100px; text-align: right;">Taxable</th>
+                    <th style="width: 60px; text-align: center;">GST%</th>
+                    <th style="width: 100px; text-align: right;">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {items_html}
+            </tbody>
+        </table>
+
+        <div class="totals-section">
+            <table>
+                <tr>
+                    <td>Subtotal</td>
+                    <td style="text-align: right;">₹{float(proforma.subtotal or 0):,.2f}</td>
+                </tr>
+                <tr>
+                    <td>Discount ({float(proforma.discount_percent or 0):.1f}%)</td>
+                    <td style="text-align: right;">- ₹{float(proforma.discount_amount or 0):,.2f}</td>
+                </tr>
+                <tr>
+                    <td>Taxable Amount</td>
+                    <td style="text-align: right;">₹{float(proforma.taxable_amount or 0):,.2f}</td>
+                </tr>
+                <tr>
+                    <td>CGST</td>
+                    <td style="text-align: right;">₹{float(proforma.cgst_amount or 0):,.2f}</td>
+                </tr>
+                <tr>
+                    <td>SGST</td>
+                    <td style="text-align: right;">₹{float(proforma.sgst_amount or 0):,.2f}</td>
+                </tr>
+                <tr>
+                    <td>IGST</td>
+                    <td style="text-align: right;">₹{float(proforma.igst_amount or 0):,.2f}</td>
+                </tr>
+                <tr>
+                    <td>Freight Charges</td>
+                    <td style="text-align: right;">₹{float(proforma.freight_charges or 0):,.2f}</td>
+                </tr>
+                <tr>
+                    <td>Packing Charges</td>
+                    <td style="text-align: right;">₹{float(proforma.packing_charges or 0):,.2f}</td>
+                </tr>
+                <tr>
+                    <td>Other Charges</td>
+                    <td style="text-align: right;">₹{float(proforma.other_charges or 0):,.2f}</td>
+                </tr>
+                <tr>
+                    <td>Round Off</td>
+                    <td style="text-align: right;">₹{float(proforma.round_off or 0):,.2f}</td>
+                </tr>
+                <tr class="grand-total">
+                    <td><strong>GRAND TOTAL</strong></td>
+                    <td style="text-align: right;"><strong>₹{float(proforma.grand_total or 0):,.2f}</strong></td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="terms-box">
+            <h3 style="margin: 0 0 10px 0;">Terms & Conditions</h3>
+            <p><strong>Payment Terms:</strong> {proforma.payment_terms or 'As per agreement'}</p>
+            <p><strong>Delivery Terms:</strong> {proforma.delivery_terms or 'Ex-Works'}</p>
+            <p><strong>Vendor Remarks:</strong> {proforma.vendor_remarks or 'None'}</p>
+            <p><strong>Internal Notes:</strong> {proforma.internal_notes or 'None'}</p>
+        </div>
+
+        <div class="signatures">
+            <div class="signature-box">
+                <div class="signature-line">Prepared By</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line">Reviewed By</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line">Approved By</div>
             </div>
         </div>
 

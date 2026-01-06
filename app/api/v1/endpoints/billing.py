@@ -1655,7 +1655,7 @@ async def download_tax_invoice(
     <html>
     <head>
         <meta charset="UTF-8">
-        <title>Tax Invoice - {invoice.invoice_number}</title>
+        <title>{'Proforma Invoice' if invoice.invoice_type and invoice.invoice_type.value == 'PROFORMA' else 'Delivery Challan' if invoice.invoice_type and invoice.invoice_type.value == 'DELIVERY_CHALLAN' else 'Tax Invoice'} - {invoice.invoice_number}</title>
         <style>
             @media print {{
                 body {{ margin: 0; padding: 15px; }}
@@ -1809,7 +1809,7 @@ async def download_tax_invoice(
                 </div>
             </div>
             <div class="invoice-title">
-                <h2>TAX INVOICE</h2>
+                <h2>{'PROFORMA INVOICE' if invoice.invoice_type and invoice.invoice_type.value == 'PROFORMA' else 'DELIVERY CHALLAN' if invoice.invoice_type and invoice.invoice_type.value == 'DELIVERY_CHALLAN' else 'TAX INVOICE'}</h2>
                 <div style="margin-top: 10px; text-align: right; font-size: 11px;">
                     <strong>Invoice No:</strong> {invoice.invoice_number}<br>
                     <strong>Date:</strong> {invoice.invoice_date}<br>

@@ -557,11 +557,11 @@ class PurchaseOrderItem(Base):
         index=True
     )
 
-    # Product
-    product_id: Mapped[uuid.UUID] = mapped_column(
+    # Product (nullable - vendor items may not be in our catalog)
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("products.id", ondelete="RESTRICT"),
-        nullable=False
+        nullable=True
     )
     variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
@@ -1113,3 +1113,236 @@ class VendorInvoice(Base):
 
     def __repr__(self) -> str:
         return f"<VendorInvoice(ref='{self.our_reference}', vendor_inv='{self.invoice_number}')>"
+
+
+# ==================== Vendor Proforma Invoice ====================
+
+class ProformaStatus(str, Enum):
+    """Vendor Proforma Invoice status."""
+    RECEIVED = "RECEIVED"
+    UNDER_REVIEW = "UNDER_REVIEW"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    CONVERTED_TO_PO = "CONVERTED_TO_PO"
+    EXPIRED = "EXPIRED"
+    CANCELLED = "CANCELLED"
+
+
+class VendorProformaInvoice(Base):
+    """
+    Vendor Proforma Invoice model.
+    Quotations/Proforma invoices received from vendors before placing PO.
+    """
+    __tablename__ = "vendor_proforma_invoices"
+    __table_args__ = (
+        UniqueConstraint("vendor_id", "proforma_number", name="uq_vendor_proforma"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Proforma Identification
+    proforma_number: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        index=True,
+        comment="Vendor's proforma/quotation number"
+    )
+    our_reference: Mapped[str] = mapped_column(
+        String(30),
+        unique=True,
+        nullable=False,
+        index=True,
+        comment="Our internal reference VPI-YYYYMMDD-XXXX"
+    )
+
+    # Status
+    status: Mapped[ProformaStatus] = mapped_column(
+        SQLEnum(ProformaStatus),
+        default=ProformaStatus.RECEIVED,
+        nullable=False,
+        index=True
+    )
+
+    # Vendor
+    vendor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("vendors.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True
+    )
+
+    # Dates
+    proforma_date: Mapped[date] = mapped_column(Date, nullable=False)
+    validity_date: Mapped[Optional[date]] = mapped_column(
+        Date,
+        nullable=True,
+        comment="Quote valid until date"
+    )
+
+    # Purchase Requisition Reference (if from PR)
+    requisition_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("purchase_requisitions.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Converted PO (if converted)
+    purchase_order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("purchase_orders.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Delivery Terms
+    delivery_warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("warehouses.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    delivery_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    delivery_terms: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
+    # Payment Terms
+    payment_terms: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    credit_days: Mapped[int] = mapped_column(Integer, default=30)
+
+    # Amounts
+    subtotal: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    discount_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+    discount_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"))
+    taxable_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+
+    # GST
+    cgst_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+    sgst_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+    igst_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+    total_tax: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+
+    # Other Charges
+    freight_charges: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+    packing_charges: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+    other_charges: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+
+    # Round Off & Total
+    round_off: Mapped[Decimal] = mapped_column(Numeric(8, 2), default=Decimal("0"))
+    grand_total: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+
+    # Documents
+    proforma_pdf_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    # Notes
+    vendor_remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    internal_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Workflow
+    received_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False
+    )
+    received_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # Relationships
+    vendor: Mapped["Vendor"] = relationship("Vendor")
+    requisition: Mapped[Optional["PurchaseRequisition"]] = relationship("PurchaseRequisition")
+    purchase_order: Mapped[Optional["PurchaseOrder"]] = relationship("PurchaseOrder")
+    warehouse: Mapped[Optional["Warehouse"]] = relationship("Warehouse")
+    received_by_user: Mapped["User"] = relationship("User", foreign_keys=[received_by])
+    approved_by_user: Mapped[Optional["User"]] = relationship("User", foreign_keys=[approved_by])
+    items: Mapped[List["VendorProformaItem"]] = relationship(
+        "VendorProformaItem",
+        back_populates="proforma",
+        cascade="all, delete-orphan"
+    )
+
+    @property
+    def is_expired(self) -> bool:
+        """Check if proforma is expired."""
+        if self.validity_date:
+            return date.today() > self.validity_date
+        return False
+
+    @property
+    def days_to_expiry(self) -> int:
+        """Calculate days until expiry."""
+        if self.validity_date:
+            return max(0, (self.validity_date - date.today()).days)
+        return -1  # No expiry set
+
+    def __repr__(self) -> str:
+        return f"<VendorProformaInvoice(ref='{self.our_reference}', vendor_pi='{self.proforma_number}')>"
+
+
+class VendorProformaItem(Base):
+    """Line items in vendor proforma invoice."""
+    __tablename__ = "vendor_proforma_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    proforma_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("vendor_proforma_invoices.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Product (optional - might be new product from vendor)
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Item Details
+    item_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    description: Mapped[str] = mapped_column(String(500), nullable=False)
+    hsn_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    uom: Mapped[str] = mapped_column(String(20), default="NOS")
+
+    # Quantity & Price
+    quantity: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    discount_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"))
+    discount_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+    taxable_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+
+    # GST
+    gst_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("18"))
+    cgst_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+    sgst_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+    igst_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+
+    # Total
+    total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+
+    # Delivery
+    lead_time_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # Relationships
+    proforma: Mapped["VendorProformaInvoice"] = relationship(
+        "VendorProformaInvoice",
+        back_populates="items"
+    )
+    product: Mapped[Optional["Product"]] = relationship("Product")
+
+    def __repr__(self) -> str:
+        return f"<VendorProformaItem(desc='{self.description[:30]}...', qty={self.quantity})>"
