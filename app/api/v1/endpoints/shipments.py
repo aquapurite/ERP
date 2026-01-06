@@ -971,19 +971,28 @@ async def download_shipment_invoice(
     items_html = ""
     if order and order.items:
         for idx, item in enumerate(order.items, 1):
+            unit_price = float(item.unit_price) if item.unit_price else 0.0
+            total_amt = float(item.total_amount) if item.total_amount else 0.0
             items_html += f"""
             <tr>
                 <td>{idx}</td>
                 <td>{item.product_name}<br><small>SKU: {item.product_sku}</small></td>
                 <td>{item.hsn_code or 'N/A'}</td>
                 <td style="text-align:right">{item.quantity}</td>
-                <td style="text-align:right">₹{item.unit_price:,.2f}</td>
-                <td style="text-align:right">₹{item.total_price:,.2f}</td>
+                <td style="text-align:right">₹{unit_price:,.2f}</td>
+                <td style="text-align:right">₹{total_amt:,.2f}</td>
             </tr>
             """
 
     invoice_number = f"INV-{shipment.shipment_number.replace('SHP-', '')}"
     invoice_date = shipment.created_at.strftime('%d-%b-%Y') if shipment.created_at else datetime.now().strftime('%d-%b-%Y')
+
+    # Calculate totals (handle Decimal and None)
+    subtotal = float(order.subtotal) if order and order.subtotal else 0.0
+    tax_amount = float(order.tax_amount) if order and order.tax_amount else 0.0
+    shipping_amount = float(order.shipping_amount) if order and order.shipping_amount else 0.0
+    discount_amount = float(order.discount_amount) if order and order.discount_amount else 0.0
+    total_amount = float(order.total_amount) if order and order.total_amount else 0.0
 
     html_content = f"""
     <!DOCTYPE html>
@@ -1071,27 +1080,27 @@ async def download_shipment_invoice(
             <table class="totals">
                 <tr>
                     <td>Subtotal:</td>
-                    <td style="text-align:right">₹{order.subtotal:,.2f if order else 0}</td>
+                    <td style="text-align:right">₹{subtotal:,.2f}</td>
                 </tr>
                 <tr>
                     <td>CGST (9%):</td>
-                    <td style="text-align:right">₹{(order.tax_amount/2):,.2f if order and order.tax_amount else 0}</td>
+                    <td style="text-align:right">₹{tax_amount/2:,.2f}</td>
                 </tr>
                 <tr>
                     <td>SGST (9%):</td>
-                    <td style="text-align:right">₹{(order.tax_amount/2):,.2f if order and order.tax_amount else 0}</td>
+                    <td style="text-align:right">₹{tax_amount/2:,.2f}</td>
                 </tr>
                 <tr>
                     <td>Shipping:</td>
-                    <td style="text-align:right">₹{order.shipping_amount:,.2f if order else 0}</td>
+                    <td style="text-align:right">₹{shipping_amount:,.2f}</td>
                 </tr>
                 <tr>
                     <td>Discount:</td>
-                    <td style="text-align:right">-₹{order.discount_amount:,.2f if order else 0}</td>
+                    <td style="text-align:right">-₹{discount_amount:,.2f}</td>
                 </tr>
                 <tr class="total-row">
                     <td>GRAND TOTAL:</td>
-                    <td style="text-align:right">₹{order.total_amount:,.2f if order else 0}</td>
+                    <td style="text-align:right">₹{total_amount:,.2f}</td>
                 </tr>
             </table>
 
