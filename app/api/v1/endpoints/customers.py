@@ -11,11 +11,13 @@ from app.schemas.customer import (
     CustomerUpdate,
     CustomerResponse,
     CustomerListResponse,
+    Customer360Response,
     AddressCreate,
     AddressUpdate,
     AddressResponse,
 )
 from app.services.order_service import OrderService
+from app.services.customer360_service import Customer360Service
 
 
 router = APIRouter(prefix="/customers", tags=["Customers"])
@@ -186,3 +188,91 @@ async def delete_customer(
         )
 
     await service.update_customer(customer_id, {"is_active": False})
+
+
+# ==================== CUSTOMER 360 ENDPOINT ====================
+
+@router.get(
+    "/{customer_id}/360",
+    response_model=Customer360Response,
+    dependencies=[Depends(require_permissions("crm:view"))],
+    summary="Get Customer 360 View",
+    description="""
+    Get a comprehensive 360-degree view of the customer including:
+
+    - **Customer Profile**: Basic info and addresses
+    - **Statistics**: Order totals, service counts, ratings
+    - **Timeline**: Chronological journey events
+    - **Orders**: All orders with status history
+    - **Shipments**: Delivery tracking
+    - **Installations**: Product installations and warranty
+    - **Service Requests**: Support tickets and repairs
+    - **Calls**: Call center interactions
+    - **Payments**: Payment history
+    - **AMC Contracts**: Active maintenance contracts
+    - **Lead Info**: Original lead data if converted
+    """
+)
+async def get_customer_360(
+    customer_id: uuid.UUID,
+    db: DB,
+    include_timeline: bool = Query(True, description="Include chronological timeline"),
+    limit: int = Query(50, ge=1, le=200, description="Max records per section"),
+):
+    """
+    Get complete Customer 360 view with all journey data.
+
+    Requires: crm:view permission
+    """
+    service = Customer360Service(db)
+
+    result = await service.get_customer_360(
+        customer_id=customer_id,
+        include_timeline=include_timeline,
+        limit_per_section=limit,
+    )
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Customer not found"
+        )
+
+    return result
+
+
+@router.get(
+    "/phone/{phone}/360",
+    response_model=Customer360Response,
+    dependencies=[Depends(require_permissions("crm:view"))],
+    summary="Get Customer 360 View by Phone",
+)
+async def get_customer_360_by_phone(
+    phone: str,
+    db: DB,
+    include_timeline: bool = Query(True, description="Include chronological timeline"),
+    limit: int = Query(50, ge=1, le=200, description="Max records per section"),
+):
+    """
+    Get complete Customer 360 view by phone number.
+
+    Requires: crm:view permission
+    """
+    # First find customer by phone
+    order_service = OrderService(db)
+    customer = await order_service.get_customer_by_phone(phone)
+
+    if not customer:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Customer not found"
+        )
+
+    service = Customer360Service(db)
+    result = await service.get_customer_360(
+        customer_id=customer.id,
+        include_timeline=include_timeline,
+        limit_per_section=limit,
+    )
+
+    return result

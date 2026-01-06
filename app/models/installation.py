@@ -56,8 +56,9 @@ class Installation(Base, TimestampMixin):
     scheduled_date = Column(Date)
     scheduled_time_slot = Column(String(50))
 
-    # Technician
+    # Assignment (Technician or Franchisee)
     technician_id = Column(UUID(as_uuid=True), ForeignKey("technicians.id"))
+    franchisee_id = Column(UUID(as_uuid=True), ForeignKey("franchisees.id"))  # For franchisee allocation
     assigned_at = Column(DateTime)
 
     # Execution
@@ -100,6 +101,10 @@ class Installation(Base, TimestampMixin):
 
     notes = Column(Text)
     internal_notes = Column(Text)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Audit
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
