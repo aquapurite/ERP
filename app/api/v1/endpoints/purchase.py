@@ -1515,11 +1515,11 @@ async def download_purchase_order(
         </tr>
         """
 
-    vendor_name = vendor.company_name if vendor else po.vendor_name
+    vendor_name = vendor.legal_name if vendor else po.vendor_name
     vendor_address = ""
     if vendor:
-        addr_parts = [vendor.address_line1, vendor.address_line2, vendor.city, vendor.state, vendor.pincode]
-        vendor_address = ", ".join(filter(None, [str(p) for p in addr_parts if p]))
+        addr_parts = [vendor.address_line1, vendor.address_line2, vendor.city, vendor.state, str(vendor.pincode) if vendor.pincode else None]
+        vendor_address = ", ".join(filter(None, addr_parts))
 
     warehouse_name = warehouse.name if warehouse else "N/A"
     warehouse_address = ""
@@ -1831,7 +1831,7 @@ async def download_grn(
         </tr>
         """
 
-    vendor_name = vendor.company_name if vendor else "N/A"
+    vendor_name = vendor.legal_name if vendor else "N/A"
     warehouse_name = warehouse.name if warehouse else "N/A"
     po_number = po.po_number if po else "N/A"
 
@@ -2107,11 +2107,11 @@ async def download_vendor_invoice(
     )
     grn = grn_result.scalar_one_or_none()
 
-    vendor_name = vendor.company_name if vendor else "N/A"
+    vendor_name = vendor.legal_name if vendor else "N/A"
     vendor_address = ""
     if vendor:
-        addr_parts = [vendor.address_line1, vendor.address_line2, vendor.city, vendor.state, vendor.pincode]
-        vendor_address = ", ".join(filter(None, [str(p) for p in addr_parts if p]))
+        addr_parts = [vendor.address_line1, vendor.address_line2, vendor.city, vendor.state, str(vendor.pincode) if vendor.pincode else None]
+        vendor_address = ", ".join(filter(None, addr_parts))
 
     po_number = po.po_number if po else "N/A"
     grn_number = grn.grn_number if grn else "N/A"
