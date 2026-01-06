@@ -262,7 +262,7 @@ async def create_purchase_order(
         if wh_state and wh_state != vendor.gst_state_code:
             is_inter_state = True
 
-    # Create PO
+    # Create PO with initial zero values for NOT NULL fields
     po = PurchaseOrder(
         po_number=po_number,
         po_date=today,
@@ -285,6 +285,10 @@ async def create_purchase_order(
         special_instructions=po_in.special_instructions,
         internal_notes=po_in.internal_notes,
         created_by=current_user.id,
+        # Initialize NOT NULL fields with zero
+        subtotal=Decimal("0"),
+        taxable_amount=Decimal("0"),
+        grand_total=Decimal("0"),
     )
 
     db.add(po)
@@ -1453,3 +1457,926 @@ async def get_po_summary_report(
         by_vendor=vendor_data,
         by_status=status_data,
     )
+
+
+# ==================== Document Downloads ====================
+
+@router.get("/orders/{po_id}/download")
+async def download_purchase_order(
+    po_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Download Purchase Order as printable HTML (can be saved as PDF via browser)."""
+    from fastapi.responses import HTMLResponse
+
+    result = await db.execute(
+        select(PurchaseOrder)
+        .options(selectinload(PurchaseOrder.items))
+        .where(PurchaseOrder.id == po_id)
+    )
+    po = result.scalar_one_or_none()
+
+    if not po:
+        raise HTTPException(status_code=404, detail="Purchase Order not found")
+
+    # Get vendor details
+    vendor_result = await db.execute(
+        select(Vendor).where(Vendor.id == po.vendor_id)
+    )
+    vendor = vendor_result.scalar_one_or_none()
+
+    # Get warehouse details
+    warehouse_result = await db.execute(
+        select(Warehouse).where(Warehouse.id == po.delivery_warehouse_id)
+    )
+    warehouse = warehouse_result.scalar_one_or_none()
+
+    # Build items table
+    items_html = ""
+    for idx, item in enumerate(po.items, 1):
+        unit_price = float(item.unit_price) if item.unit_price else 0.0
+        taxable = float(item.taxable_amount) if item.taxable_amount else 0.0
+        gst = float(item.gst_rate) if item.gst_rate else 0.0
+        total = float(item.total_amount) if item.total_amount else 0.0
+
+        items_html += f"""
+        <tr>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{idx}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">{item.product_name or '-'}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">{item.sku or '-'}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">{item.hsn_code or '-'}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{item.quantity_ordered}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">{item.uom or 'PCS'}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹{unit_price:,.2f}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹{taxable:,.2f}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{gst}%</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹{total:,.2f}</td>
+        </tr>
+        """
+
+    vendor_name = vendor.company_name if vendor else po.vendor_name
+    vendor_address = ""
+    if vendor:
+        addr_parts = [vendor.address_line1, vendor.address_line2, vendor.city, vendor.state, vendor.pincode]
+        vendor_address = ", ".join(filter(None, [str(p) for p in addr_parts if p]))
+
+    warehouse_name = warehouse.name if warehouse else "N/A"
+    warehouse_address = ""
+    if warehouse:
+        addr_parts = [warehouse.address_line1, warehouse.city, warehouse.state, warehouse.pincode]
+        warehouse_address = ", ".join(filter(None, [str(p) for p in addr_parts if p]))
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Purchase Order - {po.po_number}</title>
+        <style>
+            @media print {{
+                body {{ margin: 0; padding: 20px; }}
+                .no-print {{ display: none; }}
+            }}
+            body {{
+                font-family: Arial, sans-serif;
+                max-width: 900px;
+                margin: 0 auto;
+                padding: 20px;
+                color: #333;
+            }}
+            .header {{
+                text-align: center;
+                border-bottom: 2px solid #333;
+                padding-bottom: 20px;
+                margin-bottom: 20px;
+            }}
+            .company-name {{
+                font-size: 24px;
+                font-weight: bold;
+                color: #1a73e8;
+            }}
+            .document-title {{
+                font-size: 18px;
+                font-weight: bold;
+                margin-top: 10px;
+                background: #f5f5f5;
+                padding: 10px;
+            }}
+            .info-section {{
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 20px;
+            }}
+            .info-box {{
+                width: 48%;
+                background: #f9f9f9;
+                padding: 15px;
+                border-radius: 5px;
+            }}
+            .info-box h3 {{
+                margin: 0 0 10px 0;
+                color: #1a73e8;
+                font-size: 14px;
+                border-bottom: 1px solid #ddd;
+                padding-bottom: 5px;
+            }}
+            .info-box p {{
+                margin: 5px 0;
+                font-size: 12px;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 20px;
+            }}
+            th {{
+                background: #1a73e8;
+                color: white;
+                padding: 10px 8px;
+                text-align: left;
+                font-size: 11px;
+            }}
+            .totals {{
+                width: 300px;
+                margin-left: auto;
+            }}
+            .totals tr td {{
+                padding: 8px;
+                border: 1px solid #ddd;
+            }}
+            .totals tr:last-child {{
+                background: #1a73e8;
+                color: white;
+                font-weight: bold;
+            }}
+            .footer {{
+                margin-top: 40px;
+                border-top: 1px solid #ddd;
+                padding-top: 20px;
+            }}
+            .signatures {{
+                display: flex;
+                justify-content: space-between;
+                margin-top: 60px;
+            }}
+            .signature-box {{
+                text-align: center;
+                width: 200px;
+            }}
+            .signature-line {{
+                border-top: 1px solid #333;
+                margin-top: 40px;
+                padding-top: 5px;
+            }}
+            .print-btn {{
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                padding: 10px 20px;
+                background: #1a73e8;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+            }}
+            .status-badge {{
+                display: inline-block;
+                padding: 5px 15px;
+                border-radius: 20px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            .status-approved {{ background: #e6f4ea; color: #137333; }}
+            .status-draft {{ background: #fce8e6; color: #c5221f; }}
+            .status-pending {{ background: #fef7e0; color: #b06000; }}
+        </style>
+    </head>
+    <body>
+        <button class="print-btn no-print" onclick="window.print()">🖨️ Print / Save PDF</button>
+
+        <div class="header">
+            <div class="company-name">AQUAPURITE INDIA PVT LTD</div>
+            <div style="font-size: 12px; color: #666;">
+                123 Industrial Area, Sector 5, Noida, UP - 201301<br>
+                GSTIN: 09AAACA1234M1Z5 | PAN: AAACA1234M
+            </div>
+            <div class="document-title">PURCHASE ORDER</div>
+        </div>
+
+        <div class="info-section">
+            <div class="info-box">
+                <h3>VENDOR DETAILS</h3>
+                <p><strong>{vendor_name}</strong></p>
+                <p>{vendor_address}</p>
+                <p>GSTIN: {po.vendor_gstin or 'N/A'}</p>
+            </div>
+            <div class="info-box">
+                <h3>PO DETAILS</h3>
+                <p><strong>PO Number:</strong> {po.po_number}</p>
+                <p><strong>PO Date:</strong> {po.po_date}</p>
+                <p><strong>Expected Delivery:</strong> {po.expected_delivery_date or 'TBD'}</p>
+                <p><strong>Status:</strong> <span class="status-badge status-{'approved' if po.status.value == 'APPROVED' else 'draft'}">{po.status.value}</span></p>
+                <p><strong>Payment Terms:</strong> {po.credit_days or 0} days credit</p>
+            </div>
+        </div>
+
+        <div class="info-section">
+            <div class="info-box" style="width: 100%;">
+                <h3>DELIVERY ADDRESS</h3>
+                <p><strong>{warehouse_name}</strong></p>
+                <p>{warehouse_address}</p>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 30px;">#</th>
+                    <th>Product</th>
+                    <th>SKU</th>
+                    <th>HSN</th>
+                    <th style="width: 50px;">Qty</th>
+                    <th>UOM</th>
+                    <th style="width: 80px;">Unit Price</th>
+                    <th style="width: 90px;">Taxable</th>
+                    <th style="width: 50px;">GST%</th>
+                    <th style="width: 90px;">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {items_html}
+            </tbody>
+        </table>
+
+        <table class="totals">
+            <tr>
+                <td>Subtotal</td>
+                <td style="text-align: right;">₹{float(po.subtotal or 0):,.2f}</td>
+            </tr>
+            <tr>
+                <td>Discount</td>
+                <td style="text-align: right;">₹{float(po.discount_amount or 0):,.2f}</td>
+            </tr>
+            <tr>
+                <td>Taxable Amount</td>
+                <td style="text-align: right;">₹{float(po.taxable_amount or 0):,.2f}</td>
+            </tr>
+            <tr>
+                <td>CGST</td>
+                <td style="text-align: right;">₹{float(po.cgst_amount or 0):,.2f}</td>
+            </tr>
+            <tr>
+                <td>SGST</td>
+                <td style="text-align: right;">₹{float(po.sgst_amount or 0):,.2f}</td>
+            </tr>
+            <tr>
+                <td>IGST</td>
+                <td style="text-align: right;">₹{float(po.igst_amount or 0):,.2f}</td>
+            </tr>
+            <tr>
+                <td>Freight Charges</td>
+                <td style="text-align: right;">₹{float(po.freight_charges or 0):,.2f}</td>
+            </tr>
+            <tr>
+                <td><strong>Grand Total</strong></td>
+                <td style="text-align: right;"><strong>₹{float(po.grand_total or 0):,.2f}</strong></td>
+            </tr>
+        </table>
+
+        <div class="footer">
+            <p><strong>Terms & Conditions:</strong></p>
+            <p style="font-size: 11px;">{po.terms_and_conditions or 'Standard terms and conditions apply.'}</p>
+
+            <p><strong>Special Instructions:</strong></p>
+            <p style="font-size: 11px;">{po.special_instructions or 'None'}</p>
+        </div>
+
+        <div class="signatures">
+            <div class="signature-box">
+                <div class="signature-line">Prepared By</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line">Approved By</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line">Vendor Signature</div>
+            </div>
+        </div>
+
+        <p style="text-align: center; font-size: 10px; color: #999; margin-top: 40px;">
+            This is a computer-generated document. Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        </p>
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(content=html_content)
+
+
+@router.get("/grn/{grn_id}/download")
+async def download_grn(
+    grn_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Download Goods Receipt Note as printable HTML."""
+    from fastapi.responses import HTMLResponse
+
+    result = await db.execute(
+        select(GoodsReceiptNote)
+        .options(selectinload(GoodsReceiptNote.items))
+        .where(GoodsReceiptNote.id == grn_id)
+    )
+    grn = result.scalar_one_or_none()
+
+    if not grn:
+        raise HTTPException(status_code=404, detail="GRN not found")
+
+    # Get PO details
+    po_result = await db.execute(
+        select(PurchaseOrder).where(PurchaseOrder.id == grn.purchase_order_id)
+    )
+    po = po_result.scalar_one_or_none()
+
+    # Get vendor details
+    vendor_result = await db.execute(
+        select(Vendor).where(Vendor.id == grn.vendor_id)
+    )
+    vendor = vendor_result.scalar_one_or_none()
+
+    # Get warehouse details
+    warehouse_result = await db.execute(
+        select(Warehouse).where(Warehouse.id == grn.warehouse_id)
+    )
+    warehouse = warehouse_result.scalar_one_or_none()
+
+    # Build items table
+    items_html = ""
+    for idx, item in enumerate(grn.items, 1):
+        unit_price = float(item.unit_price) if item.unit_price else 0.0
+        accepted_value = float(item.accepted_value) if item.accepted_value else 0.0
+
+        items_html += f"""
+        <tr>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{idx}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">{item.product_name or '-'}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">{item.sku or '-'}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{item.quantity_expected}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{item.quantity_received}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: center; color: green;">{item.quantity_accepted}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: center; color: red;">{item.quantity_rejected}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹{unit_price:,.2f}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹{accepted_value:,.2f}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">{item.batch_number or '-'}</td>
+        </tr>
+        """
+
+    vendor_name = vendor.company_name if vendor else "N/A"
+    warehouse_name = warehouse.name if warehouse else "N/A"
+    po_number = po.po_number if po else "N/A"
+
+    qc_status_color = "green" if grn.qc_status and grn.qc_status.value == "ACCEPTED" else "orange"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Goods Receipt Note - {grn.grn_number}</title>
+        <style>
+            @media print {{
+                body {{ margin: 0; padding: 20px; }}
+                .no-print {{ display: none; }}
+            }}
+            body {{
+                font-family: Arial, sans-serif;
+                max-width: 900px;
+                margin: 0 auto;
+                padding: 20px;
+                color: #333;
+            }}
+            .header {{
+                text-align: center;
+                border-bottom: 2px solid #333;
+                padding-bottom: 20px;
+                margin-bottom: 20px;
+            }}
+            .company-name {{
+                font-size: 24px;
+                font-weight: bold;
+                color: #34a853;
+            }}
+            .document-title {{
+                font-size: 18px;
+                font-weight: bold;
+                margin-top: 10px;
+                background: #e6f4ea;
+                padding: 10px;
+            }}
+            .info-section {{
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 20px;
+            }}
+            .info-box {{
+                width: 48%;
+                background: #f9f9f9;
+                padding: 15px;
+                border-radius: 5px;
+            }}
+            .info-box h3 {{
+                margin: 0 0 10px 0;
+                color: #34a853;
+                font-size: 14px;
+                border-bottom: 1px solid #ddd;
+                padding-bottom: 5px;
+            }}
+            .info-box p {{
+                margin: 5px 0;
+                font-size: 12px;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 20px;
+            }}
+            th {{
+                background: #34a853;
+                color: white;
+                padding: 10px 8px;
+                text-align: left;
+                font-size: 11px;
+            }}
+            .summary-box {{
+                background: #e6f4ea;
+                padding: 15px;
+                border-radius: 5px;
+                margin-bottom: 20px;
+            }}
+            .summary-box h3 {{
+                margin: 0 0 10px 0;
+                color: #34a853;
+            }}
+            .summary-grid {{
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 10px;
+            }}
+            .summary-item {{
+                text-align: center;
+            }}
+            .summary-item .label {{
+                font-size: 11px;
+                color: #666;
+            }}
+            .summary-item .value {{
+                font-size: 18px;
+                font-weight: bold;
+                color: #333;
+            }}
+            .signatures {{
+                display: flex;
+                justify-content: space-between;
+                margin-top: 60px;
+            }}
+            .signature-box {{
+                text-align: center;
+                width: 200px;
+            }}
+            .signature-line {{
+                border-top: 1px solid #333;
+                margin-top: 40px;
+                padding-top: 5px;
+            }}
+            .print-btn {{
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                padding: 10px 20px;
+                background: #34a853;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+            }}
+        </style>
+    </head>
+    <body>
+        <button class="print-btn no-print" onclick="window.print()">🖨️ Print / Save PDF</button>
+
+        <div class="header">
+            <div class="company-name">AQUAPURITE INDIA PVT LTD</div>
+            <div style="font-size: 12px; color: #666;">
+                123 Industrial Area, Sector 5, Noida, UP - 201301
+            </div>
+            <div class="document-title">GOODS RECEIPT NOTE (GRN)</div>
+        </div>
+
+        <div class="info-section">
+            <div class="info-box">
+                <h3>VENDOR DETAILS</h3>
+                <p><strong>{vendor_name}</strong></p>
+                <p>Challan No: {grn.vendor_challan_number or 'N/A'}</p>
+                <p>Challan Date: {grn.vendor_challan_date or 'N/A'}</p>
+            </div>
+            <div class="info-box">
+                <h3>GRN DETAILS</h3>
+                <p><strong>GRN Number:</strong> {grn.grn_number}</p>
+                <p><strong>GRN Date:</strong> {grn.grn_date}</p>
+                <p><strong>PO Reference:</strong> {po_number}</p>
+                <p><strong>Status:</strong> {grn.status.value if grn.status else 'N/A'}</p>
+                <p><strong>QC Status:</strong> <span style="color: {qc_status_color};">{grn.qc_status.value if grn.qc_status else 'PENDING'}</span></p>
+            </div>
+        </div>
+
+        <div class="info-section">
+            <div class="info-box">
+                <h3>RECEIVING WAREHOUSE</h3>
+                <p><strong>{warehouse_name}</strong></p>
+            </div>
+            <div class="info-box">
+                <h3>TRANSPORT DETAILS</h3>
+                <p><strong>Transporter:</strong> {grn.transporter_name or 'N/A'}</p>
+                <p><strong>Vehicle No:</strong> {grn.vehicle_number or 'N/A'}</p>
+                <p><strong>LR Number:</strong> {grn.lr_number or 'N/A'}</p>
+                <p><strong>E-Way Bill:</strong> {grn.e_way_bill_number or 'N/A'}</p>
+            </div>
+        </div>
+
+        <div class="summary-box">
+            <h3>RECEIPT SUMMARY</h3>
+            <div class="summary-grid">
+                <div class="summary-item">
+                    <div class="label">Total Items</div>
+                    <div class="value">{grn.total_items or 0}</div>
+                </div>
+                <div class="summary-item">
+                    <div class="label">Qty Received</div>
+                    <div class="value">{grn.total_quantity_received or 0}</div>
+                </div>
+                <div class="summary-item">
+                    <div class="label">Qty Accepted</div>
+                    <div class="value" style="color: green;">{grn.total_quantity_accepted or 0}</div>
+                </div>
+                <div class="summary-item">
+                    <div class="label">Qty Rejected</div>
+                    <div class="value" style="color: red;">{grn.total_quantity_rejected or 0}</div>
+                </div>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 30px;">#</th>
+                    <th>Product</th>
+                    <th>SKU</th>
+                    <th style="width: 60px;">Expected</th>
+                    <th style="width: 60px;">Received</th>
+                    <th style="width: 60px;">Accepted</th>
+                    <th style="width: 60px;">Rejected</th>
+                    <th style="width: 80px;">Unit Price</th>
+                    <th style="width: 90px;">Accepted Value</th>
+                    <th>Batch No</th>
+                </tr>
+            </thead>
+            <tbody>
+                {items_html}
+            </tbody>
+        </table>
+
+        <div style="text-align: right; font-size: 16px; font-weight: bold; background: #e6f4ea; padding: 15px; border-radius: 5px;">
+            Total Accepted Value: ₹{float(grn.total_value or 0):,.2f}
+        </div>
+
+        <p><strong>Receiving Remarks:</strong> {grn.receiving_remarks or 'None'}</p>
+
+        <div class="signatures">
+            <div class="signature-box">
+                <div class="signature-line">Received By</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line">QC Inspector</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line">Store In-charge</div>
+            </div>
+        </div>
+
+        <p style="text-align: center; font-size: 10px; color: #999; margin-top: 40px;">
+            This is a computer-generated document. Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        </p>
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(content=html_content)
+
+
+@router.get("/invoices/{invoice_id}/download")
+async def download_vendor_invoice(
+    invoice_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Download Vendor Invoice as printable HTML."""
+    from fastapi.responses import HTMLResponse
+
+    result = await db.execute(
+        select(VendorInvoice).where(VendorInvoice.id == invoice_id)
+    )
+    invoice = result.scalar_one_or_none()
+
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Vendor Invoice not found")
+
+    # Get vendor details
+    vendor_result = await db.execute(
+        select(Vendor).where(Vendor.id == invoice.vendor_id)
+    )
+    vendor = vendor_result.scalar_one_or_none()
+
+    # Get PO details
+    po_result = await db.execute(
+        select(PurchaseOrder).where(PurchaseOrder.id == invoice.purchase_order_id)
+    )
+    po = po_result.scalar_one_or_none()
+
+    # Get GRN details
+    grn_result = await db.execute(
+        select(GoodsReceiptNote).where(GoodsReceiptNote.id == invoice.grn_id)
+    )
+    grn = grn_result.scalar_one_or_none()
+
+    vendor_name = vendor.company_name if vendor else "N/A"
+    vendor_address = ""
+    if vendor:
+        addr_parts = [vendor.address_line1, vendor.address_line2, vendor.city, vendor.state, vendor.pincode]
+        vendor_address = ", ".join(filter(None, [str(p) for p in addr_parts if p]))
+
+    po_number = po.po_number if po else "N/A"
+    grn_number = grn.grn_number if grn else "N/A"
+
+    status_color = "green" if invoice.status and invoice.status.value in ["VERIFIED", "PAID"] else "orange"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Vendor Invoice - {invoice.invoice_number}</title>
+        <style>
+            @media print {{
+                body {{ margin: 0; padding: 20px; }}
+                .no-print {{ display: none; }}
+            }}
+            body {{
+                font-family: Arial, sans-serif;
+                max-width: 900px;
+                margin: 0 auto;
+                padding: 20px;
+                color: #333;
+            }}
+            .header {{
+                text-align: center;
+                border-bottom: 2px solid #333;
+                padding-bottom: 20px;
+                margin-bottom: 20px;
+            }}
+            .company-name {{
+                font-size: 24px;
+                font-weight: bold;
+                color: #ea4335;
+            }}
+            .document-title {{
+                font-size: 18px;
+                font-weight: bold;
+                margin-top: 10px;
+                background: #fce8e6;
+                padding: 10px;
+            }}
+            .info-section {{
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 20px;
+            }}
+            .info-box {{
+                width: 48%;
+                background: #f9f9f9;
+                padding: 15px;
+                border-radius: 5px;
+            }}
+            .info-box h3 {{
+                margin: 0 0 10px 0;
+                color: #ea4335;
+                font-size: 14px;
+                border-bottom: 1px solid #ddd;
+                padding-bottom: 5px;
+            }}
+            .info-box p {{
+                margin: 5px 0;
+                font-size: 12px;
+            }}
+            .amount-box {{
+                background: #fce8e6;
+                padding: 20px;
+                border-radius: 5px;
+                margin-bottom: 20px;
+            }}
+            .amount-grid {{
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 20px;
+            }}
+            .amount-item {{
+                text-align: center;
+            }}
+            .amount-item .label {{
+                font-size: 11px;
+                color: #666;
+            }}
+            .amount-item .value {{
+                font-size: 20px;
+                font-weight: bold;
+                color: #333;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 20px;
+            }}
+            th {{
+                background: #ea4335;
+                color: white;
+                padding: 10px 8px;
+                text-align: left;
+                font-size: 12px;
+            }}
+            td {{
+                border: 1px solid #ddd;
+                padding: 10px 8px;
+            }}
+            .match-status {{
+                display: inline-block;
+                padding: 5px 15px;
+                border-radius: 20px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            .match-yes {{ background: #e6f4ea; color: #137333; }}
+            .match-no {{ background: #fce8e6; color: #c5221f; }}
+            .signatures {{
+                display: flex;
+                justify-content: space-between;
+                margin-top: 60px;
+            }}
+            .signature-box {{
+                text-align: center;
+                width: 200px;
+            }}
+            .signature-line {{
+                border-top: 1px solid #333;
+                margin-top: 40px;
+                padding-top: 5px;
+            }}
+            .print-btn {{
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                padding: 10px 20px;
+                background: #ea4335;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+            }}
+        </style>
+    </head>
+    <body>
+        <button class="print-btn no-print" onclick="window.print()">🖨️ Print / Save PDF</button>
+
+        <div class="header">
+            <div class="company-name">AQUAPURITE INDIA PVT LTD</div>
+            <div style="font-size: 12px; color: #666;">
+                123 Industrial Area, Sector 5, Noida, UP - 201301<br>
+                GSTIN: 09AAACA1234M1Z5
+            </div>
+            <div class="document-title">VENDOR INVOICE RECORD</div>
+        </div>
+
+        <div class="info-section">
+            <div class="info-box">
+                <h3>VENDOR DETAILS</h3>
+                <p><strong>{vendor_name}</strong></p>
+                <p>{vendor_address}</p>
+                <p>GSTIN: {invoice.vendor_gstin or 'N/A'}</p>
+            </div>
+            <div class="info-box">
+                <h3>INVOICE DETAILS</h3>
+                <p><strong>Invoice Number:</strong> {invoice.invoice_number}</p>
+                <p><strong>Invoice Date:</strong> {invoice.invoice_date}</p>
+                <p><strong>Due Date:</strong> {invoice.due_date or 'N/A'}</p>
+                <p><strong>Status:</strong> <span style="color: {status_color}; font-weight: bold;">{invoice.status.value if invoice.status else 'N/A'}</span></p>
+            </div>
+        </div>
+
+        <div class="info-section">
+            <div class="info-box" style="width: 100%;">
+                <h3>REFERENCE DOCUMENTS</h3>
+                <p><strong>PO Number:</strong> {po_number}</p>
+                <p><strong>GRN Number:</strong> {grn_number}</p>
+            </div>
+        </div>
+
+        <div class="amount-box">
+            <h3 style="margin: 0 0 15px 0; color: #ea4335;">INVOICE AMOUNTS</h3>
+            <div class="amount-grid">
+                <div class="amount-item">
+                    <div class="label">Taxable Amount</div>
+                    <div class="value">₹{float(invoice.taxable_amount or 0):,.2f}</div>
+                </div>
+                <div class="amount-item">
+                    <div class="label">Total Tax (GST)</div>
+                    <div class="value">₹{float(invoice.total_tax or 0):,.2f}</div>
+                </div>
+                <div class="amount-item">
+                    <div class="label">Total Amount</div>
+                    <div class="value" style="color: #ea4335;">₹{float(invoice.total_amount or 0):,.2f}</div>
+                </div>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Tax Breakup</th>
+                    <th style="text-align: right;">Amount (₹)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>CGST</td>
+                    <td style="text-align: right;">₹{float(invoice.cgst_amount or 0):,.2f}</td>
+                </tr>
+                <tr>
+                    <td>SGST</td>
+                    <td style="text-align: right;">₹{float(invoice.sgst_amount or 0):,.2f}</td>
+                </tr>
+                <tr>
+                    <td>IGST</td>
+                    <td style="text-align: right;">₹{float(invoice.igst_amount or 0):,.2f}</td>
+                </tr>
+                <tr>
+                    <td>TDS Deducted</td>
+                    <td style="text-align: right;">₹{float(invoice.tds_amount or 0):,.2f}</td>
+                </tr>
+                <tr style="background: #f5f5f5; font-weight: bold;">
+                    <td>Net Payable</td>
+                    <td style="text-align: right;">₹{float(invoice.net_payable or invoice.total_amount or 0):,.2f}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div style="background: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+            <h3 style="margin: 0 0 10px 0; color: #333;">3-WAY MATCH STATUS</h3>
+            <p>
+                <strong>PO Match:</strong>
+                <span class="match-status {'match-yes' if invoice.po_match else 'match-no'}">
+                    {'✓ Matched' if invoice.po_match else '✗ Not Matched'}
+                </span>
+            </p>
+            <p>
+                <strong>GRN Match:</strong>
+                <span class="match-status {'match-yes' if invoice.grn_match else 'match-no'}">
+                    {'✓ Matched' if invoice.grn_match else '✗ Not Matched'}
+                </span>
+            </p>
+            <p>
+                <strong>Invoice Match:</strong>
+                <span class="match-status {'match-yes' if invoice.invoice_match else 'match-no'}">
+                    {'✓ Matched' if invoice.invoice_match else '✗ Not Matched'}
+                </span>
+            </p>
+            {f'<p><strong>Discrepancy:</strong> {invoice.match_discrepancy}</p>' if invoice.match_discrepancy else ''}
+        </div>
+
+        <p><strong>Remarks:</strong> {invoice.remarks or 'None'}</p>
+
+        <div class="signatures">
+            <div class="signature-box">
+                <div class="signature-line">Verified By</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line">Approved By</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line">Finance Head</div>
+            </div>
+        </div>
+
+        <p style="text-align: center; font-size: 10px; color: #999; margin-top: 40px;">
+            This is a computer-generated document. Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        </p>
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(content=html_content)

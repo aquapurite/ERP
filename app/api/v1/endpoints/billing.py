@@ -1546,3 +1546,396 @@ async def get_gstr3b_report(
             "total": float((outward.igst or 0) + (outward.cgst or 0) + (outward.sgst or 0) + (outward.cess or 0)),
         },
     }
+
+
+# ==================== Document Downloads ====================
+
+@router.get("/invoices/{invoice_id}/download")
+async def download_tax_invoice(
+    invoice_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Download Tax Invoice as printable HTML (GST compliant format)."""
+    from fastapi.responses import HTMLResponse
+
+    result = await db.execute(
+        select(TaxInvoice)
+        .options(selectinload(TaxInvoice.items))
+        .where(TaxInvoice.id == invoice_id)
+    )
+    invoice = result.scalar_one_or_none()
+
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    # Build items table
+    items_html = ""
+    for idx, item in enumerate(invoice.items, 1):
+        unit_price = float(item.unit_price) if item.unit_price else 0.0
+        taxable = float(item.taxable_amount) if item.taxable_amount else 0.0
+        cgst = float(item.cgst_amount) if item.cgst_amount else 0.0
+        sgst = float(item.sgst_amount) if item.sgst_amount else 0.0
+        igst = float(item.igst_amount) if item.igst_amount else 0.0
+        total = float(item.total_amount) if item.total_amount else 0.0
+
+        items_html += f"""
+        <tr>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{idx}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">{item.description or '-'}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">{item.hsn_code or '-'}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{item.quantity}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">{item.uom or 'NOS'}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹{unit_price:,.2f}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹{taxable:,.2f}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹{cgst:,.2f}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹{sgst:,.2f}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹{igst:,.2f}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹{total:,.2f}</td>
+        </tr>
+        """
+
+    # Determine tax type display
+    tax_type = "IGST" if invoice.is_interstate else "CGST + SGST"
+
+    # Build billing address
+    billing_address = f"{invoice.billing_address_line1}"
+    if invoice.billing_address_line2:
+        billing_address += f", {invoice.billing_address_line2}"
+    billing_address += f", {invoice.billing_city}, {invoice.billing_state} - {invoice.billing_pincode}"
+
+    # Build shipping address
+    shipping_address = ""
+    if invoice.shipping_address_line1:
+        shipping_address = f"{invoice.shipping_address_line1}"
+        if invoice.shipping_address_line2:
+            shipping_address += f", {invoice.shipping_address_line2}"
+        shipping_address += f", {invoice.shipping_city}, {invoice.shipping_state} - {invoice.shipping_pincode}"
+    else:
+        shipping_address = billing_address  # Same as billing
+
+    # Convert amount to words (simplified)
+    def amount_to_words(amount):
+        """Convert amount to words (simplified for demonstration)."""
+        units = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"]
+        teens = ["Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen",
+                 "Sixteen", "Seventeen", "Eighteen", "Nineteen"]
+        tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
+
+        if amount < 10:
+            return units[int(amount)]
+        elif amount < 20:
+            return teens[int(amount) - 10]
+        elif amount < 100:
+            return tens[int(amount) // 10] + (" " + units[int(amount) % 10] if amount % 10 else "")
+        elif amount < 1000:
+            return units[int(amount) // 100] + " Hundred" + (" " + amount_to_words(amount % 100) if amount % 100 else "")
+        elif amount < 100000:
+            return amount_to_words(amount // 1000) + " Thousand" + (" " + amount_to_words(amount % 1000) if amount % 1000 else "")
+        elif amount < 10000000:
+            return amount_to_words(amount // 100000) + " Lakh" + (" " + amount_to_words(amount % 100000) if amount % 100000 else "")
+        else:
+            return amount_to_words(amount // 10000000) + " Crore" + (" " + amount_to_words(amount % 10000000) if amount % 10000000 else "")
+
+    total_in_words = amount_to_words(int(invoice.grand_total or 0)) + " Rupees Only"
+
+    irn_section = ""
+    if invoice.irn:
+        irn_section = f"""
+        <div style="background: #e6f4ea; padding: 10px; border-radius: 5px; margin-bottom: 20px;">
+            <strong>E-Invoice Details (IRN Generated)</strong><br>
+            <small>IRN: {invoice.irn}</small><br>
+            <small>Ack No: {invoice.irn_ack_number or 'N/A'}</small><br>
+            <small>Ack Date: {invoice.irn_ack_date or 'N/A'}</small>
+        </div>
+        """
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Tax Invoice - {invoice.invoice_number}</title>
+        <style>
+            @media print {{
+                body {{ margin: 0; padding: 15px; }}
+                .no-print {{ display: none; }}
+            }}
+            body {{
+                font-family: Arial, sans-serif;
+                max-width: 900px;
+                margin: 0 auto;
+                padding: 20px;
+                color: #333;
+                font-size: 12px;
+            }}
+            .header {{
+                display: flex;
+                justify-content: space-between;
+                border-bottom: 2px solid #333;
+                padding-bottom: 15px;
+                margin-bottom: 15px;
+            }}
+            .company-info {{
+                flex: 1;
+            }}
+            .company-name {{
+                font-size: 20px;
+                font-weight: bold;
+                color: #1a73e8;
+            }}
+            .invoice-title {{
+                text-align: right;
+            }}
+            .invoice-title h2 {{
+                margin: 0;
+                font-size: 18px;
+                background: #1a73e8;
+                color: white;
+                padding: 10px 20px;
+                display: inline-block;
+            }}
+            .info-grid {{
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 15px;
+                margin-bottom: 15px;
+            }}
+            .info-box {{
+                background: #f9f9f9;
+                padding: 12px;
+                border-radius: 5px;
+                border: 1px solid #ddd;
+            }}
+            .info-box h4 {{
+                margin: 0 0 8px 0;
+                color: #1a73e8;
+                font-size: 11px;
+                text-transform: uppercase;
+                border-bottom: 1px solid #ddd;
+                padding-bottom: 5px;
+            }}
+            .info-box p {{
+                margin: 4px 0;
+                font-size: 11px;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 15px;
+                font-size: 10px;
+            }}
+            th {{
+                background: #1a73e8;
+                color: white;
+                padding: 8px 5px;
+                text-align: left;
+                font-size: 10px;
+            }}
+            .totals {{
+                width: 350px;
+                margin-left: auto;
+            }}
+            .totals tr td {{
+                padding: 6px 8px;
+                border: 1px solid #ddd;
+                font-size: 11px;
+            }}
+            .totals tr:last-child {{
+                background: #1a73e8;
+                color: white;
+                font-weight: bold;
+            }}
+            .amount-words {{
+                background: #f5f5f5;
+                padding: 10px;
+                border-radius: 5px;
+                margin: 15px 0;
+                font-style: italic;
+            }}
+            .footer-grid {{
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
+                margin-top: 30px;
+            }}
+            .terms {{
+                font-size: 10px;
+                color: #666;
+            }}
+            .signature-box {{
+                text-align: right;
+            }}
+            .signature-line {{
+                border-top: 1px solid #333;
+                margin-top: 60px;
+                padding-top: 5px;
+                display: inline-block;
+                width: 200px;
+            }}
+            .print-btn {{
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                padding: 10px 20px;
+                background: #1a73e8;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+            }}
+            .qr-code {{
+                width: 80px;
+                height: 80px;
+                border: 1px solid #ddd;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 10px;
+                color: #999;
+            }}
+        </style>
+    </head>
+    <body>
+        <button class="print-btn no-print" onclick="window.print()">🖨️ Print / Save PDF</button>
+
+        <div class="header">
+            <div class="company-info">
+                <div class="company-name">{invoice.seller_name}</div>
+                <div style="font-size: 11px; color: #666; margin-top: 5px;">
+                    {invoice.seller_address}<br>
+                    <strong>GSTIN:</strong> {invoice.seller_gstin}<br>
+                    State Code: {invoice.seller_state_code}
+                </div>
+            </div>
+            <div class="invoice-title">
+                <h2>TAX INVOICE</h2>
+                <div style="margin-top: 10px; text-align: right; font-size: 11px;">
+                    <strong>Invoice No:</strong> {invoice.invoice_number}<br>
+                    <strong>Date:</strong> {invoice.invoice_date}<br>
+                    <strong>Due Date:</strong> {invoice.due_date or 'N/A'}
+                </div>
+            </div>
+        </div>
+
+        {irn_section}
+
+        <div class="info-grid">
+            <div class="info-box">
+                <h4>Bill To</h4>
+                <p><strong>{invoice.customer_name}</strong></p>
+                <p>{billing_address}</p>
+                <p><strong>GSTIN:</strong> {invoice.customer_gstin or 'N/A (B2C)'}</p>
+                <p><strong>State Code:</strong> {invoice.billing_state_code}</p>
+            </div>
+            <div class="info-box">
+                <h4>Ship To</h4>
+                <p>{shipping_address}</p>
+                <p><strong>State Code:</strong> {invoice.shipping_state_code or invoice.billing_state_code}</p>
+            </div>
+        </div>
+
+        <div class="info-grid">
+            <div class="info-box">
+                <h4>Supply Details</h4>
+                <p><strong>Place of Supply:</strong> {invoice.place_of_supply} ({invoice.place_of_supply_code})</p>
+                <p><strong>Supply Type:</strong> {'Inter-State' if invoice.is_interstate else 'Intra-State'} ({tax_type})</p>
+                <p><strong>Reverse Charge:</strong> {'Yes' if invoice.is_reverse_charge else 'No'}</p>
+            </div>
+            <div class="info-box">
+                <h4>Payment Details</h4>
+                <p><strong>Payment Status:</strong> {invoice.status.value if invoice.status else 'N/A'}</p>
+                <p><strong>Amount Due:</strong> ₹{float(invoice.amount_due or 0):,.2f}</p>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 25px;">#</th>
+                    <th style="width: 200px;">Description</th>
+                    <th>HSN/SAC</th>
+                    <th style="width: 40px;">Qty</th>
+                    <th>UOM</th>
+                    <th>Rate</th>
+                    <th>Taxable</th>
+                    <th>CGST</th>
+                    <th>SGST</th>
+                    <th>IGST</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {items_html}
+            </tbody>
+        </table>
+
+        <table class="totals">
+            <tr>
+                <td>Subtotal</td>
+                <td style="text-align: right;">₹{float(invoice.subtotal or 0):,.2f}</td>
+            </tr>
+            <tr>
+                <td>Discount</td>
+                <td style="text-align: right;">₹{float(invoice.discount_amount or 0):,.2f}</td>
+            </tr>
+            <tr>
+                <td>Taxable Amount</td>
+                <td style="text-align: right;">₹{float(invoice.taxable_amount or 0):,.2f}</td>
+            </tr>
+            <tr>
+                <td>CGST</td>
+                <td style="text-align: right;">₹{float(invoice.cgst_amount or 0):,.2f}</td>
+            </tr>
+            <tr>
+                <td>SGST</td>
+                <td style="text-align: right;">₹{float(invoice.sgst_amount or 0):,.2f}</td>
+            </tr>
+            <tr>
+                <td>IGST</td>
+                <td style="text-align: right;">₹{float(invoice.igst_amount or 0):,.2f}</td>
+            </tr>
+            <tr>
+                <td>CESS</td>
+                <td style="text-align: right;">₹{float(invoice.cess_amount or 0):,.2f}</td>
+            </tr>
+            <tr>
+                <td>Round Off</td>
+                <td style="text-align: right;">₹{float(invoice.round_off or 0):,.2f}</td>
+            </tr>
+            <tr>
+                <td><strong>Grand Total</strong></td>
+                <td style="text-align: right;"><strong>₹{float(invoice.grand_total or 0):,.2f}</strong></td>
+            </tr>
+        </table>
+
+        <div class="amount-words">
+            <strong>Amount in Words:</strong> {total_in_words}
+        </div>
+
+        <div class="footer-grid">
+            <div class="terms">
+                <strong>Terms & Conditions:</strong>
+                <ol style="margin: 5px 0; padding-left: 20px;">
+                    <li>Goods once sold will not be taken back.</li>
+                    <li>Interest @18% p.a. will be charged on delayed payments.</li>
+                    <li>Subject to local jurisdiction only.</li>
+                    <li>E&OE (Errors and Omissions Excepted)</li>
+                </ol>
+            </div>
+            <div class="signature-box">
+                <div class="qr-code">[QR Code]</div>
+                <div class="signature-line">
+                    Authorized Signatory
+                </div>
+            </div>
+        </div>
+
+        <p style="text-align: center; font-size: 9px; color: #999; margin-top: 20px;">
+            This is a computer-generated invoice and does not require a signature.
+            Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        </p>
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(content=html_content)

@@ -140,7 +140,11 @@ class WarrantyClaimCreate(BaseModel):
     installation_id: uuid.UUID
     customer_id: uuid.UUID
     product_id: uuid.UUID
-    serial_number: Optional[str] = None
+    serial_number: str = Field(
+        ...,
+        min_length=1,
+        description="Serial number of the product. Required to validate warranty and track product lifecycle."
+    )
     claim_type: str  # repair, replacement, refund
     issue_description: str = Field(..., min_length=10)
 
@@ -176,7 +180,7 @@ class WarrantyClaimResponse(BaseModel):
     service_request_id: Optional[uuid.UUID] = None
     customer_id: uuid.UUID
     product_id: uuid.UUID
-    serial_number: Optional[str] = None
+    serial_number: str  # Required - links warranty to specific product unit
     claim_type: str
     issue_description: str
     diagnosis: Optional[str] = None

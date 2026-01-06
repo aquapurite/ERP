@@ -15,7 +15,11 @@ class AMCContractCreate(BaseModel):
     customer_address_id: Optional[uuid.UUID] = None
     product_id: uuid.UUID
     installation_id: Optional[uuid.UUID] = None
-    serial_number: Optional[str] = None
+    serial_number: str = Field(
+        ...,
+        min_length=1,
+        description="Serial number of the product. Required to link AMC to specific unit."
+    )
     start_date: date
     duration_months: int = Field(12, ge=1, le=60)
     total_services: int = Field(2, ge=1, le=12)
@@ -65,7 +69,7 @@ class AMCContractResponse(BaseModel):
     status: AMCStatus
     customer: CustomerBrief
     product_id: uuid.UUID
-    serial_number: Optional[str] = None
+    serial_number: str  # Required - links AMC to specific product unit
     start_date: date
     end_date: date
     duration_months: int

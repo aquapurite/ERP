@@ -157,7 +157,7 @@ class WarrantyClaim(Base, TimestampMixin):
 
     # Product
     product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
-    serial_number = Column(String(100))
+    serial_number = Column(String(100), nullable=False, index=True)  # Required - links warranty claim to specific product unit
 
     # Claim details
     claim_type = Column(String(50))  # repair, replacement, refund

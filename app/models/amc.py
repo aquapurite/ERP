@@ -47,7 +47,7 @@ class AMCContract(Base, TimestampMixin):
     # Product/Installation
     product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
     installation_id = Column(UUID(as_uuid=True), ForeignKey("installations.id"))
-    serial_number = Column(String(100), index=True)
+    serial_number = Column(String(100), nullable=False, index=True)  # Required - links AMC to specific product unit
 
     # Duration
     start_date = Column(Date, nullable=False)
