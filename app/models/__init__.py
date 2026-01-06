@@ -340,6 +340,16 @@ from app.models.serialization import (
     SerialStatus,
     ItemType,
 )
+# Multi-Level Approval Workflow
+from app.models.approval import (
+    ApprovalRequest,
+    ApprovalHistory,
+    ApprovalEntityType,
+    ApprovalLevel,
+    ApprovalStatus,
+    get_approval_level,
+    get_approval_level_name,
+)
 
 __all__ = [
     # Access Control
@@ -624,4 +634,12 @@ __all__ = [
     "SupplierCode",
     "SerialStatus",
     "ItemType",
+    # Multi-Level Approval Workflow
+    "ApprovalRequest",
+    "ApprovalHistory",
+    "ApprovalEntityType",
+    "ApprovalLevel",
+    "ApprovalStatus",
+    "get_approval_level",
+    "get_approval_level_name",
 ]

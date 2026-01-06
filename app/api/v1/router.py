@@ -57,6 +57,8 @@ from app.api.v1.endpoints import (
     franchisees,
     # Serialization (Barcode Generation)
     serialization,
+    # Multi-Level Approval Workflow
+    approvals,
 )
 
 
@@ -283,4 +285,10 @@ api_router.include_router(
     serialization.router,
     prefix="/serialization",
     tags=["Serialization (Barcode Generation)"]
+)
+
+# ==================== Multi-Level Approval Workflow ====================
+api_router.include_router(
+    approvals.router,
+    tags=["Approvals (Finance)"]
 )

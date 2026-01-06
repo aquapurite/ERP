@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from app.models.product import Product, ProductVariant
     from app.models.vendor import Vendor
     from app.models.wms import WarehouseBin
+    from app.models.approval import ApprovalRequest
 
 
 # ==================== Enums ====================
@@ -460,6 +461,29 @@ class PurchaseOrder(Base):
     )
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
+    # Multi-level Approval
+    approval_request_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("approval_requests.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Reference to approval request for multi-level approval"
+    )
+    approval_level: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="LEVEL_1, LEVEL_2, LEVEL_3 based on amount"
+    )
+    submitted_for_approval_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+        comment="When PO was submitted for approval"
+    )
+    rejection_reason: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Reason if PO is rejected"
+    )
+
     # Internal Notes
     internal_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
@@ -491,6 +515,10 @@ class PurchaseOrder(Base):
     grns: Mapped[List["GoodsReceiptNote"]] = relationship(
         "GoodsReceiptNote",
         back_populates="purchase_order"
+    )
+    approval_request: Mapped[Optional["ApprovalRequest"]] = relationship(
+        "ApprovalRequest",
+        foreign_keys=[approval_request_id]
     )
 
     @property
