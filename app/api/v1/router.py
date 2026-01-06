@@ -55,6 +55,8 @@ from app.api.v1.endpoints import (
     campaigns,
     # Franchisee CRM (NEW)
     franchisees,
+    # Serialization (Barcode Generation)
+    serialization,
 )
 
 
@@ -274,4 +276,11 @@ api_router.include_router(
     franchisees.router,
     prefix="/franchisees",
     tags=["Franchisee CRM"]
+)
+
+# ==================== Serialization (Barcode Generation) ====================
+api_router.include_router(
+    serialization.router,
+    prefix="/serialization",
+    tags=["Serialization (Barcode Generation)"]
 )

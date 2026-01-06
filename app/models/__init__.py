@@ -330,6 +330,15 @@ from app.models.franchisee import (
     AuditResult,
     ServiceCapability,
 )
+# Serialization (Barcode Generation)
+from app.models.serialization import (
+    SerialSequence,
+    POSerial,
+    ModelCodeReference,
+    SupplierCode,
+    SerialStatus,
+    ItemType,
+)
 
 __all__ = [
     # Access Control
@@ -606,4 +615,11 @@ __all__ = [
     "AuditType",
     "AuditResult",
     "ServiceCapability",
+    # Serialization (Barcode Generation)
+    "SerialSequence",
+    "POSerial",
+    "ModelCodeReference",
+    "SupplierCode",
+    "SerialStatus",
+    "ItemType",
 ]
