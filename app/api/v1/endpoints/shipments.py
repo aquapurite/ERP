@@ -33,6 +33,8 @@ from app.schemas.shipment import (
     BulkShipmentResponse,
     TrackShipmentRequest,
     TrackShipmentResponse,
+    ShipmentLabelResponse,
+    ShipmentInvoiceResponse,
 )
 from app.schemas.transporter import TransporterBrief
 
@@ -746,3 +748,375 @@ async def track_shipment_public(
             ShipmentTrackingResponse.model_validate(t) for t in shipment.tracking_history
         ],
     )
+
+
+# ==================== LABEL & INVOICE ====================
+
+@router.get(
+    "/{shipment_id}/label",
+    response_model=ShipmentLabelResponse,
+    dependencies=[Depends(require_permissions("shipping:view"))]
+)
+async def get_shipping_label(
+    shipment_id: uuid.UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Get shipping label for a shipment."""
+    query = (
+        select(Shipment)
+        .where(Shipment.id == shipment_id)
+        .options(
+            selectinload(Shipment.order),
+            selectinload(Shipment.transporter),
+        )
+    )
+    result = await db.execute(query)
+    shipment = result.scalar_one_or_none()
+
+    if not shipment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Shipment not found"
+        )
+
+    # Generate label URL (in production, this would generate actual PDF/ZPL)
+    label_url = f"/api/v1/shipments/{shipment_id}/label/download"
+
+    return ShipmentLabelResponse(
+        shipment_id=shipment.id,
+        shipment_number=shipment.shipment_number,
+        awb_number=shipment.awb_number,
+        label_url=label_url,
+        format="PDF",
+    )
+
+
+@router.get(
+    "/{shipment_id}/label/download",
+    # No auth required for label download (demo mode - use signed URLs in production)
+)
+async def download_shipping_label(
+    shipment_id: uuid.UUID,
+    db: DB,
+):
+    """Download shipping label as HTML (for demo - production would generate PDF)."""
+    query = (
+        select(Shipment)
+        .where(Shipment.id == shipment_id)
+        .options(
+            selectinload(Shipment.order).selectinload(Order.customer),
+            selectinload(Shipment.transporter),
+            selectinload(Shipment.warehouse),
+        )
+    )
+    result = await db.execute(query)
+    shipment = result.scalar_one_or_none()
+
+    if not shipment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Shipment not found"
+        )
+
+    from fastapi.responses import HTMLResponse
+
+    # Get address details
+    ship_to = shipment.ship_to_address or {}
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Shipping Label - {shipment.shipment_number}</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 20px; }}
+            .label {{ border: 2px solid #000; padding: 20px; max-width: 400px; }}
+            .header {{ text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 10px; }}
+            .awb {{ font-size: 24px; font-weight: bold; letter-spacing: 2px; }}
+            .barcode {{ text-align: center; font-family: 'Libre Barcode 39', cursive; font-size: 48px; margin: 10px 0; }}
+            .section {{ margin: 10px 0; padding: 10px 0; border-bottom: 1px dashed #ccc; }}
+            .label-title {{ font-weight: bold; font-size: 12px; color: #666; }}
+            .label-value {{ font-size: 14px; margin-top: 5px; }}
+            .address {{ font-size: 16px; line-height: 1.5; }}
+            .footer {{ text-align: center; margin-top: 15px; font-size: 12px; }}
+            .logo {{ font-size: 20px; font-weight: bold; color: #0066cc; }}
+        </style>
+    </head>
+    <body>
+        <div class="label">
+            <div class="header">
+                <div class="logo">{shipment.transporter.name if shipment.transporter else 'AQUAPURITE'}</div>
+                <div class="awb">AWB: {shipment.awb_number or shipment.shipment_number}</div>
+                <div class="barcode">*{shipment.awb_number or shipment.shipment_number}*</div>
+            </div>
+
+            <div class="section">
+                <div class="label-title">SHIP TO:</div>
+                <div class="address">
+                    <strong>{shipment.ship_to_name or 'Customer'}</strong><br>
+                    {ship_to.get('address_line1', '')}<br>
+                    {ship_to.get('address_line2', '') + '<br>' if ship_to.get('address_line2') else ''}
+                    {shipment.ship_to_city or ''}, {shipment.ship_to_state or ''}<br>
+                    <strong>PIN: {shipment.ship_to_pincode or ''}</strong><br>
+                    Ph: {shipment.ship_to_phone or ''}
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="label-title">FROM:</div>
+                <div class="label-value">
+                    AQUAPURITE PVT LTD<br>
+                    {shipment.warehouse.address if shipment.warehouse and hasattr(shipment.warehouse, 'address') else 'Central Warehouse, Delhi'}<br>
+                    Ph: +91-9311939076
+                </div>
+            </div>
+
+            <div class="section">
+                <table style="width:100%">
+                    <tr>
+                        <td><span class="label-title">Order:</span><br>{shipment.order.order_number if shipment.order else 'N/A'}</td>
+                        <td><span class="label-title">Weight:</span><br>{shipment.weight_kg} kg</td>
+                        <td><span class="label-title">Boxes:</span><br>{shipment.no_of_boxes}</td>
+                    </tr>
+                    <tr>
+                        <td><span class="label-title">Payment:</span><br>{shipment.payment_mode.value if shipment.payment_mode else 'PREPAID'}</td>
+                        <td colspan="2"><span class="label-title">COD Amount:</span><br>₹{shipment.cod_amount or 0}</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="footer">
+                Shipment Date: {shipment.created_at.strftime('%d-%b-%Y') if shipment.created_at else 'N/A'}<br>
+                <small>Handle with care | Fragile</small>
+            </div>
+        </div>
+
+        <script>window.print();</script>
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(content=html_content)
+
+
+@router.get(
+    "/{shipment_id}/invoice",
+    response_model=ShipmentInvoiceResponse,
+    dependencies=[Depends(require_permissions("shipping:view"))]
+)
+async def get_shipment_invoice(
+    shipment_id: uuid.UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Get invoice for a shipment."""
+    query = (
+        select(Shipment)
+        .where(Shipment.id == shipment_id)
+        .options(selectinload(Shipment.order))
+    )
+    result = await db.execute(query)
+    shipment = result.scalar_one_or_none()
+
+    if not shipment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Shipment not found"
+        )
+
+    invoice_url = f"/api/v1/shipments/{shipment_id}/invoice/download"
+
+    return ShipmentInvoiceResponse(
+        shipment_id=shipment.id,
+        shipment_number=shipment.shipment_number,
+        invoice_url=invoice_url,
+    )
+
+
+@router.get(
+    "/{shipment_id}/invoice/download",
+    # No auth required for invoice download (demo mode - use signed URLs in production)
+)
+async def download_shipment_invoice(
+    shipment_id: uuid.UUID,
+    db: DB,
+):
+    """Download shipment invoice as HTML (for demo - production would generate PDF)."""
+    query = (
+        select(Shipment)
+        .where(Shipment.id == shipment_id)
+        .options(
+            selectinload(Shipment.order).selectinload(Order.customer),
+            selectinload(Shipment.order).selectinload(Order.items),
+            selectinload(Shipment.transporter),
+        )
+    )
+    result = await db.execute(query)
+    shipment = result.scalar_one_or_none()
+
+    if not shipment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Shipment not found"
+        )
+
+    from fastapi.responses import HTMLResponse
+
+    order = shipment.order
+    customer = order.customer if order else None
+    ship_to = shipment.ship_to_address or {}
+
+    # Build items table
+    items_html = ""
+    if order and order.items:
+        for idx, item in enumerate(order.items, 1):
+            items_html += f"""
+            <tr>
+                <td>{idx}</td>
+                <td>{item.product_name}<br><small>SKU: {item.product_sku}</small></td>
+                <td>{item.hsn_code or 'N/A'}</td>
+                <td style="text-align:right">{item.quantity}</td>
+                <td style="text-align:right">₹{item.unit_price:,.2f}</td>
+                <td style="text-align:right">₹{item.total_price:,.2f}</td>
+            </tr>
+            """
+
+    invoice_number = f"INV-{shipment.shipment_number.replace('SHP-', '')}"
+    invoice_date = shipment.created_at.strftime('%d-%b-%Y') if shipment.created_at else datetime.now().strftime('%d-%b-%Y')
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Tax Invoice - {invoice_number}</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }}
+            .invoice {{ max-width: 800px; margin: 0 auto; }}
+            .header {{ display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 10px; }}
+            .company {{ }}
+            .company-name {{ font-size: 24px; font-weight: bold; color: #0066cc; }}
+            .invoice-title {{ font-size: 20px; font-weight: bold; text-align: right; }}
+            .invoice-details {{ text-align: right; }}
+            .addresses {{ display: flex; justify-content: space-between; margin: 20px 0; }}
+            .address-box {{ width: 48%; padding: 10px; border: 1px solid #ddd; }}
+            .address-title {{ font-weight: bold; background: #f0f0f0; padding: 5px; margin: -10px -10px 10px -10px; }}
+            table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
+            th, td {{ border: 1px solid #ddd; padding: 8px; }}
+            th {{ background: #f0f0f0; }}
+            .totals {{ width: 300px; margin-left: auto; }}
+            .totals td {{ border: none; padding: 5px; }}
+            .totals .total-row {{ font-weight: bold; font-size: 16px; border-top: 2px solid #000; }}
+            .footer {{ margin-top: 30px; border-top: 1px solid #ddd; padding-top: 10px; }}
+            .signature {{ text-align: right; margin-top: 50px; }}
+            @media print {{ body {{ margin: 0; }} }}
+        </style>
+    </head>
+    <body>
+        <div class="invoice">
+            <div class="header">
+                <div class="company">
+                    <div class="company-name">AQUAPURITE PRIVATE LIMITED</div>
+                    <div>Plot 36-A KH No 181, Najafgarh</div>
+                    <div>Delhi - 110043, India</div>
+                    <div>GSTIN: 07ABDCA6170C1Z5</div>
+                    <div>Phone: +91-9311939076</div>
+                </div>
+                <div>
+                    <div class="invoice-title">TAX INVOICE</div>
+                    <div class="invoice-details">
+                        <div><strong>Invoice No:</strong> {invoice_number}</div>
+                        <div><strong>Date:</strong> {invoice_date}</div>
+                        <div><strong>Order No:</strong> {order.order_number if order else 'N/A'}</div>
+                        <div><strong>AWB:</strong> {shipment.awb_number or shipment.shipment_number}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="addresses">
+                <div class="address-box">
+                    <div class="address-title">BILL TO:</div>
+                    <strong>{customer.full_name if customer else 'Customer'}</strong><br>
+                    {order.billing_address.get('address_line1', ship_to.get('address_line1', '')) if order and order.billing_address else ship_to.get('address_line1', '')}<br>
+                    {order.billing_address.get('city', ship_to.get('city', '')) if order and order.billing_address else ship_to.get('city', '')},
+                    {order.billing_address.get('state', ship_to.get('state', '')) if order and order.billing_address else ship_to.get('state', '')} -
+                    {order.billing_address.get('pincode', ship_to.get('pincode', '')) if order and order.billing_address else ship_to.get('pincode', '')}<br>
+                    Phone: {customer.phone if customer else shipment.ship_to_phone or ''}
+                </div>
+                <div class="address-box">
+                    <div class="address-title">SHIP TO:</div>
+                    <strong>{shipment.ship_to_name or 'Customer'}</strong><br>
+                    {ship_to.get('address_line1', '')}<br>
+                    {shipment.ship_to_city or ''}, {shipment.ship_to_state or ''} - {shipment.ship_to_pincode or ''}<br>
+                    Phone: {shipment.ship_to_phone or ''}
+                </div>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:30px">#</th>
+                        <th>Product Description</th>
+                        <th style="width:80px">HSN</th>
+                        <th style="width:50px">Qty</th>
+                        <th style="width:100px">Unit Price</th>
+                        <th style="width:100px">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {items_html}
+                </tbody>
+            </table>
+
+            <table class="totals">
+                <tr>
+                    <td>Subtotal:</td>
+                    <td style="text-align:right">₹{order.subtotal:,.2f if order else 0}</td>
+                </tr>
+                <tr>
+                    <td>CGST (9%):</td>
+                    <td style="text-align:right">₹{(order.tax_amount/2):,.2f if order and order.tax_amount else 0}</td>
+                </tr>
+                <tr>
+                    <td>SGST (9%):</td>
+                    <td style="text-align:right">₹{(order.tax_amount/2):,.2f if order and order.tax_amount else 0}</td>
+                </tr>
+                <tr>
+                    <td>Shipping:</td>
+                    <td style="text-align:right">₹{order.shipping_amount:,.2f if order else 0}</td>
+                </tr>
+                <tr>
+                    <td>Discount:</td>
+                    <td style="text-align:right">-₹{order.discount_amount:,.2f if order else 0}</td>
+                </tr>
+                <tr class="total-row">
+                    <td>GRAND TOTAL:</td>
+                    <td style="text-align:right">₹{order.total_amount:,.2f if order else 0}</td>
+                </tr>
+            </table>
+
+            <div class="footer">
+                <div><strong>Payment Method:</strong> {order.payment_method.value if order else 'N/A'}</div>
+                <div><strong>Payment Status:</strong> {order.payment_status.value if order else 'N/A'}</div>
+                <br>
+                <div><strong>Terms & Conditions:</strong></div>
+                <ol style="font-size:10px; color:#666;">
+                    <li>Goods once sold will not be taken back.</li>
+                    <li>All disputes are subject to Delhi jurisdiction.</li>
+                    <li>E&OE - Errors and Omissions Excepted.</li>
+                </ol>
+            </div>
+
+            <div class="signature">
+                <div>For AQUAPURITE PRIVATE LIMITED</div>
+                <br><br><br>
+                <div>Authorized Signatory</div>
+            </div>
+        </div>
+
+        <script>window.print();</script>
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(content=html_content)
