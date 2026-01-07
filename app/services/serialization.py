@@ -1,13 +1,38 @@
 """
 Serialization Service for Barcode Generation
 
-Barcode Structure: APFSZAIEL000001 (15 characters)
-- AP: Brand Prefix (Aquapurite)
-- FS: Supplier Code (2 letters)
-- Z: Year Code (A=2000, B=2001, ... Z=2025, AA=2026...)
-- A: Month Code (A=Jan, B=Feb, ... L=Dec)
-- IEL: Model Code (3+ letters)
-- 000001: Serial Number (6 digits, 000001-999999)
+All Barcodes are 16 characters with 8-digit serial numbers for future scalability.
+
+Two Barcode Formats:
+
+1. FINISHED GOODS (FG) - 16 characters:
+   Format: APAAAIIEL00000001
+   - AP: Brand Prefix (2 chars)
+   - AA: Year Code (2 chars: A-Z then AA, AB...)
+   - A: Month Code (1 char: A=Jan...L=Dec)
+   - IEL: Model Code (3 chars)
+   - 00000001: Serial Number (8 digits)
+
+2. SPARE PARTS (SP) - 16 characters:
+   Format: APFSAAEC00000001
+   - AP: Brand Prefix (2 chars)
+   - FS/ST: Supplier Code (2 chars: FS=FastTrack, ST=STOS)
+   - A: Year Code (1 char: A=2000...Z=2025, wraps after Z)
+   - A: Month Code (1 char: A=Jan...L=Dec)
+   - EC/PR: Channel Code (2 chars: EC=Economical, PR=Premium)
+   - 00000001: Serial Number (8 digits)
+
+Key Differences:
+- FG barcode has NO supplier code, uses 2-char year
+- Spare barcode has supplier code + channel code, uses 1-char year
+
+Spare Parts Categories:
+- Economical (EC): Supplied by FastTrack (FS)
+- Premium (PR): Supplied by STOS (ST)
+
+Same spare part item can have TWO series:
+- SPPRG001 → APFSAAEC00000001 (Economical from FastTrack)
+- SPPRG001 → APSTAAPR00000001 (Premium from STOS)
 """
 
 import uuid
@@ -51,6 +76,19 @@ class SerializationService:
 
     # Month code mapping: A=Jan, B=Feb, ... L=Dec
     MONTH_CODES = "ABCDEFGHIJKL"
+
+    # Supplier to Channel mapping for Spare Parts
+    # Supplier Code -> Channel Code
+    SUPPLIER_CHANNEL_MAP = {
+        "FS": "EC",  # FastTrack -> Economical
+        "ST": "PR",  # STOS -> Premium
+    }
+
+    # Reverse mapping: Channel -> Supplier
+    CHANNEL_SUPPLIER_MAP = {
+        "EC": "FS",  # Economical -> FastTrack
+        "PR": "ST",  # Premium -> STOS
+    }
 
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -99,7 +137,84 @@ class SerializationService:
         """Parse month code back to month number"""
         return self.MONTH_CODES.index(code.upper()) + 1
 
+    def get_year_code_single(self, year: int = None) -> str:
+        """
+        Get single-character year code for spare parts.
+        Uses A-Z only (2000-2025), then wraps around or uses extended logic.
+        For years beyond 2025, we cycle (2026=A, 2027=B, etc.) or use modulo.
+        """
+        if year is None:
+            year = datetime.now().year
+
+        offset = year - self.YEAR_BASE
+
+        if offset < 0:
+            raise ValueError(f"Year {year} is before base year {self.YEAR_BASE}")
+
+        # Use modulo 26 to keep single character (wraps after Z)
+        # So 2026 = offset 26 -> 26 % 26 = 0 -> 'A'
+        # 2027 = offset 27 -> 27 % 26 = 1 -> 'B'
+        return chr(65 + (offset % 26))  # A=65 in ASCII
+
+    def get_channel_from_supplier(self, supplier_code: str) -> str:
+        """Get channel code from supplier code"""
+        channel = self.SUPPLIER_CHANNEL_MAP.get(supplier_code.upper())
+        if not channel:
+            raise ValueError(f"Unknown supplier code: {supplier_code}. Valid: {list(self.SUPPLIER_CHANNEL_MAP.keys())}")
+        return channel
+
+    def get_supplier_from_channel(self, channel_code: str) -> str:
+        """Get supplier code from channel code"""
+        supplier = self.CHANNEL_SUPPLIER_MAP.get(channel_code.upper())
+        if not supplier:
+            raise ValueError(f"Unknown channel code: {channel_code}. Valid: {list(self.CHANNEL_SUPPLIER_MAP.keys())}")
+        return supplier
+
     # ==================== Barcode Generation ====================
+
+    # Serial number length (8 digits for 99,999,999 units)
+    SERIAL_DIGITS = 8
+    MAX_SERIAL = 99999999
+
+    def generate_fg_barcode(
+        self,
+        year_code: str,
+        month_code: str,
+        model_code: str,
+        serial_number: int
+    ) -> str:
+        """
+        Generate a FINISHED GOODS barcode (16 chars).
+
+        Format: APAAAIIEL00000001
+        - AP: Brand prefix (2)
+        - AA: Year code (2)
+        - A: Month code (1)
+        - IEL: Model code (3)
+        - 00000001: Serial number (8 digits)
+        """
+        return f"{self.BRAND_PREFIX}{year_code}{month_code}{model_code.upper()}{serial_number:08d}"
+
+    def generate_spare_barcode(
+        self,
+        supplier_code: str,
+        year_code: str,
+        month_code: str,
+        channel_code: str,
+        serial_number: int
+    ) -> str:
+        """
+        Generate a SPARE PARTS barcode (16 chars).
+
+        Format: APFSAAEC00000001
+        - AP: Brand prefix (2)
+        - FS: Supplier code (2)
+        - A: Year code (1 char - single letter)
+        - A: Month code (1)
+        - EC: Channel code (2)
+        - 00000001: Serial number (8 digits)
+        """
+        return f"{self.BRAND_PREFIX}{supplier_code.upper()}{year_code}{month_code}{channel_code.upper()}{serial_number:08d}"
 
     def generate_barcode(
         self,
@@ -107,63 +222,94 @@ class SerializationService:
         year_code: str,
         month_code: str,
         model_code: str,
-        serial_number: int
+        serial_number: int,
+        item_type: ItemType = ItemType.FINISHED_GOODS
     ) -> str:
         """
-        Generate a barcode string.
+        Generate a barcode based on item type.
 
-        Format: APFSZAIEL000001
-        - AP: Brand prefix
-        - FS: Supplier code (2 letters)
-        - Z: Year code
-        - A: Month code
-        - IEL: Model code (3+ letters)
-        - 000001: Serial number (6 digits)
+        For FG: Uses model_code, no supplier
+        For Spare: Uses channel_code (derived from supplier), includes supplier
         """
-        return f"{self.BRAND_PREFIX}{supplier_code.upper()}{year_code}{month_code}{model_code.upper()}{serial_number:06d}"
+        if item_type == ItemType.SPARE_PART:
+            # Get channel code from supplier
+            channel_code = self.get_channel_from_supplier(supplier_code)
+            # Use single-char year for spare parts
+            year_single = year_code[0] if len(year_code) > 1 else year_code
+            return self.generate_spare_barcode(
+                supplier_code=supplier_code,
+                year_code=year_single,
+                month_code=month_code,
+                channel_code=channel_code,
+                serial_number=serial_number
+            )
+        else:
+            # FG barcode (no supplier code in barcode)
+            return self.generate_fg_barcode(
+                year_code=year_code,
+                month_code=month_code,
+                model_code=model_code,
+                serial_number=serial_number
+            )
+
+    def parse_fg_barcode(self, barcode: str) -> Dict:
+        """
+        Parse a FG barcode (16 chars): APAAAIIEL00000001
+        """
+        if len(barcode) != 16:
+            raise ValueError(f"Invalid FG barcode length: {len(barcode)}, expected 16")
+
+        return {
+            "barcode_type": "FG",
+            "brand_prefix": barcode[:2],      # AP
+            "year_code": barcode[2:4],        # AA
+            "month_code": barcode[4],         # A
+            "model_code": barcode[5:8],       # IEL
+            "serial_number": int(barcode[8:]),  # 00000001
+        }
+
+    def parse_spare_barcode(self, barcode: str) -> Dict:
+        """
+        Parse a Spare Parts barcode (16 chars): APFSAAEC00000001
+        """
+        if len(barcode) != 16:
+            raise ValueError(f"Invalid Spare barcode length: {len(barcode)}, expected 16")
+
+        supplier_code = barcode[2:4]
+        channel_code = barcode[6:8]
+
+        return {
+            "barcode_type": "SPARE",
+            "brand_prefix": barcode[:2],       # AP
+            "supplier_code": supplier_code,    # FS or ST
+            "year_code": barcode[4],           # A (single char)
+            "month_code": barcode[5],          # A
+            "channel_code": channel_code,      # EC or PR
+            "serial_number": int(barcode[8:]),  # 00000001
+            "category": "Economical" if channel_code == "EC" else "Premium",
+        }
 
     def parse_barcode(self, barcode: str) -> Dict:
         """
-        Parse a barcode into its components.
+        Parse a barcode and auto-detect type (FG or Spare).
 
-        Returns dict with: brand_prefix, supplier_code, year_code, month_code, model_code, serial_number
+        FG format: APAAAIIEL00000001 (year is 2 chars at position 2-4)
+        Spare format: APFSAAEC00000001 (supplier at 2-4, year is 1 char at 4)
         """
-        if len(barcode) < 14:
-            raise ValueError(f"Invalid barcode length: {len(barcode)}, expected at least 14")
+        if len(barcode) != 16:
+            raise ValueError(f"Invalid barcode length: {len(barcode)}, expected 16")
 
-        # Brand prefix is first 2 chars
-        brand_prefix = barcode[:2]
+        # Detect type: Check if position 2-4 looks like year code or supplier code
+        # Supplier codes are FS, ST (consonant patterns)
+        # Year codes are AA, AB, etc. or single letters
+        potential_supplier = barcode[2:4]
 
-        # Supplier code is next 2 chars
-        supplier_code = barcode[2:4]
-
-        # Year code is 1-2 chars (check if double letter)
-        if barcode[5].isalpha() and barcode[4].isalpha():
-            # Double letter year code (AA, AB, etc.)
-            year_code = barcode[4:6]
-            remaining = barcode[6:]
+        if potential_supplier in self.SUPPLIER_CHANNEL_MAP:
+            # It's a spare parts barcode
+            return self.parse_spare_barcode(barcode)
         else:
-            year_code = barcode[4]
-            remaining = barcode[5:]
-
-        # Month code is 1 char
-        month_code = remaining[0]
-        remaining = remaining[1:]
-
-        # Serial is last 6 digits
-        serial_number = int(remaining[-6:])
-
-        # Model code is everything between month and serial
-        model_code = remaining[:-6]
-
-        return {
-            "brand_prefix": brand_prefix,
-            "supplier_code": supplier_code,
-            "year_code": year_code,
-            "month_code": month_code,
-            "model_code": model_code,
-            "serial_number": serial_number,
-        }
+            # It's a FG barcode
+            return self.parse_fg_barcode(barcode)
 
     # ==================== Sequence Management ====================
 
@@ -229,9 +375,9 @@ class SerializationService:
         start_serial = sequence.last_serial + 1
         end_serial = start_serial + quantity - 1
 
-        if end_serial > 999999:
+        if end_serial > self.MAX_SERIAL:
             raise ValueError(
-                f"Serial number overflow! Max is 999999, requested end: {end_serial}. "
+                f"Serial number overflow! Max is {self.MAX_SERIAL}, requested end: {end_serial}. "
                 f"Current last serial for {sequence.supplier_code}/{sequence.model_code}: {sequence.last_serial}"
             )
 
@@ -277,6 +423,12 @@ class SerializationService:
 
             # Generate individual serial records
             item_barcodes = []
+
+            # For spare parts, get the channel code
+            channel_code = None
+            if item.item_type == ItemType.SPARE_PART:
+                channel_code = self.get_channel_from_supplier(request.supplier_code)
+
             for serial_num in range(start_serial, end_serial + 1):
                 barcode = self.generate_barcode(
                     supplier_code=request.supplier_code,
@@ -284,6 +436,7 @@ class SerializationService:
                     month_code=month_code,
                     model_code=item.model_code,
                     serial_number=serial_num,
+                    item_type=item.item_type,
                 )
 
                 po_serial = POSerial(
@@ -296,7 +449,7 @@ class SerializationService:
                     item_type=item.item_type,
                     brand_prefix=self.BRAND_PREFIX,
                     supplier_code=request.supplier_code.upper(),
-                    year_code=year_code,
+                    year_code=year_code if item.item_type != ItemType.SPARE_PART else year_code[0],
                     month_code=month_code,
                     serial_number=serial_num,
                     barcode=barcode,
