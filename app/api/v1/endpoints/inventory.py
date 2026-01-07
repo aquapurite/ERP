@@ -27,7 +27,7 @@ from app.schemas.inventory import (
 from app.services.inventory_service import InventoryService
 
 
-router = APIRouter(prefix="/inventory", tags=["Inventory"])
+router = APIRouter(tags=["Inventory"])
 
 
 # ==================== STOCK ITEMS ====================

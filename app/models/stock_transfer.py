@@ -79,6 +79,10 @@ class StockTransfer(Base, TimestampMixin):
     notes = Column(Text)
     internal_notes = Column(Text)
 
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
     # Relationships
     from_warehouse = relationship(
         "Warehouse",

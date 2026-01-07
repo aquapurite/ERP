@@ -23,7 +23,7 @@ from app.schemas.stock_transfer import (
 from app.services.transfer_service import TransferService
 
 
-router = APIRouter(prefix="/transfers", tags=["Stock Transfers"])
+router = APIRouter(tags=["Stock Transfers"])
 
 
 @router.get(

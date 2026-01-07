@@ -25,7 +25,7 @@ from app.schemas.customer import CustomerBrief
 from app.services.service_request_service import ServiceRequestService
 
 
-router = APIRouter(prefix="/service-requests", tags=["Service Requests"])
+router = APIRouter(tags=["Service Requests"])
 
 
 def _build_service_response(sr) -> ServiceRequestResponse:

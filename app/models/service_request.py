@@ -166,6 +166,8 @@ class ServiceRequest(Base, TimestampMixin):
 
     # Audit
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     customer = relationship("Customer", back_populates="service_requests")

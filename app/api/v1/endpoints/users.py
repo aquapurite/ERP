@@ -23,7 +23,7 @@ from app.services.auth_service import AuthService
 from app.services.audit_service import AuditService
 
 
-router = APIRouter(prefix="/users", tags=["Users"])
+router = APIRouter(tags=["Users"])
 
 
 @router.get(

@@ -23,7 +23,7 @@ from app.schemas.product import (
 from app.services.product_service import ProductService
 
 
-router = APIRouter(prefix="/products", tags=["Products"])
+router = APIRouter(tags=["Products"])
 
 
 # ==================== PRODUCT CRUD ====================

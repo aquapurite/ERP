@@ -14,7 +14,7 @@ from app.schemas.brand import (
 from app.services.product_service import ProductService
 
 
-router = APIRouter(prefix="/brands", tags=["Brands"])
+router = APIRouter(tags=["Brands"])
 
 
 @router.get("", response_model=BrandListResponse)

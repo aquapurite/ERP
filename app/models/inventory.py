@@ -89,6 +89,10 @@ class StockItem(Base, TimestampMixin):
 
     notes = Column(Text)
 
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
     # Relationships
     product = relationship("Product", back_populates="stock_items")
     variant = relationship("ProductVariant")

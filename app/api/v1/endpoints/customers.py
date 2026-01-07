@@ -20,7 +20,7 @@ from app.services.order_service import OrderService
 from app.services.customer360_service import Customer360Service
 
 
-router = APIRouter(prefix="/customers", tags=["Customers"])
+router = APIRouter(tags=["Customers"])
 
 
 @router.get(

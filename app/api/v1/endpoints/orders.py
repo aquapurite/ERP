@@ -26,7 +26,7 @@ from app.schemas.customer import CustomerBrief
 from app.services.order_service import OrderService
 
 
-router = APIRouter(prefix="/orders", tags=["Orders"])
+router = APIRouter(tags=["Orders"])
 
 
 def _build_order_response(order) -> OrderResponse:

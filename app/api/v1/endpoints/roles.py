@@ -18,7 +18,7 @@ from app.services.rbac_service import RBACService
 from app.services.audit_service import AuditService
 
 
-router = APIRouter(prefix="/roles", tags=["Roles"])
+router = APIRouter(tags=["Roles"])
 
 
 @router.get(

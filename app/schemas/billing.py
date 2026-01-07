@@ -201,7 +201,7 @@ class InvoiceResponse(InvoiceBase):
 
 class InvoiceListResponse(BaseModel):
     """Response for listing invoices."""
-    items: List[InvoiceResponse]
+    items: List["InvoiceBrief"]
     total: int
     skip: int
     limit: int
@@ -209,12 +209,15 @@ class InvoiceListResponse(BaseModel):
 
 
 class InvoiceBrief(BaseModel):
-    """Brief invoice for dropdowns."""
+    """Brief invoice for listing."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     invoice_number: str
     invoice_date: date
-    total_amount: Decimal
-    status: str
+    customer_name: str
+    grand_total: Decimal
+    status: InvoiceStatus
 
 
 class InvoiceApproveRequest(BaseModel):

@@ -868,7 +868,7 @@ async def list_eway_bills(
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
-    query = query.order_by(EWayBill.created_at.desc()).offset(skip).limit(limit)
+    query = query.options(selectinload(EWayBill.items)).order_by(EWayBill.created_at.desc()).offset(skip).limit(limit)
     result = await db.execute(query)
     ewbs = result.scalars().all()
 

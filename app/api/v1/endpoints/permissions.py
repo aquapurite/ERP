@@ -8,7 +8,7 @@ from app.schemas.permission import PermissionListResponse, PermissionResponse, P
 from app.services.rbac_service import RBACService
 
 
-router = APIRouter(prefix="/permissions", tags=["Permissions"])
+router = APIRouter(tags=["Permissions"])
 
 
 @router.get(

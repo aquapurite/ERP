@@ -6,7 +6,7 @@ from app.services.auth_service import AuthService
 from app.services.audit_service import AuditService
 
 
-router = APIRouter(prefix="/auth", tags=["Authentication"])
+router = APIRouter(tags=["Authentication"])
 
 
 @router.post("/login", response_model=TokenResponse)

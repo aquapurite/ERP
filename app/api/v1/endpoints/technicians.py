@@ -21,7 +21,7 @@ from app.schemas.technician import (
 from datetime import datetime
 
 
-router = APIRouter(prefix="/technicians", tags=["Technicians"])
+router = APIRouter(tags=["Technicians"])
 
 
 async def _generate_employee_code(db) -> str:

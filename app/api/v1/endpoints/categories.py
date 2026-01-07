@@ -16,7 +16,7 @@ from app.schemas.category import (
 from app.services.product_service import ProductService
 
 
-router = APIRouter(prefix="/categories", tags=["Categories"])
+router = APIRouter(tags=["Categories"])
 
 
 @router.get("", response_model=CategoryListResponse)
