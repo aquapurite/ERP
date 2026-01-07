@@ -1,0 +1,371 @@
+'use client';
+
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { ColumnDef } from '@tanstack/react-table';
+import { MoreHorizontal, Plus, Pencil, Trash2, Warehouse, MapPin } from 'lucide-react';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { DataTable } from '@/components/data-table/data-table';
+import { PageHeader, StatusBadge } from '@/components/common';
+import { warehousesApi } from '@/lib/api';
+import { Warehouse as WarehouseType } from '@/types';
+
+const warehouseTypes = [
+  { label: 'Main Warehouse', value: 'MAIN' },
+  { label: 'Regional Warehouse', value: 'REGIONAL' },
+  { label: 'Service Center', value: 'SERVICE_CENTER' },
+  { label: 'Dealer', value: 'DEALER' },
+  { label: 'Virtual', value: 'VIRTUAL' },
+];
+
+const columns: ColumnDef<WarehouseType>[] = [
+  {
+    accessorKey: 'name',
+    header: 'Warehouse',
+    cell: ({ row }) => (
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+          <Warehouse className="h-5 w-5 text-muted-foreground" />
+        </div>
+        <div>
+          <div className="font-medium">{row.original.name}</div>
+          <div className="text-sm text-muted-foreground">{row.original.code}</div>
+        </div>
+      </div>
+    ),
+  },
+  {
+    accessorKey: 'type',
+    header: 'Type',
+    cell: ({ row }) => (
+      <span className="capitalize text-sm">
+        {row.original.type.replace(/_/g, ' ').toLowerCase()}
+      </span>
+    ),
+  },
+  {
+    accessorKey: 'address',
+    header: 'Location',
+    cell: ({ row }) => (
+      <div className="flex items-center gap-2">
+        <MapPin className="h-4 w-4 text-muted-foreground" />
+        <div className="text-sm">
+          <div>{row.original.city}, {row.original.state}</div>
+          <div className="text-muted-foreground">{row.original.pincode}</div>
+        </div>
+      </div>
+    ),
+  },
+  {
+    accessorKey: 'capacity',
+    header: 'Capacity',
+    cell: ({ row }) => (
+      <span className="text-sm">
+        {row.original.capacity ? `${row.original.capacity.toLocaleString()} units` : '-'}
+      </span>
+    ),
+  },
+  {
+    accessorKey: 'is_active',
+    header: 'Status',
+    cell: ({ row }) => (
+      <StatusBadge status={row.original.is_active ? 'ACTIVE' : 'INACTIVE'} />
+    ),
+  },
+  {
+    id: 'actions',
+    cell: ({ row }) => (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" className="h-8 w-8">
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem>
+            <Pencil className="mr-2 h-4 w-4" />
+            Edit
+          </DropdownMenuItem>
+          <DropdownMenuItem className="text-destructive focus:text-destructive">
+            <Trash2 className="mr-2 h-4 w-4" />
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    ),
+  },
+];
+
+export default function WarehousesPage() {
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [newWarehouse, setNewWarehouse] = useState<{
+    name: string;
+    code: string;
+    type: 'MAIN' | 'REGIONAL' | 'SERVICE_CENTER' | 'DEALER' | 'VIRTUAL';
+    address: string;
+    city: string;
+    state: string;
+    pincode: string;
+    capacity: string;
+    is_active: boolean;
+  }>({
+    name: '',
+    code: '',
+    type: 'MAIN',
+    address: '',
+    city: '',
+    state: '',
+    pincode: '',
+    capacity: '',
+    is_active: true,
+  });
+
+  const queryClient = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['warehouses', page, pageSize],
+    queryFn: () => warehousesApi.list({ page: page + 1, size: pageSize }),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: warehousesApi.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['warehouses'] });
+      toast.success('Warehouse created successfully');
+      setIsDialogOpen(false);
+      setNewWarehouse({
+        name: '',
+        code: '',
+        type: 'MAIN',
+        address: '',
+        city: '',
+        state: '',
+        pincode: '',
+        capacity: '',
+        is_active: true,
+      });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to create warehouse');
+    },
+  });
+
+  const handleCreate = () => {
+    if (!newWarehouse.name.trim()) {
+      toast.error('Warehouse name is required');
+      return;
+    }
+    if (!newWarehouse.code.trim()) {
+      toast.error('Warehouse code is required');
+      return;
+    }
+    createMutation.mutate({
+      name: newWarehouse.name,
+      code: newWarehouse.code.toUpperCase(),
+      type: newWarehouse.type,
+      address: newWarehouse.address,
+      city: newWarehouse.city,
+      state: newWarehouse.state,
+      pincode: newWarehouse.pincode,
+      capacity: newWarehouse.capacity ? parseInt(newWarehouse.capacity) : undefined,
+      is_active: newWarehouse.is_active,
+    });
+  };
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Warehouses"
+        description="Manage warehouse locations and inventory storage"
+        actions={
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Warehouse
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Create New Warehouse</DialogTitle>
+                <DialogDescription>
+                  Add a new warehouse location for inventory storage.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Name *</Label>
+                    <Input
+                      id="name"
+                      placeholder="Warehouse name"
+                      value={newWarehouse.name}
+                      onChange={(e) =>
+                        setNewWarehouse({ ...newWarehouse, name: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="code">Code *</Label>
+                    <Input
+                      id="code"
+                      placeholder="WH001"
+                      value={newWarehouse.code}
+                      onChange={(e) =>
+                        setNewWarehouse({ ...newWarehouse, code: e.target.value.toUpperCase() })
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="type">Type</Label>
+                  <Select
+                    value={newWarehouse.type}
+                    onValueChange={(value: 'MAIN' | 'REGIONAL' | 'SERVICE_CENTER' | 'DEALER' | 'VIRTUAL') =>
+                      setNewWarehouse({ ...newWarehouse, type: value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {warehouseTypes.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>
+                          {type.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="address">Address</Label>
+                  <Input
+                    id="address"
+                    placeholder="Street address"
+                    value={newWarehouse.address}
+                    onChange={(e) =>
+                      setNewWarehouse({ ...newWarehouse, address: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="city">City</Label>
+                    <Input
+                      id="city"
+                      placeholder="City"
+                      value={newWarehouse.city}
+                      onChange={(e) =>
+                        setNewWarehouse({ ...newWarehouse, city: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="state">State</Label>
+                    <Input
+                      id="state"
+                      placeholder="State"
+                      value={newWarehouse.state}
+                      onChange={(e) =>
+                        setNewWarehouse({ ...newWarehouse, state: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="pincode">Pincode</Label>
+                    <Input
+                      id="pincode"
+                      placeholder="110001"
+                      value={newWarehouse.pincode}
+                      onChange={(e) =>
+                        setNewWarehouse({ ...newWarehouse, pincode: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="capacity">Capacity</Label>
+                    <Input
+                      id="capacity"
+                      type="number"
+                      placeholder="Units"
+                      value={newWarehouse.capacity}
+                      onChange={(e) =>
+                        setNewWarehouse({ ...newWarehouse, capacity: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="is_active"
+                    checked={newWarehouse.is_active}
+                    onCheckedChange={(checked) =>
+                      setNewWarehouse({ ...newWarehouse, is_active: checked })
+                    }
+                  />
+                  <Label htmlFor="is_active">Active</Label>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleCreate} disabled={createMutation.isPending}>
+                  {createMutation.isPending ? 'Creating...' : 'Create Warehouse'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        }
+      />
+
+      <DataTable
+        columns={columns}
+        data={data?.items ?? []}
+        searchKey="name"
+        searchPlaceholder="Search warehouses..."
+        isLoading={isLoading}
+        manualPagination
+        pageCount={data?.pages ?? 0}
+        pageIndex={page}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+      />
+    </div>
+  );
+}
