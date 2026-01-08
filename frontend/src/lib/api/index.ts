@@ -756,12 +756,32 @@ export const periodsApi = {
 
 // Cost Centers API
 export const costCentersApi = {
-  list: async (params?: { page?: number; size?: number }) => {
+  list: async (params?: { page?: number; size?: number; is_active?: boolean }) => {
     const { data } = await apiClient.get('/accounting/cost-centers', { params });
     return data;
   },
-  create: async (costCenter: { code: string; name: string; parent_id?: string; description?: string }) => {
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/accounting/cost-centers/${id}`);
+    return data;
+  },
+  create: async (costCenter: {
+    code: string;
+    name: string;
+    cost_center_type: string;
+    parent_id?: string;
+    description?: string;
+    annual_budget?: number;
+  }) => {
     const { data } = await apiClient.post('/accounting/cost-centers', costCenter);
+    return data;
+  },
+  update: async (id: string, costCenter: Partial<{
+    name: string;
+    description?: string;
+    annual_budget?: number;
+    is_active?: boolean;
+  }>) => {
+    const { data } = await apiClient.put(`/accounting/cost-centers/${id}`, costCenter);
     return data;
   },
 };
