@@ -100,7 +100,7 @@ export default function JournalEntriesPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
-  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
@@ -116,7 +116,7 @@ export default function JournalEntriesPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['journal-entries', page, pageSize, statusFilter],
-    queryFn: () => journalEntriesApi.list({ page: page + 1, size: pageSize, status: statusFilter || undefined }),
+    queryFn: () => journalEntriesApi.list({ page: page + 1, size: pageSize, status: statusFilter === 'all' ? undefined : statusFilter }),
   });
 
   const { data: accountsData } = useQuery({
@@ -349,7 +349,7 @@ export default function JournalEntriesPage() {
                 <SelectValue placeholder="All Statuses" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Statuses</SelectItem>
+                <SelectItem value="all">All Statuses</SelectItem>
                 <SelectItem value="DRAFT">Draft</SelectItem>
                 <SelectItem value="PENDING_APPROVAL">Pending</SelectItem>
                 <SelectItem value="APPROVED">Approved</SelectItem>
