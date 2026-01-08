@@ -97,6 +97,65 @@ const binsApi = {
   },
 };
 
+// Separate component for actions cell to properly use hooks
+function BinActionsCell({ bin }: { bin: Bin }) {
+  const queryClient = useQueryClient();
+
+  const lockMutation = useMutation({
+    mutationFn: () => binsApi.lock(bin.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['wms-bins'] });
+      toast.success('Bin locked');
+    },
+  });
+
+  const unlockMutation = useMutation({
+    mutationFn: () => binsApi.unlock(bin.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['wms-bins'] });
+      toast.success('Bin unlocked');
+    },
+  });
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-8 w-8">
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem>
+          <Eye className="mr-2 h-4 w-4" />
+          View Contents
+        </DropdownMenuItem>
+        <DropdownMenuItem>
+          <Pencil className="mr-2 h-4 w-4" />
+          Edit
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {bin.is_locked ? (
+          <DropdownMenuItem onClick={() => unlockMutation.mutate()}>
+            <Unlock className="mr-2 h-4 w-4" />
+            Unlock Bin
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem onClick={() => lockMutation.mutate()}>
+            <Lock className="mr-2 h-4 w-4" />
+            Lock Bin
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem className="text-destructive focus:text-destructive">
+          <Trash2 className="mr-2 h-4 w-4" />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 const binTypeColors: Record<string, string> = {
   STANDARD: 'bg-blue-100 text-blue-800',
   BULK: 'bg-purple-100 text-purple-800',
@@ -144,11 +203,14 @@ const columns: ColumnDef<Bin>[] = [
   {
     accessorKey: 'bin_type',
     header: 'Type',
-    cell: ({ row }) => (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${binTypeColors[row.original.bin_type]}`}>
-        {row.original.bin_type.replace('_', ' ')}
-      </span>
-    ),
+    cell: ({ row }) => {
+      const binType = row.original.bin_type || 'STANDARD';
+      return (
+        <span className={`px-2 py-1 rounded-full text-xs font-medium ${binTypeColors[binType] || 'bg-gray-100 text-gray-800'}`}>
+          {binType.replace('_', ' ')}
+        </span>
+      );
+    },
   },
   {
     accessorKey: 'current_items',
@@ -164,13 +226,13 @@ const columns: ColumnDef<Bin>[] = [
     accessorKey: 'weight',
     header: 'Weight',
     cell: ({ row }) => {
-      const utilization = row.original.max_weight > 0
-        ? (row.original.current_weight / row.original.max_weight) * 100
-        : 0;
+      const currentWeight = row.original.current_weight ?? 0;
+      const maxWeight = row.original.max_weight ?? 0;
+      const utilization = maxWeight > 0 ? (currentWeight / maxWeight) * 100 : 0;
       return (
         <div className="space-y-1">
           <div className="text-sm">
-            {row.original.current_weight.toFixed(1)} / {row.original.max_weight} kg
+            {currentWeight.toFixed(1)} / {maxWeight} kg
           </div>
           <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
             <div
@@ -210,63 +272,7 @@ const columns: ColumnDef<Bin>[] = [
   },
   {
     id: 'actions',
-    cell: ({ row }) => {
-      const queryClient = useQueryClient();
-
-      const lockMutation = useMutation({
-        mutationFn: () => binsApi.lock(row.original.id),
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: ['wms-bins'] });
-          toast.success('Bin locked');
-        },
-      });
-
-      const unlockMutation = useMutation({
-        mutationFn: () => binsApi.unlock(row.original.id),
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: ['wms-bins'] });
-          toast.success('Bin unlocked');
-        },
-      });
-
-      return (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <Eye className="mr-2 h-4 w-4" />
-              View Contents
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Pencil className="mr-2 h-4 w-4" />
-              Edit
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {row.original.is_locked ? (
-              <DropdownMenuItem onClick={() => unlockMutation.mutate()}>
-                <Unlock className="mr-2 h-4 w-4" />
-                Unlock Bin
-              </DropdownMenuItem>
-            ) : (
-              <DropdownMenuItem onClick={() => lockMutation.mutate()}>
-                <Lock className="mr-2 h-4 w-4" />
-                Lock Bin
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuItem className="text-destructive focus:text-destructive">
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      );
-    },
+    cell: ({ row }) => <BinActionsCell bin={row.original} />,
   },
 ];
 
