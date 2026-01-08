@@ -429,11 +429,13 @@ export default function JournalEntriesPage() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="select" disabled>Select account</SelectItem>
-                              {accounts.map((acc: Account) => (
-                                <SelectItem key={acc.id} value={acc.id}>
-                                  {acc.code} - {acc.name}
-                                </SelectItem>
-                              ))}
+                              {accounts
+                                .filter((acc: Account) => acc.id && acc.id.trim() !== '')
+                                .map((acc: Account) => (
+                                  <SelectItem key={acc.id} value={acc.id}>
+                                    {acc.code} - {acc.name}
+                                  </SelectItem>
+                                ))}
                             </SelectContent>
                           </Select>
                         </div>

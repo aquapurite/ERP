@@ -339,11 +339,13 @@ export default function EWayBillsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="select" disabled>Select invoice</SelectItem>
-                      {invoices.map((inv: Invoice) => (
-                        <SelectItem key={inv.id} value={inv.id}>
-                          {inv.invoice_number} - {formatCurrency(inv.total_amount)}
-                        </SelectItem>
-                      ))}
+                      {invoices
+                        .filter((inv: Invoice) => inv.id && inv.id.trim() !== '')
+                        .map((inv: Invoice) => (
+                          <SelectItem key={inv.id} value={inv.id}>
+                            {inv.invoice_number} - {formatCurrency(inv.total_amount)}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>

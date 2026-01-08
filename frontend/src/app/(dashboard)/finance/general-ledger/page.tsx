@@ -159,12 +159,14 @@ export default function GeneralLedgerPage() {
                 <SelectValue placeholder="Select an account to view ledger" />
               </SelectTrigger>
               <SelectContent>
-                {accounts.map((account: Account) => (
-                  <SelectItem key={account.id} value={account.id}>
-                    <span className="font-mono mr-2">{account.code}</span>
-                    {account.name}
-                  </SelectItem>
-                ))}
+                {accounts
+                  .filter((account: Account) => account.id && account.id.trim() !== '')
+                  .map((account: Account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      <span className="font-mono mr-2">{account.code}</span>
+                      {account.name}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
           </div>

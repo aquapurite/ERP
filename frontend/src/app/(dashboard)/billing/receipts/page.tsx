@@ -284,9 +284,11 @@ export default function PaymentReceiptsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="select" disabled>Select customer</SelectItem>
-                      {customers.map((c: Customer) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
+                      {customers
+                        .filter((c: Customer) => c.id && c.id.trim() !== '')
+                        .map((c: Customer) => (
+                          <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -310,11 +312,13 @@ export default function PaymentReceiptsPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">No specific invoice</SelectItem>
-                        {invoices.map((inv: Invoice) => (
-                          <SelectItem key={inv.id} value={inv.id}>
-                            {inv.invoice_number} - Due: {formatCurrency(inv.total_amount - inv.paid_amount)}
-                          </SelectItem>
-                        ))}
+                        {invoices
+                          .filter((inv: Invoice) => inv.id && inv.id.trim() !== '')
+                          .map((inv: Invoice) => (
+                            <SelectItem key={inv.id} value={inv.id}>
+                              {inv.invoice_number} - Due: {formatCurrency(inv.total_amount - inv.paid_amount)}
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                   </div>

@@ -379,9 +379,11 @@ export default function InvoicesPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="select" disabled>Select customer</SelectItem>
-                      {customers.map((c: Customer) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
+                      {customers
+                        .filter((c: Customer) => c.id && c.id.trim() !== '')
+                        .map((c: Customer) => (
+                          <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>

@@ -322,11 +322,13 @@ export default function ChartOfAccountsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">No Parent (Top Level)</SelectItem>
-                      {parentAccounts.map((acc: Account) => (
-                        <SelectItem key={acc.id} value={acc.id}>
-                          {acc.code} - {acc.name}
-                        </SelectItem>
-                      ))}
+                      {parentAccounts
+                        .filter((acc: Account) => acc.id && acc.id.trim() !== '')
+                        .map((acc: Account) => (
+                          <SelectItem key={acc.id} value={acc.id}>
+                            {acc.code} - {acc.name}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>
