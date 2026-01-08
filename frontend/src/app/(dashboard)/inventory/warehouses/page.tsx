@@ -67,7 +67,7 @@ const columns: ColumnDef<WarehouseType>[] = [
     header: 'Type',
     cell: ({ row }) => (
       <span className="capitalize text-sm">
-        {row.original.type.replace(/_/g, ' ').toLowerCase()}
+        {row.original.type?.replace(/_/g, ' ').toLowerCase() ?? '-'}
       </span>
     ),
   },
@@ -78,8 +78,8 @@ const columns: ColumnDef<WarehouseType>[] = [
       <div className="flex items-center gap-2">
         <MapPin className="h-4 w-4 text-muted-foreground" />
         <div className="text-sm">
-          <div>{row.original.city}, {row.original.state}</div>
-          <div className="text-muted-foreground">{row.original.pincode}</div>
+          <div>{[row.original.city, row.original.state].filter(Boolean).join(', ') || '-'}</div>
+          <div className="text-muted-foreground">{row.original.pincode || '-'}</div>
         </div>
       </div>
     ),
