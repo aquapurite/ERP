@@ -273,6 +273,14 @@ class PurchaseRequisitionItem(Base):
 
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # Monthly Quantities - for multi-month PRs (same pattern as PO)
+    # Format: {"2026-01": 1500, "2026-02": 1500, "2026-03": 0}
+    monthly_quantities: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Month-wise quantity breakdown for multi-delivery PRs"
+    )
+
     # Relationships
     requisition: Mapped["PurchaseRequisition"] = relationship(
         "PurchaseRequisition",
@@ -351,6 +359,19 @@ class PurchaseOrder(Base):
     vendor_name: Mapped[str] = mapped_column(String(200), nullable=False)
     vendor_gstin: Mapped[Optional[str]] = mapped_column(String(15), nullable=True)
     vendor_address: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+    # Bill To & Ship To (JSON format)
+    # Format: {"name": "", "address_line1": "", "address_line2": "", "city": "", "state": "", "pincode": "", "gstin": "", "state_code": ""}
+    bill_to: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Bill To address (buyer details)"
+    )
+    ship_to: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Ship To address (delivery location, defaults to bill_to if not provided)"
+    )
 
     # Amounts (Taxable)
     subtotal: Mapped[Decimal] = mapped_column(
@@ -516,6 +537,12 @@ class PurchaseOrder(Base):
         "GoodsReceiptNote",
         back_populates="purchase_order"
     )
+    delivery_schedules: Mapped[List["PODeliverySchedule"]] = relationship(
+        "PODeliverySchedule",
+        back_populates="purchase_order",
+        cascade="all, delete-orphan",
+        order_by="PODeliverySchedule.lot_number"
+    )
     approval_request: Mapped[Optional["ApprovalRequest"]] = relationship(
         "ApprovalRequest",
         foreign_keys=[approval_request_id]
@@ -572,6 +599,11 @@ class PurchaseOrderItem(Base):
     # Snapshot
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     sku: Mapped[str] = mapped_column(String(50), nullable=False)
+    part_code: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="Vendor's part code e.g., AFGPSW2001"
+    )
     hsn_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
 
     # Line Number
@@ -646,6 +678,14 @@ class PurchaseOrderItem(Base):
     # Delivery
     expected_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
+    # Monthly Quantities - for multi-month POs
+    # Format: {"2026-01": 1500, "2026-02": 1500, "2026-03": 0}
+    monthly_quantities: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Month-wise quantity breakdown for multi-delivery POs"
+    )
+
     # Status
     is_closed: Mapped[bool] = mapped_column(
         Boolean,
@@ -665,6 +705,231 @@ class PurchaseOrderItem(Base):
 
     def __repr__(self) -> str:
         return f"<PurchaseOrderItem(sku='{self.sku}', qty={self.quantity_ordered})>"
+
+
+# ==================== PO Delivery Schedule (Lot-wise) ====================
+
+class DeliveryLotStatus(str, Enum):
+    """Status of a delivery lot."""
+    PENDING = "pending"                 # Not yet due
+    ADVANCE_PENDING = "advance_pending" # Advance payment pending
+    ADVANCE_PAID = "advance_paid"       # Advance paid, awaiting delivery
+    DELIVERED = "delivered"             # Goods delivered
+    PAYMENT_PENDING = "payment_pending" # Balance payment pending
+    COMPLETED = "completed"             # Fully paid and delivered
+    CANCELLED = "cancelled"
+
+
+class PODeliverySchedule(Base):
+    """
+    Delivery Schedule / Lot for a Purchase Order.
+
+    Each lot represents a scheduled delivery with its own:
+    - Expected delivery date
+    - Quantity allocation
+    - Advance payment
+    - Balance payment
+
+    Payment Flow per Lot:
+    1. PENDING -> ADVANCE_PENDING (when lot comes due)
+    2. ADVANCE_PENDING -> ADVANCE_PAID (after advance payment)
+    3. ADVANCE_PAID -> DELIVERED (after GRN)
+    4. DELIVERED -> PAYMENT_PENDING (balance due)
+    5. PAYMENT_PENDING -> COMPLETED (after full payment)
+    """
+    __tablename__ = "po_delivery_schedules"
+    __table_args__ = (
+        Index("ix_po_delivery_po", "purchase_order_id"),
+        Index("ix_po_delivery_date", "expected_delivery_date"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Parent PO
+    purchase_order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("purchase_orders.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Lot Identification
+    lot_number: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="Lot sequence: 1, 2, 3..."
+    )
+    lot_name: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="e.g., 'JAN 2026', 'Batch 1', 'Lot A'"
+    )
+    month_code: Mapped[Optional[str]] = mapped_column(
+        String(7),
+        nullable=True,
+        comment="YYYY-MM format for monthly POs"
+    )
+
+    # Schedule
+    expected_delivery_date: Mapped[date] = mapped_column(
+        Date,
+        nullable=False,
+        comment="Expected delivery date for this lot"
+    )
+    delivery_window_start: Mapped[Optional[date]] = mapped_column(
+        Date,
+        nullable=True,
+        comment="Start of delivery window (e.g., 15th Jan)"
+    )
+    delivery_window_end: Mapped[Optional[date]] = mapped_column(
+        Date,
+        nullable=True,
+        comment="End of delivery window (e.g., 25th Jan)"
+    )
+    actual_delivery_date: Mapped[Optional[date]] = mapped_column(
+        Date,
+        nullable=True
+    )
+
+    # Quantity for this Lot
+    total_quantity: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="Total pieces in this lot"
+    )
+    quantity_received: Mapped[int] = mapped_column(
+        Integer,
+        default=0
+    )
+
+    # Value for this Lot (calculated from items)
+    lot_value: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        comment="Taxable value for this lot"
+    )
+    lot_tax: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        nullable=False,
+        comment="Tax amount for this lot"
+    )
+    lot_total: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        comment="Total including tax for this lot"
+    )
+
+    # Payment Terms for this Lot
+    advance_percentage: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2),
+        default=Decimal("25"),
+        comment="Advance payment percentage"
+    )
+    advance_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        nullable=False,
+        comment="Advance payment amount for this lot"
+    )
+    balance_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        nullable=False,
+        comment="Balance payment amount for this lot"
+    )
+    balance_due_days: Mapped[int] = mapped_column(
+        Integer,
+        default=45,
+        comment="Days after delivery for balance payment"
+    )
+
+    # Payment Status
+    advance_paid: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        default=Decimal("0")
+    )
+    advance_paid_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    advance_payment_ref: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    balance_paid: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        default=Decimal("0")
+    )
+    balance_paid_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    balance_payment_ref: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    balance_due_date: Mapped[Optional[date]] = mapped_column(
+        Date,
+        nullable=True,
+        comment="Calculated: delivery_date + balance_due_days"
+    )
+
+    # Status
+    status: Mapped[DeliveryLotStatus] = mapped_column(
+        SQLEnum(DeliveryLotStatus),
+        default=DeliveryLotStatus.PENDING,
+        nullable=False,
+        index=True
+    )
+
+    # GRN Reference
+    grn_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("goods_receipt_notes.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Notes
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    purchase_order: Mapped["PurchaseOrder"] = relationship(
+        "PurchaseOrder",
+        back_populates="delivery_schedules"
+    )
+    grn: Mapped[Optional["GoodsReceiptNote"]] = relationship("GoodsReceiptNote")
+
+    @property
+    def is_advance_paid(self) -> bool:
+        """Check if advance is fully paid."""
+        return self.advance_paid >= self.advance_amount
+
+    @property
+    def is_balance_paid(self) -> bool:
+        """Check if balance is fully paid."""
+        return self.balance_paid >= self.balance_amount
+
+    @property
+    def is_fully_paid(self) -> bool:
+        """Check if lot is fully paid."""
+        return self.is_advance_paid and self.is_balance_paid
+
+    @property
+    def pending_advance(self) -> Decimal:
+        """Pending advance amount."""
+        return max(Decimal("0"), self.advance_amount - self.advance_paid)
+
+    @property
+    def pending_balance(self) -> Decimal:
+        """Pending balance amount."""
+        return max(Decimal("0"), self.balance_amount - self.balance_paid)
+
+    def __repr__(self) -> str:
+        return f"<PODeliverySchedule(lot={self.lot_name}, status={self.status.value})>"
 
 
 # ==================== Goods Receipt Note (GRN) ====================
@@ -867,6 +1132,12 @@ class GRNItem(Base):
     # Snapshot
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     sku: Mapped[str] = mapped_column(String(50), nullable=False)
+    part_code: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="Vendor's part code e.g., AFGPSW2001"
+    )
+    hsn_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
 
     # Quantities
     quantity_expected: Mapped[int] = mapped_column(
@@ -1206,6 +1477,19 @@ class VendorProformaInvoice(Base):
     delivery_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     delivery_terms: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
+    # Bill To & Ship To (JSON format)
+    # Format: {"name": "", "address_line1": "", "address_line2": "", "city": "", "state": "", "pincode": "", "gstin": "", "state_code": ""}
+    bill_to: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Bill To address (buyer details)"
+    )
+    ship_to: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Ship To address (delivery location, defaults to bill_to if not provided)"
+    )
+
     # Payment Terms
     payment_terms: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     credit_days: Mapped[int] = mapped_column(Integer, default=30)
@@ -1313,7 +1597,11 @@ class VendorProformaItem(Base):
     )
 
     # Item Details
-    item_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    part_code: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="Vendor's part code e.g., AFGPSW2001"
+    )
     description: Mapped[str] = mapped_column(String(500), nullable=False)
     hsn_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     uom: Mapped[str] = mapped_column(String(20), default="NOS")

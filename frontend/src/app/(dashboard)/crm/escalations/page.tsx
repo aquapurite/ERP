@@ -1,10 +1,29 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, AlertTriangle, Clock, UserCog } from 'lucide-react';
+import { toast } from 'sonner';
+import { MoreHorizontal, Plus, Eye, AlertTriangle, Clock, UserCog, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,6 +66,26 @@ const escalationsApi = {
       return { items: [], total: 0, pages: 0 };
     }
   },
+  create: async (escalation: Partial<Escalation>) => {
+    const { data } = await apiClient.post('/escalations', escalation);
+    return data;
+  },
+};
+
+interface EscalationFormData {
+  type: 'SERVICE' | 'BILLING' | 'DELIVERY' | 'QUALITY' | 'OTHER';
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  subject: string;
+  description: string;
+  customer_phone: string;
+}
+
+const initialFormData: EscalationFormData = {
+  type: 'SERVICE',
+  priority: 'MEDIUM',
+  subject: '',
+  description: '',
+  customer_phone: '',
 };
 
 const priorityColors: Record<string, string> = {
@@ -167,13 +206,44 @@ const columns: ColumnDef<Escalation>[] = [
 ];
 
 export default function EscalationsPage() {
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [formData, setFormData] = useState<EscalationFormData>(initialFormData);
 
   const { data, isLoading } = useQuery({
     queryKey: ['escalations', page, pageSize],
     queryFn: () => escalationsApi.list({ page: page + 1, size: pageSize }),
   });
+
+  const createMutation = useMutation({
+    mutationFn: escalationsApi.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['escalations'] });
+      toast.success('Escalation created successfully');
+      setIsDialogOpen(false);
+      setFormData(initialFormData);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to create escalation');
+    },
+  });
+
+  const handleSubmit = () => {
+    if (!formData.subject.trim()) {
+      toast.error('Subject is required');
+      return;
+    }
+
+    createMutation.mutate({
+      type: formData.type,
+      priority: formData.priority,
+      subject: formData.subject,
+      description: formData.description || undefined,
+      source_type: 'MANUAL',
+    } as Partial<Escalation>);
+  };
 
   return (
     <div className="space-y-6">
@@ -181,7 +251,7 @@ export default function EscalationsPage() {
         title="Escalations"
         description="Manage escalated issues and SLA tracking"
         actions={
-          <Button>
+          <Button onClick={() => setIsDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Create Escalation
           </Button>
@@ -201,6 +271,98 @@ export default function EscalationsPage() {
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
+
+      {/* Create Escalation Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create Escalation</DialogTitle>
+            <DialogDescription>
+              Create a new escalation for an issue that needs attention
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="type">Type</Label>
+                <Select
+                  value={formData.type}
+                  onValueChange={(value: EscalationFormData['type']) =>
+                    setFormData({ ...formData, type: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(typeLabels).map(([key, label]) => (
+                      <SelectItem key={key} value={key}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="priority">Priority</Label>
+                <Select
+                  value={formData.priority}
+                  onValueChange={(value: EscalationFormData['priority']) =>
+                    setFormData({ ...formData, priority: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select priority" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="LOW">Low</SelectItem>
+                    <SelectItem value="MEDIUM">Medium</SelectItem>
+                    <SelectItem value="HIGH">High</SelectItem>
+                    <SelectItem value="CRITICAL">Critical</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="customer_phone">Customer Phone (Optional)</Label>
+              <Input
+                id="customer_phone"
+                placeholder="+91 98765 43210"
+                value={formData.customer_phone}
+                onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="subject">Subject *</Label>
+              <Input
+                id="subject"
+                placeholder="Brief description of the issue"
+                value={formData.subject}
+                onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                placeholder="Detailed description of the escalation..."
+                rows={3}
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSubmit} disabled={createMutation.isPending}>
+              {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Create Escalation
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

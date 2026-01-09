@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, Pencil, Building2, MapPin, Phone } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, Pencil, Building2, MapPin, Phone, FileText, GraduationCap, ClipboardCheck, LifeBuoy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -47,12 +48,15 @@ const franchiseesApi = {
   },
 };
 
-const columns: ColumnDef<Franchisee>[] = [
+const getColumns = (router: ReturnType<typeof useRouter>): ColumnDef<Franchisee>[] => [
   {
     accessorKey: 'name',
     header: 'Franchisee',
     cell: ({ row }) => (
-      <div className="flex items-center gap-3">
+      <div
+        className="flex items-center gap-3 cursor-pointer hover:opacity-80"
+        onClick={() => router.push(`/distribution/franchisees/${row.original.id}`)}
+      >
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
           <Building2 className="h-5 w-5 text-muted-foreground" />
         </div>
@@ -137,10 +141,27 @@ const columns: ColumnDef<Franchisee>[] = [
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Actions</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push(`/distribution/franchisees/${row.original.id}`)}>
             <Eye className="mr-2 h-4 w-4" />
             View Details
           </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push(`/distribution/franchisees/${row.original.id}?tab=contracts`)}>
+            <FileText className="mr-2 h-4 w-4" />
+            Contracts
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push(`/distribution/franchisees/${row.original.id}?tab=training`)}>
+            <GraduationCap className="mr-2 h-4 w-4" />
+            Training
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push(`/distribution/franchisees/${row.original.id}?tab=audits`)}>
+            <ClipboardCheck className="mr-2 h-4 w-4" />
+            Audits
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push(`/distribution/franchisees/${row.original.id}?tab=support`)}>
+            <LifeBuoy className="mr-2 h-4 w-4" />
+            Support Tickets
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem>
             <Pencil className="mr-2 h-4 w-4" />
             Edit
@@ -152,6 +173,7 @@ const columns: ColumnDef<Franchisee>[] = [
 ];
 
 export default function FranchiseesPage() {
+  const router = useRouter();
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
 
@@ -174,7 +196,7 @@ export default function FranchiseesPage() {
       />
 
       <DataTable
-        columns={columns}
+        columns={getColumns(router)}
         data={data?.items ?? []}
         searchKey="name"
         searchPlaceholder="Search franchisees..."

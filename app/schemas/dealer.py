@@ -82,6 +82,7 @@ class DealerCreate(DealerBase):
     # Credit Terms
     credit_limit: Decimal = Field(Decimal("0"), ge=0)
     credit_days: int = Field(30, ge=0)
+    opening_balance: Decimal = Field(Decimal("0"))
 
     # Security Deposit
     security_deposit: Decimal = Field(Decimal("0"), ge=0)

@@ -67,6 +67,14 @@ class Product(Base):
         index=True,
         comment="3-letter model code for barcode e.g., IEL"
     )
+
+    # Vendor Part Code (supplier's unique code for this item)
+    part_code: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        index=True,
+        comment="Vendor's part code e.g., AFGPSW2001"
+    )
     item_type: Mapped[ProductItemType] = mapped_column(
         SQLEnum(ProductItemType, values_callable=lambda x: [e.value for e in x], native_enum=False),
         default=ProductItemType.FINISHED_GOODS,

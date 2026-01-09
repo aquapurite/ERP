@@ -32,6 +32,15 @@ export const usersApi = {
 };
 
 // Roles API
+// Level mapping: SUPER_ADMIN=0, DIRECTOR=1, HEAD=2, MANAGER=3, EXECUTIVE=4
+const roleLevelToNumber: Record<string, number> = {
+  'SUPER_ADMIN': 0,
+  'DIRECTOR': 1,
+  'HEAD': 2,
+  'MANAGER': 3,
+  'EXECUTIVE': 4,
+};
+
 export const rolesApi = {
   list: async (params?: { page?: number; size?: number }) => {
     const { data } = await apiClient.get<PaginatedResponse<Role>>('/roles', { params });
@@ -41,8 +50,27 @@ export const rolesApi = {
     const { data } = await apiClient.get<Role>(`/roles/${id}`);
     return data;
   },
-  create: async (role: Partial<Role>) => {
-    const { data } = await apiClient.post<Role>('/roles', role);
+  create: async (role: {
+    name: string;
+    code?: string;
+    description?: string;
+    level?: string | number;
+    permission_ids?: string[];
+  }) => {
+    // Transform frontend fields to backend required fields
+    // Backend requires: name, code, level (as number 0-4)
+    const levelValue = typeof role.level === 'number'
+      ? role.level
+      : roleLevelToNumber[role.level || 'EXECUTIVE'] ?? 4;
+
+    const payload = {
+      name: role.name,
+      code: role.code || role.name.toUpperCase().replace(/\s+/g, '_'),
+      level: levelValue,
+      description: role.description || undefined,
+      permission_ids: role.permission_ids || [],
+    };
+    const { data } = await apiClient.post<Role>('/roles', payload);
     return data;
   },
   update: async (id: string, role: Partial<Role>) => {
@@ -67,6 +95,25 @@ export const permissionsApi = {
   getModules: async () => {
     const { data } = await apiClient.get<string[]>('/permissions/modules');
     return data;
+  },
+  getByModule: async (): Promise<Record<string, Permission[]>> => {
+    try {
+      // Try to get permissions grouped by module from backend
+      const { data } = await apiClient.get<Record<string, Permission[]>>('/permissions/by-module');
+      return data;
+    } catch {
+      // Fallback: fetch all permissions and group by module on client
+      const { data } = await apiClient.get<Permission[]>('/permissions');
+      const grouped: Record<string, Permission[]> = {};
+      data.forEach((permission) => {
+        const module = permission.module || 'general';
+        if (!grouped[module]) {
+          grouped[module] = [];
+        }
+        grouped[module].push(permission);
+      });
+      return grouped;
+    }
   },
 };
 
@@ -190,8 +237,24 @@ export const brandsApi = {
     const { data } = await apiClient.get<Brand>(`/brands/${id}`);
     return data;
   },
-  create: async (brand: Partial<Brand>) => {
-    const { data } = await apiClient.post<Brand>('/brands', brand);
+  create: async (brand: {
+    name: string;
+    code?: string;
+    slug?: string;
+    description?: string;
+    logo_url?: string;
+    is_active?: boolean;
+  }) => {
+    // Transform frontend fields to backend required fields
+    // Backend requires: name and slug
+    const payload = {
+      name: brand.name,
+      slug: brand.slug || brand.code?.toLowerCase() || brand.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
+      description: brand.description || undefined,
+      logo_url: brand.logo_url || undefined,
+      is_active: brand.is_active ?? true,
+    };
+    const { data } = await apiClient.post<Brand>('/brands', payload);
     return data;
   },
   update: async (id: string, brand: Partial<Brand>) => {
@@ -241,8 +304,39 @@ export const customersApi = {
     const { data } = await apiClient.get(`/customers/${id}/360`);
     return data;
   },
-  create: async (customer: Partial<Customer>) => {
-    const { data } = await apiClient.post<Customer>('/customers', customer);
+  create: async (customer: {
+    name?: string;
+    first_name?: string;
+    last_name?: string;
+    phone: string;
+    email?: string;
+    customer_type?: string;
+    address_line1?: string;
+    address_line2?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    gst_number?: string;
+    notes?: string;
+  }) => {
+    // Transform frontend fields to backend required fields
+    // Backend expects first_name, not name
+    const nameParts = (customer.name || '').trim().split(' ');
+    const payload = {
+      first_name: customer.first_name || nameParts[0] || 'Customer',
+      last_name: customer.last_name || nameParts.slice(1).join(' ') || undefined,
+      phone: customer.phone,
+      email: customer.email || undefined,
+      customer_type: customer.customer_type || 'INDIVIDUAL',
+      address_line1: customer.address_line1 || undefined,
+      address_line2: customer.address_line2 || undefined,
+      city: customer.city || undefined,
+      state: customer.state || undefined,
+      pincode: customer.pincode || undefined,
+      gstin: customer.gst_number || undefined,
+      notes: customer.notes || undefined,
+    };
+    const { data } = await apiClient.post<Customer>('/customers', payload);
     return data;
   },
   update: async (id: string, customer: Partial<Customer>) => {
@@ -261,13 +355,59 @@ export const warehousesApi = {
     const { data } = await apiClient.get<Warehouse>(`/warehouses/${id}`);
     return data;
   },
-  create: async (warehouse: Partial<Warehouse>) => {
-    const { data } = await apiClient.post<Warehouse>('/warehouses', warehouse);
+  create: async (warehouse: {
+    name: string;
+    code: string;
+    type?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    capacity?: number;
+    is_active?: boolean;
+  }) => {
+    // Transform frontend fields to backend fields
+    const payload = {
+      name: warehouse.name,
+      code: warehouse.code,
+      warehouse_type: warehouse.type?.toLowerCase() || 'main',
+      address_line1: warehouse.address || '',
+      city: warehouse.city,
+      state: warehouse.state,
+      pincode: warehouse.pincode,
+      total_capacity: warehouse.capacity || 0,
+      is_active: warehouse.is_active ?? true,
+    };
+    const { data } = await apiClient.post<Warehouse>('/warehouses', payload);
     return data;
   },
-  update: async (id: string, warehouse: Partial<Warehouse>) => {
-    const { data } = await apiClient.put<Warehouse>(`/warehouses/${id}`, warehouse);
+  update: async (id: string, warehouse: Partial<{
+    name: string;
+    code: string;
+    type: string;
+    address: string;
+    city: string;
+    state: string;
+    pincode: string;
+    capacity: number;
+    is_active: boolean;
+  }>) => {
+    // Transform frontend fields to backend fields
+    const payload: Record<string, unknown> = {};
+    if (warehouse.name !== undefined) payload.name = warehouse.name;
+    if (warehouse.code !== undefined) payload.code = warehouse.code;
+    if (warehouse.type !== undefined) payload.warehouse_type = warehouse.type.toLowerCase();
+    if (warehouse.address !== undefined) payload.address_line1 = warehouse.address;
+    if (warehouse.city !== undefined) payload.city = warehouse.city;
+    if (warehouse.state !== undefined) payload.state = warehouse.state;
+    if (warehouse.pincode !== undefined) payload.pincode = warehouse.pincode;
+    if (warehouse.capacity !== undefined) payload.total_capacity = warehouse.capacity;
+    if (warehouse.is_active !== undefined) payload.is_active = warehouse.is_active;
+    const { data } = await apiClient.put<Warehouse>(`/warehouses/${id}`, payload);
     return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/warehouses/${id}`);
   },
 };
 
@@ -305,13 +445,44 @@ export const vendorsApi = {
     const { data } = await apiClient.get<Vendor>(`/vendors/${id}`);
     return data;
   },
-  create: async (vendor: Partial<Vendor>) => {
-    const { data } = await apiClient.post<Vendor>('/vendors', vendor);
+  create: async (vendor: {
+    name: string;
+    code?: string;
+    email?: string;
+    phone?: string;
+    gst_number?: string;
+    pan_number?: string;
+    tier?: string;
+    legal_name?: string;
+    vendor_type?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+  }) => {
+    // Transform frontend fields to backend required fields
+    const payload = {
+      name: vendor.name,
+      legal_name: vendor.legal_name || vendor.name, // Use name as legal_name if not provided
+      vendor_type: vendor.vendor_type || 'MANUFACTURER',
+      address_line1: vendor.address || 'To be updated',
+      city: vendor.city || 'Delhi',
+      state: vendor.state || 'Delhi',
+      pincode: vendor.pincode || '110001',
+      email: vendor.email || undefined,
+      phone: vendor.phone || undefined,
+      gstin: vendor.gst_number || undefined,
+      pan: vendor.pan_number || undefined,
+    };
+    const { data } = await apiClient.post<Vendor>('/vendors', payload);
     return data;
   },
   update: async (id: string, vendor: Partial<Vendor>) => {
     const { data } = await apiClient.put<Vendor>(`/vendors/${id}`, vendor);
     return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/vendors/${id}`);
   },
 };
 
@@ -343,6 +514,13 @@ export const purchaseOrdersApi = {
   },
   reject: async (id: string, reason: string) => {
     const { data } = await apiClient.post<PurchaseOrder>(`/purchase/orders/${id}/reject`, { reason });
+    return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/purchase/orders/${id}`);
+  },
+  download: async (id: string) => {
+    const { data } = await apiClient.get<string>(`/purchase/orders/${id}/download`);
     return data;
   },
 };
@@ -385,8 +563,41 @@ export const dealersApi = {
     const { data } = await apiClient.get<Dealer>(`/dealers/${id}`);
     return data;
   },
-  create: async (dealer: Partial<Dealer>) => {
-    const { data } = await apiClient.post<Dealer>('/dealers', dealer);
+  create: async (dealer: {
+    name: string;
+    code?: string;
+    type?: string;
+    email?: string;
+    phone?: string;
+    gst_number?: string;
+    pricing_tier?: string;
+    credit_limit?: number;
+  }) => {
+    // Transform frontend fields to backend required fields
+    // Backend requires: name, legal_name, dealer_type, gstin, pan, contact_person, email, phone,
+    // registered_address_line1, registered_city, registered_district, registered_state,
+    // registered_state_code, registered_pincode, region, state
+    const payload = {
+      name: dealer.name,
+      legal_name: dealer.name, // Use name as legal_name
+      dealer_type: dealer.type || 'DEALER',
+      gstin: dealer.gst_number || '00AAAAA0000A1Z0', // Default dummy GSTIN
+      pan: 'AAAAA0000A', // Default dummy PAN
+      contact_person: dealer.name,
+      email: dealer.email || `${dealer.name.toLowerCase().replace(/\s+/g, '.')}@dealer.com`,
+      phone: dealer.phone || '9999999999',
+      registered_address_line1: 'To be updated',
+      registered_city: 'Delhi',
+      registered_district: 'Central Delhi',
+      registered_state: 'Delhi',
+      registered_state_code: '07',
+      registered_pincode: '110001',
+      region: 'NORTH',
+      state: 'Delhi',
+      pricing_tier: dealer.pricing_tier || 'SILVER',
+      credit_limit: dealer.credit_limit || 0,
+    };
+    const { data } = await apiClient.post<Dealer>('/dealers', payload);
     return data;
   },
   update: async (id: string, dealer: Partial<Dealer>) => {
@@ -616,6 +827,17 @@ export const shipmentsApi = {
     const { data } = await apiClient.get('/shipments/sla/at-risk', { params: { days_threshold: daysThreshold } });
     return data;
   },
+  delete: async (id: string) => {
+    await apiClient.delete(`/shipments/${id}`);
+  },
+  downloadLabel: async (id: string) => {
+    const { data } = await apiClient.get<string>(`/shipments/${id}/label/download`);
+    return data;
+  },
+  downloadInvoice: async (id: string) => {
+    const { data } = await apiClient.get<string>(`/shipments/${id}/invoice/download`);
+    return data;
+  },
 };
 
 // Manifests API
@@ -740,6 +962,14 @@ export const periodsApi = {
     const { data } = await apiClient.get('/accounting/periods', { params });
     return data;
   },
+  listPeriods: async (yearId?: string) => {
+    const { data } = await apiClient.get('/accounting/periods', { params: { year_id: yearId } });
+    return data;
+  },
+  listYears: async () => {
+    const { data } = await apiClient.get('/accounting/fiscal-years');
+    return data;
+  },
   getCurrent: async () => {
     const { data } = await apiClient.get('/accounting/periods/current');
     return data;
@@ -748,8 +978,24 @@ export const periodsApi = {
     const { data } = await apiClient.post('/accounting/periods', period);
     return data;
   },
+  createYear: async (year: { name: string; code?: string; start_date: string; end_date: string }) => {
+    const { data } = await apiClient.post('/accounting/fiscal-years', year);
+    return data;
+  },
   close: async (id: string) => {
     const { data } = await apiClient.post(`/accounting/periods/${id}/close`);
+    return data;
+  },
+  closePeriod: async (id: string) => {
+    const { data } = await apiClient.post(`/accounting/periods/${id}/close`);
+    return data;
+  },
+  reopenPeriod: async (id: string) => {
+    const { data } = await apiClient.post(`/accounting/periods/${id}/reopen`);
+    return data;
+  },
+  lockPeriod: async (id: string) => {
+    const { data } = await apiClient.post(`/accounting/periods/${id}/lock`);
     return data;
   },
 };
@@ -800,8 +1046,18 @@ export const journalEntriesApi = {
     const { data } = await apiClient.get(`/accounting/journals/${id}`);
     return data;
   },
-  create: async (entry: { entry_date: string; narration: string; reference?: string; lines: { account_id: string; debit: number; credit: number; narration?: string }[] }) => {
-    const { data } = await apiClient.post('/accounting/journals', entry);
+  create: async (entry: { entry_date: string; narration: string; reference?: string; lines: { account_id: string; debit?: number; credit?: number; debit_amount?: number; credit_amount?: number; description?: string; narration?: string }[] }) => {
+    // Map debit_amount/credit_amount to debit/credit if needed
+    const mappedEntry = {
+      ...entry,
+      lines: entry.lines.map(l => ({
+        account_id: l.account_id,
+        debit: l.debit ?? l.debit_amount ?? 0,
+        credit: l.credit ?? l.credit_amount ?? 0,
+        narration: l.narration ?? l.description,
+      })),
+    };
+    const { data } = await apiClient.post('/accounting/journals', mappedEntry);
     return data;
   },
   submit: async (id: string) => {
@@ -896,6 +1152,13 @@ export const invoicesApi = {
     const { data } = await apiClient.get(`/billing/invoices/${id}/download`);
     return data;
   },
+  print: async (id: string) => {
+    const { data } = await apiClient.get(`/billing/invoices/${id}/print`);
+    return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/billing/invoices/${id}`);
+  },
 };
 
 // Credit/Debit Notes API
@@ -904,8 +1167,32 @@ export const creditDebitNotesApi = {
     const { data } = await apiClient.get('/billing/credit-debit-notes', { params });
     return data;
   },
-  create: async (note: { type: 'CREDIT' | 'DEBIT'; invoice_id?: string; customer_id: string; reason: string; items: { description: string; quantity: number; unit_price: number; tax_rate: number }[] }) => {
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/billing/credit-debit-notes/${id}`);
+    return data;
+  },
+  create: async (note: { type: 'CREDIT' | 'DEBIT'; invoice_id?: string; customer_id: string; reason: string; credit_note_date?: string; subtotal?: number; tax_amount?: number; total_amount?: number; lines?: { description: string; quantity: number; unit_price: number; amount?: number; tax_rate?: number; tax_amount?: number }[]; items?: { description: string; quantity: number; unit_price: number; tax_rate?: number }[] }) => {
     const { data } = await apiClient.post('/billing/credit-debit-notes', note);
+    return data;
+  },
+  approve: async (id: string) => {
+    const { data } = await apiClient.post(`/billing/credit-debit-notes/${id}/approve`);
+    return data;
+  },
+  reject: async (id: string, reason: string) => {
+    const { data } = await apiClient.post(`/billing/credit-debit-notes/${id}/reject`, { reason });
+    return data;
+  },
+  apply: async (id: string, invoiceId: string) => {
+    const { data } = await apiClient.post(`/billing/credit-debit-notes/${id}/apply`, { invoice_id: invoiceId });
+    return data;
+  },
+  cancel: async (id: string) => {
+    const { data } = await apiClient.post(`/billing/credit-debit-notes/${id}/cancel`);
+    return data;
+  },
+  download: async (id: string) => {
+    const { data } = await apiClient.get<string>(`/billing/credit-debit-notes/${id}/download`);
     return data;
   },
 };
@@ -924,9 +1211,15 @@ export const ewayBillsApi = {
     const { data } = await apiClient.post('/billing/eway-bills', ewb);
     return data;
   },
-  generate: async (id: string) => {
-    const { data } = await apiClient.post(`/billing/eway-bills/${id}/generate`);
-    return data;
+  generate: async (ewbData: string | { invoice_id: string; from_gstin?: string; to_gstin?: string; from_place?: string; to_place?: string; transport_mode?: string; vehicle_type?: string; vehicle_number?: string; transporter_name?: string; distance_km?: number }) => {
+    if (typeof ewbData === 'string') {
+      const { data } = await apiClient.post(`/billing/eway-bills/${ewbData}/generate`);
+      return data;
+    } else {
+      // Create and generate in one step
+      const { data } = await apiClient.post('/billing/eway-bills/generate', ewbData);
+      return data;
+    }
   },
   updateVehicle: async (id: string, vehicleData: { vehicle_number: string; transporter_id?: string; reason?: string }) => {
     const { data } = await apiClient.put(`/billing/eway-bills/${id}/update-vehicle`, vehicleData);
@@ -938,6 +1231,14 @@ export const ewayBillsApi = {
   },
   print: async (id: string) => {
     const { data } = await apiClient.get(`/billing/eway-bills/${id}/print`);
+    return data;
+  },
+  extendValidity: async (id: string, extendData: { reason: string; from_place?: string; extend_by_km?: number }) => {
+    const { data } = await apiClient.post(`/billing/eway-bills/${id}/extend`, extendData);
+    return data;
+  },
+  download: async (id: string) => {
+    const { data } = await apiClient.get<string>(`/billing/eway-bills/${id}/print`);
     return data;
   },
 };
@@ -966,6 +1267,202 @@ export const gstReportsApi = {
   },
   getGSTR3B: async (params: { return_period: string }) => {
     const { data } = await apiClient.get('/billing/reports/gstr3b', { params });
+    return data;
+  },
+};
+
+// ============================================
+// PROCUREMENT API
+// ============================================
+
+// GRN (Goods Receipt Note) API
+export const grnApi = {
+  list: async (params?: { page?: number; size?: number; status?: string; po_id?: string; warehouse_id?: string }) => {
+    const { data } = await apiClient.get('/purchase/grn', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/purchase/grn/${id}`);
+    return data;
+  },
+  create: async (grn: { po_id: string; warehouse_id: string; received_date: string; notes?: string }) => {
+    const { data } = await apiClient.post('/purchase/grn', grn);
+    return data;
+  },
+  scanSerial: async (id: string, scanData: { serial_number: string }) => {
+    const { data } = await apiClient.post(`/purchase/grn/${id}/scan`, scanData);
+    return data;
+  },
+  addItem: async (id: string, item: { product_id: string; received_quantity: number; rejected_quantity?: number; rejection_reason?: string }) => {
+    const { data } = await apiClient.post(`/purchase/grn/${id}/items`, item);
+    return data;
+  },
+  updateItem: async (id: string, itemId: string, item: { received_quantity?: number; rejected_quantity?: number; rejection_reason?: string; qc_status?: string }) => {
+    const { data } = await apiClient.put(`/purchase/grn/${id}/items/${itemId}`, item);
+    return data;
+  },
+  complete: async (id: string) => {
+    const { data } = await apiClient.post(`/purchase/grn/${id}/complete`);
+    return data;
+  },
+  cancel: async (id: string, reason: string) => {
+    const { data } = await apiClient.post(`/purchase/grn/${id}/cancel`, { reason });
+    return data;
+  },
+  getSerials: async (id: string) => {
+    const { data } = await apiClient.get(`/purchase/grn/${id}/serials`);
+    return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/purchase/grn/${id}`);
+  },
+  download: async (id: string) => {
+    const { data } = await apiClient.get<string>(`/purchase/grn/${id}/download`);
+    return data;
+  },
+};
+
+// Vendor Proformas API
+export const vendorProformasApi = {
+  list: async (params?: { page?: number; size?: number; status?: string; vendor_id?: string }) => {
+    const { data } = await apiClient.get('/purchase/vendor-proformas', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/purchase/vendor-proformas/${id}`);
+    return data;
+  },
+  create: async (proforma: { vendor_id: string; proforma_number: string; proforma_date: string; due_date: string; items: { product_id: string; quantity: number; unit_price: number; gst_rate: number }[]; notes?: string }) => {
+    const { data } = await apiClient.post('/purchase/vendor-proformas', proforma);
+    return data;
+  },
+  approve: async (id: string) => {
+    const { data } = await apiClient.post(`/purchase/vendor-proformas/${id}/approve`);
+    return data;
+  },
+  reject: async (id: string, reason: string) => {
+    const { data } = await apiClient.post(`/purchase/vendor-proformas/${id}/reject`, { reason });
+    return data;
+  },
+  convertToPO: async (id: string) => {
+    const { data } = await apiClient.post(`/purchase/vendor-proformas/${id}/convert-to-po`);
+    return data;
+  },
+};
+
+// Vendor Invoices API
+export const vendorInvoicesApi = {
+  list: async (params?: { page?: number; size?: number; status?: string; vendor_id?: string }) => {
+    const { data } = await apiClient.get('/purchase/vendor-invoices', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/purchase/vendor-invoices/${id}`);
+    return data;
+  },
+  create: async (invoice: { vendor_id: string; po_id: string; grn_id: string; invoice_number: string; invoice_date: string; due_date: string; items: { grn_item_id: string; quantity: number; unit_price: number; gst_rate: number }[]; notes?: string }) => {
+    const { data } = await apiClient.post('/purchase/vendor-invoices', invoice);
+    return data;
+  },
+  approve: async (id: string) => {
+    const { data } = await apiClient.post(`/purchase/vendor-invoices/${id}/approve`);
+    return data;
+  },
+  reject: async (id: string, reason: string) => {
+    const { data } = await apiClient.post(`/purchase/vendor-invoices/${id}/reject`, { reason });
+    return data;
+  },
+  markPaid: async (id: string, paymentData: { payment_date: string; payment_reference: string; payment_mode: string }) => {
+    const { data } = await apiClient.post(`/purchase/vendor-invoices/${id}/mark-paid`, paymentData);
+    return data;
+  },
+};
+
+// Three-Way Match API
+export const threeWayMatchApi = {
+  list: async (params?: { page?: number; size?: number; status?: string }) => {
+    const { data } = await apiClient.get('/purchase/three-way-match', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/purchase/three-way-match/${id}`);
+    return data;
+  },
+  match: async (matchData: { po_id: string; grn_id: string; vendor_invoice_id: string }) => {
+    const { data } = await apiClient.post('/purchase/three-way-match', matchData);
+    return data;
+  },
+  approve: async (id: string) => {
+    const { data } = await apiClient.post(`/purchase/three-way-match/${id}/approve`);
+    return data;
+  },
+  reject: async (id: string, reason: string) => {
+    const { data } = await apiClient.post(`/purchase/three-way-match/${id}/reject`, { reason });
+    return data;
+  },
+};
+
+// ============================================
+// LOGISTICS API
+// ============================================
+
+// Rate Cards API
+export const rateCardsApi = {
+  list: async (params?: { page?: number; size?: number; transporter_id?: string; is_active?: boolean }) => {
+    const { data } = await apiClient.get('/logistics/rate-cards', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/logistics/rate-cards/${id}`);
+    return data;
+  },
+  create: async (rateCard: { transporter_id: string; name: string; source_zone?: string; destination_zone?: string; weight_slab: string; rate_per_kg: number; min_charge: number; fuel_surcharge_percent?: number; cod_charges?: number; rto_charges?: number; effective_from: string; effective_to?: string; is_active?: boolean }) => {
+    const { data } = await apiClient.post('/logistics/rate-cards', rateCard);
+    return data;
+  },
+  update: async (id: string, rateCard: Partial<{ name: string; source_zone?: string; destination_zone?: string; weight_slab: string; rate_per_kg: number; min_charge: number; fuel_surcharge_percent?: number; cod_charges?: number; rto_charges?: number; effective_from: string; effective_to?: string; is_active?: boolean }>) => {
+    const { data } = await apiClient.put(`/logistics/rate-cards/${id}`, rateCard);
+    return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/logistics/rate-cards/${id}`);
+  },
+  calculate: async (params: { transporter_id: string; source_pincode: string; destination_pincode: string; weight_kg: number; is_cod?: boolean }) => {
+    const { data } = await apiClient.post('/logistics/rate-cards/calculate', params);
+    return data;
+  },
+};
+
+// Serviceability API
+export const serviceabilityApi = {
+  list: async (params?: { page?: number; size?: number; transporter_id?: string; is_active?: boolean }) => {
+    const { data } = await apiClient.get('/serviceability', { params });
+    return data;
+  },
+  check: async (pincode: string) => {
+    const { data } = await apiClient.get(`/serviceability/check/${pincode}`);
+    return data;
+  },
+  bulkCheck: async (pincodes: string[]) => {
+    const { data } = await apiClient.post('/serviceability/bulk-check', { pincodes });
+    return data;
+  },
+  create: async (serviceability: { pincode: string; city: string; state: string; region?: string; transporter_ids?: string[]; prepaid_available?: boolean; cod_available?: boolean; is_active?: boolean }) => {
+    const { data } = await apiClient.post('/serviceability', serviceability);
+    return data;
+  },
+  update: async (id: string, serviceability: Partial<{ city: string; state: string; region?: string; transporter_ids?: string[]; prepaid_available?: boolean; cod_available?: boolean; is_active?: boolean }>) => {
+    const { data } = await apiClient.put(`/serviceability/${id}`, serviceability);
+    return data;
+  },
+  bulkImport: async (file: FormData) => {
+    const { data } = await apiClient.post('/serviceability/bulk-import', file, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  },
+  getDashboard: async () => {
+    const { data } = await apiClient.get('/serviceability/dashboard');
     return data;
   },
 };

@@ -1218,3 +1218,387 @@ async def download_shipment_invoice(
     """
 
     return HTMLResponse(content=html_content)
+
+
+# ==================== SLA DASHBOARD ====================
+
+@router.get(
+    "/sla/dashboard",
+    dependencies=[Depends(require_permissions("shipping:view"))]
+)
+async def get_sla_dashboard(
+    db: DB,
+    warehouse_id: Optional[uuid.UUID] = Query(None),
+    transporter_id: Optional[uuid.UUID] = Query(None),
+):
+    """
+    Get SLA dashboard with delivery performance metrics.
+    
+    Includes:
+    - On-time delivery rate
+    - At-risk shipments (may breach SLA)
+    - Breached shipments (past SLA)
+    - Average delivery time
+    """
+    from datetime import date, timedelta
+    
+    base_query = select(Shipment).where(
+        Shipment.status.in_([
+            ShipmentStatus.PICKED_UP,
+            ShipmentStatus.IN_TRANSIT,
+            ShipmentStatus.OUT_FOR_DELIVERY,
+            ShipmentStatus.DELIVERED,
+        ])
+    )
+    
+    if warehouse_id:
+        base_query = base_query.where(Shipment.warehouse_id == warehouse_id)
+    if transporter_id:
+        base_query = base_query.where(Shipment.transporter_id == transporter_id)
+    
+    result = await db.execute(base_query)
+    shipments = result.scalars().all()
+    
+    today = date.today()
+    
+    # Categorize shipments
+    total = 0
+    on_time = 0
+    breached = 0
+    at_risk = 0
+    in_transit = 0
+    delivered = 0
+    delivery_times = []
+    
+    at_risk_shipments = []
+    breached_shipments = []
+    
+    for s in shipments:
+        total += 1
+        
+        if s.status == ShipmentStatus.DELIVERED:
+            delivered += 1
+            
+            # Check if delivered on time
+            if s.actual_delivery_date and s.promised_delivery_date:
+                if s.actual_delivery_date <= s.promised_delivery_date:
+                    on_time += 1
+                else:
+                    breached += 1
+                    breached_shipments.append({
+                        "shipment_id": str(s.id),
+                        "shipment_number": s.shipment_number,
+                        "awb_number": s.awb_number,
+                        "promised_date": s.promised_delivery_date.isoformat() if s.promised_delivery_date else None,
+                        "actual_date": s.actual_delivery_date.isoformat() if s.actual_delivery_date else None,
+                        "days_late": (s.actual_delivery_date - s.promised_delivery_date).days if s.promised_delivery_date else 0,
+                    })
+            elif s.promised_delivery_date is None:
+                on_time += 1  # No SLA = on time
+            
+            # Calculate delivery time
+            if s.shipped_at and s.delivered_at:
+                days = (s.delivered_at.date() - s.shipped_at.date()).days
+                delivery_times.append(days)
+        
+        else:
+            in_transit += 1
+            
+            # Check if at risk (1 day before breach) or already breached
+            if s.promised_delivery_date:
+                if s.promised_delivery_date < today:
+                    breached += 1
+                    breached_shipments.append({
+                        "shipment_id": str(s.id),
+                        "shipment_number": s.shipment_number,
+                        "awb_number": s.awb_number,
+                        "promised_date": s.promised_delivery_date.isoformat(),
+                        "days_late": (today - s.promised_delivery_date).days,
+                        "status": s.status.value,
+                    })
+                elif s.promised_delivery_date <= today + timedelta(days=1):
+                    at_risk += 1
+                    at_risk_shipments.append({
+                        "shipment_id": str(s.id),
+                        "shipment_number": s.shipment_number,
+                        "awb_number": s.awb_number,
+                        "promised_date": s.promised_delivery_date.isoformat(),
+                        "days_remaining": (s.promised_delivery_date - today).days,
+                        "status": s.status.value,
+                    })
+    
+    # Calculate metrics
+    on_time_rate = (on_time / delivered * 100) if delivered > 0 else 100
+    avg_delivery_days = sum(delivery_times) / len(delivery_times) if delivery_times else 0
+    breach_rate = (breached / total * 100) if total > 0 else 0
+    
+    return {
+        "summary": {
+            "total_shipments": total,
+            "delivered": delivered,
+            "in_transit": in_transit,
+            "on_time_deliveries": on_time,
+            "breached": breached,
+            "at_risk": at_risk,
+        },
+        "metrics": {
+            "on_time_rate": round(on_time_rate, 2),
+            "breach_rate": round(breach_rate, 2),
+            "average_delivery_days": round(avg_delivery_days, 1),
+        },
+        "at_risk_shipments": at_risk_shipments[:10],  # Top 10
+        "breached_shipments": breached_shipments[:10],  # Top 10
+    }
+
+
+@router.get(
+    "/sla/at-risk",
+    dependencies=[Depends(require_permissions("shipping:view"))]
+)
+async def get_at_risk_shipments(
+    db: DB,
+    days_threshold: int = Query(1, ge=0, le=7, description="Days until SLA breach"),
+    warehouse_id: Optional[uuid.UUID] = Query(None),
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+):
+    """
+    Get shipments at risk of SLA breach.
+    
+    Returns shipments where promised_delivery_date is within threshold days.
+    """
+    from datetime import date, timedelta
+    
+    today = date.today()
+    threshold_date = today + timedelta(days=days_threshold)
+    
+    query = (
+        select(Shipment)
+        .where(
+            and_(
+                Shipment.status.in_([
+                    ShipmentStatus.PICKED_UP,
+                    ShipmentStatus.IN_TRANSIT,
+                    ShipmentStatus.OUT_FOR_DELIVERY,
+                ]),
+                Shipment.promised_delivery_date != None,
+                Shipment.promised_delivery_date <= threshold_date,
+            )
+        )
+        .order_by(Shipment.promised_delivery_date)
+    )
+    
+    if warehouse_id:
+        query = query.where(Shipment.warehouse_id == warehouse_id)
+    
+    # Count total
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+    
+    # Paginate
+    skip = (page - 1) * size
+    query = query.offset(skip).limit(size)
+    
+    result = await db.execute(query)
+    shipments = result.scalars().all()
+    
+    items = []
+    for s in shipments:
+        days_remaining = (s.promised_delivery_date - today).days if s.promised_delivery_date else None
+        status_label = "BREACHED" if days_remaining and days_remaining < 0 else "AT_RISK"
+        
+        items.append({
+            "shipment_id": str(s.id),
+            "shipment_number": s.shipment_number,
+            "awb_number": s.awb_number,
+            "status": s.status.value,
+            "promised_date": s.promised_delivery_date.isoformat() if s.promised_delivery_date else None,
+            "days_remaining": days_remaining,
+            "sla_status": status_label,
+            "ship_to_city": s.ship_to_city,
+            "ship_to_pincode": s.ship_to_pincode,
+        })
+    
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "size": size,
+        "pages": ceil(total / size) if total > 0 else 1,
+    }
+
+
+# ==================== POD UPLOAD ====================
+
+@router.post(
+    "/{shipment_id}/pod/upload",
+    dependencies=[Depends(require_permissions("shipping:update"))]
+)
+async def upload_pod(
+    shipment_id: uuid.UUID,
+    db: DB,
+    current_user: CurrentUser,
+    pod_image: Optional[bytes] = None,  # Will be file upload
+    signature_image: Optional[bytes] = None,
+):
+    """
+    Upload Proof of Delivery (POD) images.
+    
+    Use with multipart/form-data to upload POD image and/or signature.
+    """
+    from fastapi import UploadFile, File
+    
+    query = select(Shipment).where(Shipment.id == shipment_id)
+    result = await db.execute(query)
+    shipment = result.scalar_one_or_none()
+    
+    if not shipment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Shipment not found"
+        )
+    
+    # This is a placeholder - in production, upload to S3/GCS
+    pod_image_url = None
+    pod_signature_url = None
+    
+    return {
+        "success": True,
+        "shipment_id": str(shipment_id),
+        "pod_image_url": pod_image_url,
+        "pod_signature_url": pod_signature_url,
+        "message": "POD upload endpoint ready - integrate with file storage"
+    }
+
+
+from fastapi import UploadFile, File, Form
+import os
+from pathlib import Path
+
+
+@router.post(
+    "/{shipment_id}/pod/upload-file",
+    dependencies=[Depends(require_permissions("shipping:update"))]
+)
+async def upload_pod_file(
+    shipment_id: uuid.UUID,
+    db: DB,
+    current_user: CurrentUser,
+    pod_image: Optional[UploadFile] = File(None, description="POD photo"),
+    signature_image: Optional[UploadFile] = File(None, description="Signature image"),
+    delivered_to: str = Form(..., description="Name of person who received"),
+    delivery_relation: Optional[str] = Form(None, description="Relationship: Self, Family, Security"),
+    delivery_remarks: Optional[str] = Form(None, description="Delivery remarks"),
+    latitude: Optional[float] = Form(None, description="GPS latitude"),
+    longitude: Optional[float] = Form(None, description="GPS longitude"),
+    cod_collected: bool = Form(False, description="Was COD amount collected?"),
+):
+    """
+    Upload POD with images and mark shipment as delivered.
+    
+    Use multipart/form-data to upload POD image and/or signature along with delivery details.
+    """
+    query = select(Shipment).where(Shipment.id == shipment_id)
+    result = await db.execute(query)
+    shipment = result.scalar_one_or_none()
+    
+    if not shipment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Shipment not found"
+        )
+    
+    if shipment.status == ShipmentStatus.DELIVERED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Shipment already delivered"
+        )
+    
+    # Create upload directory
+    upload_dir = Path("/tmp/pod_uploads")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    
+    pod_image_url = None
+    pod_signature_url = None
+    
+    # Save POD image
+    if pod_image and pod_image.filename:
+        ext = os.path.splitext(pod_image.filename)[1] or ".jpg"
+        pod_filename = f"{shipment.shipment_number}_pod{ext}"
+        pod_path = upload_dir / pod_filename
+        
+        content = await pod_image.read()
+        with open(pod_path, "wb") as f:
+            f.write(content)
+        
+        # In production, this would be a cloud storage URL
+        pod_image_url = f"/static/pod/{pod_filename}"
+    
+    # Save signature image
+    if signature_image and signature_image.filename:
+        ext = os.path.splitext(signature_image.filename)[1] or ".png"
+        sig_filename = f"{shipment.shipment_number}_sig{ext}"
+        sig_path = upload_dir / sig_filename
+        
+        content = await signature_image.read()
+        with open(sig_path, "wb") as f:
+            f.write(content)
+        
+        pod_signature_url = f"/static/pod/{sig_filename}"
+    
+    # Update shipment with delivery info
+    now = datetime.utcnow()
+    shipment.status = ShipmentStatus.DELIVERED
+    shipment.delivered_at = now
+    shipment.actual_delivery_date = now.date()
+    shipment.delivered_to = delivered_to
+    shipment.delivery_relation = delivery_relation
+    shipment.delivery_remarks = delivery_remarks
+    shipment.pod_image_url = pod_image_url
+    shipment.pod_signature_url = pod_signature_url
+    shipment.pod_latitude = latitude
+    shipment.pod_longitude = longitude
+    shipment.delivery_attempts += 1
+    
+    if cod_collected:
+        shipment.cod_collected = True
+        shipment.cod_collected_at = now
+    
+    # Add tracking entry
+    tracking = ShipmentTracking(
+        shipment_id=shipment.id,
+        status=ShipmentStatus.DELIVERED,
+        remarks=f"Delivered to {delivered_to}. POD collected.",
+        event_time=now,
+        source="POD_UPLOAD",
+        updated_by=current_user.id,
+    )
+    db.add(tracking)
+    
+    # Update related order
+    if shipment.order_id:
+        order_query = select(Order).where(Order.id == shipment.order_id)
+        order_result = await db.execute(order_query)
+        order = order_result.scalar_one_or_none()
+        if order:
+            order.status = OrderStatus.DELIVERED
+            order.delivered_at = now
+    
+    await db.commit()
+    await db.refresh(shipment)
+    
+    return {
+        "success": True,
+        "shipment_id": str(shipment.id),
+        "shipment_number": shipment.shipment_number,
+        "status": shipment.status.value,
+        "delivered_at": shipment.delivered_at.isoformat() if shipment.delivered_at else None,
+        "pod_image_url": pod_image_url,
+        "pod_signature_url": pod_signature_url,
+        "gps_coordinates": {
+            "latitude": latitude,
+            "longitude": longitude,
+        } if latitude and longitude else None,
+        "message": f"Shipment delivered successfully to {delivered_to}"
+    }

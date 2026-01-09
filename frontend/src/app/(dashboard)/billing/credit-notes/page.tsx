@@ -139,7 +139,8 @@ export default function CreditNotesPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: creditDebitNotesApi.createCredit,
+    mutationFn: (data: { invoice_id?: string; customer_id: string; reason: string; credit_note_date?: string; subtotal?: number; tax_amount?: number; total_amount?: number; lines?: { description: string; quantity: number; unit_price: number; amount?: number; tax_rate?: number; tax_amount?: number }[] }) =>
+      creditDebitNotesApi.create({ type: 'CREDIT', ...data }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['credit-notes'] });
       toast.success('Credit note created');
@@ -204,13 +205,15 @@ export default function CreditNotesPage() {
 
   const handleDownload = async (note: CreditNote) => {
     try {
-      const blob = await creditDebitNotesApi.download(note.id);
+      // Fetch HTML with auth token, then open in new tab
+      const htmlContent = await creditDebitNotesApi.download(note.id);
+      const blob = new Blob([htmlContent], { type: 'text/html' });
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `CreditNote-${note.credit_note_number}.pdf`;
-      a.click();
-      window.URL.revokeObjectURL(url);
+      const printWindow = window.open(url, '_blank');
+      if (printWindow) {
+        printWindow.onload = () => window.URL.revokeObjectURL(url);
+      }
+      toast.success('Opening credit note for download/print');
     } catch {
       toast.error('Failed to download credit note');
     }

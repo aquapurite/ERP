@@ -81,20 +81,109 @@ export interface ApiError {
 }
 
 // Product Types
+export interface ProductImage {
+  id: string;
+  product_id: string;
+  image_url: string;
+  thumbnail_url?: string;
+  alt_text?: string;
+  is_primary: boolean;
+  sort_order: number;
+  created_at?: string;
+}
+
+export interface ProductVariant {
+  id: string;
+  product_id: string;
+  name: string;
+  sku: string;
+  attributes?: Record<string, string>;
+  mrp?: number;
+  selling_price?: number;
+  cost_price?: number;
+  stock_quantity?: number;
+  image_url?: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProductSpecification {
+  id: string;
+  product_id?: string;
+  group_name?: string;
+  key: string;
+  value: string;
+  name?: string; // Alias for key
+  group?: string; // Alias for group_name
+  sort_order?: number;
+}
+
+export interface ProductDocument {
+  id: string;
+  product_id?: string;
+  title: string;
+  name?: string; // Alias for title
+  document_type: 'MANUAL' | 'WARRANTY_CARD' | 'BROCHURE' | 'CERTIFICATE' | 'OTHER';
+  file_url: string;
+  file_size_bytes?: number;
+  file_size?: number; // Alias
+  mime_type?: string;
+  sort_order?: number;
+  created_at?: string;
+}
+
 export interface Product {
   id: string;
   name: string;
   sku: string;
+  slug?: string;
   description?: string;
+  short_description?: string;
+  model_number?: string;
+  fg_code?: string;
   category_id?: string;
   brand_id?: string;
   mrp: number;
   selling_price: number;
+  cost_price?: number;
+  gst_rate?: number;
+  hsn_code?: string;
+  // Dimensions
+  weight?: number;
+  length?: number;
+  width?: number;
+  height?: number;
+  volumetric_weight?: number;
+  // Status flags
   is_active: boolean;
+  is_featured?: boolean;
+  is_new_arrival?: boolean;
+  is_bestseller?: boolean;
+  requires_installation?: boolean;
+  // Warranty
+  warranty_months?: number;
+  warranty_type?: string;
+  // SEO
+  meta_title?: string;
+  meta_description?: string;
+  meta_keywords?: string;
+  // Stock
+  min_stock_level?: number;
+  max_stock_level?: number;
+  reorder_point?: number;
+  // Tags
+  tags?: string[];
+  // Timestamps
   created_at: string;
   updated_at: string;
+  // Relations
   category?: Category;
   brand?: Brand;
+  images?: ProductImage[];
+  variants?: ProductVariant[];
+  specifications?: ProductSpecification[];
+  documents?: ProductDocument[];
 }
 
 export interface Category {
@@ -218,8 +307,12 @@ export interface StockItem {
   warehouse_id: string;
   serial_number?: string;
   batch_number?: string;
-  status: 'AVAILABLE' | 'RESERVED' | 'ALLOCATED' | 'IN_TRANSIT' | 'SHIPPED' | 'SOLD' | 'RETURNED' | 'DAMAGED' | 'DEFECTIVE' | 'QUARANTINE' | 'SCRAPPED';
+  status: 'AVAILABLE' | 'RESERVED' | 'ALLOCATED' | 'IN_TRANSIT' | 'SHIPPED' | 'SOLD' | 'RETURNED' | 'DAMAGED' | 'DEFECTIVE' | 'QUARANTINE' | 'SCRAPPED' | 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
   quantity: number;
+  reserved_quantity?: number;
+  available_quantity?: number;
+  reorder_level?: number;
+  last_updated?: string;
   product?: Product;
   warehouse?: Warehouse;
 }
@@ -255,11 +348,16 @@ export interface PurchaseOrder {
   po_number: string;
   vendor_id: string;
   warehouse_id: string;
+  delivery_warehouse_id?: string;
   status: POStatus;
+  po_date?: string;
+  credit_days?: number;
+  subtotal?: number;
   total_amount: number;
   gst_amount: number;
   grand_total: number;
   expected_delivery_date?: string;
+  notes?: string;
   created_at: string;
   vendor?: Vendor;
   warehouse?: Warehouse;
@@ -267,16 +365,17 @@ export interface PurchaseOrder {
 }
 
 export interface POItem {
-  id: string;
-  po_id: string;
+  id?: string;
+  po_id?: string;
   product_id: string;
-  product_name: string;
-  sku: string;
-  quantity_ordered: number;
-  quantity_received: number;
+  product_name?: string;
+  sku?: string;
+  quantity?: number;
+  quantity_ordered?: number;
+  quantity_received?: number;
   unit_price: number;
   gst_rate: number;
-  total: number;
+  total?: number;
 }
 
 // Service Request Types

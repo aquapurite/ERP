@@ -178,13 +178,15 @@ export default function EWayBillsPage() {
 
   const handleDownload = async (bill: EWayBill) => {
     try {
-      const blob = await ewayBillsApi.download(bill.id);
+      // Fetch HTML with auth token, then open in new tab
+      const htmlContent = await ewayBillsApi.download(bill.id);
+      const blob = new Blob([htmlContent], { type: 'text/html' });
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `EWB-${bill.ewb_number}.pdf`;
-      a.click();
-      window.URL.revokeObjectURL(url);
+      const printWindow = window.open(url, '_blank');
+      if (printWindow) {
+        printWindow.onload = () => window.URL.revokeObjectURL(url);
+      }
+      toast.success('Opening E-Way Bill for download/print');
     } catch {
       toast.error('Failed to download E-Way Bill');
     }

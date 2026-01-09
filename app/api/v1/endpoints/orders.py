@@ -31,16 +31,21 @@ router = APIRouter(tags=["Orders"])
 
 def _build_order_response(order) -> OrderResponse:
     """Build OrderResponse from Order model."""
-    return OrderResponse(
-        id=order.id,
-        order_number=order.order_number,
-        customer=CustomerBrief(
+    # Handle orders without customer
+    customer_brief = None
+    if order.customer:
+        customer_brief = CustomerBrief(
             id=order.customer.id,
             customer_code=order.customer.customer_code,
             full_name=order.customer.full_name,
             phone=order.customer.phone,
             email=order.customer.email,
-        ),
+        )
+
+    return OrderResponse(
+        id=order.id,
+        order_number=order.order_number,
+        customer=customer_brief,
         status=order.status,
         source=order.source,
         subtotal=order.subtotal,
@@ -67,16 +72,21 @@ def _build_order_response(order) -> OrderResponse:
 
 def _build_order_detail_response(order) -> OrderDetailResponse:
     """Build OrderDetailResponse from Order model."""
-    return OrderDetailResponse(
-        id=order.id,
-        order_number=order.order_number,
-        customer=CustomerBrief(
+    # Handle orders without customer
+    customer_brief = None
+    if order.customer:
+        customer_brief = CustomerBrief(
             id=order.customer.id,
             customer_code=order.customer.customer_code,
             full_name=order.customer.full_name,
             phone=order.customer.phone,
             email=order.customer.email,
-        ),
+        )
+
+    return OrderDetailResponse(
+        id=order.id,
+        order_number=order.order_number,
+        customer=customer_brief,
         status=order.status,
         source=order.source,
         subtotal=order.subtotal,

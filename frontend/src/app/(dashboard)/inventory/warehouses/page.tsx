@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Pencil, Trash2, Warehouse, MapPin } from 'lucide-react';
+import { MoreHorizontal, Plus, Pencil, Trash2, Warehouse, MapPin, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '@/providers/auth-provider';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -32,6 +33,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Switch } from '@/components/ui/switch';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
@@ -46,90 +57,14 @@ const warehouseTypes = [
   { label: 'Virtual', value: 'VIRTUAL' },
 ];
 
-const columns: ColumnDef<WarehouseType>[] = [
-  {
-    accessorKey: 'name',
-    header: 'Warehouse',
-    cell: ({ row }) => (
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-          <Warehouse className="h-5 w-5 text-muted-foreground" />
-        </div>
-        <div>
-          <div className="font-medium">{row.original.name}</div>
-          <div className="text-sm text-muted-foreground">{row.original.code}</div>
-        </div>
-      </div>
-    ),
-  },
-  {
-    accessorKey: 'type',
-    header: 'Type',
-    cell: ({ row }) => (
-      <span className="capitalize text-sm">
-        {row.original.type?.replace(/_/g, ' ').toLowerCase() ?? '-'}
-      </span>
-    ),
-  },
-  {
-    accessorKey: 'address',
-    header: 'Location',
-    cell: ({ row }) => (
-      <div className="flex items-center gap-2">
-        <MapPin className="h-4 w-4 text-muted-foreground" />
-        <div className="text-sm">
-          <div>{[row.original.city, row.original.state].filter(Boolean).join(', ') || '-'}</div>
-          <div className="text-muted-foreground">{row.original.pincode || '-'}</div>
-        </div>
-      </div>
-    ),
-  },
-  {
-    accessorKey: 'capacity',
-    header: 'Capacity',
-    cell: ({ row }) => (
-      <span className="text-sm">
-        {row.original.capacity ? `${row.original.capacity.toLocaleString()} units` : '-'}
-      </span>
-    ),
-  },
-  {
-    accessorKey: 'is_active',
-    header: 'Status',
-    cell: ({ row }) => (
-      <StatusBadge status={row.original.is_active ? 'ACTIVE' : 'INACTIVE'} />
-    ),
-  },
-  {
-    id: 'actions',
-    cell: ({ row }) => (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-8 w-8">
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem>
-            <Pencil className="mr-2 h-4 w-4" />
-            Edit
-          </DropdownMenuItem>
-          <DropdownMenuItem className="text-destructive focus:text-destructive">
-            <Trash2 className="mr-2 h-4 w-4" />
-            Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    ),
-  },
-];
-
 export default function WarehousesPage() {
+  const { permissions } = useAuth();
+  const isSuperAdmin = permissions?.is_super_admin ?? false;
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [warehouseToDelete, setWarehouseToDelete] = useState<WarehouseType | null>(null);
   const [newWarehouse, setNewWarehouse] = useState<{
     name: string;
     code: string;
@@ -181,6 +116,107 @@ export default function WarehousesPage() {
       toast.error(error.message || 'Failed to create warehouse');
     },
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: warehousesApi.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['warehouses'] });
+      toast.success('Warehouse deleted successfully');
+      setIsDeleteOpen(false);
+      setWarehouseToDelete(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to delete warehouse');
+    },
+  });
+
+  const columns: ColumnDef<WarehouseType>[] = [
+    {
+      accessorKey: 'name',
+      header: 'Warehouse',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+            <Warehouse className="h-5 w-5 text-muted-foreground" />
+          </div>
+          <div>
+            <div className="font-medium">{row.original.name}</div>
+            <div className="text-sm text-muted-foreground">{row.original.code}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'type',
+      header: 'Type',
+      cell: ({ row }) => (
+        <span className="capitalize text-sm">
+          {row.original.type?.replace(/_/g, ' ').toLowerCase() ?? '-'}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'address',
+      header: 'Location',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2">
+          <MapPin className="h-4 w-4 text-muted-foreground" />
+          <div className="text-sm">
+            <div>{[row.original.city, row.original.state].filter(Boolean).join(', ') || '-'}</div>
+            <div className="text-muted-foreground">{row.original.pincode || '-'}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'capacity',
+      header: 'Capacity',
+      cell: ({ row }) => (
+        <span className="text-sm">
+          {row.original.capacity ? `${row.original.capacity.toLocaleString()} units` : '-'}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'is_active',
+      header: 'Status',
+      cell: ({ row }) => (
+        <StatusBadge status={row.original.is_active ? 'ACTIVE' : 'INACTIVE'} />
+      ),
+    },
+    {
+      id: 'actions',
+      cell: ({ row }) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              <Pencil className="mr-2 h-4 w-4" />
+              Edit
+            </DropdownMenuItem>
+            {isSuperAdmin && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => { setWarehouseToDelete(row.original); setIsDeleteOpen(true); }}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ];
 
   const handleCreate = () => {
     if (!newWarehouse.name.trim()) {
@@ -366,6 +402,30 @@ export default function WarehousesPage() {
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
+
+      {/* Delete Warehouse Confirmation */}
+      <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Warehouse</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete warehouse <strong>{warehouseToDelete?.name}</strong>?
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => warehouseToDelete && deleteMutation.mutate(warehouseToDelete.id)}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

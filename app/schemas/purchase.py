@@ -6,7 +6,8 @@ from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict
 
 from app.models.purchase import (
-    RequisitionStatus, POStatus, GRNStatus, VendorInvoiceStatus, QualityCheckResult, ProformaStatus
+    RequisitionStatus, POStatus, GRNStatus, VendorInvoiceStatus, QualityCheckResult, ProformaStatus,
+    DeliveryLotStatus
 )
 
 
@@ -23,6 +24,12 @@ class PRItemBase(BaseModel):
     estimated_unit_price: Decimal = Field(Decimal("0"), ge=0)
     preferred_vendor_id: Optional[UUID] = None
     notes: Optional[str] = None
+    # Month-wise quantity breakdown for multi-delivery PRs
+    # Format: {"2026-01": 1500, "2026-02": 1500, "2026-03": 1000}
+    monthly_quantities: Optional[dict] = Field(
+        None,
+        description="Month-wise quantity breakdown (YYYY-MM: quantity)"
+    )
 
 
 class PRItemCreate(PRItemBase):
@@ -110,6 +117,12 @@ class POItemBase(BaseModel):
     gst_rate: Decimal = Field(Decimal("18"), ge=0, le=28)
     expected_date: Optional[date] = None
     notes: Optional[str] = None
+    # Month-wise quantity breakdown for multi-delivery POs
+    # Format: {"2026-01": 1500, "2026-02": 1500, "2026-03": 1000}
+    monthly_quantities: Optional[dict] = Field(
+        None,
+        description="Month-wise quantity breakdown (YYYY-MM: quantity)"
+    )
 
 
 class POItemCreate(POItemBase):
@@ -140,12 +153,100 @@ class POItemResponse(POItemBase):
     is_closed: bool
 
 
+# ==================== PO Delivery Schedule (Lot-wise) Schemas ====================
+
+class PODeliveryScheduleBase(BaseModel):
+    """Base schema for PO Delivery Schedule."""
+    lot_name: str = Field(..., description="e.g., 'JAN 2026', 'Batch 1'")
+    month_code: Optional[str] = Field(None, description="YYYY-MM format")
+    expected_delivery_date: date
+    delivery_window_start: Optional[date] = None
+    delivery_window_end: Optional[date] = None
+    total_quantity: int = Field(..., gt=0)
+    advance_percentage: Decimal = Field(Decimal("25"), ge=0, le=100)
+    balance_due_days: int = Field(45, ge=0)
+    notes: Optional[str] = None
+
+
+class PODeliveryScheduleCreate(PODeliveryScheduleBase):
+    """Schema for creating delivery schedule."""
+    pass
+
+
+class PODeliveryScheduleResponse(PODeliveryScheduleBase):
+    """Response schema for delivery schedule."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    lot_number: int
+    lot_value: Decimal
+    lot_tax: Decimal
+    lot_total: Decimal
+    advance_amount: Decimal
+    balance_amount: Decimal
+    advance_paid: Decimal
+    advance_paid_date: Optional[date] = None
+    advance_payment_ref: Optional[str] = None
+    balance_paid: Decimal
+    balance_paid_date: Optional[date] = None
+    balance_payment_ref: Optional[str] = None
+    balance_due_date: Optional[date] = None
+    status: DeliveryLotStatus
+    actual_delivery_date: Optional[date] = None
+    quantity_received: int
+    grn_id: Optional[UUID] = None
+    created_at: datetime
+    updated_at: datetime
+
+    # Computed properties
+    pending_advance: Optional[Decimal] = None
+    pending_balance: Optional[Decimal] = None
+    is_advance_paid: Optional[bool] = None
+    is_fully_paid: Optional[bool] = None
+
+
+class PODeliveryScheduleBrief(BaseModel):
+    """Brief schema for delivery schedule list."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    lot_number: int
+    lot_name: str
+    expected_delivery_date: date
+    total_quantity: int
+    lot_total: Decimal
+    advance_amount: Decimal
+    balance_amount: Decimal
+    status: DeliveryLotStatus
+
+
+class PODeliveryPaymentRequest(BaseModel):
+    """Request to record payment for a delivery lot."""
+    payment_type: str = Field(..., pattern="^(ADVANCE|BALANCE)$")
+    amount: Decimal = Field(..., gt=0)
+    payment_date: date
+    payment_reference: str = Field(..., max_length=100)
+    notes: Optional[str] = None
+
+
+# ==================== Purchase Order Schemas ====================
+
 class PurchaseOrderBase(BaseModel):
     """Base schema for Purchase Order."""
     vendor_id: UUID
     delivery_warehouse_id: UUID
     expected_delivery_date: Optional[date] = None
     delivery_address: Optional[dict] = None
+    # Bill To & Ship To addresses
+    # Format: {"name": "", "address_line1": "", "address_line2": "", "city": "", "state": "", "pincode": "", "gstin": "", "state_code": ""}
+    bill_to: Optional[dict] = Field(
+        None,
+        description="Bill To address (buyer's registered office for invoicing)"
+    )
+    ship_to: Optional[dict] = Field(
+        None,
+        description="Ship To address (delivery location, defaults to warehouse if not provided)"
+    )
     payment_terms: Optional[str] = None
     credit_days: int = 30
     advance_required: Decimal = Field(Decimal("0"), ge=0)
@@ -163,6 +264,8 @@ class PurchaseOrderCreate(PurchaseOrderBase):
     """Schema for creating PO."""
     requisition_id: Optional[UUID] = None
     items: List[POItemCreate]
+    # Delivery schedules for lot-wise tracking (auto-generated from monthly_quantities if not provided)
+    delivery_schedules: Optional[List[PODeliveryScheduleCreate]] = None
 
 
 class PurchaseOrderUpdate(BaseModel):
@@ -203,6 +306,8 @@ class PurchaseOrderResponse(PurchaseOrderBase):
     sent_to_vendor_at: Optional[datetime] = None
     vendor_acknowledged_at: Optional[datetime] = None
     items: List[POItemResponse] = []
+    # Delivery schedules for lot-wise payment tracking
+    delivery_schedules: List[PODeliveryScheduleResponse] = []
     created_by: UUID
     approved_by: Optional[UUID] = None
     approved_at: Optional[datetime] = None

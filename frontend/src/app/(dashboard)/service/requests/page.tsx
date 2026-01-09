@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal, Plus, Eye, UserPlus, Wrench } from 'lucide-react';
@@ -26,15 +27,18 @@ const priorityColors: Record<string, string> = {
   URGENT: 'bg-red-100 text-red-800',
 };
 
-const columns: ColumnDef<ServiceRequest>[] = [
+const getColumns = (router: ReturnType<typeof useRouter>): ColumnDef<ServiceRequest>[] => [
   {
     accessorKey: 'request_number',
     header: 'Request #',
     cell: ({ row }) => (
-      <div className="flex items-center gap-2">
+      <button
+        onClick={() => router.push(`/service/requests/${row.original.id}`)}
+        className="flex items-center gap-2 hover:text-primary transition-colors"
+      >
         <Wrench className="h-4 w-4 text-muted-foreground" />
         <span className="font-medium">{row.original.request_number}</span>
-      </div>
+      </button>
     ),
   },
   {
@@ -91,12 +95,12 @@ const columns: ColumnDef<ServiceRequest>[] = [
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Actions</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push(`/service/requests/${row.original.id}`)}>
             <Eye className="mr-2 h-4 w-4" />
             View Details
           </DropdownMenuItem>
           {!row.original.technician_id && (
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push(`/service/requests/${row.original.id}`)}>
               <UserPlus className="mr-2 h-4 w-4" />
               Assign Technician
             </DropdownMenuItem>
@@ -108,6 +112,7 @@ const columns: ColumnDef<ServiceRequest>[] = [
 ];
 
 export default function ServiceRequestsPage() {
+  const router = useRouter();
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
 
@@ -115,6 +120,8 @@ export default function ServiceRequestsPage() {
     queryKey: ['service-requests', page, pageSize],
     queryFn: () => serviceRequestsApi.list({ page: page + 1, size: pageSize }),
   });
+
+  const columns = getColumns(router);
 
   return (
     <div className="space-y-6">

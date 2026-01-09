@@ -71,16 +71,10 @@ async def create_dealer(
     prefix = prefix_map.get(dealer_in.dealer_type, "DLR")
     dealer_code = f"{prefix}-{str(count + 1).zfill(5)}"
 
-    # Extract state code from GSTIN
-    gst_state_code = dealer_in.gstin[:2] if dealer_in.gstin else None
-
     dealer = Dealer(
         **dealer_in.model_dump(exclude={"opening_balance"}),
         dealer_code=dealer_code,
-        gst_state_code=gst_state_code,
-        opening_balance=dealer_in.opening_balance,
-        current_balance=dealer_in.opening_balance,
-        created_by=current_user.id,
+        outstanding_amount=dealer_in.opening_balance,
     )
 
     db.add(dealer)
@@ -97,9 +91,8 @@ async def create_dealer(
             reference_number=dealer_code,
             debit_amount=dealer_in.opening_balance if dealer_in.opening_balance > 0 else Decimal("0"),
             credit_amount=abs(dealer_in.opening_balance) if dealer_in.opening_balance < 0 else Decimal("0"),
-            running_balance=dealer_in.opening_balance,
-            narration="Opening balance",
-            created_by=current_user.id,
+            balance=dealer_in.opening_balance,
+            remarks="Opening balance",
         )
         db.add(ledger)
         await db.commit()

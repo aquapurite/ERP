@@ -117,6 +117,7 @@ export const navigation: NavItem[] = [
     children: [
       { title: 'Vendors', href: '/procurement/vendors', permissions: ['vendors:view'] },
       { title: 'Requisitions', href: '/procurement/requisitions', icon: FileText, permissions: ['purchase:view'] },
+      { title: 'Vendor Proformas', href: '/procurement/vendor-proformas', permissions: ['purchase:view'] },
       { title: 'Purchase Orders', href: '/procurement/purchase-orders', permissions: ['purchase:view'] },
       { title: 'GRN', href: '/procurement/grn', permissions: ['grn:view'] },
       { title: 'Vendor Invoices', href: '/procurement/vendor-invoices', icon: Receipt, permissions: ['purchase:view'] },

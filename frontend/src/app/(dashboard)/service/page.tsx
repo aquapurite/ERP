@@ -196,20 +196,32 @@ export default function ServicePage() {
         </TabsContent>
 
         <TabsContent value="installations">
-          <div className="flex items-center justify-center h-32 border rounded-lg bg-muted/50">
-            <p className="text-muted-foreground">Installations list coming soon...</p>
+          <div className="flex items-center justify-center py-8">
+            <Button asChild>
+              <Link href="/service/installations">
+                Go to Installations
+              </Link>
+            </Button>
           </div>
         </TabsContent>
 
         <TabsContent value="amc">
-          <div className="flex items-center justify-center h-32 border rounded-lg bg-muted/50">
-            <p className="text-muted-foreground">AMC Contracts list coming soon...</p>
+          <div className="flex items-center justify-center py-8">
+            <Button asChild>
+              <Link href="/service/amc">
+                Go to AMC Contracts
+              </Link>
+            </Button>
           </div>
         </TabsContent>
 
         <TabsContent value="technicians">
-          <div className="flex items-center justify-center h-32 border rounded-lg bg-muted/50">
-            <p className="text-muted-foreground">Technicians list coming soon...</p>
+          <div className="flex items-center justify-center py-8">
+            <Button asChild>
+              <Link href="/service/technicians">
+                Go to Technicians
+              </Link>
+            </Button>
           </div>
         </TabsContent>
       </Tabs>

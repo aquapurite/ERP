@@ -231,6 +231,8 @@ from app.models.purchase import (
     PurchaseOrder,
     PurchaseOrderItem,
     POStatus,
+    PODeliverySchedule,
+    DeliveryLotStatus,
     GoodsReceiptNote,
     GRNItem,
     GRNStatus,

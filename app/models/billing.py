@@ -1026,6 +1026,11 @@ class EWayBillItem(Base):
 
     # Item Details
     product_name: Mapped[str] = mapped_column(String(300), nullable=False)
+    part_code: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="Vendor's part code e.g., AFGPSW2001"
+    )
     hsn_code: Mapped[str] = mapped_column(String(8), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(10, 3), nullable=False)
     uom: Mapped[str] = mapped_column(String(10), default="NOS")

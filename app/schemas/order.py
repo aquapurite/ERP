@@ -158,7 +158,7 @@ class OrderResponse(BaseModel):
     """Order response schema."""
     id: uuid.UUID
     order_number: str
-    customer: CustomerBrief
+    customer: Optional[CustomerBrief] = None
     status: OrderStatus
     source: OrderSource
     subtotal: Decimal

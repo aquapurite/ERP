@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, User, Phone, Mail, MapPin } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, User, Phone, Mail, MapPin, ShoppingBag, Wrench, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -25,12 +26,15 @@ const customerTypeColors: Record<string, string> = {
   DEALER: 'bg-green-100 text-green-800',
 };
 
-const columns: ColumnDef<Customer>[] = [
+const getColumns = (router: ReturnType<typeof useRouter>): ColumnDef<Customer>[] => [
   {
     accessorKey: 'name',
     header: 'Customer',
     cell: ({ row }) => (
-      <div className="flex items-center gap-3">
+      <div
+        className="flex items-center gap-3 cursor-pointer hover:opacity-80"
+        onClick={() => router.push(`/crm/customers/${row.original.id}`)}
+      >
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
           <User className="h-5 w-5 text-muted-foreground" />
         </div>
@@ -104,9 +108,21 @@ const columns: ColumnDef<Customer>[] = [
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Actions</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push(`/crm/customers/${row.original.id}`)}>
             <Eye className="mr-2 h-4 w-4" />
             View 360° Profile
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push(`/crm/customers/${row.original.id}?tab=orders`)}>
+            <ShoppingBag className="mr-2 h-4 w-4" />
+            Orders
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push(`/crm/customers/${row.original.id}?tab=services`)}>
+            <Wrench className="mr-2 h-4 w-4" />
+            Service History
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push(`/crm/customers/${row.original.id}?tab=amc`)}>
+            <Shield className="mr-2 h-4 w-4" />
+            AMC Contracts
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -115,6 +131,7 @@ const columns: ColumnDef<Customer>[] = [
 ];
 
 export default function CustomersPage() {
+  const router = useRouter();
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
 
@@ -137,7 +154,7 @@ export default function CustomersPage() {
       />
 
       <DataTable
-        columns={columns}
+        columns={getColumns(router)}
         data={data?.items ?? []}
         searchKey="name"
         searchPlaceholder="Search customers..."

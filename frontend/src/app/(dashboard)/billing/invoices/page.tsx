@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, Download, FileText, Send, Loader2, Shield, XCircle } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, Download, FileText, Send, Loader2, Shield, XCircle, Printer, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '@/providers/auth-provider';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -30,6 +31,16 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   Select,
   SelectContent,
@@ -86,11 +97,15 @@ interface Customer {
 }
 
 export default function InvoicesPage() {
+  const { permissions } = useAuth();
+  const isSuperAdmin = permissions?.is_super_admin ?? false;
   const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [formData, setFormData] = useState({
     customer_id: '',
@@ -138,6 +153,17 @@ export default function InvoicesPage() {
     onError: (error: Error) => toast.error(error.message || 'Failed to cancel IRN'),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: invoicesApi.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      toast.success('Invoice deleted successfully');
+      setIsDeleteOpen(false);
+      setInvoiceToDelete(null);
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to delete invoice'),
+  });
+
   const resetForm = () => {
     setFormData({
       customer_id: '',
@@ -161,19 +187,35 @@ export default function InvoicesPage() {
 
   const handleDownload = async (invoice: Invoice) => {
     try {
+      // Fetch HTML with auth token, then open in new tab
       const htmlContent = await invoicesApi.download(invoice.id);
       const blob = new Blob([htmlContent], { type: 'text/html' });
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${invoice.invoice_number}.html`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      toast.success('Invoice downloaded');
+      const printWindow = window.open(url, '_blank');
+      if (printWindow) {
+        printWindow.onload = () => window.URL.revokeObjectURL(url);
+      }
+      toast.success('Opening invoice for download/print');
     } catch {
       toast.error('Failed to download invoice');
+    }
+  };
+
+  const handlePrint = async (invoice: Invoice) => {
+    try {
+      // Fetch HTML with auth token, then open in new tab for printing
+      const htmlContent = await invoicesApi.download(invoice.id);
+      const blob = new Blob([htmlContent], { type: 'text/html' });
+      const url = window.URL.createObjectURL(blob);
+      const printWindow = window.open(url, '_blank');
+      if (printWindow) {
+        printWindow.onload = () => {
+          window.URL.revokeObjectURL(url);
+          printWindow.print();
+        };
+      }
+    } catch {
+      toast.error('Failed to print invoice');
     }
   };
 
@@ -316,6 +358,10 @@ export default function InvoicesPage() {
               <Download className="mr-2 h-4 w-4" />
               Download
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handlePrint(row.original)}>
+              <Printer className="mr-2 h-4 w-4" />
+              Print
+            </DropdownMenuItem>
             {row.original.status === 'DRAFT' && (
               <DropdownMenuItem>
                 <Send className="mr-2 h-4 w-4" />
@@ -340,6 +386,18 @@ export default function InvoicesPage() {
                 <XCircle className="mr-2 h-4 w-4" />
                 Cancel IRN
               </DropdownMenuItem>
+            )}
+            {isSuperAdmin && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => { setInvoiceToDelete(row.original); setIsDeleteOpen(true); }}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              </>
             )}
           </DropdownMenuContent>
         </DropdownMenu>
@@ -620,6 +678,30 @@ export default function InvoicesPage() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Delete Invoice Confirmation */}
+      <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Invoice</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete invoice <strong>{invoiceToDelete?.invoice_number}</strong>?
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => invoiceToDelete && deleteMutation.mutate(invoiceToDelete.id)}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

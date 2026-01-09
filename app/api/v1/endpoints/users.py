@@ -21,9 +21,27 @@ from app.schemas.user import (
 from app.services.rbac_service import RBACService
 from app.services.auth_service import AuthService
 from app.services.audit_service import AuditService
+from app.models.role import RoleLevel
 
 
 router = APIRouter(tags=["Users"])
+
+
+def _get_level_name(level) -> str:
+    """Helper to get role level name, handling SQLite returning integers."""
+    if hasattr(level, 'name'):
+        return level.name
+    try:
+        return RoleLevel(level).name
+    except (ValueError, TypeError):
+        return str(level)
+
+
+def _get_type_value(type_enum) -> str:
+    """Helper to get type value, handling SQLite returning strings."""
+    if hasattr(type_enum, 'value'):
+        return type_enum.value
+    return str(type_enum)
 
 
 @router.get(
@@ -112,14 +130,14 @@ async def list_users(
                 id=user.region.id,
                 name=user.region.name,
                 code=user.region.code,
-                type=user.region.type.value,
+                type=_get_type_value(user.region.type) if hasattr(user.region.type, 'value') else str(user.region.type),
             ) if user.region else None,
             roles=[
                 RoleBasicInfo(
                     id=ur.role.id,
                     name=ur.role.name,
                     code=ur.role.code,
-                    level=ur.role.level.name,
+                    level=_get_level_name(ur.role.level),
                 )
                 for ur in user.user_roles
                 if ur.role.is_active
@@ -185,14 +203,14 @@ async def get_user(
             id=user.region.id,
             name=user.region.name,
             code=user.region.code,
-            type=user.region.type.value,
+            type=_get_type_value(user.region.type) if hasattr(user.region.type, 'value') else str(user.region.type),
         ) if user.region else None,
         roles=[
             RoleBasicInfo(
                 id=ur.role.id,
                 name=ur.role.name,
                 code=ur.role.code,
-                level=ur.role.level.name,
+                level=_get_level_name(ur.role.level),
             )
             for ur in user.user_roles
             if ur.role.is_active
@@ -291,14 +309,14 @@ async def create_user(
             id=user.region.id,
             name=user.region.name,
             code=user.region.code,
-            type=user.region.type.value,
+            type=_get_type_value(user.region.type),
         ) if user.region else None,
         roles=[
             RoleBasicInfo(
                 id=ur.role.id,
                 name=ur.role.name,
                 code=ur.role.code,
-                level=ur.role.level.name,
+                level=__get_level_name(ur.role.level),
             )
             for ur in user.user_roles
             if ur.role.is_active
@@ -373,14 +391,14 @@ async def update_user(
             id=user.region.id,
             name=user.region.name,
             code=user.region.code,
-            type=user.region.type.value,
+            type=_get_type_value(user.region.type),
         ) if user.region else None,
         roles=[
             RoleBasicInfo(
                 id=ur.role.id,
                 name=ur.role.name,
                 code=ur.role.code,
-                level=ur.role.level.name,
+                level=__get_level_name(ur.role.level),
             )
             for ur in user.user_roles
             if ur.role.is_active
@@ -424,7 +442,7 @@ async def get_user_roles(
                 "id": str(role.id),
                 "name": role.name,
                 "code": role.code,
-                "level": role.level.name,
+                "level": _get_level_name(role.level),
                 "department": role.department,
             }
             for role in roles

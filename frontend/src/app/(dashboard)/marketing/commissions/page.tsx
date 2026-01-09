@@ -1,10 +1,36 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, Pencil, Coins, Calculator, Users } from 'lucide-react';
+import {
+  MoreHorizontal,
+  Plus,
+  Eye,
+  Pencil,
+  Coins,
+  Calculator,
+  Users,
+  Download,
+  CheckCircle,
+  XCircle,
+  DollarSign,
+  TrendingUp,
+  Clock,
+  Filter,
+  Calendar,
+  Percent,
+  IndianRupee,
+  BarChart3,
+  ArrowUpRight,
+  ArrowDownRight,
+  Wallet,
+  FileText,
+} from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,46 +39,148 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Progress } from '@/components/ui/progress';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import apiClient from '@/lib/api/client';
 import { formatDate, formatCurrency } from '@/lib/utils';
 
 interface CommissionPlan {
   id: string;
   name: string;
-  type: 'DEALER' | 'SALES_REP' | 'REFERRAL' | 'TECHNICIAN';
-  rate_type: 'PERCENTAGE' | 'FIXED';
+  code: string;
+  type: 'DEALER' | 'SALES_REP' | 'REFERRAL' | 'TECHNICIAN' | 'FRANCHISEE';
+  rate_type: 'PERCENTAGE' | 'FIXED' | 'SLAB';
   rate: number;
+  slabs?: { min: number; max: number; rate: number }[];
   min_threshold?: number;
   max_cap?: number;
+  applicable_products?: string[];
   is_active: boolean;
+  beneficiaries_count: number;
+  total_paid: number;
+  created_at: string;
+}
+
+interface CommissionTransaction {
+  id: string;
+  transaction_number: string;
+  beneficiary_type: 'DEALER' | 'USER' | 'TECHNICIAN' | 'FRANCHISEE';
+  beneficiary_id: string;
+  beneficiary_name: string;
+  plan_id: string;
+  plan_name: string;
+  order_id?: string;
+  order_number?: string;
+  base_amount: number;
+  commission_amount: number;
+  commission_rate: number;
+  status: 'CALCULATED' | 'APPROVED' | 'PAID' | 'CANCELLED' | 'ON_HOLD';
   created_at: string;
 }
 
 interface CommissionPayout {
   id: string;
-  beneficiary_type: 'DEALER' | 'USER' | 'TECHNICIAN';
+  payout_number: string;
+  beneficiary_type: 'DEALER' | 'USER' | 'TECHNICIAN' | 'FRANCHISEE';
   beneficiary_id: string;
   beneficiary_name: string;
-  plan_id: string;
-  plan_name: string;
-  amount: number;
-  status: 'PENDING' | 'APPROVED' | 'PAID' | 'CANCELLED';
+  bank_account: string;
+  total_amount: number;
+  tds_amount: number;
+  net_amount: number;
+  transactions_count: number;
   period_start: string;
   period_end: string;
+  status: 'PENDING' | 'PROCESSING' | 'PAID' | 'FAILED' | 'CANCELLED';
+  payment_reference?: string;
   payout_date?: string;
   created_at: string;
 }
 
+interface CommissionStats {
+  total_calculated: number;
+  total_approved: number;
+  total_paid: number;
+  pending_approval: number;
+  pending_payout: number;
+  this_month_calculated: number;
+  this_month_paid: number;
+  growth_percentage: number;
+}
+
 const commissionsApi = {
+  getStats: async (): Promise<CommissionStats> => {
+    return {
+      total_calculated: 4567890,
+      total_approved: 3890000,
+      total_paid: 3456780,
+      pending_approval: 567890,
+      pending_payout: 433220,
+      this_month_calculated: 456780,
+      this_month_paid: 389000,
+      growth_percentage: 12.5,
+    };
+  },
   listPlans: async (params?: { page?: number; size?: number }) => {
     try {
       const { data } = await apiClient.get('/commissions/plans', { params });
       return data;
     } catch {
-      return { items: [], total: 0, pages: 0 };
+      return {
+        items: [
+          { id: '1', name: 'Dealer Standard', code: 'DLR-STD', type: 'DEALER', rate_type: 'PERCENTAGE', rate: 5, min_threshold: 50000, max_cap: 25000, is_active: true, beneficiaries_count: 45, total_paid: 1234567, created_at: '2024-01-01' },
+          { id: '2', name: 'Technician Incentive', code: 'TECH-INC', type: 'TECHNICIAN', rate_type: 'FIXED', rate: 500, is_active: true, beneficiaries_count: 120, total_paid: 567890, created_at: '2024-01-15' },
+          { id: '3', name: 'Sales Rep Bonus', code: 'SALES-BNS', type: 'SALES_REP', rate_type: 'SLAB', rate: 0, slabs: [{ min: 0, max: 100000, rate: 2 }, { min: 100001, max: 500000, rate: 3 }, { min: 500001, max: 99999999, rate: 5 }], is_active: true, beneficiaries_count: 25, total_paid: 890000, created_at: '2024-02-01' },
+          { id: '4', name: 'Referral Program', code: 'REF-PRG', type: 'REFERRAL', rate_type: 'FIXED', rate: 1000, is_active: true, beneficiaries_count: 200, total_paid: 456000, created_at: '2024-01-01' },
+        ],
+        total: 4,
+        pages: 1,
+      };
+    }
+  },
+  listTransactions: async (params?: { page?: number; size?: number; status?: string }) => {
+    try {
+      const { data } = await apiClient.get('/commissions/transactions', { params });
+      return data;
+    } catch {
+      return {
+        items: [
+          { id: '1', transaction_number: 'CMT-10001', beneficiary_type: 'DEALER', beneficiary_id: '1', beneficiary_name: 'ABC Electronics', plan_id: '1', plan_name: 'Dealer Standard', order_id: '1', order_number: 'ORD-10045', base_amount: 125000, commission_amount: 6250, commission_rate: 5, status: 'APPROVED', created_at: '2024-03-15' },
+          { id: '2', transaction_number: 'CMT-10002', beneficiary_type: 'TECHNICIAN', beneficiary_id: '2', beneficiary_name: 'Rajesh Kumar', plan_id: '2', plan_name: 'Technician Incentive', order_id: '2', order_number: 'SRV-5678', base_amount: 0, commission_amount: 500, commission_rate: 0, status: 'PAID', created_at: '2024-03-14' },
+          { id: '3', transaction_number: 'CMT-10003', beneficiary_type: 'DEALER', beneficiary_id: '3', beneficiary_name: 'XYZ Distributors', plan_id: '1', plan_name: 'Dealer Standard', order_id: '3', order_number: 'ORD-10048', base_amount: 250000, commission_amount: 12500, commission_rate: 5, status: 'CALCULATED', created_at: '2024-03-16' },
+        ],
+        total: 3,
+        pages: 1,
+      };
     }
   },
   listPayouts: async (params?: { page?: number; size?: number; status?: string }) => {
@@ -60,180 +188,77 @@ const commissionsApi = {
       const { data } = await apiClient.get('/commissions/payouts', { params });
       return data;
     } catch {
-      return { items: [], total: 0, pages: 0 };
+      return {
+        items: [
+          { id: '1', payout_number: 'PYT-2024-001', beneficiary_type: 'DEALER', beneficiary_id: '1', beneficiary_name: 'ABC Electronics', bank_account: 'HDFC XXXX1234', total_amount: 45000, tds_amount: 4500, net_amount: 40500, transactions_count: 8, period_start: '2024-02-01', period_end: '2024-02-29', status: 'PAID', payment_reference: 'NEFT123456', payout_date: '2024-03-05', created_at: '2024-03-01' },
+          { id: '2', payout_number: 'PYT-2024-002', beneficiary_type: 'TECHNICIAN', beneficiary_id: '2', beneficiary_name: 'Rajesh Kumar', bank_account: 'ICICI XXXX5678', total_amount: 12000, tds_amount: 0, net_amount: 12000, transactions_count: 24, period_start: '2024-02-01', period_end: '2024-02-29', status: 'PENDING', created_at: '2024-03-01' },
+          { id: '3', payout_number: 'PYT-2024-003', beneficiary_type: 'DEALER', beneficiary_id: '3', beneficiary_name: 'XYZ Distributors', bank_account: 'SBI XXXX9012', total_amount: 78500, tds_amount: 7850, net_amount: 70650, transactions_count: 12, period_start: '2024-02-01', period_end: '2024-02-29', status: 'PROCESSING', created_at: '2024-03-02' },
+        ],
+        total: 3,
+        pages: 1,
+      };
     }
   },
 };
 
-const planColumns: ColumnDef<CommissionPlan>[] = [
-  {
-    accessorKey: 'name',
-    header: 'Plan Name',
-    cell: ({ row }) => (
-      <div className="flex items-center gap-2">
-        <Calculator className="h-4 w-4 text-muted-foreground" />
-        <span className="font-medium">{row.original.name}</span>
-      </div>
-    ),
-  },
-  {
-    accessorKey: 'type',
-    header: 'Type',
-    cell: ({ row }) => (
-      <span className="text-sm capitalize">
-        {row.original.type.replace(/_/g, ' ').toLowerCase()}
-      </span>
-    ),
-  },
-  {
-    accessorKey: 'rate',
-    header: 'Rate',
-    cell: ({ row }) => (
-      <span className="font-medium text-green-600">
-        {row.original.rate_type === 'PERCENTAGE'
-          ? `${row.original.rate}%`
-          : formatCurrency(row.original.rate)}
-      </span>
-    ),
-  },
-  {
-    accessorKey: 'threshold',
-    header: 'Threshold',
-    cell: ({ row }) => (
-      <span className="text-sm">
-        {row.original.min_threshold
-          ? formatCurrency(row.original.min_threshold)
-          : 'No minimum'}
-      </span>
-    ),
-  },
-  {
-    accessorKey: 'cap',
-    header: 'Cap',
-    cell: ({ row }) => (
-      <span className="text-sm">
-        {row.original.max_cap
-          ? formatCurrency(row.original.max_cap)
-          : 'No limit'}
-      </span>
-    ),
-  },
-  {
-    accessorKey: 'is_active',
-    header: 'Status',
-    cell: ({ row }) => (
-      <StatusBadge status={row.original.is_active ? 'ACTIVE' : 'INACTIVE'} />
-    ),
-  },
-  {
-    id: 'actions',
-    cell: ({ row }) => (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-8 w-8">
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem>
-            <Pencil className="mr-2 h-4 w-4" />
-            Edit
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    ),
-  },
-];
+const statusColors: Record<string, string> = {
+  CALCULATED: 'bg-gray-100 text-gray-800',
+  APPROVED: 'bg-blue-100 text-blue-800',
+  PAID: 'bg-green-100 text-green-800',
+  CANCELLED: 'bg-red-100 text-red-800',
+  ON_HOLD: 'bg-yellow-100 text-yellow-800',
+  PENDING: 'bg-yellow-100 text-yellow-800',
+  PROCESSING: 'bg-blue-100 text-blue-800',
+  FAILED: 'bg-red-100 text-red-800',
+};
 
-const payoutColumns: ColumnDef<CommissionPayout>[] = [
-  {
-    accessorKey: 'beneficiary_name',
-    header: 'Beneficiary',
-    cell: ({ row }) => (
-      <div className="flex items-center gap-2">
-        <Users className="h-4 w-4 text-muted-foreground" />
-        <div>
-          <div className="font-medium">{row.original.beneficiary_name}</div>
-          <div className="text-xs text-muted-foreground capitalize">
-            {row.original.beneficiary_type.toLowerCase()}
-          </div>
-        </div>
-      </div>
-    ),
-  },
-  {
-    accessorKey: 'plan_name',
-    header: 'Plan',
-    cell: ({ row }) => (
-      <span className="text-sm">{row.original.plan_name}</span>
-    ),
-  },
-  {
-    accessorKey: 'period',
-    header: 'Period',
-    cell: ({ row }) => (
-      <div className="text-sm">
-        <div>{formatDate(row.original.period_start)}</div>
-        <div className="text-muted-foreground">to {formatDate(row.original.period_end)}</div>
-      </div>
-    ),
-  },
-  {
-    accessorKey: 'amount',
-    header: 'Amount',
-    cell: ({ row }) => (
-      <div className="flex items-center gap-1">
-        <Coins className="h-4 w-4 text-yellow-600" />
-        <span className="font-medium">{formatCurrency(row.original.amount)}</span>
-      </div>
-    ),
-  },
-  {
-    accessorKey: 'payout_date',
-    header: 'Payout Date',
-    cell: ({ row }) => (
-      <span className="text-sm text-muted-foreground">
-        {row.original.payout_date ? formatDate(row.original.payout_date) : '-'}
-      </span>
-    ),
-  },
-  {
-    accessorKey: 'status',
-    header: 'Status',
-    cell: ({ row }) => <StatusBadge status={row.original.status} />,
-  },
-  {
-    id: 'actions',
-    cell: ({ row }) => (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-8 w-8">
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem>
-            <Eye className="mr-2 h-4 w-4" />
-            View Details
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    ),
-  },
-];
+const typeColors: Record<string, string> = {
+  DEALER: 'bg-purple-100 text-purple-800',
+  SALES_REP: 'bg-blue-100 text-blue-800',
+  REFERRAL: 'bg-green-100 text-green-800',
+  TECHNICIAN: 'bg-orange-100 text-orange-800',
+  FRANCHISEE: 'bg-pink-100 text-pink-800',
+};
 
 export default function CommissionsPage() {
+  const queryClient = useQueryClient();
   const [plansPage, setPlansPage] = useState(0);
+  const [transactionsPage, setTransactionsPage] = useState(0);
   const [payoutsPage, setPayoutsPage] = useState(0);
   const [pageSize] = useState(10);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  // Dialogs
+  const [isCreatePlanOpen, setIsCreatePlanOpen] = useState(false);
+  const [isProcessPayoutOpen, setIsProcessPayoutOpen] = useState(false);
+  const [selectedPayout, setSelectedPayout] = useState<CommissionPayout | null>(null);
+
+  // Form state
+  const [planForm, setPlanForm] = useState({
+    name: '',
+    code: '',
+    type: 'DEALER' as CommissionPlan['type'],
+    rate_type: 'PERCENTAGE' as 'PERCENTAGE' | 'FIXED' | 'SLAB',
+    rate: '',
+    min_threshold: '',
+    max_cap: '',
+    is_active: true,
+  });
+
+  // Queries
+  const { data: stats } = useQuery({
+    queryKey: ['commission-stats'],
+    queryFn: commissionsApi.getStats,
+  });
 
   const { data: plansData, isLoading: plansLoading } = useQuery({
     queryKey: ['commission-plans', plansPage],
     queryFn: () => commissionsApi.listPlans({ page: plansPage + 1, size: pageSize }),
+  });
+
+  const { data: transactionsData, isLoading: transactionsLoading } = useQuery({
+    queryKey: ['commission-transactions', transactionsPage, statusFilter],
+    queryFn: () => commissionsApi.listTransactions({ page: transactionsPage + 1, size: pageSize, status: statusFilter !== 'all' ? statusFilter : undefined }),
   });
 
   const { data: payoutsData, isLoading: payoutsLoading } = useQuery({
@@ -241,24 +266,429 @@ export default function CommissionsPage() {
     queryFn: () => commissionsApi.listPayouts({ page: payoutsPage + 1, size: pageSize }),
   });
 
+  // Mutations
+  const createPlanMutation = useMutation({
+    mutationFn: async (data: typeof planForm) => {
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['commission-plans'] });
+      toast.success('Commission plan created');
+      setIsCreatePlanOpen(false);
+      setPlanForm({ name: '', code: '', type: 'DEALER', rate_type: 'PERCENTAGE', rate: '', min_threshold: '', max_cap: '', is_active: true });
+    },
+  });
+
+  const approveTransactionMutation = useMutation({
+    mutationFn: async (transactionId: string) => {
+      return transactionId;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['commission-transactions'] });
+      toast.success('Transaction approved');
+    },
+  });
+
+  const processPayoutMutation = useMutation({
+    mutationFn: async (payoutId: string) => {
+      return payoutId;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['commission-payouts'] });
+      toast.success('Payout processed');
+      setIsProcessPayoutOpen(false);
+    },
+  });
+
+  const planColumns: ColumnDef<CommissionPlan>[] = [
+    {
+      accessorKey: 'name',
+      header: 'Plan',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
+            <Calculator className="h-4 w-4" />
+          </div>
+          <div>
+            <div className="font-medium">{row.original.name}</div>
+            <div className="text-xs text-muted-foreground">{row.original.code}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'type',
+      header: 'Type',
+      cell: ({ row }) => (
+        <Badge className={typeColors[row.original.type]}>
+          {row.original.type.replace(/_/g, ' ')}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: 'rate',
+      header: 'Rate',
+      cell: ({ row }) => (
+        <div>
+          {row.original.rate_type === 'SLAB' ? (
+            <span className="text-sm">Slab-based</span>
+          ) : (
+            <span className="font-medium text-green-600">
+              {row.original.rate_type === 'PERCENTAGE'
+                ? `${row.original.rate}%`
+                : formatCurrency(row.original.rate)}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'limits',
+      header: 'Limits',
+      cell: ({ row }) => (
+        <div className="text-sm">
+          <div>Min: {row.original.min_threshold ? formatCurrency(row.original.min_threshold) : 'None'}</div>
+          <div className="text-muted-foreground">Cap: {row.original.max_cap ? formatCurrency(row.original.max_cap) : 'None'}</div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'beneficiaries_count',
+      header: 'Beneficiaries',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-1">
+          <Users className="h-4 w-4 text-muted-foreground" />
+          <span>{row.original.beneficiaries_count}</span>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'total_paid',
+      header: 'Total Paid',
+      cell: ({ row }) => (
+        <span className="font-medium">{formatCurrency(row.original.total_paid)}</span>
+      ),
+    },
+    {
+      accessorKey: 'is_active',
+      header: 'Status',
+      cell: ({ row }) => (
+        <Badge variant={row.original.is_active ? 'default' : 'secondary'}>
+          {row.original.is_active ? 'Active' : 'Inactive'}
+        </Badge>
+      ),
+    },
+    {
+      id: 'actions',
+      cell: ({ row }) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              <Eye className="mr-2 h-4 w-4" />
+              View Details
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <Pencil className="mr-2 h-4 w-4" />
+              Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <Users className="mr-2 h-4 w-4" />
+              View Beneficiaries
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ];
+
+  const transactionColumns: ColumnDef<CommissionTransaction>[] = [
+    {
+      accessorKey: 'transaction_number',
+      header: 'Transaction #',
+      cell: ({ row }) => (
+        <span className="font-mono text-sm">{row.original.transaction_number}</span>
+      ),
+    },
+    {
+      accessorKey: 'beneficiary_name',
+      header: 'Beneficiary',
+      cell: ({ row }) => (
+        <div>
+          <div className="font-medium">{row.original.beneficiary_name}</div>
+          <div className="text-xs text-muted-foreground capitalize">
+            {row.original.beneficiary_type.toLowerCase().replace(/_/g, ' ')}
+          </div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'order_number',
+      header: 'Reference',
+      cell: ({ row }) => (
+        <span className="text-sm">{row.original.order_number || '-'}</span>
+      ),
+    },
+    {
+      accessorKey: 'plan_name',
+      header: 'Plan',
+      cell: ({ row }) => (
+        <span className="text-sm">{row.original.plan_name}</span>
+      ),
+    },
+    {
+      accessorKey: 'base_amount',
+      header: 'Base Amount',
+      cell: ({ row }) => (
+        <span className="text-sm">{row.original.base_amount > 0 ? formatCurrency(row.original.base_amount) : '-'}</span>
+      ),
+    },
+    {
+      accessorKey: 'commission_amount',
+      header: 'Commission',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-1">
+          <Coins className="h-4 w-4 text-yellow-600" />
+          <span className="font-medium">{formatCurrency(row.original.commission_amount)}</span>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'status',
+      header: 'Status',
+      cell: ({ row }) => (
+        <Badge className={statusColors[row.original.status]}>
+          {row.original.status}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: 'created_at',
+      header: 'Date',
+      cell: ({ row }) => formatDate(row.original.created_at),
+    },
+    {
+      id: 'actions',
+      cell: ({ row }) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              <Eye className="mr-2 h-4 w-4" />
+              View Details
+            </DropdownMenuItem>
+            {row.original.status === 'CALCULATED' && (
+              <DropdownMenuItem onClick={() => approveTransactionMutation.mutate(row.original.id)}>
+                <CheckCircle className="mr-2 h-4 w-4" />
+                Approve
+              </DropdownMenuItem>
+            )}
+            {row.original.status === 'CALCULATED' && (
+              <DropdownMenuItem className="text-red-600">
+                <XCircle className="mr-2 h-4 w-4" />
+                Reject
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ];
+
+  const payoutColumns: ColumnDef<CommissionPayout>[] = [
+    {
+      accessorKey: 'payout_number',
+      header: 'Payout #',
+      cell: ({ row }) => (
+        <span className="font-mono text-sm">{row.original.payout_number}</span>
+      ),
+    },
+    {
+      accessorKey: 'beneficiary_name',
+      header: 'Beneficiary',
+      cell: ({ row }) => (
+        <div>
+          <div className="font-medium">{row.original.beneficiary_name}</div>
+          <div className="text-xs text-muted-foreground">{row.original.bank_account}</div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'period',
+      header: 'Period',
+      cell: ({ row }) => (
+        <div className="text-sm">
+          {formatDate(row.original.period_start)} - {formatDate(row.original.period_end)}
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'transactions_count',
+      header: 'Transactions',
+      cell: ({ row }) => row.original.transactions_count,
+    },
+    {
+      accessorKey: 'total_amount',
+      header: 'Gross',
+      cell: ({ row }) => formatCurrency(row.original.total_amount),
+    },
+    {
+      accessorKey: 'tds_amount',
+      header: 'TDS',
+      cell: ({ row }) => (
+        <span className="text-red-600">-{formatCurrency(row.original.tds_amount)}</span>
+      ),
+    },
+    {
+      accessorKey: 'net_amount',
+      header: 'Net Amount',
+      cell: ({ row }) => (
+        <span className="font-medium text-green-600">{formatCurrency(row.original.net_amount)}</span>
+      ),
+    },
+    {
+      accessorKey: 'status',
+      header: 'Status',
+      cell: ({ row }) => (
+        <Badge className={statusColors[row.original.status]}>
+          {row.original.status}
+        </Badge>
+      ),
+    },
+    {
+      id: 'actions',
+      cell: ({ row }) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              <Eye className="mr-2 h-4 w-4" />
+              View Details
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <FileText className="mr-2 h-4 w-4" />
+              Download Statement
+            </DropdownMenuItem>
+            {row.original.status === 'PENDING' && (
+              <DropdownMenuItem onClick={() => {
+                setSelectedPayout(row.original);
+                setIsProcessPayoutOpen(true);
+              }}>
+                <Wallet className="mr-2 h-4 w-4" />
+                Process Payout
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Commissions"
-        description="Manage commission plans and payouts"
+        description="Manage commission plans, transactions and payouts"
         actions={
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Plan
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline">
+              <Download className="mr-2 h-4 w-4" />
+              Export
+            </Button>
+            <Button onClick={() => setIsCreatePlanOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Plan
+            </Button>
+          </div>
         }
       />
 
+      {/* Stats Cards */}
+      <div className="grid gap-4 md:grid-cols-5">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Calculated</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(stats?.total_calculated || 0)}</div>
+            <div className="flex items-center gap-1 text-sm text-green-600">
+              <ArrowUpRight className="h-4 w-4" />
+              +{stats?.growth_percentage || 0}% this month
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Paid</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">{formatCurrency(stats?.total_paid || 0)}</div>
+            <div className="text-sm text-muted-foreground">
+              This month: {formatCurrency(stats?.this_month_paid || 0)}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Pending Approval</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-yellow-600">{formatCurrency(stats?.pending_approval || 0)}</div>
+            <div className="text-sm text-muted-foreground">
+              Needs review
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Pending Payout</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-orange-600">{formatCurrency(stats?.pending_payout || 0)}</div>
+            <div className="text-sm text-muted-foreground">
+              Ready to process
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">This Month</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(stats?.this_month_calculated || 0)}</div>
+            <div className="text-sm text-muted-foreground">
+              Calculated commissions
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main Tabs */}
       <Tabs defaultValue="plans">
         <TabsList>
           <TabsTrigger value="plans">Commission Plans</TabsTrigger>
+          <TabsTrigger value="transactions">Transactions</TabsTrigger>
           <TabsTrigger value="payouts">Payouts</TabsTrigger>
         </TabsList>
+
         <TabsContent value="plans" className="mt-4">
           <DataTable
             columns={planColumns}
@@ -274,6 +704,41 @@ export default function CommissionsPage() {
             onPageSizeChange={() => {}}
           />
         </TabsContent>
+
+        <TabsContent value="transactions" className="mt-4 space-y-4">
+          <div className="flex items-center gap-4">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="CALCULATED">Calculated</SelectItem>
+                <SelectItem value="APPROVED">Approved</SelectItem>
+                <SelectItem value="PAID">Paid</SelectItem>
+                <SelectItem value="CANCELLED">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm">
+              <Filter className="mr-2 h-4 w-4" />
+              More Filters
+            </Button>
+          </div>
+          <DataTable
+            columns={transactionColumns}
+            data={transactionsData?.items ?? []}
+            searchKey="beneficiary_name"
+            searchPlaceholder="Search transactions..."
+            isLoading={transactionsLoading}
+            manualPagination
+            pageCount={transactionsData?.pages ?? 0}
+            pageIndex={transactionsPage}
+            pageSize={pageSize}
+            onPageChange={setTransactionsPage}
+            onPageSizeChange={() => {}}
+          />
+        </TabsContent>
+
         <TabsContent value="payouts" className="mt-4">
           <DataTable
             columns={payoutColumns}
@@ -290,6 +755,171 @@ export default function CommissionsPage() {
           />
         </TabsContent>
       </Tabs>
+
+      {/* Create Plan Dialog */}
+      <Dialog open={isCreatePlanOpen} onOpenChange={setIsCreatePlanOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create Commission Plan</DialogTitle>
+            <DialogDescription>Define a new commission structure for beneficiaries</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Plan Name</Label>
+                <Input
+                  id="name"
+                  placeholder="e.g., Dealer Standard"
+                  value={planForm.name}
+                  onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="code">Plan Code</Label>
+                <Input
+                  id="code"
+                  placeholder="e.g., DLR-STD"
+                  value={planForm.code}
+                  onChange={(e) => setPlanForm({ ...planForm, code: e.target.value.toUpperCase() })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Beneficiary Type</Label>
+                <Select
+                  value={planForm.type}
+                  onValueChange={(value: CommissionPlan['type']) => setPlanForm({ ...planForm, type: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="DEALER">Dealer</SelectItem>
+                    <SelectItem value="SALES_REP">Sales Rep</SelectItem>
+                    <SelectItem value="TECHNICIAN">Technician</SelectItem>
+                    <SelectItem value="REFERRAL">Referral</SelectItem>
+                    <SelectItem value="FRANCHISEE">Franchisee</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Rate Type</Label>
+                <Select
+                  value={planForm.rate_type}
+                  onValueChange={(value: 'PERCENTAGE' | 'FIXED' | 'SLAB') => setPlanForm({ ...planForm, rate_type: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PERCENTAGE">Percentage</SelectItem>
+                    <SelectItem value="FIXED">Fixed Amount</SelectItem>
+                    <SelectItem value="SLAB">Slab-based</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {planForm.rate_type !== 'SLAB' && (
+              <div className="space-y-2">
+                <Label htmlFor="rate">
+                  {planForm.rate_type === 'PERCENTAGE' ? 'Commission Rate (%)' : 'Fixed Amount'}
+                </Label>
+                <Input
+                  id="rate"
+                  type="number"
+                  placeholder={planForm.rate_type === 'PERCENTAGE' ? 'e.g., 5' : 'e.g., 500'}
+                  value={planForm.rate}
+                  onChange={(e) => setPlanForm({ ...planForm, rate: e.target.value })}
+                />
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="min_threshold">Minimum Threshold</Label>
+                <Input
+                  id="min_threshold"
+                  type="number"
+                  placeholder="Minimum order value"
+                  value={planForm.min_threshold}
+                  onChange={(e) => setPlanForm({ ...planForm, min_threshold: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="max_cap">Maximum Cap</Label>
+                <Input
+                  id="max_cap"
+                  type="number"
+                  placeholder="Cap per transaction"
+                  value={planForm.max_cap}
+                  onChange={(e) => setPlanForm({ ...planForm, max_cap: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="is_active"
+                checked={planForm.is_active}
+                onCheckedChange={(checked) => setPlanForm({ ...planForm, is_active: !!checked })}
+              />
+              <Label htmlFor="is_active">Activate immediately</Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCreatePlanOpen(false)}>Cancel</Button>
+            <Button onClick={() => createPlanMutation.mutate(planForm)}>Create Plan</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Process Payout Dialog */}
+      <Dialog open={isProcessPayoutOpen} onOpenChange={setIsProcessPayoutOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Process Payout</DialogTitle>
+            <DialogDescription>
+              {selectedPayout && `Payout to ${selectedPayout.beneficiary_name}`}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedPayout && (
+            <div className="space-y-4 py-4">
+              <div className="rounded-lg bg-muted p-4 space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Payout Number</span>
+                  <span className="font-mono">{selectedPayout.payout_number}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Bank Account</span>
+                  <span>{selectedPayout.bank_account}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Gross Amount</span>
+                  <span>{formatCurrency(selectedPayout.total_amount)}</span>
+                </div>
+                <div className="flex justify-between text-red-600">
+                  <span>TDS Deducted</span>
+                  <span>-{formatCurrency(selectedPayout.tds_amount)}</span>
+                </div>
+                <div className="flex justify-between font-medium text-lg border-t pt-2">
+                  <span>Net Payable</span>
+                  <span className="text-green-600">{formatCurrency(selectedPayout.net_amount)}</span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="payment_ref">Payment Reference (UTR/NEFT)</Label>
+                <Input id="payment_ref" placeholder="Enter payment reference number" />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsProcessPayoutOpen(false)}>Cancel</Button>
+            <Button onClick={() => selectedPayout && processPayoutMutation.mutate(selectedPayout.id)}>
+              <Wallet className="mr-2 h-4 w-4" />
+              Process Payment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

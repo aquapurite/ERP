@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Pencil, Eye, Store, CreditCard } from 'lucide-react';
+import { MoreHorizontal, Plus, Pencil, Eye, Store, CreditCard, Target, Gift, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,7 +22,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -45,12 +45,18 @@ const tierColors: Record<string, string> = {
   BRONZE: 'bg-orange-100 text-orange-800',
 };
 
-const columns: ColumnDef<Dealer>[] = [
+const getColumns = (
+  router: ReturnType<typeof useRouter>,
+  onEdit: (dealer: Dealer) => void
+): ColumnDef<Dealer>[] => [
   {
     accessorKey: 'name',
     header: 'Dealer',
     cell: ({ row }) => (
-      <div className="flex items-center gap-3">
+      <div
+        className="flex items-center gap-3 cursor-pointer hover:opacity-80"
+        onClick={() => router.push(`/distribution/dealers/${row.original.id}`)}
+      >
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
           <Store className="h-5 w-5 text-muted-foreground" />
         </div>
@@ -121,11 +127,24 @@ const columns: ColumnDef<Dealer>[] = [
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Actions</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push(`/distribution/dealers/${row.original.id}`)}>
             <Eye className="mr-2 h-4 w-4" />
             View Details
           </DropdownMenuItem>
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push(`/distribution/dealers/${row.original.id}?tab=territory`)}>
+            <MapPin className="mr-2 h-4 w-4" />
+            Manage Territory
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push(`/distribution/dealers/${row.original.id}?tab=credit`)}>
+            <CreditCard className="mr-2 h-4 w-4" />
+            Credit Ledger
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push(`/distribution/dealers/${row.original.id}?tab=targets`)}>
+            <Target className="mr-2 h-4 w-4" />
+            Targets
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => onEdit(row.original)}>
             <Pencil className="mr-2 h-4 w-4" />
             Edit
           </DropdownMenuItem>
@@ -135,31 +154,60 @@ const columns: ColumnDef<Dealer>[] = [
   },
 ];
 
+type DealerFormData = {
+  name: string;
+  code: string;
+  type: 'DISTRIBUTOR' | 'DEALER' | 'SUB_DEALER' | 'FRANCHISE' | 'RETAILER' | 'CORPORATE';
+  email: string;
+  phone: string;
+  gst_number: string;
+  pricing_tier: 'PLATINUM' | 'GOLD' | 'SILVER' | 'BRONZE';
+  credit_limit: string;
+};
+
+const initialFormData: DealerFormData = {
+  name: '',
+  code: '',
+  type: 'DEALER',
+  email: '',
+  phone: '',
+  gst_number: '',
+  pricing_tier: 'SILVER',
+  credit_limit: '',
+};
+
 export default function DealersPage() {
+  const router = useRouter();
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [newDealer, setNewDealer] = useState<{
-    name: string;
-    code: string;
-    type: 'DISTRIBUTOR' | 'DEALER' | 'SUB_DEALER' | 'FRANCHISE' | 'RETAILER' | 'CORPORATE';
-    email: string;
-    phone: string;
-    gst_number: string;
-    pricing_tier: 'PLATINUM' | 'GOLD' | 'SILVER' | 'BRONZE';
-    credit_limit: string;
-  }>({
-    name: '',
-    code: '',
-    type: 'DEALER',
-    email: '',
-    phone: '',
-    gst_number: '',
-    pricing_tier: 'SILVER',
-    credit_limit: '',
-  });
+  const [selectedDealer, setSelectedDealer] = useState<Dealer | null>(null);
+  const [formData, setFormData] = useState<DealerFormData>(initialFormData);
 
   const queryClient = useQueryClient();
+
+  // Handle Edit
+  const handleEdit = (dealer: Dealer) => {
+    setSelectedDealer(dealer);
+    setFormData({
+      name: dealer.name,
+      code: dealer.code || '',
+      type: dealer.type,
+      email: dealer.email || '',
+      phone: dealer.phone || '',
+      gst_number: dealer.gst_number || '',
+      pricing_tier: dealer.pricing_tier,
+      credit_limit: String(dealer.credit_limit || 0),
+    });
+    setIsDialogOpen(true);
+  };
+
+  // Handle Add New
+  const handleAddNew = () => {
+    setSelectedDealer(null);
+    setFormData(initialFormData);
+    setIsDialogOpen(true);
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['dealers', page, pageSize],
@@ -172,21 +220,43 @@ export default function DealersPage() {
       queryClient.invalidateQueries({ queryKey: ['dealers'] });
       toast.success('Dealer created successfully');
       setIsDialogOpen(false);
+      setSelectedDealer(null);
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to create dealer');
     },
   });
 
-  const handleCreate = () => {
-    if (!newDealer.name.trim()) {
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Dealer> }) =>
+      dealersApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dealers'] });
+      toast.success('Dealer updated successfully');
+      setIsDialogOpen(false);
+      setSelectedDealer(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to update dealer');
+    },
+  });
+
+  const handleSubmit = () => {
+    if (!formData.name.trim()) {
       toast.error('Dealer name is required');
       return;
     }
-    createMutation.mutate({
-      ...newDealer,
-      credit_limit: parseFloat(newDealer.credit_limit) || 0,
-    });
+
+    const dealerData = {
+      ...formData,
+      credit_limit: parseFloat(formData.credit_limit) || 0,
+    };
+
+    if (selectedDealer) {
+      updateMutation.mutate({ id: selectedDealer.id, data: dealerData });
+    } else {
+      createMutation.mutate(dealerData);
+    }
   };
 
   return (
@@ -195,115 +265,15 @@ export default function DealersPage() {
         title="Dealers"
         description="Manage dealer network and distribution partners"
         actions={
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Dealer
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create New Dealer</DialogTitle>
-                <DialogDescription>
-                  Add a new dealer to your distribution network.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Name *</Label>
-                    <Input
-                      id="name"
-                      placeholder="Dealer name"
-                      value={newDealer.name}
-                      onChange={(e) =>
-                        setNewDealer({ ...newDealer, name: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="code">Code</Label>
-                    <Input
-                      id="code"
-                      placeholder="DLR001"
-                      value={newDealer.code}
-                      onChange={(e) =>
-                        setNewDealer({ ...newDealer, code: e.target.value.toUpperCase() })
-                      }
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="type">Type</Label>
-                    <Select
-                      value={newDealer.type}
-                      onValueChange={(value: 'DISTRIBUTOR' | 'DEALER' | 'SUB_DEALER' | 'FRANCHISE' | 'RETAILER' | 'CORPORATE') =>
-                        setNewDealer({ ...newDealer, type: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="DISTRIBUTOR">Distributor</SelectItem>
-                        <SelectItem value="DEALER">Dealer</SelectItem>
-                        <SelectItem value="SUB_DEALER">Sub-Dealer</SelectItem>
-                        <SelectItem value="FRANCHISE">Franchise</SelectItem>
-                        <SelectItem value="RETAILER">Retailer</SelectItem>
-                        <SelectItem value="CORPORATE">Corporate</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="tier">Pricing Tier</Label>
-                    <Select
-                      value={newDealer.pricing_tier}
-                      onValueChange={(value: 'PLATINUM' | 'GOLD' | 'SILVER' | 'BRONZE') =>
-                        setNewDealer({ ...newDealer, pricing_tier: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select tier" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="PLATINUM">Platinum</SelectItem>
-                        <SelectItem value="GOLD">Gold</SelectItem>
-                        <SelectItem value="SILVER">Silver</SelectItem>
-                        <SelectItem value="BRONZE">Bronze</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="credit_limit">Credit Limit</Label>
-                  <Input
-                    id="credit_limit"
-                    type="number"
-                    placeholder="100000"
-                    value={newDealer.credit_limit}
-                    onChange={(e) =>
-                      setNewDealer({ ...newDealer, credit_limit: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleCreate} disabled={createMutation.isPending}>
-                  {createMutation.isPending ? 'Creating...' : 'Create Dealer'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <Button onClick={handleAddNew}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Dealer
+          </Button>
         }
       />
 
       <DataTable
-        columns={columns}
+        columns={getColumns(router, handleEdit)}
         data={data?.items ?? []}
         searchKey="name"
         searchPlaceholder="Search dealers..."
@@ -315,6 +285,153 @@ export default function DealersPage() {
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
+
+      {/* Create/Edit Dealer Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {selectedDealer ? 'Edit Dealer' : 'Create New Dealer'}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedDealer
+                ? `Update information for ${selectedDealer.name}`
+                : 'Add a new dealer to your distribution network.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Name *</Label>
+                <Input
+                  id="name"
+                  placeholder="Dealer name"
+                  value={formData.name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="code">Code</Label>
+                <Input
+                  id="code"
+                  placeholder="DLR001"
+                  value={formData.code}
+                  onChange={(e) =>
+                    setFormData({ ...formData, code: e.target.value.toUpperCase() })
+                  }
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="type">Type</Label>
+                <Select
+                  value={formData.type}
+                  onValueChange={(value: DealerFormData['type']) =>
+                    setFormData({ ...formData, type: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="DISTRIBUTOR">Distributor</SelectItem>
+                    <SelectItem value="DEALER">Dealer</SelectItem>
+                    <SelectItem value="SUB_DEALER">Sub-Dealer</SelectItem>
+                    <SelectItem value="FRANCHISE">Franchise</SelectItem>
+                    <SelectItem value="RETAILER">Retailer</SelectItem>
+                    <SelectItem value="CORPORATE">Corporate</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="tier">Pricing Tier</Label>
+                <Select
+                  value={formData.pricing_tier}
+                  onValueChange={(value: DealerFormData['pricing_tier']) =>
+                    setFormData({ ...formData, pricing_tier: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select tier" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PLATINUM">Platinum</SelectItem>
+                    <SelectItem value="GOLD">Gold</SelectItem>
+                    <SelectItem value="SILVER">Silver</SelectItem>
+                    <SelectItem value="BRONZE">Bronze</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="dealer@example.com"
+                  value={formData.email}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  placeholder="+91 98765 43210"
+                  value={formData.phone}
+                  onChange={(e) =>
+                    setFormData({ ...formData, phone: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="gst_number">GST Number</Label>
+                <Input
+                  id="gst_number"
+                  placeholder="22AAAAA0000A1Z5"
+                  value={formData.gst_number}
+                  onChange={(e) =>
+                    setFormData({ ...formData, gst_number: e.target.value.toUpperCase() })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="credit_limit">Credit Limit</Label>
+                <Input
+                  id="credit_limit"
+                  type="number"
+                  placeholder="100000"
+                  value={formData.credit_limit}
+                  onChange={(e) =>
+                    setFormData({ ...formData, credit_limit: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={createMutation.isPending || updateMutation.isPending}
+            >
+              {(createMutation.isPending || updateMutation.isPending)
+                ? (selectedDealer ? 'Updating...' : 'Creating...')
+                : (selectedDealer ? 'Update Dealer' : 'Create Dealer')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

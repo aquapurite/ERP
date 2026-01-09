@@ -5,13 +5,14 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, func, and_, or_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.purchase import (
     PurchaseRequisition, PurchaseRequisitionItem, RequisitionStatus,
     PurchaseOrder, PurchaseOrderItem, POStatus,
+    PODeliverySchedule, DeliveryLotStatus,
     GoodsReceiptNote, GRNItem, GRNStatus, QualityCheckResult,
     VendorInvoice, VendorInvoiceStatus,
     VendorProformaInvoice, VendorProformaItem, ProformaStatus,
@@ -28,6 +29,8 @@ from app.schemas.purchase import (
     # PO Schemas
     PurchaseOrderCreate, PurchaseOrderUpdate, PurchaseOrderResponse,
     POListResponse, POBrief, POApproveRequest, POSendToVendorRequest,
+    # PO Delivery Schedule Schemas
+    PODeliveryScheduleResponse, PODeliveryPaymentRequest,
     # GRN Schemas
     GoodsReceiptCreate, GoodsReceiptUpdate, GoodsReceiptResponse,
     GRNListResponse, GRNBrief, GRNQualityCheckRequest, GRNPutAwayRequest,
@@ -85,7 +88,6 @@ async def create_purchase_requisition(
         request_date=today,
         requested_by=current_user.id,
         estimated_total=estimated_total,
-        created_by=current_user.id,
     )
 
     db.add(pr)
@@ -105,6 +107,8 @@ async def create_purchase_requisition(
             estimated_total=item_data.quantity_requested * item_data.estimated_unit_price,
             preferred_vendor_id=item_data.preferred_vendor_id,
             notes=item_data.notes,
+            # Multi-delivery support
+            monthly_quantities=item_data.monthly_quantities,
         )
         db.add(item)
 
@@ -204,10 +208,10 @@ async def approve_purchase_requisition(
     if not pr:
         raise HTTPException(status_code=404, detail="Purchase Requisition not found")
 
-    if pr.status != RequisitionStatus.PENDING:
+    if pr.status != RequisitionStatus.SUBMITTED:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot {request.action.lower()} PR in {pr.status.value} status"
+            detail=f"Cannot {request.action.lower()} PR in {pr.status.value} status. Only SUBMITTED PRs can be approved/rejected."
         )
 
     if request.action == "APPROVE":
@@ -224,6 +228,292 @@ async def approve_purchase_requisition(
     await db.refresh(pr)
 
     return pr
+
+
+@router.post("/requisitions/{pr_id}/submit", response_model=PurchaseRequisitionResponse)
+async def submit_purchase_requisition(
+    pr_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Submit a draft purchase requisition for approval."""
+    result = await db.execute(
+        select(PurchaseRequisition)
+        .options(selectinload(PurchaseRequisition.items))
+        .where(PurchaseRequisition.id == pr_id)
+    )
+    pr = result.scalar_one_or_none()
+
+    if not pr:
+        raise HTTPException(status_code=404, detail="Purchase Requisition not found")
+
+    if pr.status != RequisitionStatus.DRAFT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot submit PR in {pr.status.value} status. Only DRAFT PRs can be submitted."
+        )
+
+    # Validate PR has items
+    if not pr.items:
+        raise HTTPException(status_code=400, detail="Cannot submit PR without items")
+
+    pr.status = RequisitionStatus.SUBMITTED
+    await db.commit()
+    await db.refresh(pr)
+
+    return pr
+
+
+@router.post("/requisitions/{pr_id}/cancel", response_model=PurchaseRequisitionResponse)
+async def cancel_purchase_requisition(
+    pr_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Cancel a purchase requisition."""
+    result = await db.execute(
+        select(PurchaseRequisition)
+        .options(selectinload(PurchaseRequisition.items))
+        .where(PurchaseRequisition.id == pr_id)
+    )
+    pr = result.scalar_one_or_none()
+
+    if not pr:
+        raise HTTPException(status_code=404, detail="Purchase Requisition not found")
+
+    if pr.status == RequisitionStatus.CONVERTED:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot cancel PR that has been converted to PO"
+        )
+
+    pr.status = RequisitionStatus.CANCELLED
+    await db.commit()
+    await db.refresh(pr)
+
+    return pr
+
+
+@router.post("/requisitions/{pr_id}/convert-to-po", response_model=PurchaseOrderResponse)
+async def convert_requisition_to_po(
+    pr_id: UUID,
+    request: dict,  # expects {"vendor_id": "uuid"}
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Convert an approved PR to a Purchase Order with multi-delivery support."""
+    # Get PR with items
+    result = await db.execute(
+        select(PurchaseRequisition)
+        .options(selectinload(PurchaseRequisition.items))
+        .where(PurchaseRequisition.id == pr_id)
+    )
+    pr = result.scalar_one_or_none()
+
+    if not pr:
+        raise HTTPException(status_code=404, detail="Purchase Requisition not found")
+
+    if pr.status != RequisitionStatus.APPROVED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only APPROVED PRs can be converted to PO. Current status: {pr.status.value}"
+        )
+
+    # Validate vendor
+    vendor_id = request.get("vendor_id")
+    if not vendor_id:
+        raise HTTPException(status_code=400, detail="vendor_id is required")
+
+    vendor_result = await db.execute(select(Vendor).where(Vendor.id == UUID(vendor_id)))
+    vendor = vendor_result.scalar_one_or_none()
+    if not vendor:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+
+    # Generate PO number
+    today = date.today()
+    count_result = await db.execute(
+        select(func.count(PurchaseOrder.id)).where(
+            func.date(PurchaseOrder.created_at) == today
+        )
+    )
+    count = count_result.scalar() or 0
+    po_number = f"PO-{today.strftime('%Y%m%d')}-{str(count + 1).zfill(4)}"
+
+    # Get warehouse
+    wh_result = await db.execute(
+        select(Warehouse).where(Warehouse.id == pr.delivery_warehouse_id)
+    )
+    warehouse = wh_result.scalar_one_or_none()
+
+    # Determine inter-state
+    is_inter_state = False
+    if warehouse and vendor.gst_state_code:
+        wh_state = getattr(warehouse, 'state_code', None)
+        if wh_state and wh_state != vendor.gst_state_code:
+            is_inter_state = True
+
+    # Create PO
+    po = PurchaseOrder(
+        po_number=po_number,
+        po_date=today,
+        vendor_id=vendor.id,
+        vendor_name=vendor.name,
+        vendor_gstin=vendor.gstin,
+        delivery_warehouse_id=pr.delivery_warehouse_id,
+        requisition_id=pr.id,
+        expected_delivery_date=pr.required_by_date or (today + datetime.timedelta(days=30)),
+        created_by=current_user.id,
+        subtotal=Decimal("0"),
+        taxable_amount=Decimal("0"),
+        grand_total=Decimal("0"),
+    )
+    db.add(po)
+    await db.flush()
+
+    # Create PO items from PR items with multi-delivery support
+    subtotal = Decimal("0")
+    total_discount = Decimal("0")
+    taxable_amount = Decimal("0")
+    cgst_total = Decimal("0")
+    sgst_total = Decimal("0")
+    igst_total = Decimal("0")
+    line_number = 0
+    month_totals = {}
+
+    for pr_item in pr.items:
+        line_number += 1
+        gst_rate = Decimal("18")  # Default GST
+
+        # Calculate amounts
+        gross_amount = pr_item.quantity_requested * pr_item.estimated_unit_price
+        item_taxable = gross_amount  # No discount from PR
+
+        # GST calculation
+        if is_inter_state:
+            igst_rate = gst_rate
+            cgst_rate = Decimal("0")
+            sgst_rate = Decimal("0")
+        else:
+            igst_rate = Decimal("0")
+            cgst_rate = gst_rate / 2
+            sgst_rate = gst_rate / 2
+
+        cgst_amount = item_taxable * (cgst_rate / 100)
+        sgst_amount = item_taxable * (sgst_rate / 100)
+        igst_amount = item_taxable * (igst_rate / 100)
+        item_total = item_taxable + cgst_amount + sgst_amount + igst_amount
+
+        po_item = PurchaseOrderItem(
+            purchase_order_id=po.id,
+            line_number=line_number,
+            product_id=pr_item.product_id,
+            variant_id=pr_item.variant_id,
+            product_name=pr_item.product_name,
+            sku=pr_item.sku,
+            quantity_ordered=pr_item.quantity_requested,
+            uom=pr_item.uom,
+            unit_price=pr_item.estimated_unit_price,
+            taxable_amount=item_taxable,
+            gst_rate=gst_rate,
+            cgst_rate=cgst_rate,
+            sgst_rate=sgst_rate,
+            igst_rate=igst_rate,
+            cgst_amount=cgst_amount,
+            sgst_amount=sgst_amount,
+            igst_amount=igst_amount,
+            total_amount=item_total,
+            # Multi-delivery: carry over monthly_quantities from PR item
+            monthly_quantities=pr_item.monthly_quantities,
+        )
+        db.add(po_item)
+
+        subtotal += gross_amount
+        taxable_amount += item_taxable
+        cgst_total += cgst_amount
+        sgst_total += sgst_amount
+        igst_total += igst_amount
+
+        # Collect month totals for delivery schedules
+        if pr_item.monthly_quantities:
+            for month_code, qty in pr_item.monthly_quantities.items():
+                if month_code not in month_totals:
+                    month_totals[month_code] = {"qty": 0, "value": Decimal("0"), "tax": Decimal("0")}
+                item_value = qty * pr_item.estimated_unit_price
+                item_tax = item_value * (gst_rate / 100)
+                month_totals[month_code]["qty"] += qty
+                month_totals[month_code]["value"] += item_value
+                month_totals[month_code]["tax"] += item_tax
+
+    # Update PO totals
+    total_tax = cgst_total + sgst_total + igst_total
+    grand_total = taxable_amount + total_tax
+
+    po.subtotal = subtotal
+    po.taxable_amount = taxable_amount
+    po.cgst_amount = cgst_total
+    po.sgst_amount = sgst_total
+    po.igst_amount = igst_total
+    po.total_tax = total_tax
+    po.grand_total = grand_total
+
+    # Create delivery schedules from monthly_quantities
+    if month_totals:
+        from calendar import monthrange
+        sorted_months = sorted(month_totals.keys())
+        lot_number = 0
+
+        for month_code in sorted_months:
+            lot_number += 1
+            month_data = month_totals[month_code]
+
+            year, month = int(month_code.split("-")[0]), int(month_code.split("-")[1])
+            expected_date = date(year, month, 15)
+            window_start = date(year, month, 10)
+            last_day = monthrange(year, month)[1]
+            window_end = date(year, month, min(20, last_day))
+
+            lot_value = month_data["value"]
+            lot_tax = month_data["tax"]
+            lot_total = lot_value + lot_tax
+
+            month_names = ["", "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                          "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+            lot_name = f"{month_names[month]} {year}"
+
+            delivery_schedule = PODeliverySchedule(
+                purchase_order_id=po.id,
+                lot_number=lot_number,
+                lot_name=lot_name,
+                month_code=month_code,
+                expected_delivery_date=expected_date,
+                delivery_window_start=window_start,
+                delivery_window_end=window_end,
+                total_quantity=month_data["qty"],
+                lot_value=lot_value,
+                lot_tax=lot_tax,
+                lot_total=lot_total,
+                status=DeliveryLotStatus.PENDING,
+            )
+            db.add(delivery_schedule)
+
+    # Mark PR as converted
+    pr.status = RequisitionStatus.CONVERTED
+    pr.converted_to_po_id = po.id
+
+    await db.commit()
+
+    # Load full PO with items and delivery schedules
+    result = await db.execute(
+        select(PurchaseOrder)
+        .options(
+            selectinload(PurchaseOrder.items),
+            selectinload(PurchaseOrder.delivery_schedules)
+        )
+        .where(PurchaseOrder.id == po.id)
+    )
+    po = result.scalar_one()
+
+    return po
 
 
 # ==================== Purchase Order (PO) ====================
@@ -267,6 +557,45 @@ async def create_purchase_order(
         if wh_state and wh_state != vendor.gst_state_code:
             is_inter_state = True
 
+    # Prepare Bill To (from input or default to company details)
+    bill_to = po_in.bill_to
+    if not bill_to:
+        # Fetch company details for Bill To
+        from sqlalchemy import text
+        company_result = await db.execute(text("""
+            SELECT legal_name, gstin, state_code, address_line1, address_line2,
+                   city, state, pincode, email, phone
+            FROM companies LIMIT 1
+        """))
+        company_row = company_result.fetchone()
+        if company_row:
+            bill_to = {
+                "name": company_row[0],
+                "gstin": company_row[1],
+                "state_code": company_row[2],
+                "address_line1": company_row[3],
+                "address_line2": company_row[4],
+                "city": company_row[5],
+                "state": company_row[6],
+                "pincode": company_row[7],
+                "email": company_row[8],
+                "phone": company_row[9],
+            }
+
+    # Prepare Ship To (from input or default to warehouse address)
+    ship_to = po_in.ship_to
+    if not ship_to and warehouse:
+        ship_to = {
+            "name": warehouse.name,
+            "address_line1": getattr(warehouse, 'address_line1', None),
+            "address_line2": getattr(warehouse, 'address_line2', None),
+            "city": getattr(warehouse, 'city', None),
+            "state": getattr(warehouse, 'state', None),
+            "pincode": getattr(warehouse, 'pincode', None),
+            "state_code": getattr(warehouse, 'state_code', None),
+            "gstin": bill_to.get('gstin') if bill_to else None,  # Same GSTIN as buyer
+        }
+
     # Create PO with initial zero values for NOT NULL fields
     po = PurchaseOrder(
         po_number=po_number,
@@ -278,6 +607,8 @@ async def create_purchase_order(
         requisition_id=po_in.requisition_id,
         expected_delivery_date=po_in.expected_delivery_date,
         delivery_address=po_in.delivery_address,
+        bill_to=bill_to,
+        ship_to=ship_to,
         payment_terms=po_in.payment_terms,
         credit_days=po_in.credit_days,
         advance_required=po_in.advance_required,
@@ -360,6 +691,8 @@ async def create_purchase_order(
             total_amount=item_total,
             expected_date=item_data.expected_date,
             notes=item_data.notes,
+            # Month-wise quantity breakdown for multi-delivery POs
+            monthly_quantities=item_data.monthly_quantities,
         )
         db.add(item)
 
@@ -388,6 +721,85 @@ async def create_purchase_order(
     po.total_tax = total_tax
     po.grand_total = grand_total
 
+    # Create delivery schedules (lot-wise) from monthly_quantities
+    # Collect all months and calculate per-month values
+    month_totals = {}  # {month_code: {qty: X, value: Y, tax: Z}}
+
+    for item_data in po_in.items:
+        if item_data.monthly_quantities:
+            item_unit_price = item_data.unit_price * (1 - item_data.discount_percentage / 100)
+            gst_multiplier = 1 + (item_data.gst_rate / 100)
+
+            for month_code, qty in item_data.monthly_quantities.items():
+                if month_code not in month_totals:
+                    month_totals[month_code] = {"qty": 0, "value": Decimal("0"), "tax": Decimal("0")}
+
+                item_value = qty * item_unit_price
+                item_tax = item_value * (item_data.gst_rate / 100)
+
+                month_totals[month_code]["qty"] += qty
+                month_totals[month_code]["value"] += item_value
+                month_totals[month_code]["tax"] += item_tax
+
+    # Create PODeliverySchedule for each month
+    if month_totals:
+        from datetime import timedelta
+        from calendar import monthrange
+
+        sorted_months = sorted(month_totals.keys())
+        lot_number = 0
+
+        for month_code in sorted_months:
+            lot_number += 1
+            month_data = month_totals[month_code]
+
+            # Parse month_code (YYYY-MM) to date
+            year, month = int(month_code.split("-")[0]), int(month_code.split("-")[1])
+            # Expected delivery: 15th of the month
+            expected_date = date(year, month, 15)
+            # Delivery window: 10th to 20th of the month
+            window_start = date(year, month, 10)
+            last_day = monthrange(year, month)[1]
+            window_end = date(year, month, min(20, last_day))
+
+            lot_value = month_data["value"]
+            lot_tax = month_data["tax"]
+            lot_total = lot_value + lot_tax
+
+            # Calculate advance (default 25%) and balance
+            advance_percentage = po_in.advance_required if po_in.advance_required > 0 else Decimal("25")
+            advance_amount = lot_total * (advance_percentage / 100)
+            balance_amount = lot_total - advance_amount
+
+            # Balance due 45 days after delivery
+            balance_due_date = expected_date + timedelta(days=po_in.credit_days)
+
+            # Generate lot name (e.g., "JAN 2026")
+            month_names = ["", "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                          "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+            lot_name = f"{month_names[month]} {year}"
+
+            delivery_schedule = PODeliverySchedule(
+                purchase_order_id=po.id,
+                lot_number=lot_number,
+                lot_name=lot_name,
+                month_code=month_code,
+                expected_delivery_date=expected_date,
+                delivery_window_start=window_start,
+                delivery_window_end=window_end,
+                total_quantity=month_data["qty"],
+                lot_value=lot_value,
+                lot_tax=lot_tax,
+                lot_total=lot_total,
+                advance_percentage=advance_percentage,
+                advance_amount=advance_amount,
+                balance_amount=balance_amount,
+                balance_due_days=po_in.credit_days,
+                balance_due_date=balance_due_date,
+                status=DeliveryLotStatus.PENDING,
+            )
+            db.add(delivery_schedule)
+
     # If created from PR, update PR status
     if po_in.requisition_id:
         pr_result = await db.execute(
@@ -400,10 +812,13 @@ async def create_purchase_order(
 
     await db.commit()
 
-    # Load full PO with items
+    # Load full PO with items and delivery schedules
     result = await db.execute(
         select(PurchaseOrder)
-        .options(selectinload(PurchaseOrder.items))
+        .options(
+            selectinload(PurchaseOrder.items),
+            selectinload(PurchaseOrder.delivery_schedules)
+        )
         .where(PurchaseOrder.id == po.id)
     )
     po = result.scalar_one()
@@ -481,7 +896,10 @@ async def get_purchase_order(
     """Get purchase order by ID."""
     result = await db.execute(
         select(PurchaseOrder)
-        .options(selectinload(PurchaseOrder.items))
+        .options(
+            selectinload(PurchaseOrder.items),
+            selectinload(PurchaseOrder.delivery_schedules)
+        )
         .where(PurchaseOrder.id == po_id)
     )
     po = result.scalar_one_or_none()
@@ -490,6 +908,43 @@ async def get_purchase_order(
         raise HTTPException(status_code=404, detail="Purchase Order not found")
 
     return po
+
+
+@router.delete("/orders/{po_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_purchase_order(
+    po_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a purchase order. Only DRAFT or REJECTED POs can be deleted."""
+    result = await db.execute(
+        select(PurchaseOrder).where(PurchaseOrder.id == po_id)
+    )
+    po = result.scalar_one_or_none()
+
+    if not po:
+        raise HTTPException(status_code=404, detail="Purchase Order not found")
+
+    # Only allow deletion of DRAFT or CANCELLED POs
+    allowed_statuses = [POStatus.DRAFT, POStatus.CANCELLED]
+    if po.status not in allowed_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete PO with status '{po.status.value}'. Only DRAFT or CANCELLED POs can be deleted."
+        )
+
+    # Delete PO items first (cascade should handle this, but being explicit)
+    await db.execute(
+        delete(PurchaseOrderItem).where(PurchaseOrderItem.purchase_order_id == po_id)
+    )
+
+    # Delete the PO
+    await db.execute(
+        delete(PurchaseOrder).where(PurchaseOrder.id == po_id)
+    )
+
+    await db.commit()
+    return None
 
 
 @router.post("/orders/{po_id}/approve", response_model=PurchaseOrderResponse)
@@ -502,7 +957,10 @@ async def approve_purchase_order(
     """Approve or reject a purchase order."""
     result = await db.execute(
         select(PurchaseOrder)
-        .options(selectinload(PurchaseOrder.items))
+        .options(
+            selectinload(PurchaseOrder.items),
+            selectinload(PurchaseOrder.delivery_schedules)
+        )
         .where(PurchaseOrder.id == po_id)
     )
     po = result.scalar_one_or_none()
@@ -520,8 +978,14 @@ async def approve_purchase_order(
         po.status = POStatus.APPROVED
         po.approved_by = current_user.id
         po.approved_at = datetime.utcnow()
+        # Update all delivery schedules to ADVANCE_PENDING status
+        for schedule in po.delivery_schedules:
+            schedule.status = DeliveryLotStatus.ADVANCE_PENDING
     else:
         po.status = POStatus.CANCELLED
+        # Cancel all delivery schedules
+        for schedule in po.delivery_schedules:
+            schedule.status = DeliveryLotStatus.CANCELLED
 
     await db.commit()
     await db.refresh(po)
@@ -536,10 +1000,17 @@ async def send_po_to_vendor(
     db: DB,
     current_user: User = Depends(get_current_user),
 ):
-    """Send PO to vendor (via email/portal)."""
+    """Send PO to vendor (via email/portal). Auto-generates serial numbers."""
+    from app.services.serialization import SerializationService
+    from app.schemas.serialization import GenerateSerialsRequest, GenerateSerialItem, ItemType
+    from app.models.serialization import POSerial, ModelCodeReference
+
     result = await db.execute(
         select(PurchaseOrder)
-        .options(selectinload(PurchaseOrder.items))
+        .options(
+            selectinload(PurchaseOrder.items),
+            selectinload(PurchaseOrder.delivery_schedules)
+        )
         .where(PurchaseOrder.id == po_id)
     )
     po = result.scalar_one_or_none()
@@ -547,16 +1018,108 @@ async def send_po_to_vendor(
     if not po:
         raise HTTPException(status_code=404, detail="Purchase Order not found")
 
-    if po.status not in [POStatus.APPROVED, POStatus.SENT]:
+    if po.status not in [POStatus.APPROVED, POStatus.SENT_TO_VENDOR]:
         raise HTTPException(
             status_code=400,
             detail="PO must be approved before sending to vendor"
         )
 
-    # TODO: Generate PO PDF
-    # TODO: Send email to vendor if request.send_email
+    # Get vendor details to find supplier code
+    vendor_result = await db.execute(
+        select(Vendor).where(Vendor.id == po.vendor_id)
+    )
+    vendor = vendor_result.scalar_one_or_none()
 
-    po.status = POStatus.SENT
+    # Default supplier code - check if vendor has a code assigned
+    from app.models.serialization import SupplierCode
+    supplier_code = "AP"  # Default to Aquapurite
+
+    if vendor:
+        # Try to find supplier code for this vendor
+        supplier_code_result = await db.execute(
+            select(SupplierCode).where(SupplierCode.vendor_id == str(vendor.id))
+        )
+        supplier_code_obj = supplier_code_result.scalar_one_or_none()
+        if supplier_code_obj:
+            supplier_code = supplier_code_obj.code
+
+    # Check if serials already exist for this PO
+    existing_serials = await db.execute(
+        select(func.count(POSerial.id)).where(POSerial.po_id == str(po.id))
+    )
+    existing_count = existing_serials.scalar() or 0
+
+    serials_generated = 0
+    serial_summaries = []
+
+    # Only generate serials if none exist
+    if existing_count == 0 and po.items:
+        serial_service = SerializationService(db)
+
+        # Build items for serial generation
+        serial_items = []
+        for item in po.items:
+            # Try to get model code from ModelCodeReference by product_id or SKU
+            model_code = None
+            item_type = ItemType.FINISHED_GOODS
+
+            if item.product_id:
+                ref_result = await db.execute(
+                    select(ModelCodeReference).where(
+                        ModelCodeReference.product_id == str(item.product_id)
+                    )
+                )
+                ref = ref_result.scalar_one_or_none()
+                if ref:
+                    model_code = ref.model_code
+                    item_type = ref.item_type
+
+            if not model_code and item.sku:
+                # Try by SKU
+                ref_result = await db.execute(
+                    select(ModelCodeReference).where(
+                        ModelCodeReference.product_sku == item.sku
+                    )
+                )
+                ref = ref_result.scalar_one_or_none()
+                if ref:
+                    model_code = ref.model_code
+                    item_type = ref.item_type
+
+            if not model_code:
+                # Generate model code from product name (first 3 letters)
+                product_name = item.product_name or item.sku or "UNK"
+                # Remove common prefixes and get first 3 alphabetic characters
+                clean_name = ''.join(c for c in product_name if c.isalpha())
+                model_code = clean_name[:3].upper() if len(clean_name) >= 3 else clean_name.upper().ljust(3, 'X')
+
+            serial_items.append(GenerateSerialItem(
+                po_item_id=str(item.id),
+                product_id=str(item.product_id) if item.product_id else None,
+                product_sku=item.sku,
+                model_code=model_code,
+                quantity=item.quantity_ordered,
+                item_type=item_type,
+            ))
+
+        if serial_items:
+            try:
+                gen_request = GenerateSerialsRequest(
+                    po_id=str(po.id),
+                    supplier_code=supplier_code,
+                    items=serial_items,
+                )
+                gen_result = await serial_service.generate_serials_for_po(gen_request)
+                serials_generated = gen_result.total_generated
+                serial_summaries = gen_result.items
+
+                # Mark as sent to vendor
+                await serial_service.mark_serials_sent_to_vendor(str(po.id))
+            except Exception as e:
+                # Log error but don't fail the send operation
+                print(f"Warning: Failed to generate serials for PO {po.po_number}: {e}")
+
+    po.status = POStatus.SENT_TO_VENDOR
     po.sent_to_vendor_at = datetime.utcnow()
 
     await db.commit()
@@ -574,7 +1137,10 @@ async def confirm_purchase_order(
     """Mark PO as confirmed by vendor."""
     result = await db.execute(
         select(PurchaseOrder)
-        .options(selectinload(PurchaseOrder.items))
+        .options(
+            selectinload(PurchaseOrder.items),
+            selectinload(PurchaseOrder.delivery_schedules)
+        )
         .where(PurchaseOrder.id == po_id)
     )
     po = result.scalar_one_or_none()
@@ -589,6 +1155,117 @@ async def confirm_purchase_order(
     await db.refresh(po)
 
     return po
+
+
+# ==================== Delivery Schedule (Lot-wise Payment) ====================
+
+@router.get("/orders/{po_id}/schedules", response_model=List[PODeliveryScheduleResponse])
+async def get_delivery_schedules(
+    po_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get delivery schedules for a PO."""
+    result = await db.execute(
+        select(PODeliverySchedule)
+        .where(PODeliverySchedule.purchase_order_id == po_id)
+        .order_by(PODeliverySchedule.lot_number)
+    )
+    schedules = result.scalars().all()
+
+    return schedules
+
+
+@router.post("/orders/{po_id}/schedules/{lot_id}/payment", response_model=PODeliveryScheduleResponse)
+async def record_lot_payment(
+    po_id: UUID,
+    lot_id: UUID,
+    payment: PODeliveryPaymentRequest,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Record advance or balance payment for a delivery lot."""
+    result = await db.execute(
+        select(PODeliverySchedule)
+        .where(
+            PODeliverySchedule.id == lot_id,
+            PODeliverySchedule.purchase_order_id == po_id
+        )
+    )
+    schedule = result.scalar_one_or_none()
+
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Delivery schedule not found")
+
+    if payment.payment_type == "ADVANCE":
+        if schedule.status not in [DeliveryLotStatus.PENDING, DeliveryLotStatus.ADVANCE_PENDING]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot record advance payment for lot in {schedule.status.value} status"
+            )
+
+        schedule.advance_paid = payment.amount
+        schedule.advance_paid_date = payment.payment_date
+        schedule.advance_payment_ref = payment.payment_reference
+        schedule.status = DeliveryLotStatus.ADVANCE_PAID
+
+    elif payment.payment_type == "BALANCE":
+        if schedule.status not in [DeliveryLotStatus.DELIVERED, DeliveryLotStatus.PAYMENT_PENDING]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Balance payment can only be recorded after delivery. Current status: {schedule.status.value}"
+            )
+
+        schedule.balance_paid = payment.amount
+        schedule.balance_paid_date = payment.payment_date
+        schedule.balance_payment_ref = payment.payment_reference
+        schedule.status = DeliveryLotStatus.COMPLETED
+
+    await db.commit()
+    await db.refresh(schedule)
+
+    return schedule
+
+
+@router.post("/orders/{po_id}/schedules/{lot_id}/delivered", response_model=PODeliveryScheduleResponse)
+async def mark_lot_delivered(
+    po_id: UUID,
+    lot_id: UUID,
+    delivery_date: date,
+    db: DB,
+    current_user: CurrentUser,
+    grn_id: Optional[UUID] = None,
+):
+    """Mark a delivery lot as delivered."""
+    result = await db.execute(
+        select(PODeliverySchedule)
+        .where(
+            PODeliverySchedule.id == lot_id,
+            PODeliverySchedule.purchase_order_id == po_id
+        )
+    )
+    schedule = result.scalar_one_or_none()
+
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Delivery schedule not found")
+
+    if schedule.status != DeliveryLotStatus.ADVANCE_PAID:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Lot must have advance paid before marking as delivered. Current status: {schedule.status.value}"
+        )
+
+    from datetime import timedelta
+
+    schedule.actual_delivery_date = delivery_date
+    schedule.grn_id = grn_id
+    schedule.status = DeliveryLotStatus.PAYMENT_PENDING
+    schedule.balance_due_date = delivery_date + timedelta(days=schedule.balance_due_days)
+
+    await db.commit()
+    await db.refresh(schedule)
+
+    return schedule
 
 
 # ==================== Goods Receipt Note (GRN) ====================
@@ -1466,24 +2143,65 @@ async def get_po_summary_report(
 
 # ==================== Document Downloads ====================
 
+def _number_to_words(num: float) -> str:
+    """Convert number to words for Indian currency."""
+    ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+            'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen']
+    tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety']
+
+    if num == 0:
+        return 'Zero'
+
+    def words(n):
+        if n < 20:
+            return ones[n]
+        elif n < 100:
+            return tens[n // 10] + (' ' + ones[n % 10] if n % 10 else '')
+        elif n < 1000:
+            return ones[n // 100] + ' Hundred' + (' ' + words(n % 100) if n % 100 else '')
+        elif n < 100000:
+            return words(n // 1000) + ' Thousand' + (' ' + words(n % 1000) if n % 1000 else '')
+        elif n < 10000000:
+            return words(n // 100000) + ' Lakh' + (' ' + words(n % 100000) if n % 100000 else '')
+        else:
+            return words(n // 10000000) + ' Crore' + (' ' + words(n % 10000000) if n % 10000000 else '')
+
+    rupees = int(num)
+    paise = int(round((num - rupees) * 100))
+
+    result = 'Rupees ' + words(rupees)
+    if paise:
+        result += ' and ' + words(paise) + ' Paise'
+    return result + ' Only'
+
+
 @router.get("/orders/{po_id}/download")
 async def download_purchase_order(
     po_id: UUID,
     db: DB,
     current_user: User = Depends(get_current_user),
 ):
-    """Download Purchase Order as printable HTML (can be saved as PDF via browser)."""
+    """Download Purchase Order as printable HTML (Multi-Delivery Template with Month-wise breakdown)."""
     from fastapi.responses import HTMLResponse
+    from app.models.serialization import POSerial
+    from app.models.company import Company
 
     result = await db.execute(
         select(PurchaseOrder)
-        .options(selectinload(PurchaseOrder.items))
+        .options(
+            selectinload(PurchaseOrder.items),
+            selectinload(PurchaseOrder.delivery_schedules)
+        )
         .where(PurchaseOrder.id == po_id)
     )
     po = result.scalar_one_or_none()
 
     if not po:
         raise HTTPException(status_code=404, detail="Purchase Order not found")
+
+    # Get company details
+    company_result = await db.execute(select(Company).limit(1))
+    company = company_result.scalar_one_or_none()
 
     # Get vendor details
     vendor_result = await db.execute(
@@ -1497,284 +2215,662 @@ async def download_purchase_order(
     )
     warehouse = warehouse_result.scalar_one_or_none()
 
-    # Build items table
+    # Get PO serials - grouped by model code for summary
+    serials_result = await db.execute(
+        select(
+            POSerial.model_code,
+            POSerial.item_type,
+            func.count(POSerial.id).label('quantity'),
+            func.min(POSerial.serial_number).label('start_serial'),
+            func.max(POSerial.serial_number).label('end_serial'),
+            func.min(POSerial.barcode).label('start_barcode'),
+            func.max(POSerial.barcode).label('end_barcode'),
+        )
+        .where(POSerial.po_id == str(po.id))
+        .group_by(POSerial.model_code, POSerial.item_type)
+        .order_by(POSerial.model_code)
+    )
+    serial_groups = serials_result.all()
+    total_serials = sum(sg.quantity for sg in serial_groups) if serial_groups else 0
+
+    # Check if this is a multi-delivery PO (has monthly_quantities or delivery_schedules)
+    has_monthly_breakdown = any(item.monthly_quantities for item in po.items)
+    delivery_schedules = sorted(po.delivery_schedules, key=lambda x: x.lot_number) if po.delivery_schedules else []
+
+    # Collect all unique months from all items
+    all_months = set()
+    for item in po.items:
+        if item.monthly_quantities:
+            all_months.update(item.monthly_quantities.keys())
+    sorted_months = sorted(all_months) if all_months else []
+
+    # Month name mapping for headers
+    month_names_short = {
+        "01": "JAN", "02": "FEB", "03": "MAR", "04": "APR", "05": "MAY", "06": "JUN",
+        "07": "JUL", "08": "AUG", "09": "SEP", "10": "OCT", "11": "NOV", "12": "DEC"
+    }
+
+    # Build items table HTML
     items_html = ""
+    subtotal = Decimal("0")
+    total_qty = 0
+    month_totals = {m: 0 for m in sorted_months}  # Track totals per month
+
     for idx, item in enumerate(po.items, 1):
-        unit_price = float(item.unit_price) if item.unit_price else 0.0
-        taxable = float(item.taxable_amount) if item.taxable_amount else 0.0
-        gst = float(item.gst_rate) if item.gst_rate else 0.0
-        total = float(item.total_amount) if item.total_amount else 0.0
+        unit_price = Decimal(str(item.unit_price)) if item.unit_price else Decimal("0")
+        amount = Decimal(str(item.quantity_ordered)) * unit_price
+        subtotal += amount
+        total_qty += item.quantity_ordered
+        # Use SKU as item code (e.g., SP-SDF001)
+        item_code = item.sku or '-'
+
+        # Build month columns if multi-delivery
+        month_cells = ""
+        if has_monthly_breakdown and sorted_months:
+            for month in sorted_months:
+                qty = item.monthly_quantities.get(month, 0) if item.monthly_quantities else 0
+                month_totals[month] += qty
+                month_cells += f'<td class="text-center">{qty if qty > 0 else "-"}</td>'
 
         items_html += f"""
-        <tr>
-            <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{idx}</td>
-            <td style="border: 1px solid #ddd; padding: 8px;">{item.product_name or '-'}</td>
-            <td style="border: 1px solid #ddd; padding: 8px;">{item.sku or '-'}</td>
-            <td style="border: 1px solid #ddd; padding: 8px;">{item.hsn_code or '-'}</td>
-            <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{item.quantity_ordered}</td>
-            <td style="border: 1px solid #ddd; padding: 8px;">{item.uom or 'PCS'}</td>
-            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹{unit_price:,.2f}</td>
-            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹{taxable:,.2f}</td>
-            <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{gst}%</td>
-            <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹{total:,.2f}</td>
-        </tr>
+                <tr>
+                    <td class="text-center">{idx}</td>
+                    <td class="item-code">{item_code}</td>
+                    <td>
+                        <strong>{item.product_name or '-'}</strong>
+                    </td>
+                    <td class="text-center">{item.hsn_code or '84212190'}</td>
+                    {month_cells}
+                    <td class="text-center"><strong>{item.quantity_ordered}</strong></td>
+                    <td class="text-center">{item.uom or 'Nos'}</td>
+                    <td class="text-right">Rs. {float(unit_price):,.2f}</td>
+                    <td class="text-right"><strong>Rs. {float(amount):,.2f}</strong></td>
+                </tr>"""
+
+    # Build total row with month totals
+    month_total_cells = ""
+    if has_monthly_breakdown and sorted_months:
+        for month in sorted_months:
+            month_total_cells += f'<td class="text-center"><strong>{month_totals[month]}</strong></td>'
+
+    # Build month headers for table
+    month_headers = ""
+    if has_monthly_breakdown and sorted_months:
+        for month in sorted_months:
+            year_part = month.split("-")[0][-2:]  # Last 2 digits of year (e.g., "26")
+            month_part = month.split("-")[1]
+            month_name = month_names_short.get(month_part, month_part)
+            month_headers += f'<th style="width:6%">{month_name} \'{year_part}</th>'
+
+    # Build delivery schedule section HTML
+    delivery_schedule_html = ""
+    if delivery_schedules:
+        schedule_rows = ""
+        total_qty_sched = 0
+        total_lot_value = Decimal("0")
+        total_advance = Decimal("0")
+        total_balance = Decimal("0")
+
+        for sched in delivery_schedules:
+            total_qty_sched += sched.total_quantity
+            total_lot_value += Decimal(str(sched.lot_total))
+            total_advance += Decimal(str(sched.advance_amount))
+            total_balance += Decimal(str(sched.balance_amount))
+
+            adv_due_text = "With PO" if sched.lot_number == 1 else f"{sched.expected_delivery_date.strftime('%d %b %Y') if sched.expected_delivery_date else 'TBD'}"
+            balance_due_text = sched.balance_due_date.strftime('%d %b %Y') if sched.balance_due_date else "TBD"
+
+            schedule_rows += f"""
+                <tr>
+                    <td class="text-center"><strong>LOT {sched.lot_number} ({sched.lot_name})</strong></td>
+                    <td class="text-center">{sched.expected_delivery_date.strftime('%d %b %Y') if sched.expected_delivery_date else 'TBD'}</td>
+                    <td class="text-center">{sched.total_quantity:,}</td>
+                    <td class="text-right">Rs. {float(sched.lot_total):,.2f}</td>
+                    <td class="text-right">Rs. {float(sched.advance_amount):,.2f}</td>
+                    <td class="text-center">{adv_due_text}</td>
+                    <td class="text-right">Rs. {float(sched.balance_amount):,.2f}</td>
+                    <td class="text-center">{balance_due_text}</td>
+                </tr>"""
+
+        delivery_schedule_html = f"""
+        <!-- Delivery Schedule Section -->
+        <div style="margin-top: 15px; border: 2px solid #1a5f7a; page-break-inside: avoid;">
+            <div style="background: #1a5f7a; color: white; padding: 10px; font-weight: bold; font-size: 12px;">
+                DELIVERY SCHEDULE & LOT-WISE PAYMENT PLAN
+            </div>
+            <table style="font-size: 10px;">
+                <thead>
+                    <tr style="background: #e0e0e0;">
+                        <th style="width: 14%">LOT</th>
+                        <th style="width: 12%">DELIVERY DATE</th>
+                        <th style="width: 8%">QTY</th>
+                        <th style="width: 14%">LOT VALUE (incl. GST)</th>
+                        <th style="width: 12%">ADVANCE (25%)</th>
+                        <th style="width: 12%">ADVANCE DUE</th>
+                        <th style="width: 12%">BALANCE (75%)</th>
+                        <th style="width: 12%">BALANCE DUE</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {schedule_rows}
+                    <tr style="background: #f5f5f5; font-weight: bold;">
+                        <td class="text-center">TOTAL</td>
+                        <td class="text-center"></td>
+                        <td class="text-center">{total_qty_sched:,}</td>
+                        <td class="text-right">Rs. {float(total_lot_value):,.2f}</td>
+                        <td class="text-right">Rs. {float(total_advance):,.2f}</td>
+                        <td class="text-center"></td>
+                        <td class="text-right">Rs. {float(total_balance):,.2f}</td>
+                        <td class="text-center"></td>
+                    </tr>
+                </tbody>
+            </table>
+            <p style="padding: 8px; font-size: 9px; color: #666; background: #fff3cd;">
+                <strong>Note:</strong> Advance for each lot must be paid before delivery. Balance is due 45 days after each lot's delivery.
+            </p>
+        </div>
         """
 
-    vendor_name = vendor.legal_name if vendor else po.vendor_name
-    vendor_address = ""
+    # Tax calculations
+    cgst_rate = Decimal("9")
+    sgst_rate = Decimal("9")
+    cgst_amount = Decimal(str(po.cgst_amount or 0))
+    sgst_amount = Decimal(str(po.sgst_amount or 0))
+    grand_total = Decimal(str(po.grand_total or 0))
+    advance_paid = Decimal(str(getattr(po, 'advance_paid', 0) or 0))
+    balance_due = grand_total - advance_paid
+
+    # Company info
+    company_name = company.legal_name if company else "AQUAPURITE INDIA PRIVATE LIMITED"
+    company_gstin = company.gstin if company else "07AADCA1234L1ZP"
+    company_cin = getattr(company, 'cin', None) if company else "U12345DL2024PTC123456"
+    company_address = f"{company.address_line1 if company else 'Plot No. 123, Sector 5'}, {company.city if company else 'New Delhi'}, {company.state if company else 'Delhi'} - {company.pincode if company else '110001'}"
+    company_phone = company.phone if company else "+91-11-12345678"
+    company_email = company.email if company else "info@aquapurite.com"
+    company_state_code = getattr(company, 'state_code', '07') if company else "07"
+
+    # Vendor info
+    vendor_name = vendor.legal_name if vendor else (po.vendor_name or "Vendor")
+    vendor_gstin = vendor.gstin if vendor else (po.vendor_gstin or "N/A")
+    vendor_state_code = vendor.gst_state_code if vendor else "07"
+    vendor_code = vendor.vendor_code if vendor else "N/A"
+    vendor_contact = vendor.contact_person if vendor else "N/A"
+    vendor_phone = vendor.phone if vendor else "N/A"
+
+    vendor_address_parts = []
     if vendor:
-        addr_parts = [vendor.address_line1, vendor.address_line2, vendor.city, vendor.state, str(vendor.pincode) if vendor.pincode else None]
-        vendor_address = ", ".join(filter(None, addr_parts))
+        if vendor.address_line1:
+            vendor_address_parts.append(vendor.address_line1)
+        if vendor.address_line2:
+            vendor_address_parts.append(vendor.address_line2)
+        if vendor.city:
+            vendor_address_parts.append(vendor.city)
+        if vendor.state:
+            vendor_address_parts.append(vendor.state)
+        if vendor.pincode:
+            vendor_address_parts.append(str(vendor.pincode))
+    vendor_full_address = ", ".join(vendor_address_parts) if vendor_address_parts else "N/A"
 
-    warehouse_name = warehouse.name if warehouse else "N/A"
-    warehouse_address = ""
+    # Warehouse (Ship To) info
+    warehouse_name = warehouse.name if warehouse else "Central Warehouse"
+    warehouse_address_parts = []
     if warehouse:
-        addr_parts = [warehouse.address_line1, warehouse.city, warehouse.state, warehouse.pincode]
-        warehouse_address = ", ".join(filter(None, [str(p) for p in addr_parts if p]))
+        if warehouse.address_line1:
+            warehouse_address_parts.append(warehouse.address_line1)
+        if warehouse.city:
+            warehouse_address_parts.append(warehouse.city)
+        if warehouse.state:
+            warehouse_address_parts.append(warehouse.state)
+        if warehouse.pincode:
+            warehouse_address_parts.append(str(warehouse.pincode))
+    warehouse_full_address = ", ".join(warehouse_address_parts) if warehouse_address_parts else "N/A"
 
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>Purchase Order - {po.po_number}</title>
-        <style>
-            @media print {{
-                body {{ margin: 0; padding: 20px; }}
-                .no-print {{ display: none; }}
-            }}
-            body {{
-                font-family: Arial, sans-serif;
-                max-width: 900px;
-                margin: 0 auto;
-                padding: 20px;
-                color: #333;
-            }}
-            .header {{
-                text-align: center;
-                border-bottom: 2px solid #333;
-                padding-bottom: 20px;
-                margin-bottom: 20px;
-            }}
-            .company-name {{
-                font-size: 24px;
-                font-weight: bold;
-                color: #1a73e8;
-            }}
-            .document-title {{
-                font-size: 18px;
-                font-weight: bold;
-                margin-top: 10px;
-                background: #f5f5f5;
-                padding: 10px;
-            }}
-            .info-section {{
-                display: flex;
-                justify-content: space-between;
-                margin-bottom: 20px;
-            }}
-            .info-box {{
-                width: 48%;
-                background: #f9f9f9;
-                padding: 15px;
-                border-radius: 5px;
-            }}
-            .info-box h3 {{
-                margin: 0 0 10px 0;
-                color: #1a73e8;
-                font-size: 14px;
-                border-bottom: 1px solid #ddd;
-                padding-bottom: 5px;
-            }}
-            .info-box p {{
-                margin: 5px 0;
-                font-size: 12px;
-            }}
-            table {{
-                width: 100%;
-                border-collapse: collapse;
-                margin-bottom: 20px;
-            }}
-            th {{
-                background: #1a73e8;
-                color: white;
-                padding: 10px 8px;
-                text-align: left;
-                font-size: 11px;
-            }}
-            .totals {{
-                width: 300px;
-                margin-left: auto;
-            }}
-            .totals tr td {{
-                padding: 8px;
-                border: 1px solid #ddd;
-            }}
-            .totals tr:last-child {{
-                background: #1a73e8;
-                color: white;
-                font-weight: bold;
-            }}
-            .footer {{
-                margin-top: 40px;
-                border-top: 1px solid #ddd;
-                padding-top: 20px;
-            }}
-            .signatures {{
-                display: flex;
-                justify-content: space-between;
-                margin-top: 60px;
-            }}
-            .signature-box {{
-                text-align: center;
-                width: 200px;
-            }}
-            .signature-line {{
-                border-top: 1px solid #333;
-                margin-top: 40px;
-                padding-top: 5px;
-            }}
-            .print-btn {{
-                position: fixed;
-                top: 10px;
-                right: 10px;
-                padding: 10px 20px;
-                background: #1a73e8;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                cursor: pointer;
-            }}
-            .status-badge {{
-                display: inline-block;
-                padding: 5px 15px;
-                border-radius: 20px;
-                font-size: 12px;
-                font-weight: bold;
-            }}
-            .status-approved {{ background: #e6f4ea; color: #137333; }}
-            .status-draft {{ background: #fce8e6; color: #c5221f; }}
-            .status-pending {{ background: #fef7e0; color: #b06000; }}
-        </style>
-    </head>
-    <body>
-        <button class="print-btn no-print" onclick="window.print()">🖨️ Print / Save PDF</button>
+    # Bank details
+    bank_name = vendor.bank_name if vendor else "N/A"
+    bank_branch = vendor.bank_branch if vendor else "N/A"
+    bank_account = vendor.bank_account_number if vendor else "N/A"
+    bank_ifsc = vendor.bank_ifsc if vendor else "N/A"
+    beneficiary_name = vendor.beneficiary_name if vendor else vendor_name
 
+    # Tax type determination
+    is_intra_state = company_state_code == vendor_state_code
+    tax_type = "CGST + SGST (Intra-State)" if is_intra_state else "IGST (Inter-State)"
+
+    # PO details
+    po_date_str = po.po_date.strftime('%d.%m.%Y') if po.po_date else datetime.now().strftime('%d.%m.%Y')
+    expected_delivery_str = po.expected_delivery_date.strftime('%d.%m.%Y') if po.expected_delivery_date else "TBD"
+
+    # Build serial numbers section HTML (goes after Terms & Conditions)
+    serials_html = ""
+    if serial_groups:
+        serial_rows = ""
+        for sg in serial_groups:
+            item_type = sg.item_type.value if hasattr(sg.item_type, 'value') else str(sg.item_type)
+            serial_rows += f"""
+                    <tr>
+                        <td class="text-center"><span class="fg-code">{sg.model_code}</span></td>
+                        <td class="text-center">{item_type}</td>
+                        <td class="text-center"><strong>{sg.quantity}</strong></td>
+                        <td class="text-center">{sg.start_serial:08d} - {sg.end_serial:08d}</td>
+                        <td style="font-family: 'Courier New', monospace; font-size: 9px;">{sg.start_barcode}</td>
+                        <td style="font-family: 'Courier New', monospace; font-size: 9px;">{sg.end_barcode}</td>
+                    </tr>"""
+
+        serials_html = f"""
+        <!-- Serial Numbers Section (Footer) -->
+        <div style="margin-top: 15px; page-break-inside: avoid; border: 1px solid #000;">
+            <div style="background: #1a5f7a; color: white; padding: 8px; font-weight: bold; font-size: 11px;">
+                PRE-ALLOCATED SERIAL NUMBERS / BARCODES
+            </div>
+            <div style="padding: 10px;">
+                <p style="font-size: 9px; color: #666; margin-bottom: 8px;">
+                    The following serial numbers have been pre-allocated for this Purchase Order.
+                    Please ensure barcodes are printed and affixed to each unit before dispatch.
+                </p>
+                <table style="font-size: 9px;">
+                    <thead>
+                        <tr style="background: #e0e0e0;">
+                            <th style="width: 12%;">Model Code</th>
+                            <th style="width: 10%;">Type</th>
+                            <th style="width: 10%;">Qty</th>
+                            <th style="width: 20%;">Serial Range</th>
+                            <th style="width: 24%;">Start Barcode</th>
+                            <th style="width: 24%;">End Barcode</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {serial_rows}
+                    </tbody>
+                </table>
+                <p style="font-size: 9px; color: #666; margin-top: 5px;">
+                    Total Serial Numbers: <strong>{total_serials}</strong> |
+                    <a href="/api/v1/serialization/po/{str(po.id)}/export?format=csv" class="no-print" style="color: #1a5f7a;">Download CSV</a>
+                </p>
+            </div>
+        </div>
+        """
+
+    # APPROVED TEMPLATE STRUCTURE (from generate_po_fasttrack_001.py)
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Purchase Order - {po.po_number}</title>
+    <style>
+        @page {{ size: A4; margin: 10mm; }}
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: Arial, sans-serif; font-size: 11px; line-height: 1.4; padding: 10px; background: #fff; }}
+        .document {{ max-width: 210mm; margin: 0 auto; border: 2px solid #000; }}
+
+        /* Header */
+        .header {{ background: linear-gradient(135deg, #1a5f7a 0%, #0d3d4d 100%); color: white; padding: 15px; text-align: center; }}
+        .header h1 {{ font-size: 24px; margin-bottom: 8px; letter-spacing: 2px; }}
+        .header .contact {{ font-size: 9px; }}
+
+        /* Document Title */
+        .doc-title {{ background: #f0f0f0; padding: 12px; text-align: center; border-bottom: 2px solid #000; }}
+        .doc-title h2 {{ font-size: 18px; color: #1a5f7a; }}
+
+        /* Info Grid */
+        .info-grid {{ display: flex; flex-wrap: wrap; border-bottom: 1px solid #000; }}
+        .info-box {{ flex: 1; min-width: 25%; padding: 8px 10px; border-right: 1px solid #000; }}
+        .info-box:last-child {{ border-right: none; }}
+        .info-box label {{ display: block; font-size: 9px; color: #666; text-transform: uppercase; margin-bottom: 3px; }}
+        .info-box value {{ display: block; font-weight: bold; font-size: 11px; }}
+
+        /* Party Section */
+        .party-section {{ display: flex; border-bottom: 1px solid #000; }}
+        .party-box {{ flex: 1; padding: 10px; border-right: 1px solid #000; }}
+        .party-box:last-child {{ border-right: none; }}
+        .party-header {{ background: #1a5f7a; color: white; padding: 5px 8px; margin: -10px -10px 10px -10px; font-size: 10px; font-weight: bold; }}
+        .party-box p {{ margin-bottom: 3px; }}
+        .party-box .company-name {{ font-weight: bold; font-size: 12px; color: #1a5f7a; }}
+
+        /* Table */
+        table {{ width: 100%; border-collapse: collapse; }}
+        th {{ background: #1a5f7a; color: white; padding: 8px 5px; font-size: 10px; text-align: center; border: 1px solid #000; }}
+        td {{ padding: 8px 5px; border: 1px solid #000; font-size: 10px; }}
+        .text-center {{ text-align: center; }}
+        .text-right {{ text-align: right; }}
+        .fg-code {{ font-family: 'Courier New', monospace; font-weight: bold; color: #1a5f7a; font-size: 9px; }}
+        .item-code {{ font-family: 'Courier New', monospace; font-weight: bold; color: #333; font-size: 9px; }}
+
+        /* Totals */
+        .totals-section {{ display: flex; border-bottom: 1px solid #000; }}
+        .totals-left {{ flex: 1; padding: 10px; border-right: 1px solid #000; }}
+        .totals-right {{ width: 300px; }}
+        .totals-row {{ display: flex; padding: 5px 10px; border-bottom: 1px solid #ddd; }}
+        .totals-row:last-child {{ border-bottom: none; }}
+        .totals-label {{ flex: 1; text-align: right; padding-right: 15px; }}
+        .totals-value {{ width: 110px; text-align: right; font-weight: bold; }}
+        .grand-total {{ background: #1a5f7a; color: white; font-size: 12px; }}
+        .advance-paid {{ background: #28a745; color: white; }}
+        .balance-due {{ background: #dc3545; color: white; }}
+
+        /* Amount in Words */
+        .amount-words {{ padding: 10px; background: #f9f9f9; border-bottom: 1px solid #000; font-style: italic; }}
+
+        /* Payment Section */
+        .payment-section {{ padding: 10px; border-bottom: 1px solid #000; background: #e8f5e9; }}
+        .payment-section h4 {{ color: #2e7d32; margin-bottom: 8px; }}
+        .payment-detail {{ display: flex; margin-bottom: 5px; }}
+        .payment-detail label {{ width: 150px; font-weight: bold; }}
+
+        /* Bank Details */
+        .bank-section {{ padding: 10px; border-bottom: 1px solid #000; background: #fff3cd; }}
+        .bank-section h4 {{ color: #856404; margin-bottom: 8px; }}
+
+        /* Terms */
+        .terms {{ padding: 10px; font-size: 9px; border-bottom: 1px solid #000; }}
+        .terms h4 {{ margin-bottom: 5px; color: #1a5f7a; }}
+        .terms ol {{ margin-left: 15px; }}
+        .terms li {{ margin-bottom: 3px; }}
+
+        /* Signature */
+        .signature-section {{ display: flex; padding: 20px; }}
+        .signature-box {{ flex: 1; text-align: center; }}
+        .signature-line {{ border-top: 1px solid #000; margin-top: 50px; padding-top: 5px; width: 180px; margin-left: auto; margin-right: auto; }}
+
+        /* Footer */
+        .footer {{ background: #f0f0f0; padding: 8px; text-align: center; font-size: 9px; color: #666; }}
+
+        /* Print Button */
+        .print-btn {{
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #1a5f7a 0%, #0d3d4d 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            z-index: 1000;
+        }}
+        .print-btn:hover {{
+            background: linear-gradient(135deg, #0d3d4d 0%, #1a5f7a 100%);
+        }}
+
+        @media print {{
+            body {{ padding: 0; }}
+            .document {{ border: 1px solid #000; }}
+            .print-btn {{ display: none !important; }}
+            .no-print {{ display: none !important; }}
+        }}
+    </style>
+</head>
+<body>
+    <!-- Print PDF Button -->
+    <button class="print-btn no-print" onclick="window.print()">Print PDF</button>
+
+    <div class="document">
+        <!-- Header -->
         <div class="header">
-            <div class="company-name">AQUAPURITE INDIA PVT LTD</div>
-            <div style="font-size: 12px; color: #666;">
-                123 Industrial Area, Sector 5, Noida, UP - 201301<br>
-                GSTIN: 09AAACA1234M1Z5 | PAN: AAACA1234M
+            <h1>{company_name}</h1>
+            <div class="contact">
+                {company_address}<br>
+                GSTIN: {company_gstin} | CIN: {company_cin or 'N/A'}<br>
+                Phone: {company_phone} | Email: {company_email}
             </div>
-            <div class="document-title">PURCHASE ORDER</div>
         </div>
 
-        <div class="info-section">
+        <!-- Document Title -->
+        <div class="doc-title">
+            <h2>PURCHASE ORDER</h2>
+        </div>
+
+        <!-- PO Info Grid -->
+        <div class="info-grid">
             <div class="info-box">
-                <h3>VENDOR DETAILS</h3>
-                <p><strong>{vendor_name}</strong></p>
-                <p>{vendor_address}</p>
-                <p>GSTIN: {po.vendor_gstin or 'N/A'}</p>
+                <label>PO Number</label>
+                <value style="font-size: 13px; color: #1a5f7a;">{po.po_number}</value>
             </div>
             <div class="info-box">
-                <h3>PO DETAILS</h3>
-                <p><strong>PO Number:</strong> {po.po_number}</p>
-                <p><strong>PO Date:</strong> {po.po_date}</p>
-                <p><strong>Expected Delivery:</strong> {po.expected_delivery_date or 'TBD'}</p>
-                <p><strong>Status:</strong> <span class="status-badge status-{'approved' if po.status.value == 'APPROVED' else 'draft'}">{po.status.value}</span></p>
-                <p><strong>Payment Terms:</strong> {po.credit_days or 0} days credit</p>
+                <label>PO Date</label>
+                <value>{po_date_str}</value>
+            </div>
+            <div class="info-box">
+                <label>PI Reference</label>
+                <value>{getattr(po, 'pi_reference', None) or 'N/A'}</value>
+            </div>
+            <div class="info-box">
+                <label>PI Date</label>
+                <value>{getattr(po, 'pi_date', None).strftime('%d.%m.%Y') if getattr(po, 'pi_date', None) else 'N/A'}</value>
             </div>
         </div>
 
-        <div class="info-section">
-            <div class="info-box" style="width: 100%;">
-                <h3>DELIVERY ADDRESS</h3>
-                <p><strong>{warehouse_name}</strong></p>
-                <p>{warehouse_address}</p>
+        <div class="info-grid">
+            <div class="info-box">
+                <label>Expected Delivery</label>
+                <value style="color: #dc3545;">{expected_delivery_str}</value>
+            </div>
+            <div class="info-box">
+                <label>Delivery Terms</label>
+                <value>{getattr(po, 'delivery_terms', None) or 'Ex-Works'}</value>
+            </div>
+            <div class="info-box">
+                <label>Payment Terms</label>
+                <value>{getattr(po, 'payment_terms', None) or f'{po.credit_days or 30} days credit'}</value>
+            </div>
+            <div class="info-box">
+                <label>Tax Type</label>
+                <value>{tax_type}</value>
             </div>
         </div>
 
+        <!-- Vendor & Delivery Details -->
+        <div class="party-section">
+            <div class="party-box">
+                <div class="party-header">SUPPLIER / VENDOR DETAILS</div>
+                <p class="company-name">{vendor_name}</p>
+                <p>{vendor_full_address}</p>
+                <p><strong>GSTIN:</strong> {vendor_gstin}</p>
+                <p><strong>State Code:</strong> {vendor_state_code}</p>
+                <p><strong>Contact:</strong> {vendor_contact}</p>
+                <p><strong>Phone:</strong> {vendor_phone}</p>
+                <p><strong>Vendor Code:</strong> {vendor_code}</p>
+            </div>
+            <div class="party-box">
+                <div class="party-header">SHIP TO / DELIVERY ADDRESS</div>
+                <p class="company-name">{company_name}</p>
+                <p>{warehouse_full_address}</p>
+                <p><strong>Warehouse:</strong> {warehouse_name}</p>
+                <p><strong>GSTIN:</strong> {company_gstin}</p>
+                <p><strong>State Code:</strong> {company_state_code}</p>
+                <p><strong>Contact:</strong> Store Manager</p>
+                <p><strong>Phone:</strong> {company_phone}</p>
+            </div>
+        </div>
+
+        <!-- Order Items Table -->
         <table>
             <thead>
                 <tr>
-                    <th style="width: 30px;">#</th>
-                    <th>Product</th>
-                    <th>SKU</th>
-                    <th>HSN</th>
-                    <th style="width: 50px;">Qty</th>
-                    <th>UOM</th>
-                    <th style="width: 80px;">Unit Price</th>
-                    <th style="width: 90px;">Taxable</th>
-                    <th style="width: 50px;">GST%</th>
-                    <th style="width: 90px;">Total</th>
+                    <th style="width:4%">S.N.</th>
+                    <th style="width:10%">SKU</th>
+                    <th style="width:{'15%' if has_monthly_breakdown else '25%'}">Description</th>
+                    <th style="width:8%">HSN</th>
+                    {month_headers}
+                    <th style="width:7%">TOTAL</th>
+                    <th style="width:5%">UOM</th>
+                    <th style="width:10%">Rate</th>
+                    <th style="width:12%">Amount</th>
                 </tr>
             </thead>
             <tbody>
                 {items_html}
+                <tr style="background: #f5f5f5; font-weight: bold;">
+                    <td colspan="4" class="text-right">TOTAL QUANTITIES</td>
+                    {month_total_cells}
+                    <td class="text-center">{total_qty}</td>
+                    <td class="text-center">Nos</td>
+                    <td></td>
+                    <td class="text-right">Rs. {float(subtotal):,.2f}</td>
+                </tr>
             </tbody>
         </table>
 
-        <table class="totals">
-            <tr>
-                <td>Subtotal</td>
-                <td style="text-align: right;">₹{float(po.subtotal or 0):,.2f}</td>
-            </tr>
-            <tr>
-                <td>Discount</td>
-                <td style="text-align: right;">₹{float(po.discount_amount or 0):,.2f}</td>
-            </tr>
-            <tr>
-                <td>Taxable Amount</td>
-                <td style="text-align: right;">₹{float(po.taxable_amount or 0):,.2f}</td>
-            </tr>
-            <tr>
-                <td>CGST</td>
-                <td style="text-align: right;">₹{float(po.cgst_amount or 0):,.2f}</td>
-            </tr>
-            <tr>
-                <td>SGST</td>
-                <td style="text-align: right;">₹{float(po.sgst_amount or 0):,.2f}</td>
-            </tr>
-            <tr>
-                <td>IGST</td>
-                <td style="text-align: right;">₹{float(po.igst_amount or 0):,.2f}</td>
-            </tr>
-            <tr>
-                <td>Freight Charges</td>
-                <td style="text-align: right;">₹{float(po.freight_charges or 0):,.2f}</td>
-            </tr>
-            <tr>
-                <td><strong>Grand Total</strong></td>
-                <td style="text-align: right;"><strong>₹{float(po.grand_total or 0):,.2f}</strong></td>
-            </tr>
-        </table>
+        <!-- Totals Section -->
+        <div class="totals-section">
+            <div class="totals-left">
+                <strong>HSN Summary ({tax_type}):</strong>
+                <table style="margin-top: 5px; font-size: 9px;">
+                    <tr style="background: #e0e0e0;">
+                        <th>HSN Code</th>
+                        <th>Taxable Value</th>
+                        <th>CGST @{cgst_rate}%</th>
+                        <th>SGST @{sgst_rate}%</th>
+                        <th>Total Tax</th>
+                    </tr>
+                    <tr>
+                        <td class="text-center">84212110</td>
+                        <td class="text-right">Rs. {float(subtotal):,.2f}</td>
+                        <td class="text-right">Rs. {float(cgst_amount):,.2f}</td>
+                        <td class="text-right">Rs. {float(sgst_amount):,.2f}</td>
+                        <td class="text-right">Rs. {float(cgst_amount + sgst_amount):,.2f}</td>
+                    </tr>
+                </table>
+                <p style="margin-top: 10px; font-size: 9px; color: #666;">
+                    <strong>Note:</strong> {tax_type} applicable
+                </p>
+            </div>
+            <div class="totals-right">
+                <div class="totals-row">
+                    <span class="totals-label">Sub Total:</span>
+                    <span class="totals-value">Rs. {float(subtotal):,.2f}</span>
+                </div>
+                <div class="totals-row">
+                    <span class="totals-label">CGST @ {cgst_rate}%:</span>
+                    <span class="totals-value">Rs. {float(cgst_amount):,.2f}</span>
+                </div>
+                <div class="totals-row">
+                    <span class="totals-label">SGST @ {sgst_rate}%:</span>
+                    <span class="totals-value">Rs. {float(sgst_amount):,.2f}</span>
+                </div>
+                <div class="totals-row grand-total">
+                    <span class="totals-label">GRAND TOTAL:</span>
+                    <span class="totals-value">Rs. {float(grand_total):,.2f}</span>
+                </div>
+                <div class="totals-row advance-paid">
+                    <span class="totals-label">Advance Paid:</span>
+                    <span class="totals-value">Rs. {float(advance_paid):,.2f}</span>
+                </div>
+                <div class="totals-row balance-due">
+                    <span class="totals-label">Balance Due:</span>
+                    <span class="totals-value">Rs. {float(balance_due):,.2f}</span>
+                </div>
+            </div>
+        </div>
 
+        <!-- Amount in Words -->
+        <div class="amount-words">
+            <strong>Grand Total in Words:</strong> {_number_to_words(float(grand_total))}<br>
+            <strong>Advance Paid in Words:</strong> {_number_to_words(float(advance_paid))}
+        </div>
+
+        {delivery_schedule_html}
+
+        <!-- Payment Details -->
+        <div class="payment-section">
+            <h4>ADVANCE PAYMENT DETAILS</h4>
+            <div class="payment-detail">
+                <label>Payment Date:</label>
+                <span>{getattr(po, 'advance_date', None).strftime('%d.%m.%Y') if getattr(po, 'advance_date', None) else 'N/A'}</span>
+            </div>
+            <div class="payment-detail">
+                <label>Transaction Reference:</label>
+                <span>{getattr(po, 'advance_reference', None) or 'RTGS/NEFT Transfer'}</span>
+            </div>
+            <div class="payment-detail">
+                <label>Amount Transferred:</label>
+                <span><strong>Rs. {float(advance_paid):,.2f}</strong></span>
+            </div>
+            <div class="payment-detail">
+                <label>Balance Payment:</label>
+                <span><strong>Rs. {float(balance_due):,.2f}</strong></span>
+            </div>
+        </div>
+
+        <!-- Bank Details -->
+        <div class="bank-section">
+            <h4>SUPPLIER BANK DETAILS (For Future Payments)</h4>
+            <div class="payment-detail">
+                <label>Bank Name:</label>
+                <span>{bank_name}</span>
+            </div>
+            <div class="payment-detail">
+                <label>Branch:</label>
+                <span>{bank_branch}</span>
+            </div>
+            <div class="payment-detail">
+                <label>Account Number:</label>
+                <span><strong>{bank_account}</strong></span>
+            </div>
+            <div class="payment-detail">
+                <label>IFSC Code:</label>
+                <span>{bank_ifsc}</span>
+            </div>
+            <div class="payment-detail">
+                <label>Account Name:</label>
+                <span>{beneficiary_name}</span>
+            </div>
+        </div>
+
+        <!-- Terms & Conditions -->
+        <div class="terms">
+            <h4>TERMS & CONDITIONS:</h4>
+            <ol>
+                <li><strong>Payment Terms:</strong>
+                    <ul style="margin-left: 15px;">
+                        <li>25% Advance against Proforma Invoice</li>
+                        <li>25% at the time of dispatch</li>
+                        <li>Balance 50% against Post Dated Cheque</li>
+                    </ul>
+                </li>
+                <li><strong>Delivery:</strong> Within 30 days from receipt of advance payment and packing material design from buyer.</li>
+                <li><strong>Warranty:</strong>
+                    <ul style="margin-left: 15px;">
+                        <li>18 months on electronic parts from date of invoice</li>
+                        <li>1 year general service warranty</li>
+                    </ul>
+                </li>
+                <li><strong>Packing Material:</strong> UV LED to be provided by buyer.</li>
+                <li><strong>Quality:</strong> All products must meet Aquapurite quality standards and pass inspection before acceptance.</li>
+                <li><strong>Serialization:</strong> Each unit must have individual barcode label as per Aquapurite serialization format.</li>
+                <li><strong>Documentation:</strong> Packing list with barcode details (CSV/Excel) must accompany each shipment.</li>
+                <li>This PO is subject to the terms agreed in the Proforma Invoice.</li>
+                <li>All disputes subject to Delhi jurisdiction.</li>
+            </ol>
+        </div>
+
+        {serials_html}
+
+        <!-- Signature Section -->
+        <div class="signature-section">
+            <div class="signature-box">
+                <p><strong>Prepared By:</strong></p>
+                <div class="signature-line">Purchase Department</div>
+            </div>
+            <div class="signature-box">
+                <p><strong>Verified By:</strong></p>
+                <div class="signature-line">Accounts Department</div>
+            </div>
+            <div class="signature-box">
+                <p><strong>Approved By:</strong></p>
+                <div class="signature-line">For {company_name}<br>(Authorized Signatory)</div>
+            </div>
+        </div>
+
+        <!-- Footer -->
         <div class="footer">
-            <p><strong>Terms & Conditions:</strong></p>
-            <p style="font-size: 11px;">{po.terms_and_conditions or 'Standard terms and conditions apply.'}</p>
-
-            <p><strong>Special Instructions:</strong></p>
-            <p style="font-size: 11px;">{po.special_instructions or 'None'}</p>
+            This is a system generated Purchase Order from Aquapurite ERP | Document ID: {po.po_number} | Generated on: {datetime.now().strftime("%d-%m-%Y %H:%M:%S")}
         </div>
-
-        <div class="signatures">
-            <div class="signature-box">
-                <div class="signature-line">Prepared By</div>
-            </div>
-            <div class="signature-box">
-                <div class="signature-line">Approved By</div>
-            </div>
-            <div class="signature-box">
-                <div class="signature-line">Vendor Signature</div>
-            </div>
-        </div>
-
-        <p style="text-align: center; font-size: 10px; color: #999; margin-top: 40px;">
-            This is a computer-generated document. Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-        </p>
-    </body>
-    </html>
-    """
+    </div>
+</body>
+</html>"""
 
     return HTMLResponse(content=html_content)
 

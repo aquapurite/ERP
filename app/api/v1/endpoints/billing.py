@@ -1573,16 +1573,16 @@ async def download_tax_invoice(
     items_html = ""
     for idx, item in enumerate(invoice.items, 1):
         unit_price = float(item.unit_price) if item.unit_price else 0.0
-        taxable = float(item.taxable_amount) if item.taxable_amount else 0.0
+        taxable = float(item.taxable_value) if item.taxable_value else 0.0
         cgst = float(item.cgst_amount) if item.cgst_amount else 0.0
         sgst = float(item.sgst_amount) if item.sgst_amount else 0.0
         igst = float(item.igst_amount) if item.igst_amount else 0.0
-        total = float(item.total_amount) if item.total_amount else 0.0
+        total = float(item.line_total) if item.line_total else 0.0
 
         items_html += f"""
         <tr>
             <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{idx}</td>
-            <td style="border: 1px solid #ddd; padding: 8px;">{item.description or '-'}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">{item.item_name or '-'}</td>
             <td style="border: 1px solid #ddd; padding: 8px;">{item.hsn_code or '-'}</td>
             <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{item.quantity}</td>
             <td style="border: 1px solid #ddd; padding: 8px;">{item.uom or 'NOS'}</td>

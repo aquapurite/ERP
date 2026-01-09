@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal, Plus, Eye, ArrowRightLeft, Warehouse } from 'lucide-react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -133,9 +134,11 @@ export default function TransfersPage() {
         title="Stock Transfers"
         description="Manage inventory transfers between warehouses"
         actions={
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            New Transfer
+          <Button asChild>
+            <Link href="/inventory/transfers/new">
+              <Plus className="mr-2 h-4 w-4" />
+              New Transfer
+            </Link>
           </Button>
         }
       />

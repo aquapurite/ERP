@@ -426,8 +426,12 @@ class AllocationService:
         """Update order with allocated warehouse."""
         order.warehouse_id = warehouse_id
         order.allocated_at = datetime.utcnow()
-        if order.status == OrderStatus.CONFIRMED:
+        # Update status to ALLOCATED for orders in NEW or CONFIRMED status
+        if order.status in [OrderStatus.NEW, OrderStatus.CONFIRMED]:
             order.status = OrderStatus.ALLOCATED
+            # Also mark as confirmed if it wasn't
+            if not order.confirmed_at:
+                order.confirmed_at = datetime.utcnow()
         await self.db.commit()
 
     async def _create_failed_allocation(

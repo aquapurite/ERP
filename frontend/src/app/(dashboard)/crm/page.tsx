@@ -142,20 +142,32 @@ export default function CRMPage() {
         </TabsContent>
 
         <TabsContent value="leads">
-          <div className="flex items-center justify-center h-32 border rounded-lg bg-muted/50">
-            <p className="text-muted-foreground">Leads management coming soon...</p>
+          <div className="flex items-center justify-center py-8">
+            <Button asChild>
+              <Link href="/crm/leads">
+                Go to Leads
+              </Link>
+            </Button>
           </div>
         </TabsContent>
 
         <TabsContent value="call-center">
-          <div className="flex items-center justify-center h-32 border rounded-lg bg-muted/50">
-            <p className="text-muted-foreground">Call center dashboard coming soon...</p>
+          <div className="flex items-center justify-center py-8">
+            <Button asChild>
+              <Link href="/crm/call-center">
+                Go to Call Center
+              </Link>
+            </Button>
           </div>
         </TabsContent>
 
         <TabsContent value="escalations">
-          <div className="flex items-center justify-center h-32 border rounded-lg bg-muted/50">
-            <p className="text-muted-foreground">Escalations management coming soon...</p>
+          <div className="flex items-center justify-center py-8">
+            <Button asChild>
+              <Link href="/crm/escalations">
+                Go to Escalations
+              </Link>
+            </Button>
           </div>
         </TabsContent>
       </Tabs>
