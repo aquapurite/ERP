@@ -16,9 +16,9 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     print(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
-    # Initialize database tables (for development)
-    # In production, use Alembic migrations
-    # await init_db()
+    # Initialize database tables
+    await init_db()
+    print("Database tables initialized")
     yield
     # Shutdown
     print("Shutting down...")
