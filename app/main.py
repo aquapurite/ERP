@@ -67,7 +67,9 @@ async def auto_seed_admin():
             else:
                 print(f"Found {user_count} existing users. Skipping auto-seed.")
     except Exception as e:
-        print(f"Auto-seed warning: {e}")
+        import traceback
+        print(f"Auto-seed error: {e}")
+        traceback.print_exc()
 
 
 @asynccontextmanager

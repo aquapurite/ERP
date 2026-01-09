@@ -71,11 +71,18 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_db() -> None:
     """Initialize database tables."""
+    # Import all models to register them with Base.metadata
+    from app import models  # noqa: F401
+
+    print(f"Registered {len(Base.metadata.tables)} tables")
+
     try:
         async with engine.begin() as conn:
-            # checkfirst=True skips existing tables/indexes
-            await conn.run_sync(Base.metadata.create_all, checkfirst=True)
-        print("Database tables created/verified")
+            await conn.run_sync(Base.metadata.create_all)
+        print("Database tables created")
     except Exception as e:
-        # Don't fail startup - tables likely already exist
-        print(f"Database init note: {e}")
+        # Ignore "already exists" errors
+        if "already exists" in str(e).lower():
+            print("Database tables already exist")
+        else:
+            print(f"Database warning: {e}")

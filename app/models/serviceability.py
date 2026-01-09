@@ -90,10 +90,10 @@ class WarehouseServiceability(Base):
     )
 
     # Pincode (single pincode per row for easier querying)
+    # Note: Index defined in __table_args__ as ix_warehouse_serviceability_pincode
     pincode: Mapped[str] = mapped_column(
         String(10),
-        nullable=False,
-        index=True
+        nullable=False
     )
 
     # Service details
