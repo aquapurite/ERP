@@ -453,7 +453,7 @@ export const channelsApi = {
   dropdown: async () => {
     // Return channels for dropdown selection
     const { data } = await apiClient.get<{ items: Array<{ id: string; channel_code: string; name: string; channel_type: string }> }>('/channels/dropdown');
-    return data;
+    return data.items;
   },
 };
 

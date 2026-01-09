@@ -155,7 +155,7 @@ const orderApi = {
   getChannels: async (): Promise<Channel[]> => {
     try {
       const channels = await channelsApi.dropdown();
-      return (channels as Array<{ id: string; name: string; channel_code: string }>).map((c) => ({
+      return channels.map((c) => ({
         id: c.id,
         name: c.name,
         code: c.channel_code,
