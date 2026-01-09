@@ -54,7 +54,7 @@ export default function LoginPage() {
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground text-xl font-bold">
-              E
+              A
             </div>
           </div>
           <CardTitle className="text-2xl font-bold">{siteConfig.name}</CardTitle>
@@ -98,7 +98,7 @@ export default function LoginPage() {
 
           <div className="mt-6 text-center text-sm text-muted-foreground">
             <p>Demo credentials:</p>
-            <p className="font-mono">admin@consumer.com / Admin@123</p>
+            <p className="font-mono">admin@aquapurite.com / Admin@123</p>
           </div>
         </CardContent>
       </Card>

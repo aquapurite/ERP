@@ -1,9 +1,9 @@
 export const siteConfig = {
-  name: 'ERP Control Panel',
-  description: 'Consumer Durable ERP Management System',
+  name: "Aquapurite Private Limited's ERP",
+  description: 'Aquapurite Private Limited ERP Management System',
   url: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-  company: 'Consumer Durable',
-  supportEmail: 'support@consumerdurable.com',
+  company: 'Aquapurite Private Limited',
+  supportEmail: 'support@aquapurite.com',
 };
 
 export const statusColors: Record<string, string> = {
