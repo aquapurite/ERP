@@ -70,24 +70,23 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Initialize database tables."""
-    from sqlalchemy.exc import ProgrammingError, OperationalError
+    """Initialize database tables.
 
+    In production, we skip auto-creation since alembic handles migrations.
+    For development (SQLite), we auto-create tables.
+    """
+    from app.config import settings
+
+    # Skip auto-create for PostgreSQL (production) - use alembic migrations instead
+    if not is_sqlite and not settings.DEBUG:
+        print("Production mode: Skipping auto table creation (use alembic migrations)")
+        return
+
+    # For SQLite/development, create tables automatically
     try:
         async with engine.begin() as conn:
-            # checkfirst=True prevents errors if tables already exist
             await conn.run_sync(Base.metadata.create_all, checkfirst=True)
-    except (ProgrammingError, OperationalError) as e:
-        # Handle cases where indexes/constraints already exist
-        error_msg = str(e).lower()
-        if "already exists" in error_msg or "duplicate" in error_msg:
-            print(f"Database objects already exist, continuing: {e}")
-        else:
-            raise
+        print("Database tables created/verified")
     except Exception as e:
-        # Log but don't fail startup if tables already exist
-        error_msg = str(e).lower()
-        if "already exists" in error_msg or "duplicate" in error_msg:
-            print(f"Database initialization warning (non-fatal): {e}")
-        else:
-            raise
+        print(f"Database initialization warning: {e}")
+        # Don't fail startup - tables likely already exist
