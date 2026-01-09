@@ -10,6 +10,14 @@ from app.config import settings
 # SQLite doesn't support pool settings, check database type
 is_sqlite = settings.DATABASE_URL.startswith("sqlite")
 
+# Convert database URL for proper driver
+database_url = settings.DATABASE_URL
+if database_url.startswith("postgresql+asyncpg://"):
+    # Switch to psycopg for async PostgreSQL
+    database_url = database_url.replace("postgresql+asyncpg://", "postgresql+psycopg://")
+elif database_url.startswith("postgresql://"):
+    database_url = database_url.replace("postgresql://", "postgresql+psycopg://")
+
 # Create async engine with appropriate settings
 if is_sqlite:
     engine = create_async_engine(
@@ -20,7 +28,7 @@ if is_sqlite:
     )
 else:
     engine = create_async_engine(
-        settings.DATABASE_URL,
+        database_url,
         echo=settings.DEBUG,
         future=True,
         pool_pre_ping=True,
