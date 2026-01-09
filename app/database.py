@@ -71,6 +71,15 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_db() -> None:
     """Initialize database tables."""
+    from sqlalchemy.exc import ProgrammingError
+
     async with engine.begin() as conn:
-        # checkfirst=True prevents errors if tables already exist
-        await conn.run_sync(Base.metadata.create_all, checkfirst=True)
+        try:
+            # checkfirst=True prevents errors if tables already exist
+            await conn.run_sync(Base.metadata.create_all, checkfirst=True)
+        except ProgrammingError as e:
+            # Handle cases where indexes/constraints already exist
+            if "already exists" in str(e):
+                print(f"Database objects already exist, continuing: {e}")
+            else:
+                raise

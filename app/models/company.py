@@ -109,7 +109,6 @@ class Company(Base):
     gstin: Mapped[str] = mapped_column(
         String(15),
         nullable=False,
-        index=True,
         comment="15-digit GSTIN e.g., 27AAACT1234M1Z5"
     )
 
