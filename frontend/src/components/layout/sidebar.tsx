@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { ChevronDown, ChevronLeft, Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -117,10 +118,14 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       <div className="flex h-16 items-center justify-between border-b px-4">
         {!isCollapsed && (
           <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">
-              A
-            </div>
-            <span className="font-semibold">{siteConfig.name}</span>
+            <Image
+              src="/logo.png"
+              alt="Aquapurite Logo"
+              width={32}
+              height={32}
+              className="rounded-lg"
+            />
+            <span className="font-semibold text-sm">{siteConfig.name}</span>
           </Link>
         )}
         <Button
