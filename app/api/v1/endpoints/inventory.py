@@ -231,6 +231,44 @@ async def update_stock_item(
     return StockItemResponse.model_validate(item)
 
 
+@router.delete(
+    "/stock-items/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permissions("inventory:delete"))]
+)
+async def delete_stock_item(
+    item_id: uuid.UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """
+    Delete a stock item (soft delete - marks as DISPOSED).
+    Requires: inventory:delete permission
+    """
+    service = InventoryService(db)
+    item = await service.get_stock_item_by_id(item_id)
+
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stock item not found"
+        )
+
+    # Check if item is allocated to an order
+    if item.order_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete stock item that is allocated to an order"
+        )
+
+    # Soft delete - mark as DISPOSED
+    item.status = StockItemStatus.DISPOSED
+    item.notes = f"Deleted by user on {datetime.utcnow().isoformat()}"
+
+    await db.commit()
+    return None
+
+
 # ==================== INVENTORY SUMMARY ====================
 
 @router.get(

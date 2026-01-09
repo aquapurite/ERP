@@ -66,6 +66,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { PageHeader } from '@/components/common';
 import { formatCurrency } from '@/lib/utils';
+import { customersApi, productsApi, channelsApi, warehousesApi, ordersApi } from '@/lib/api';
 
 // Types
 interface Customer {
@@ -112,69 +113,96 @@ interface Warehouse {
   code: string;
 }
 
-// Mock APIs
+// Real API calls
 const orderApi = {
   searchCustomers: async (phone: string): Promise<Customer[]> => {
-    await new Promise((r) => setTimeout(r, 500));
-    if (phone.length < 4) return [];
-    return [
-      {
-        id: 'cust-1',
-        name: 'Rajesh Kumar',
-        phone: '+91 98765 43210',
-        email: 'rajesh@example.com',
-        customer_type: 'INDIVIDUAL',
-        addresses: [
-          { id: 'addr-1', address_line1: '123 MG Road', address_line2: 'Near Metro Station', city: 'Mumbai', state: 'Maharashtra', pincode: '400001', is_default: true },
-          { id: 'addr-2', address_line1: '456 Park Street', city: 'Mumbai', state: 'Maharashtra', pincode: '400002', is_default: false },
-        ],
-      },
-      {
-        id: 'cust-2',
-        name: 'Priya Sharma',
-        phone: '+91 98765 43211',
-        email: 'priya@example.com',
-        customer_type: 'INDIVIDUAL',
-        addresses: [
-          { id: 'addr-3', address_line1: '789 Linking Road', city: 'Mumbai', state: 'Maharashtra', pincode: '400050', is_default: true },
-        ],
-      },
-    ].filter((c) => c.phone.includes(phone) || c.name.toLowerCase().includes(phone.toLowerCase()));
+    if (phone.length < 3) return [];
+    try {
+      const customers = await customersApi.searchByPhone(phone);
+      return customers.map((c: { id: string; first_name?: string; last_name?: string; phone?: string; email?: string; customer_type?: string; addresses?: CustomerAddress[] }) => ({
+        id: c.id,
+        name: `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Unknown',
+        phone: c.phone || '',
+        email: c.email,
+        customer_type: c.customer_type || 'INDIVIDUAL',
+        addresses: c.addresses || [],
+      }));
+    } catch (error) {
+      console.error('Error searching customers:', error);
+      return [];
+    }
   },
   searchProducts: async (query: string): Promise<Product[]> => {
-    await new Promise((r) => setTimeout(r, 300));
-    const products: Product[] = [
-      { id: 'prod-1', name: 'AquaPure RO+UV Pro', sku: 'AP-RO-UV-001', mrp: 18999, selling_price: 15999, gst_rate: 18, hsn_code: '84212110', stock_available: 45, category: 'Water Purifiers', brand: 'AquaPure' },
-      { id: 'prod-2', name: 'AquaPure UV Compact', sku: 'AP-UV-002', mrp: 12999, selling_price: 10999, gst_rate: 18, hsn_code: '84212120', stock_available: 32, category: 'Water Purifiers', brand: 'AquaPure' },
-      { id: 'prod-3', name: 'PuroGuard Filter Set', sku: 'PG-FS-001', mrp: 2999, selling_price: 2499, gst_rate: 18, hsn_code: '84219900', stock_available: 156, category: 'Spare Parts', brand: 'PuroGuard' },
-      { id: 'prod-4', name: 'AquaPure Alkaline Plus', sku: 'AP-ALK-001', mrp: 24999, selling_price: 21999, gst_rate: 18, hsn_code: '84212110', stock_available: 18, category: 'Water Purifiers', brand: 'AquaPure' },
-      { id: 'prod-5', name: 'UV Lamp Replacement', sku: 'UV-LAMP-001', mrp: 1499, selling_price: 1299, gst_rate: 18, hsn_code: '85393100', stock_available: 89, category: 'Spare Parts', brand: 'AquaPure' },
-    ];
-    if (!query) return products.slice(0, 5);
-    return products.filter((p) =>
-      p.name.toLowerCase().includes(query.toLowerCase()) ||
-      p.sku.toLowerCase().includes(query.toLowerCase())
-    );
+    try {
+      const result = await productsApi.list({ search: query, size: 10 });
+      return result.items.map((p: { id: string; name: string; sku: string; mrp?: number; selling_price?: number; gst_rate?: number; hsn_code?: string; category?: { name: string }; brand?: { name: string } }) => ({
+        id: p.id,
+        name: p.name,
+        sku: p.sku,
+        mrp: p.mrp || 0,
+        selling_price: p.selling_price || 0,
+        gst_rate: p.gst_rate || 18,
+        hsn_code: p.hsn_code || '',
+        stock_available: 0, // Would need inventory API integration
+        category: p.category?.name || '',
+        brand: p.brand?.name || '',
+      }));
+    } catch (error) {
+      console.error('Error searching products:', error);
+      return [];
+    }
   },
   getChannels: async (): Promise<Channel[]> => {
-    return [
-      { id: 'ch-1', name: 'Direct to Consumer', code: 'D2C' },
-      { id: 'ch-2', name: 'Amazon', code: 'AMZ' },
-      { id: 'ch-3', name: 'Flipkart', code: 'FK' },
-      { id: 'ch-4', name: 'Dealer Network', code: 'DEALER' },
-      { id: 'ch-5', name: 'Retail Store', code: 'RETAIL' },
-    ];
+    try {
+      const channels = await channelsApi.dropdown();
+      return (channels as Array<{ id: string; name: string; channel_code: string }>).map((c) => ({
+        id: c.id,
+        name: c.name,
+        code: c.channel_code,
+      }));
+    } catch (error) {
+      console.error('Error fetching channels:', error);
+      // Fallback to default channels if API fails
+      return [
+        { id: 'default-d2c', name: 'Direct to Consumer', code: 'D2C' },
+      ];
+    }
   },
   getWarehouses: async (): Promise<Warehouse[]> => {
-    return [
-      { id: 'wh-1', name: 'Mumbai Central Warehouse', code: 'MUM-CEN' },
-      { id: 'wh-2', name: 'Delhi Hub', code: 'DEL-HUB' },
-      { id: 'wh-3', name: 'Bangalore Fulfillment', code: 'BLR-FC' },
-    ];
+    try {
+      const warehouses = await warehousesApi.dropdown();
+      return warehouses;
+    } catch (error) {
+      console.error('Error fetching warehouses:', error);
+      return [];
+    }
   },
   createOrder: async (data: OrderFormData): Promise<{ id: string; order_number: string }> => {
-    await new Promise((r) => setTimeout(r, 1000));
-    return { id: 'ord-new-1', order_number: 'ORD-2024-00156' };
+    try {
+      const orderPayload = {
+        customer_id: data.customer_id,
+        shipping_address_id: data.shipping_address_id,
+        billing_address_id: data.same_billing_address ? data.shipping_address_id : data.billing_address_id,
+        channel_id: data.channel_id,
+        warehouse_id: data.warehouse_id,
+        payment_mode: data.payment_mode,
+        prepaid_amount: data.prepaid_amount,
+        items: data.items.map(item => ({
+          product_id: item.product_id,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          discount_percent: item.discount_percent,
+        })),
+        notes: data.notes,
+        requires_installation: data.installation_required,
+        priority: data.priority,
+      };
+      const result = await ordersApi.create(orderPayload);
+      return { id: result.id, order_number: result.order_number || result.id };
+    } catch (error) {
+      console.error('Error creating order:', error);
+      throw error;
+    }
   },
 };
 

@@ -118,8 +118,9 @@ class SalesChannelListResponse(BaseModel):
     """Response for listing channels."""
     items: List[SalesChannelResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 # ==================== ChannelPricing Schemas ====================
@@ -178,8 +179,9 @@ class ChannelPricingListResponse(BaseModel):
     """Response for listing channel pricing."""
     items: List[ChannelPricingResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 # ==================== ChannelInventory Schemas ====================
@@ -266,9 +268,10 @@ class ChannelOrderListResponse(BaseModel):
     """Response for listing channel orders."""
     items: List[ChannelOrderResponse]
     total: int
-    skip: int
-    limit: int
     total_value: Decimal = Decimal("0")
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 class ChannelOrderUpdate(BaseModel):
@@ -283,8 +286,9 @@ class ChannelInventoryListResponse(BaseModel):
     """Response for listing channel inventory."""
     items: List[ChannelInventoryResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 # ==================== Sync Schemas ====================

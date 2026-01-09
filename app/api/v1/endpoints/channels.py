@@ -3,6 +3,7 @@ from typing import Optional, List
 from uuid import UUID
 from datetime import date, datetime
 from decimal import Decimal
+from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import select, func, and_, or_
@@ -81,8 +82,8 @@ async def create_sales_channel(
 @router.get("", response_model=SalesChannelListResponse)
 async def list_sales_channels(
     db: DB,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=100),
     channel_type: Optional[ChannelType] = None,
     status: Optional[ChannelStatus] = None,
     search: Optional[str] = None,
@@ -110,15 +111,17 @@ async def list_sales_channels(
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
-    query = query.order_by(SalesChannel.created_at.desc()).offset(skip).limit(limit)
+    skip = (page - 1) * size
+    query = query.order_by(SalesChannel.created_at.desc()).offset(skip).limit(size)
     result = await db.execute(query)
     channels = result.scalars().all()
 
     return SalesChannelListResponse(
         items=[SalesChannelResponse.model_validate(c) for c in channels],
         total=total,
-        skip=skip,
-        limit=limit
+        page=page,
+        size=size,
+        pages=ceil(total / size) if total > 0 else 1
     )
 
 
@@ -193,6 +196,45 @@ async def update_sales_channel(
     await db.refresh(channel)
 
     return channel
+
+
+@router.delete("/{channel_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_sales_channel(
+    channel_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a sales channel (soft delete by setting status to INACTIVE)."""
+    result = await db.execute(
+        select(SalesChannel).where(SalesChannel.id == channel_id)
+    )
+    channel = result.scalar_one_or_none()
+
+    if not channel:
+        raise HTTPException(status_code=404, detail="Sales channel not found")
+
+    # Check if channel has active orders
+    orders_result = await db.execute(
+        select(func.count(ChannelOrder.id)).where(
+            and_(
+                ChannelOrder.channel_id == channel_id,
+                ChannelOrder.channel_status.in_(["PENDING", "PROCESSING", "SHIPPED"])
+            )
+        )
+    )
+    active_orders = orders_result.scalar() or 0
+
+    if active_orders > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete channel with {active_orders} active orders"
+        )
+
+    channel.status = ChannelStatus.INACTIVE
+    channel.updated_by = current_user.id
+
+    await db.commit()
+    return None
 
 
 @router.post("/{channel_id}/activate", response_model=SalesChannelResponse)
@@ -362,6 +404,32 @@ async def update_channel_pricing(
     return pricing
 
 
+@router.delete("/{channel_id}/pricing/{pricing_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_channel_pricing(
+    channel_id: UUID,
+    pricing_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete channel pricing."""
+    result = await db.execute(
+        select(ChannelPricing).where(
+            and_(
+                ChannelPricing.id == pricing_id,
+                ChannelPricing.channel_id == channel_id,
+            )
+        )
+    )
+    pricing = result.scalar_one_or_none()
+
+    if not pricing:
+        raise HTTPException(status_code=404, detail="Channel pricing not found")
+
+    await db.delete(pricing)
+    await db.commit()
+    return None
+
+
 @router.post("/{channel_id}/pricing/sync")
 async def sync_channel_pricing(
     channel_id: UUID,
@@ -528,6 +596,32 @@ async def update_channel_inventory(
     await db.refresh(inventory)
 
     return inventory
+
+
+@router.delete("/{channel_id}/inventory/{inventory_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_channel_inventory(
+    channel_id: UUID,
+    inventory_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete channel inventory allocation."""
+    result = await db.execute(
+        select(ChannelInventory).where(
+            and_(
+                ChannelInventory.id == inventory_id,
+                ChannelInventory.channel_id == channel_id,
+            )
+        )
+    )
+    inventory = result.scalar_one_or_none()
+
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Channel inventory not found")
+
+    await db.delete(inventory)
+    await db.commit()
+    return None
 
 
 @router.post("/{channel_id}/inventory/sync")
@@ -716,6 +810,38 @@ async def update_channel_order(
     await db.refresh(order)
 
     return order
+
+
+@router.delete("/{channel_id}/orders/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_channel_order(
+    channel_id: UUID,
+    order_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete channel order (only if not converted to internal order)."""
+    result = await db.execute(
+        select(ChannelOrder).where(
+            and_(
+                ChannelOrder.id == order_id,
+                ChannelOrder.channel_id == channel_id,
+            )
+        )
+    )
+    order = result.scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(status_code=404, detail="Channel order not found")
+
+    if order.internal_order_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete order that has been converted to internal order"
+        )
+
+    await db.delete(order)
+    await db.commit()
+    return None
 
 
 @router.post("/{channel_id}/orders/{order_id}/convert")

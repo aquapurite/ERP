@@ -343,6 +343,19 @@ export const customersApi = {
     const { data } = await apiClient.put<Customer>(`/customers/${id}`, customer);
     return data;
   },
+  searchByPhone: async (phone: string) => {
+    // Search customers by phone number
+    const { data } = await apiClient.get<PaginatedResponse<Customer>>('/customers', { params: { search: phone, size: 10 } });
+    return data.items;
+  },
+  getByPhone: async (phone: string) => {
+    try {
+      const { data } = await apiClient.get<Customer>(`/customers/phone/${encodeURIComponent(phone)}`);
+      return data;
+    } catch {
+      return null;
+    }
+  },
 };
 
 // Warehouses API
@@ -408,6 +421,39 @@ export const warehousesApi = {
   },
   delete: async (id: string) => {
     await apiClient.delete(`/warehouses/${id}`);
+  },
+  dropdown: async () => {
+    // Return warehouses for dropdown selection
+    const { data } = await apiClient.get<PaginatedResponse<Warehouse>>('/warehouses', { params: { is_active: true, size: 100 } });
+    return data.items.map(w => ({ id: w.id, name: w.name, code: w.code }));
+  },
+};
+
+// Channels API
+export const channelsApi = {
+  list: async (params?: { page?: number; size?: number; channel_type?: string; status?: string; search?: string }) => {
+    const { data } = await apiClient.get('/channels', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/channels/${id}`);
+    return data;
+  },
+  create: async (channel: { name: string; channel_type: string; description?: string }) => {
+    const { data } = await apiClient.post('/channels', channel);
+    return data;
+  },
+  update: async (id: string, channel: Partial<{ name: string; channel_type: string; description?: string; status?: string }>) => {
+    const { data } = await apiClient.put(`/channels/${id}`, channel);
+    return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/channels/${id}`);
+  },
+  dropdown: async () => {
+    // Return channels for dropdown selection
+    const { data } = await apiClient.get<{ items: Array<{ id: string; channel_code: string; name: string; channel_type: string }> }>('/channels/dropdown');
+    return data;
   },
 };
 
