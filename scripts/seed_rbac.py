@@ -590,7 +590,7 @@ async def seed_super_admin_user(session, role_map: dict, region_map: dict):
     """Create a default super admin user."""
     print("\nCreating Super Admin user...")
 
-    stmt = select(User).where(User.email == "admin@consumerdurable.com")
+    stmt = select(User).where(User.email == "admin@aquapurite.com")
     existing = (await session.execute(stmt)).scalar_one_or_none()
 
     if existing:
@@ -599,7 +599,7 @@ async def seed_super_admin_user(session, role_map: dict, region_map: dict):
 
     # Create super admin user
     user = User(
-        email="admin@consumerdurable.com",
+        email="admin@aquapurite.com",
         phone="+919999999999",
         password_hash=get_password_hash("Admin@123"),
         first_name="Super",
@@ -622,7 +622,7 @@ async def seed_super_admin_user(session, role_map: dict, region_map: dict):
         )
         session.add(user_role)
 
-    print(f"  Created Super Admin: admin@consumerdurable.com (password: Admin@123)")
+    print(f"  Created Super Admin: admin@aquapurite.com (password: Admin@123)")
     return user
 
 
@@ -657,7 +657,7 @@ async def main():
             print(f"  - Roles: {len(role_map)}")
             print(f"  - Regions: {len(region_map)}")
             print(f"\nDefault Super Admin:")
-            print(f"  - Email: admin@consumerdurable.com")
+            print(f"  - Email: admin@aquapurite.com")
             print(f"  - Password: Admin@123")
 
         except Exception as e:
