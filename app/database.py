@@ -70,23 +70,12 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Initialize database tables.
-
-    In production, we skip auto-creation since alembic handles migrations.
-    For development (SQLite), we auto-create tables.
-    """
-    from app.config import settings
-
-    # Skip auto-create for PostgreSQL (production) - use alembic migrations instead
-    if not is_sqlite and not settings.DEBUG:
-        print("Production mode: Skipping auto table creation (use alembic migrations)")
-        return
-
-    # For SQLite/development, create tables automatically
+    """Initialize database tables."""
     try:
         async with engine.begin() as conn:
+            # checkfirst=True skips existing tables/indexes
             await conn.run_sync(Base.metadata.create_all, checkfirst=True)
         print("Database tables created/verified")
     except Exception as e:
-        print(f"Database initialization warning: {e}")
         # Don't fail startup - tables likely already exist
+        print(f"Database init note: {e}")
