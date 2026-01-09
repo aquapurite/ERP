@@ -5,7 +5,69 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.api.v1.router import api_router
-from app.database import init_db
+from app.database import init_db, async_session_factory
+
+
+async def auto_seed_admin():
+    """Create admin user on startup if no users exist."""
+    from sqlalchemy import select, func
+    from app.models.user import User, UserRole
+    from app.models.role import Role, RoleLevel
+    from app.core.security import get_password_hash
+
+    try:
+        async with async_session_factory() as session:
+            # Check if any users exist
+            result = await session.execute(select(func.count(User.id)))
+            user_count = result.scalar()
+
+            if user_count == 0:
+                print("No users found. Creating admin user...")
+
+                # First, ensure super_admin role exists
+                role_result = await session.execute(
+                    select(Role).where(Role.code == "super_admin")
+                )
+                role = role_result.scalar_one_or_none()
+
+                if not role:
+                    role = Role(
+                        name="Super Admin",
+                        code="super_admin",
+                        description="Full system access",
+                        level=RoleLevel.SUPER_ADMIN,
+                        is_system=True,
+                    )
+                    session.add(role)
+                    await session.flush()
+                    print("  Created super_admin role")
+
+                # Create admin user
+                admin = User(
+                    email="admin@aquapurite.com",
+                    phone="+919999999999",
+                    password_hash=get_password_hash("Admin@123"),
+                    first_name="Super",
+                    last_name="Admin",
+                    employee_code="EMP001",
+                    department="Administration",
+                    designation="System Administrator",
+                    is_active=True,
+                    is_verified=True,
+                )
+                session.add(admin)
+                await session.flush()
+
+                # Assign role
+                user_role = UserRole(user_id=admin.id, role_id=role.id)
+                session.add(user_role)
+
+                await session.commit()
+                print(f"  Created admin user: admin@aquapurite.com / Admin@123")
+            else:
+                print(f"Found {user_count} existing users. Skipping auto-seed.")
+    except Exception as e:
+        print(f"Auto-seed warning: {e}")
 
 
 @asynccontextmanager
@@ -18,7 +80,9 @@ async def lifespan(app: FastAPI):
     print(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     # Initialize database tables
     await init_db()
-    print("Database tables initialized")
+    print("Database initialized")
+    # Auto-seed admin user if needed
+    await auto_seed_admin()
     yield
     # Shutdown
     print("Shutting down...")
