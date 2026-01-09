@@ -197,7 +197,8 @@ const orderApi = {
         requires_installation: data.installation_required,
         priority: data.priority,
       };
-      const result = await ordersApi.create(orderPayload);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await ordersApi.create(orderPayload as any);
       return { id: result.id, order_number: result.order_number || result.id };
     } catch (error) {
       console.error('Error creating order:', error);
