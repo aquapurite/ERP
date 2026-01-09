@@ -72,4 +72,5 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def init_db() -> None:
     """Initialize database tables."""
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        # checkfirst=True prevents errors if tables already exist
+        await conn.run_sync(Base.metadata.create_all, checkfirst=True)
