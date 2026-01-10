@@ -128,6 +128,58 @@ async def create_purchase_requisition(
     return pr
 
 
+@router.get("/requisitions/stats")
+async def get_requisition_stats(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get purchase requisition statistics."""
+    # Count by status
+    draft_result = await db.execute(
+        select(func.count(PurchaseRequisition.id))
+        .where(PurchaseRequisition.status == RequisitionStatus.DRAFT)
+    )
+    draft_count = draft_result.scalar() or 0
+
+    submitted_result = await db.execute(
+        select(func.count(PurchaseRequisition.id))
+        .where(PurchaseRequisition.status == RequisitionStatus.SUBMITTED)
+    )
+    submitted_count = submitted_result.scalar() or 0
+
+    approved_result = await db.execute(
+        select(func.count(PurchaseRequisition.id))
+        .where(PurchaseRequisition.status == RequisitionStatus.APPROVED)
+    )
+    approved_count = approved_result.scalar() or 0
+
+    rejected_result = await db.execute(
+        select(func.count(PurchaseRequisition.id))
+        .where(PurchaseRequisition.status == RequisitionStatus.REJECTED)
+    )
+    rejected_count = rejected_result.scalar() or 0
+
+    converted_result = await db.execute(
+        select(func.count(PurchaseRequisition.id))
+        .where(PurchaseRequisition.status == RequisitionStatus.CONVERTED)
+    )
+    converted_count = converted_result.scalar() or 0
+
+    total_result = await db.execute(
+        select(func.count(PurchaseRequisition.id))
+    )
+    total_count = total_result.scalar() or 0
+
+    return {
+        "total": total_count,
+        "draft": draft_count,
+        "submitted": submitted_count,
+        "approved": approved_count,
+        "rejected": rejected_count,
+        "converted": converted_count,
+    }
+
+
 @router.get("/requisitions", response_model=PRListResponse)
 async def list_purchase_requisitions(
     db: DB,

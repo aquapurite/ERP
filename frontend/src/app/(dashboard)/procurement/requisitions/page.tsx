@@ -129,11 +129,11 @@ const requisitionsApi = {
     return data;
   },
   approve: async (id: string) => {
-    const { data } = await apiClient.post(`/purchase/requisitions/${id}/approve`);
+    const { data } = await apiClient.post(`/purchase/requisitions/${id}/approve`, { action: "APPROVE" });
     return data;
   },
   reject: async (id: string, reason: string) => {
-    const { data } = await apiClient.post(`/purchase/requisitions/${id}/reject`, { reason });
+    const { data } = await apiClient.post(`/purchase/requisitions/${id}/approve`, { action: "REJECT", rejection_reason: reason });
     return data;
   },
   convertToPO: async (id: string, vendorId: string) => {

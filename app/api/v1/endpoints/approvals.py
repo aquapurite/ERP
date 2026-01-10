@@ -28,7 +28,7 @@ from app.models.approval import (
     get_approval_level,
     get_approval_level_name,
 )
-from app.models.purchase import PurchaseOrder, POStatus
+from app.models.purchase import PurchaseOrder, POStatus, PurchaseRequisition, RequisitionStatus
 from app.schemas.approval import (
     ApprovalRequestResponse,
     ApprovalRequestBrief,
@@ -421,7 +421,7 @@ async def list_approvals(
     )
 
 
-@router.get("/pending", response_model=ApprovalListResponse)
+@router.get("/pending")
 async def list_pending_approvals(
     db: DB,
     approval_level: Optional[ApprovalLevel] = Query(None),
@@ -433,7 +433,7 @@ async def list_pending_approvals(
     """
     List pending approval requests.
 
-    Returns items grouped by approval level for the Finance Approvals page.
+    Returns items in the format expected by the frontend.
     """
     query = (
         select(ApprovalRequest)
@@ -446,11 +446,6 @@ async def list_pending_approvals(
     if entity_type:
         query = query.where(ApprovalRequest.entity_type == entity_type)
 
-    # Count total
-    count_query = select(func.count()).select_from(query.subquery())
-    total_result = await db.execute(count_query)
-    total = total_result.scalar() or 0
-
     # Order by priority and date
     query = query.order_by(ApprovalRequest.priority, ApprovalRequest.requested_at)
     query = query.offset((page - 1) * size).limit(size)
@@ -458,30 +453,52 @@ async def list_pending_approvals(
     result = await db.execute(query)
     approvals = result.scalars().all()
 
-    items = [
-        ApprovalRequestBrief(
-            id=a.id,
-            request_number=a.request_number,
-            entity_type=a.entity_type,
-            entity_number=a.entity_number,
-            amount=a.amount,
-            approval_level=a.approval_level,
-            status=a.status,
-            title=a.title,
-            requester_name=_get_user_name(a.requester) if a.requester else None,
-            requested_at=a.requested_at,
-            is_overdue=a.due_date < datetime.utcnow() if a.due_date else False,
-        )
-        for a in approvals
-    ]
+    # Map entity types to frontend expected values
+    entity_type_map = {
+        "PURCHASE_ORDER": "PURCHASE_ORDER",
+        "PURCHASE_REQUISITION": "PURCHASE_ORDER",  # Map PR to PO for display
+        "VENDOR_ONBOARDING": "VENDOR",
+        "STOCK_TRANSFER": "TRANSFER",
+        "STOCK_ADJUSTMENT": "TRANSFER",
+        "JOURNAL_ENTRY": "JOURNAL_ENTRY",
+        "CREDIT_NOTE": "CREDIT_NOTE",
+        "DEBIT_NOTE": "CREDIT_NOTE",
+    }
 
-    return ApprovalListResponse(
-        items=items,
-        total=total,
-        page=page,
-        size=size,
-        pages=(total + size - 1) // size,
-    )
+    # Map priority numbers to labels
+    priority_map = {
+        1: "URGENT", 2: "URGENT",
+        3: "HIGH", 4: "HIGH",
+        5: "NORMAL", 6: "NORMAL",
+        7: "LOW", 8: "LOW", 9: "LOW", 10: "LOW",
+    }
+
+    items = []
+    for a in approvals:
+        mapped_type = entity_type_map.get(a.entity_type.value, a.entity_type.value)
+        level_num = a.approval_level.value[-1] if a.approval_level else "1"
+        is_overdue = a.due_date < datetime.utcnow() if a.due_date else False
+
+        items.append({
+            "id": str(a.id),
+            "entity_type": mapped_type,
+            "entity_id": str(a.entity_id),
+            "reference": a.entity_number,
+            "title": a.title,
+            "description": a.description,
+            "amount": float(a.amount) if a.amount else 0,
+            "status": a.status.value,
+            "level": f"L{level_num}",
+            "current_approver": None,
+            "requested_by": _get_user_name(a.requester) if a.requester else "Unknown",
+            "requested_at": a.requested_at.isoformat() if a.requested_at else None,
+            "sla_due_at": a.due_date.isoformat() if a.due_date else None,
+            "is_sla_breached": is_overdue,
+            "priority": priority_map.get(a.priority, "NORMAL"),
+            "details": a.extra_info,
+        })
+
+    return {"items": items}
 
 
 # ============== Detail Endpoint ==============
@@ -645,7 +662,8 @@ async def approve_request(
     approval.status = ApprovalStatus.APPROVED
     approval.approved_by = current_user.id
     approval.approved_at = datetime.utcnow()
-    approval.approval_comments = request.comments
+    # Accept either 'comments' or 'notes' from frontend
+    approval.approval_comments = request.comments or request.notes
 
     # Create history entry
     history = ApprovalHistory(
@@ -654,11 +672,11 @@ async def approve_request(
         from_status=old_status,
         to_status=ApprovalStatus.APPROVED.value,
         performed_by=current_user.id,
-        comments=request.comments,
+        comments=request.comments or request.notes,
     )
     db.add(history)
 
-    # Update the entity based on type
+    # Update the entity based on type - handle Purchase Requisitions too
     if approval.entity_type == ApprovalEntityType.PURCHASE_ORDER:
         po_result = await db.execute(
             select(PurchaseOrder).where(PurchaseOrder.id == approval.entity_id)
@@ -668,6 +686,15 @@ async def approve_request(
             po.status = POStatus.APPROVED
             po.approved_by = current_user.id
             po.approved_at = datetime.utcnow()
+    elif approval.entity_type == ApprovalEntityType.PURCHASE_REQUISITION:
+        pr_result = await db.execute(
+            select(PurchaseRequisition).where(PurchaseRequisition.id == approval.entity_id)
+        )
+        pr = pr_result.scalar_one_or_none()
+        if pr:
+            pr.status = RequisitionStatus.APPROVED
+            pr.approved_by = current_user.id
+            pr.approved_at = datetime.utcnow()
 
     await db.commit()
     await db.refresh(approval)
@@ -740,6 +767,14 @@ async def reject_request(
         if po:
             po.status = POStatus.DRAFT  # Back to draft for revision
             po.rejection_reason = request.reason
+    elif approval.entity_type == ApprovalEntityType.PURCHASE_REQUISITION:
+        pr_result = await db.execute(
+            select(PurchaseRequisition).where(PurchaseRequisition.id == approval.entity_id)
+        )
+        pr = pr_result.scalar_one_or_none()
+        if pr:
+            pr.status = RequisitionStatus.REJECTED
+            pr.rejection_reason = request.reason
 
     await db.commit()
     await db.refresh(approval)
@@ -877,6 +912,152 @@ async def bulk_approve(
         total_successful=len(successful),
         total_failed=len(failed),
     )
+
+
+# ============== Stats Endpoint ==============
+
+@router.get("/stats")
+async def get_approval_stats(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get approval statistics for the dashboard.
+
+    Returns counts of pending, approved today, rejected today, and overdue approvals.
+    """
+    today = date.today()
+    today_start = datetime.combine(today, datetime.min.time())
+    today_end = datetime.combine(today, datetime.max.time())
+
+    # Total pending
+    pending_result = await db.execute(
+        select(func.count(ApprovalRequest.id))
+        .where(ApprovalRequest.status == ApprovalStatus.PENDING)
+    )
+    total_pending = pending_result.scalar() or 0
+
+    # Approved today
+    approved_today_result = await db.execute(
+        select(func.count(ApprovalRequest.id))
+        .where(
+            ApprovalRequest.status == ApprovalStatus.APPROVED,
+            ApprovalRequest.approved_at >= today_start,
+            ApprovalRequest.approved_at <= today_end,
+        )
+    )
+    total_approved_today = approved_today_result.scalar() or 0
+
+    # Rejected today
+    rejected_today_result = await db.execute(
+        select(func.count(ApprovalRequest.id))
+        .where(
+            ApprovalRequest.status == ApprovalStatus.REJECTED,
+            ApprovalRequest.rejected_at >= today_start,
+            ApprovalRequest.rejected_at <= today_end,
+        )
+    )
+    total_rejected_today = rejected_today_result.scalar() or 0
+
+    # Overdue
+    overdue_result = await db.execute(
+        select(func.count(ApprovalRequest.id))
+        .where(
+            ApprovalRequest.status == ApprovalStatus.PENDING,
+            ApprovalRequest.due_date < datetime.utcnow(),
+        )
+    )
+    total_overdue = overdue_result.scalar() or 0
+
+    # By entity type
+    entity_type_result = await db.execute(
+        select(
+            ApprovalRequest.entity_type,
+            func.count(ApprovalRequest.id),
+        )
+        .where(ApprovalRequest.status == ApprovalStatus.PENDING)
+        .group_by(ApprovalRequest.entity_type)
+    )
+    by_entity_type = {row[0].value: row[1] for row in entity_type_result.all()}
+
+    return {
+        "pending_count": total_pending,
+        "approved_today": total_approved_today,
+        "rejected_today": total_rejected_today,
+        "sla_breached": total_overdue,
+        "by_type": by_entity_type,
+        "by_level": {},  # TODO: Add level counts if needed
+    }
+
+
+# ============== History Endpoint ==============
+
+@router.get("/history")
+async def get_approval_history(
+    db: DB,
+    limit: int = Query(20, ge=1, le=100),
+    entity_type: Optional[ApprovalEntityType] = Query(None),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get recent approval activity history.
+
+    Returns recently approved and rejected requests.
+    """
+    query = (
+        select(ApprovalRequest)
+        .options(selectinload(ApprovalRequest.requester))
+        .where(
+            or_(
+                ApprovalRequest.status == ApprovalStatus.APPROVED,
+                ApprovalRequest.status == ApprovalStatus.REJECTED,
+            )
+        )
+    )
+
+    if entity_type:
+        query = query.where(ApprovalRequest.entity_type == entity_type)
+
+    # Order by most recent action
+    query = query.order_by(
+        func.coalesce(
+            ApprovalRequest.approved_at,
+            ApprovalRequest.rejected_at
+        ).desc()
+    ).limit(limit)
+
+    result = await db.execute(query)
+    approvals = result.scalars().all()
+
+    items = []
+    for a in approvals:
+        # Map entity types to frontend expected values
+        entity_type_map = {
+            "PURCHASE_ORDER": "PURCHASE_ORDER",
+            "PURCHASE_REQUISITION": "PURCHASE_ORDER",  # Map PR to PO for display
+            "VENDOR_ONBOARDING": "VENDOR",
+            "STOCK_TRANSFER": "TRANSFER",
+            "STOCK_ADJUSTMENT": "TRANSFER",
+            "JOURNAL_ENTRY": "JOURNAL_ENTRY",
+            "CREDIT_NOTE": "CREDIT_NOTE",
+            "DEBIT_NOTE": "CREDIT_NOTE",
+        }
+        mapped_type = entity_type_map.get(a.entity_type.value, a.entity_type.value)
+
+        items.append({
+            "id": str(a.id),
+            "entity_type": mapped_type,
+            "entity_id": str(a.entity_id),
+            "reference": a.entity_number,
+            "title": a.title,
+            "amount": float(a.amount) if a.amount else 0,
+            "level": f"L{a.approval_level.value[-1]}" if a.approval_level else "L1",
+            "status": a.status.value,
+            "requested_by": _get_user_name(a.requester) if a.requester else "Unknown",
+            "requested_at": a.requested_at.isoformat() if a.requested_at else None,
+        })
+
+    return {"items": items, "total": len(items)}
 
 
 @router.post("/bulk/reject", response_model=BulkActionResponse)

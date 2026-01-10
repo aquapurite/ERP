@@ -58,6 +58,7 @@ class SubmitForApprovalRequest(BaseModel):
 class ApproveRequest(BaseModel):
     """Schema for approving a request."""
     comments: Optional[str] = Field(None, description="Approval comments")
+    notes: Optional[str] = Field(None, description="Approval notes (alias for comments)")
 
 
 class RejectRequest(BaseModel):
