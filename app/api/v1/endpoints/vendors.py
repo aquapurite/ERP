@@ -24,6 +24,8 @@ from app.schemas.vendor import (
 )
 from app.api.deps import DB, CurrentUser, get_current_user, require_permissions
 from app.services.audit_service import AuditService
+from app.services.approval_service import ApprovalService
+from app.models.approval import ApprovalEntityType
 
 router = APIRouter()
 
@@ -99,6 +101,21 @@ async def create_vendor(
             created_by=current_user.id,
         )
         db.add(ledger_entry)
+        await db.commit()
+
+    # Create approval request for vendor onboarding
+    if vendor.status == VendorStatus.PENDING_APPROVAL:
+        approval = await ApprovalService.create_approval_request(
+            db=db,
+            entity_type=ApprovalEntityType.VENDOR_ONBOARDING,
+            entity_id=vendor.id,
+            entity_number=vendor_code,
+            amount=vendor_in.opening_balance or Decimal("0"),
+            title=f"Vendor Onboarding: {vendor.name}",
+            requested_by=current_user.id,
+            description=f"New vendor registration - {vendor.vendor_type.value if vendor.vendor_type else 'General'}",
+            priority=5,
+        )
         await db.commit()
 
     # Audit log

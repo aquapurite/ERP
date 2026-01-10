@@ -47,6 +47,8 @@ from app.schemas.purchase import (
 )
 from app.api.deps import DB, CurrentUser, get_current_user, require_permissions
 from app.services.audit_service import AuditService
+from app.services.approval_service import ApprovalService
+from app.models.approval import ApprovalEntityType
 
 router = APIRouter()
 
@@ -258,6 +260,20 @@ async def submit_purchase_requisition(
         raise HTTPException(status_code=400, detail="Cannot submit PR without items")
 
     pr.status = RequisitionStatus.SUBMITTED
+
+    # Create approval request
+    approval = await ApprovalService.create_approval_request(
+        db=db,
+        entity_type=ApprovalEntityType.PURCHASE_REQUISITION,
+        entity_id=pr.id,
+        entity_number=pr.requisition_number,
+        amount=pr.estimated_total or Decimal("0"),
+        title=f"Purchase Requisition: {pr.requisition_number}",
+        requested_by=current_user.id,
+        description=pr.reason,
+        priority=pr.priority if hasattr(pr, 'priority') and pr.priority else 5,
+    )
+
     await db.commit()
     await db.refresh(pr)
 
