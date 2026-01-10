@@ -181,6 +181,7 @@ export default function PurchaseRequisitionsPage() {
     product_id: '',
     quantity: 1,
     estimated_price: 0,
+    monthlyQtys: {} as Record<string, number>, // e.g., {"2026-01": 500, "2026-02": 500}
   });
   const [multiDeliveryMonths, setMultiDeliveryMonths] = useState<string[]>([]);
 
@@ -337,8 +338,8 @@ export default function PurchaseRequisitionsPage() {
   };
 
   const handleAddItem = () => {
-    if (!newItem.product_id || newItem.quantity <= 0) {
-      toast.error('Please select a product and enter quantity');
+    if (!newItem.product_id) {
+      toast.error('Please select a product');
       return;
     }
 
@@ -348,16 +349,29 @@ export default function PurchaseRequisitionsPage() {
       return;
     }
 
-    // Generate monthly_quantities if multi-delivery is enabled
+    // For multi-delivery, use monthly quantities entered by user
     let monthly_quantities: Record<string, number> | undefined;
+    let totalQty = newItem.quantity;
+
     if (formData.is_multi_delivery && multiDeliveryMonths.length > 0) {
-      const qtyPerMonth = Math.floor(newItem.quantity / multiDeliveryMonths.length);
-      const remainder = newItem.quantity % multiDeliveryMonths.length;
+      // Use the quantities entered for each month
       monthly_quantities = {};
-      multiDeliveryMonths.forEach((month, index) => {
-        // Distribute remainder to first months
-        monthly_quantities![month] = qtyPerMonth + (index < remainder ? 1 : 0);
+      totalQty = 0;
+      multiDeliveryMonths.forEach((month) => {
+        const qty = newItem.monthlyQtys[month] || 0;
+        if (qty > 0) {
+          monthly_quantities![month] = qty;
+          totalQty += qty;
+        }
       });
+
+      if (totalQty <= 0) {
+        toast.error('Please enter quantity for at least one delivery month');
+        return;
+      }
+    } else if (newItem.quantity <= 0) {
+      toast.error('Please enter quantity');
+      return;
     }
 
     setFormData({
@@ -366,13 +380,13 @@ export default function PurchaseRequisitionsPage() {
         product_id: product.id,
         product_name: product.name,
         sku: product.sku,
-        quantity_requested: newItem.quantity,
+        quantity_requested: totalQty,
         estimated_unit_price: newItem.estimated_price || product.mrp || 0,
         uom: 'PCS',
         monthly_quantities,
       }],
     });
-    setNewItem({ product_id: '', quantity: 1, estimated_price: 0 });
+    setNewItem({ product_id: '', quantity: 1, estimated_price: 0, monthlyQtys: {} });
   };
 
   const handleRemoveItem = (index: number) => {
@@ -667,67 +681,168 @@ export default function PurchaseRequisitionsPage() {
                 <div className="space-y-2">
                   <Label className="text-base font-semibold">Add Items *</Label>
                   <div className="border rounded-lg p-4 space-y-3">
-                    <div className="grid grid-cols-12 gap-2 items-end">
-                      <div className="col-span-5">
-                        <Label className="text-xs">Product {isLoadingProducts && <span className="text-muted-foreground">(loading...)</span>}</Label>
-                        <Select
-                          value={newItem.product_id || 'select'}
-                          onValueChange={(value) => {
-                            const product = products.find((p: Product) => p.id === value);
-                            setNewItem({
-                              ...newItem,
-                              product_id: value === 'select' ? '' : value,
-                              estimated_price: parseFloat(String(product?.mrp)) || 0
-                            });
-                          }}
-                          disabled={isLoadingProducts}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder={isLoadingProducts ? "Loading products..." : "Select product"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {isLoadingProducts ? (
-                              <SelectItem value="loading" disabled>Loading products...</SelectItem>
-                            ) : productsError ? (
-                              <SelectItem value="error" disabled>Error loading products</SelectItem>
-                            ) : products.length === 0 ? (
-                              <SelectItem value="empty" disabled>No products found</SelectItem>
-                            ) : (
-                              <>
-                                <SelectItem value="select" disabled>Select product ({products.length} available)</SelectItem>
-                                {products.filter((p: Product) => p.id && p.id.trim() !== '').map((p: Product) => (
-                                  <SelectItem key={p.id} value={p.id}>{p.name} ({p.sku})</SelectItem>
-                                ))}
-                              </>
-                            )}
-                          </SelectContent>
-                        </Select>
+                    {/* Standard layout: Product, Qty (single), Est. Price, Add button */}
+                    {!formData.is_multi_delivery && (
+                      <div className="grid grid-cols-12 gap-2 items-end">
+                        <div className="col-span-5">
+                          <Label className="text-xs">Product {isLoadingProducts && <span className="text-muted-foreground">(loading...)</span>}</Label>
+                          <Select
+                            value={newItem.product_id || 'select'}
+                            onValueChange={(value) => {
+                              const product = products.find((p: Product) => p.id === value);
+                              setNewItem({
+                                ...newItem,
+                                product_id: value === 'select' ? '' : value,
+                                estimated_price: parseFloat(String(product?.mrp)) || 0
+                              });
+                            }}
+                            disabled={isLoadingProducts}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={isLoadingProducts ? "Loading products..." : "Select product"} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {isLoadingProducts ? (
+                                <SelectItem value="loading" disabled>Loading products...</SelectItem>
+                              ) : productsError ? (
+                                <SelectItem value="error" disabled>Error loading products</SelectItem>
+                              ) : products.length === 0 ? (
+                                <SelectItem value="empty" disabled>No products found</SelectItem>
+                              ) : (
+                                <>
+                                  <SelectItem value="select" disabled>Select product ({products.length} available)</SelectItem>
+                                  {products.filter((p: Product) => p.id && p.id.trim() !== '').map((p: Product) => (
+                                    <SelectItem key={p.id} value={p.id}>{p.name} ({p.sku})</SelectItem>
+                                  ))}
+                                </>
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="col-span-2">
+                          <Label className="text-xs">Qty</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={newItem.quantity}
+                            onChange={(e) => setNewItem({ ...newItem, quantity: parseInt(e.target.value) || 0 })}
+                          />
+                        </div>
+                        <div className="col-span-3">
+                          <Label className="text-xs">Est. Price</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={newItem.estimated_price || ''}
+                            onChange={(e) => setNewItem({ ...newItem, estimated_price: parseFloat(e.target.value) || 0 })}
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <Button type="button" onClick={handleAddItem} className="w-full">
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
-                      <div className="col-span-2">
-                        <Label className="text-xs">Qty</Label>
-                        <Input
-                          type="number"
-                          min="1"
-                          value={newItem.quantity}
-                          onChange={(e) => setNewItem({ ...newItem, quantity: parseInt(e.target.value) || 0 })}
-                        />
+                    )}
+
+                    {/* Multi-delivery layout: Product, Est. Price, [Month Qty columns], Total, Add button */}
+                    {formData.is_multi_delivery && (
+                      <div className="space-y-3">
+                        {multiDeliveryMonths.length === 0 ? (
+                          <p className="text-sm text-amber-600 p-3 bg-amber-50 rounded-lg">
+                            Please select delivery months above first
+                          </p>
+                        ) : (
+                          <>
+                            <div className="grid gap-2" style={{ gridTemplateColumns: `2fr 1fr ${multiDeliveryMonths.map(() => '1fr').join(' ')} 0.8fr 0.5fr` }}>
+                              {/* Header */}
+                              <div className="text-xs font-medium text-muted-foreground">Product</div>
+                              <div className="text-xs font-medium text-muted-foreground">Est. Price</div>
+                              {multiDeliveryMonths.map((month) => {
+                                const d = new Date(`${month}-01`);
+                                const label = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                                return (
+                                  <div key={month} className="text-xs font-medium text-muted-foreground text-center">{label}</div>
+                                );
+                              })}
+                              <div className="text-xs font-medium text-muted-foreground text-right">Total</div>
+                              <div></div>
+
+                              {/* Input Row */}
+                              <Select
+                                value={newItem.product_id || 'select'}
+                                onValueChange={(value) => {
+                                  const product = products.find((p: Product) => p.id === value);
+                                  setNewItem({
+                                    ...newItem,
+                                    product_id: value === 'select' ? '' : value,
+                                    estimated_price: parseFloat(String(product?.mrp)) || 0
+                                  });
+                                }}
+                                disabled={isLoadingProducts}
+                              >
+                                <SelectTrigger className="h-9">
+                                  <SelectValue placeholder={isLoadingProducts ? "Loading..." : "Select product"} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {isLoadingProducts ? (
+                                    <SelectItem value="loading" disabled>Loading products...</SelectItem>
+                                  ) : productsError ? (
+                                    <SelectItem value="error" disabled>Error loading products</SelectItem>
+                                  ) : products.length === 0 ? (
+                                    <SelectItem value="empty" disabled>No products found</SelectItem>
+                                  ) : (
+                                    <>
+                                      <SelectItem value="select" disabled>Select product</SelectItem>
+                                      {products.filter((p: Product) => p.id && p.id.trim() !== '').map((p: Product) => (
+                                        <SelectItem key={p.id} value={p.id}>{p.name} ({p.sku})</SelectItem>
+                                      ))}
+                                    </>
+                                  )}
+                                </SelectContent>
+                              </Select>
+
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                className="h-9"
+                                placeholder="Price"
+                                value={newItem.estimated_price || ''}
+                                onChange={(e) => setNewItem({ ...newItem, estimated_price: parseFloat(e.target.value) || 0 })}
+                              />
+
+                              {multiDeliveryMonths.map((month) => (
+                                <Input
+                                  key={month}
+                                  type="number"
+                                  min="0"
+                                  className="h-9 text-center"
+                                  placeholder="Qty"
+                                  value={newItem.monthlyQtys[month] || ''}
+                                  onChange={(e) => {
+                                    const qty = parseInt(e.target.value) || 0;
+                                    setNewItem({
+                                      ...newItem,
+                                      monthlyQtys: { ...newItem.monthlyQtys, [month]: qty }
+                                    });
+                                  }}
+                                />
+                              ))}
+
+                              <div className="h-9 flex items-center justify-end font-medium text-sm bg-muted rounded px-2">
+                                {Object.values(newItem.monthlyQtys).reduce((sum, qty) => sum + (qty || 0), 0)}
+                              </div>
+
+                              <Button type="button" onClick={handleAddItem} size="sm" className="h-9">
+                                <Plus className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </>
+                        )}
                       </div>
-                      <div className="col-span-3">
-                        <Label className="text-xs">Est. Price</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={newItem.estimated_price || ''}
-                          onChange={(e) => setNewItem({ ...newItem, estimated_price: parseFloat(e.target.value) || 0 })}
-                        />
-                      </div>
-                      <div className="col-span-2">
-                        <Button type="button" onClick={handleAddItem} className="w-full">
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </div>
 

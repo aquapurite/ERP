@@ -389,6 +389,17 @@ export default function PurchaseOrdersPage() {
       toast.error('Please fill all required fields and add at least one item');
       return;
     }
+
+    // Validate: PO quantity cannot exceed PR quantity for any item
+    const overLimitItems = formData.items.filter(item => {
+      const prItem = selectedPR?.items.find(pi => pi.product_id === item.product_id);
+      return (item.quantity ?? 0) > (prItem?.quantity_requested || 0);
+    });
+    if (overLimitItems.length > 0) {
+      toast.error('PO quantity cannot exceed PR quantity. Please adjust quantities.');
+      return;
+    }
+
     createMutation.mutate({
       requisition_id: formData.requisition_id,  // Link PO to PR
       vendor_id: formData.vendor_id,
@@ -768,7 +779,7 @@ export default function PurchaseOrdersPage() {
                     </div>
                   </div>
 
-                  {/* Items from PR - Auto-populated, only price is editable */}
+                  {/* Items from PR - Auto-populated */}
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <Label className="text-base font-semibold">Items from Purchase Requisition</Label>
@@ -788,94 +799,190 @@ export default function PurchaseOrdersPage() {
                     ) : (
                       <div className="p-3 border rounded-lg bg-green-50/30 space-y-2">
                         <p className="text-xs text-muted-foreground">
-                          Items and delivery schedule inherited from PR. You can adjust unit prices below.
+                          Items inherited from PR. You can redistribute month-wise quantities (total cannot exceed PR qty) and adjust prices.
                         </p>
                       </div>
                     )}
                   </div>
 
-                  {/* Items List - Editable Prices */}
+                  {/* Month Selection for PO (can differ from PR) */}
+                  {selectedPR && formData.items.length > 0 && isMultiDelivery && (
+                    <div className="space-y-2 border rounded-lg p-3 bg-blue-50/50">
+                      <Label className="text-sm font-medium">PO Delivery Months</Label>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        You can redistribute quantities across different months. Select the months for this PO.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {availableMonths.map((month) => (
+                          <Button
+                            key={month.code}
+                            type="button"
+                            size="sm"
+                            variant={deliveryMonths.includes(month.code) ? 'default' : 'outline'}
+                            onClick={() => {
+                              if (deliveryMonths.includes(month.code)) {
+                                setDeliveryMonths(deliveryMonths.filter(m => m !== month.code));
+                              } else {
+                                setDeliveryMonths([...deliveryMonths, month.code].sort());
+                              }
+                            }}
+                          >
+                            {month.name}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Items List - Editable Prices and Monthly Quantities */}
                   {formData.items.length > 0 && (
                     <div className="space-y-2">
                       <Label className="text-base font-semibold">Order Items</Label>
-                      <div className="border rounded-md">
+                      <div className="border rounded-md overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead className="bg-muted">
                             <tr>
                               <th className="px-3 py-2 text-left">Product</th>
-                              <th className="px-3 py-2 text-right">Qty</th>
+                              <th className="px-3 py-2 text-center text-xs">PR Max</th>
+                              {isMultiDelivery && deliveryMonths.map(month => (
+                                <th key={month} className="px-2 py-2 text-center text-xs">
+                                  {availableMonths.find(m => m.code === month)?.name || month}
+                                </th>
+                              ))}
+                              <th className="px-3 py-2 text-right">PO Qty</th>
                               <th className="px-3 py-2 text-right">Unit Price</th>
                               <th className="px-3 py-2 text-right">GST %</th>
                               <th className="px-3 py-2 text-right">Total</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {formData.items.map((item, index) => (
-                              <tr key={index} className="border-t">
-                                <td className="px-3 py-2">
-                                  <div className="font-medium">{item.product_name}</div>
-                                  <div className="text-xs text-muted-foreground">{item.sku}</div>
-                                  {item.monthly_quantities && Object.keys(item.monthly_quantities).length > 0 && (
-                                    <div className="flex flex-wrap gap-1 mt-1">
-                                      {Object.entries(item.monthly_quantities).sort().map(([month, qty]) => (
-                                        <Badge key={month} variant="outline" className="text-xs">
-                                          {availableMonths.find(m => m.code === month)?.name || month}: {qty}
-                                        </Badge>
-                                      ))}
-                                    </div>
-                                  )}
-                                </td>
-                                <td className="px-3 py-2 text-right font-medium">{item.quantity ?? 0}</td>
-                                <td className="px-3 py-2">
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    className="w-24 h-8 text-right ml-auto"
-                                    value={item.unit_price || ''}
-                                    onChange={(e) => {
-                                      const newItems = [...formData.items];
-                                      newItems[index] = { ...newItems[index], unit_price: parseFloat(e.target.value) || 0 };
-                                      setFormData({ ...formData, items: newItems });
-                                    }}
-                                  />
-                                </td>
-                                <td className="px-3 py-2">
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    max="28"
-                                    className="w-16 h-8 text-right ml-auto"
-                                    value={item.gst_rate ?? 18}
-                                    onChange={(e) => {
-                                      const newItems = [...formData.items];
-                                      newItems[index] = { ...newItems[index], gst_rate: parseFloat(e.target.value) || 0 };
-                                      setFormData({ ...formData, items: newItems });
-                                    }}
-                                  />
-                                </td>
-                                <td className="px-3 py-2 text-right font-medium">
-                                  {formatCurrency((item.quantity ?? 0) * item.unit_price * (1 + (item.gst_rate ?? 0) / 100))}
-                                </td>
-                              </tr>
-                            ))}
+                            {formData.items.map((item, index) => {
+                              // Get PR item to know max quantity
+                              const prItem = selectedPR?.items.find(pi => pi.product_id === item.product_id);
+                              const prMaxQty = prItem?.quantity_requested || 0;
+                              const currentTotal = item.quantity ?? 0;
+                              const isOverLimit = currentTotal > prMaxQty;
+
+                              return (
+                                <tr key={index} className={`border-t ${isOverLimit ? 'bg-red-50' : ''}`}>
+                                  <td className="px-3 py-2">
+                                    <div className="font-medium">{item.product_name}</div>
+                                    <div className="text-xs text-muted-foreground">{item.sku}</div>
+                                  </td>
+                                  <td className="px-3 py-2 text-center">
+                                    <Badge variant="outline" className="text-xs">
+                                      {prMaxQty}
+                                    </Badge>
+                                  </td>
+                                  {isMultiDelivery && deliveryMonths.map(month => (
+                                    <td key={month} className="px-2 py-2">
+                                      <Input
+                                        type="number"
+                                        min="0"
+                                        className="w-16 h-8 text-center"
+                                        value={item.monthly_quantities?.[month] || ''}
+                                        onChange={(e) => {
+                                          const qty = parseInt(e.target.value) || 0;
+                                          const newItems = [...formData.items];
+                                          const newMonthlyQtys = { ...newItems[index].monthly_quantities, [month]: qty };
+                                          // Remove zero values
+                                          Object.keys(newMonthlyQtys).forEach(k => {
+                                            if (!newMonthlyQtys[k]) delete newMonthlyQtys[k];
+                                          });
+                                          // Calculate new total
+                                          const newTotal = Object.values(newMonthlyQtys).reduce((sum, q) => sum + (q || 0), 0);
+                                          newItems[index] = {
+                                            ...newItems[index],
+                                            monthly_quantities: newMonthlyQtys,
+                                            quantity: newTotal,
+                                          };
+                                          setFormData({ ...formData, items: newItems });
+                                        }}
+                                      />
+                                    </td>
+                                  ))}
+                                  <td className="px-3 py-2 text-right">
+                                    {isMultiDelivery ? (
+                                      <span className={`font-medium ${isOverLimit ? 'text-red-600' : ''}`}>
+                                        {currentTotal}
+                                        {isOverLimit && <span className="text-xs ml-1">!</span>}
+                                      </span>
+                                    ) : (
+                                      <Input
+                                        type="number"
+                                        min="1"
+                                        max={prMaxQty}
+                                        className={`w-20 h-8 text-right ${isOverLimit ? 'border-red-500' : ''}`}
+                                        value={item.quantity || ''}
+                                        onChange={(e) => {
+                                          const qty = parseInt(e.target.value) || 0;
+                                          const newItems = [...formData.items];
+                                          newItems[index] = { ...newItems[index], quantity: qty };
+                                          setFormData({ ...formData, items: newItems });
+                                        }}
+                                      />
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      className="w-24 h-8 text-right ml-auto"
+                                      value={item.unit_price || ''}
+                                      onChange={(e) => {
+                                        const newItems = [...formData.items];
+                                        newItems[index] = { ...newItems[index], unit_price: parseFloat(e.target.value) || 0 };
+                                        setFormData({ ...formData, items: newItems });
+                                      }}
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      max="28"
+                                      className="w-16 h-8 text-right ml-auto"
+                                      value={item.gst_rate ?? 18}
+                                      onChange={(e) => {
+                                        const newItems = [...formData.items];
+                                        newItems[index] = { ...newItems[index], gst_rate: parseFloat(e.target.value) || 0 };
+                                        setFormData({ ...formData, items: newItems });
+                                      }}
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-medium">
+                                    {formatCurrency((item.quantity ?? 0) * item.unit_price * (1 + (item.gst_rate ?? 0) / 100))}
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                           <tfoot className="bg-muted/50">
                             <tr className="border-t">
-                              <td colSpan={4} className="px-3 py-2 text-right">Subtotal:</td>
+                              <td colSpan={isMultiDelivery ? deliveryMonths.length + 5 : 5} className="px-3 py-2 text-right">Subtotal:</td>
                               <td className="px-3 py-2 text-right font-medium">{formatCurrency(totals.subtotal)}</td>
                             </tr>
                             <tr>
-                              <td colSpan={4} className="px-3 py-2 text-right">GST:</td>
+                              <td colSpan={isMultiDelivery ? deliveryMonths.length + 5 : 5} className="px-3 py-2 text-right">GST:</td>
                               <td className="px-3 py-2 text-right font-medium">{formatCurrency(totals.gst)}</td>
                             </tr>
                             <tr className="border-t">
-                              <td colSpan={4} className="px-3 py-2 text-right font-semibold">Grand Total:</td>
+                              <td colSpan={isMultiDelivery ? deliveryMonths.length + 5 : 5} className="px-3 py-2 text-right font-semibold">Grand Total:</td>
                               <td className="px-3 py-2 text-right font-bold text-lg">{formatCurrency(totals.total)}</td>
                             </tr>
                           </tfoot>
                         </table>
                       </div>
+                      {/* Validation Warning */}
+                      {formData.items.some((item, idx) => {
+                        const prItem = selectedPR?.items.find(pi => pi.product_id === item.product_id);
+                        return (item.quantity ?? 0) > (prItem?.quantity_requested || 0);
+                      }) && (
+                        <p className="text-sm text-red-600 p-2 bg-red-50 rounded">
+                          Warning: Some items exceed PR quantity. PO quantity cannot be more than PR quantity.
+                        </p>
+                      )}
                     </div>
                   )}
 
