@@ -5,6 +5,8 @@
 
 -- Step 1: Create Category (Water Purifiers)
 -- ============================================================================
+DELETE FROM categories WHERE slug = 'water-purifiers';
+
 INSERT INTO categories (
     id,
     name,
@@ -25,11 +27,12 @@ INSERT INTO categories (
     1,
     NOW(),
     NOW()
-)
-ON CONFLICT (slug) DO NOTHING;
+);
 
 -- Step 2: Create Brand (Aquapurite)
 -- ============================================================================
+DELETE FROM brands WHERE slug = 'aquapurite';
+
 INSERT INTO brands (
     id,
     name,
@@ -52,10 +55,9 @@ INSERT INTO brands (
     1,
     NOW(),
     NOW()
-)
-ON CONFLICT (slug) DO NOTHING;
+);
 
--- Step 3: Get Category and Brand IDs for product insertion
+-- Step 3: Create Products
 -- ============================================================================
 DO $$
 DECLARE
@@ -68,9 +70,16 @@ BEGIN
     -- Get brand ID
     SELECT id INTO v_brand_id FROM brands WHERE slug = 'aquapurite';
 
-    IF v_category_id IS NULL OR v_brand_id IS NULL THEN
-        RAISE EXCEPTION 'Category or Brand not found. Please check the inserts above.';
+    IF v_category_id IS NULL THEN
+        RAISE EXCEPTION 'Category "water-purifiers" not found!';
     END IF;
+
+    IF v_brand_id IS NULL THEN
+        RAISE EXCEPTION 'Brand "aquapurite" not found!';
+    END IF;
+
+    -- Delete existing products for clean re-run
+    DELETE FROM products WHERE sku IN ('AP-BLITZ-001', 'AP-NEURA-001', 'AP-PREMIO-001', 'AP-ELITZ-001');
 
     -- ========================================================================
     -- PRODUCT 1: AQUAPURITE BLITZ
@@ -78,7 +87,7 @@ BEGIN
     -- Cost: Rs.2,304 | Qty on PI: 150
     -- ========================================================================
     INSERT INTO products (
-        id, name, slug, sku, model_number, fg_code, model_code, part_code, item_type,
+        id, name, slug, sku, model_number, fg_code, model_code, item_type,
         short_description, description, features,
         category_id, brand_id,
         mrp, selling_price, dealer_price, cost_price,
@@ -92,10 +101,9 @@ BEGIN
         'aquapurite-blitz',
         'AP-BLITZ-001',
         'BLITZ',
-        'WPRABL001',      -- FG Code: WP=Water Purifier, RA=RO+Alkaline?, BL=Blitz
-        'BLZ',            -- Model code for barcode
-        NULL,             -- Vendor part code (if any)
-        'FG',             -- Finished Goods
+        'WPRABL001',
+        'BLZ',
+        'FG',
         'Entry-level RO water purifier with 7-stage purification',
         'Aquapurite Blitz is an affordable RO water purifier designed for Indian households. Features 7-stage purification with RO+UV technology.',
         '• 7-Stage Purification
@@ -106,27 +114,22 @@ BEGIN
 • Food-grade ABS Plastic Body',
         v_category_id,
         v_brand_id,
-        4999.00,          -- MRP
-        4499.00,          -- Selling price
-        2800.00,          -- Dealer price
-        2304.00,          -- Cost price (from PI)
-        '842121',         -- HSN Code
-        18.00,            -- GST Rate
-        18,               -- Warranty months (from PI)
+        4999.00,
+        4499.00,
+        2800.00,
+        2304.00,
+        '842121',
+        18.00,
+        18,
         '18 months warranty on electronic parts, 1 year service warranty. RO Membrane & Housing, Pre & Post Carbon, Sediment Spun provided by buyer.',
-        50,               -- Min stock level
+        50,
         'ACTIVE',
         TRUE,
         TRUE,
         '{"notes": "Buyer provides: RO Membrane & Housing, Pre & Post Carbon, Sediment Spun, UV LED"}'::jsonb,
         NOW(),
         NOW()
-    )
-    ON CONFLICT (sku) DO UPDATE SET
-        cost_price = EXCLUDED.cost_price,
-        warranty_months = EXCLUDED.warranty_months,
-        warranty_terms = EXCLUDED.warranty_terms,
-        updated_at = NOW();
+    );
 
     -- ========================================================================
     -- PRODUCT 2: AQUAPURITE NEURA
@@ -134,7 +137,7 @@ BEGIN
     -- Cost: Rs.2,509 | Qty on PI: 150
     -- ========================================================================
     INSERT INTO products (
-        id, name, slug, sku, model_number, fg_code, model_code, part_code, item_type,
+        id, name, slug, sku, model_number, fg_code, model_code, item_type,
         short_description, description, features,
         category_id, brand_id,
         mrp, selling_price, dealer_price, cost_price,
@@ -148,9 +151,8 @@ BEGIN
         'aquapurite-neura',
         'AP-NEURA-001',
         'NEURA',
-        'WPRANR001',      -- FG Code: WP=Water Purifier, RA=RO+Alkaline, NR=Neura
-        'NRA',            -- Model code for barcode
-        NULL,
+        'WPRANR001',
+        'NRA',
         'FG',
         'Alkaline RO water purifier with mineral enhancement',
         'Aquapurite Neura features advanced Alkaline 4" technology for pH-balanced, mineral-rich drinking water. Perfect for health-conscious families.',
@@ -163,13 +165,13 @@ BEGIN
 • LED Indicators',
         v_category_id,
         v_brand_id,
-        6999.00,          -- MRP
-        6299.00,          -- Selling price
-        3500.00,          -- Dealer price
-        2509.00,          -- Cost price (from PI)
-        '842121',         -- HSN Code
-        18.00,            -- GST Rate
-        18,               -- Warranty months
+        6999.00,
+        6299.00,
+        3500.00,
+        2509.00,
+        '842121',
+        18.00,
+        18,
         '18 months warranty on electronic parts, 1 year service warranty. Alkaline 4", RO Membrane & Housing provided by buyer.',
         50,
         'ACTIVE',
@@ -178,12 +180,7 @@ BEGIN
         '{"notes": "Buyer provides: Alkaline 4\", RO Membrane & Housing, UV LED"}'::jsonb,
         NOW(),
         NOW()
-    )
-    ON CONFLICT (sku) DO UPDATE SET
-        cost_price = EXCLUDED.cost_price,
-        warranty_months = EXCLUDED.warranty_months,
-        warranty_terms = EXCLUDED.warranty_terms,
-        updated_at = NOW();
+    );
 
     -- ========================================================================
     -- PRODUCT 3: AQUAPURITE PREMIO
@@ -191,7 +188,7 @@ BEGIN
     -- Cost: Rs.12,185 | Qty on PI: 20
     -- ========================================================================
     INSERT INTO products (
-        id, name, slug, sku, model_number, fg_code, model_code, part_code, item_type,
+        id, name, slug, sku, model_number, fg_code, model_code, item_type,
         short_description, description, features,
         category_id, brand_id,
         mrp, selling_price, dealer_price, cost_price,
@@ -205,9 +202,8 @@ BEGIN
         'aquapurite-premio',
         'AP-PREMIO-001',
         'PREMIO',
-        'WPRAPM001',      -- FG Code
-        'PMO',            -- Model code for barcode
-        NULL,
+        'WPRAPM001',
+        'PMO',
         'FG',
         'Premium 10-stage water purifier with copper infusion',
         'Aquapurite Premio is our flagship model featuring 10-stage purification with copper infusion technology. Designed for premium households demanding the best.',
@@ -221,28 +217,23 @@ BEGIN
 • Premium Design with LED Display',
         v_category_id,
         v_brand_id,
-        24999.00,         -- MRP (Premium pricing)
-        21999.00,         -- Selling price
-        15000.00,         -- Dealer price
-        12185.00,         -- Cost price (from PI)
-        '842121',         -- HSN Code
-        18.00,            -- GST Rate
-        18,               -- Warranty months
+        24999.00,
+        21999.00,
+        15000.00,
+        12185.00,
+        '842121',
+        18.00,
+        18,
         '18 months comprehensive warranty on electronic parts, 1 year service warranty.',
-        10,               -- Lower min stock (premium product)
+        10,
         'ACTIVE',
         TRUE,
         TRUE,
-        TRUE,             -- Bestseller
+        TRUE,
         '{"notes": "Buyer provides: UV LED", "premium": true}'::jsonb,
         NOW(),
         NOW()
-    )
-    ON CONFLICT (sku) DO UPDATE SET
-        cost_price = EXCLUDED.cost_price,
-        warranty_months = EXCLUDED.warranty_months,
-        warranty_terms = EXCLUDED.warranty_terms,
-        updated_at = NOW();
+    );
 
     -- ========================================================================
     -- PRODUCT 4: AQUAPURITE ELITZ
@@ -250,7 +241,7 @@ BEGIN
     -- Cost: Rs.8,321 | Qty on PI: 25
     -- ========================================================================
     INSERT INTO products (
-        id, name, slug, sku, model_number, fg_code, model_code, part_code, item_type,
+        id, name, slug, sku, model_number, fg_code, model_code, item_type,
         short_description, description, features,
         category_id, brand_id,
         mrp, selling_price, dealer_price, cost_price,
@@ -264,9 +255,8 @@ BEGIN
         'aquapurite-elitz',
         'AP-ELITZ-001',
         'ELITZ',
-        'WPRAEL001',      -- FG Code
-        'ELZ',            -- Model code for barcode
-        NULL,
+        'WPRAEL001',
+        'ELZ',
         'FG',
         'Elite RO+UV water purifier with 9-stage purification',
         'Aquapurite Elitz combines elegant design with superior performance. 9-stage purification ensures safe and healthy drinking water for your family.',
@@ -280,13 +270,13 @@ BEGIN
 • Elegant Compact Design',
         v_category_id,
         v_brand_id,
-        16999.00,         -- MRP
-        14999.00,         -- Selling price
-        10000.00,         -- Dealer price
-        8321.00,          -- Cost price (from PI)
-        '842121',         -- HSN Code
-        18.00,            -- GST Rate
-        18,               -- Warranty months
+        16999.00,
+        14999.00,
+        10000.00,
+        8321.00,
+        '842121',
+        18.00,
+        18,
         '18 months warranty on electronic parts, 1 year service warranty.',
         20,
         'ACTIVE',
@@ -295,12 +285,7 @@ BEGIN
         '{"notes": "Buyer provides: UV LED"}'::jsonb,
         NOW(),
         NOW()
-    )
-    ON CONFLICT (sku) DO UPDATE SET
-        cost_price = EXCLUDED.cost_price,
-        warranty_months = EXCLUDED.warranty_months,
-        warranty_terms = EXCLUDED.warranty_terms,
-        updated_at = NOW();
+    );
 
     RAISE NOTICE 'All 4 products created successfully!';
 END $$;
@@ -336,10 +321,10 @@ ORDER BY cost_price;
 -- ============================================================================
 -- PRICE SUMMARY (from PI NO./FF/25-26/005)
 -- ============================================================================
--- | Product | Cost (PI) | Dealer | Selling | MRP     | Margin % |
--- |---------|-----------|--------|---------|---------|----------|
--- | BLITZ   | 2,304     | 2,800  | 4,499   | 4,999   | ~95%     |
--- | NEURA   | 2,509     | 3,500  | 6,299   | 6,999   | ~151%    |
--- | ELITZ   | 8,321     | 10,000 | 14,999  | 16,999  | ~80%     |
--- | PREMIO  | 12,185    | 15,000 | 21,999  | 24,999  | ~80%     |
+-- | Product | Cost (PI) | Dealer | Selling | MRP     |
+-- |---------|-----------|--------|---------|---------|
+-- | BLITZ   | 2,304     | 2,800  | 4,499   | 4,999   |
+-- | NEURA   | 2,509     | 3,500  | 6,299   | 6,999   |
+-- | ELITZ   | 8,321     | 10,000 | 14,999  | 16,999  |
+-- | PREMIO  | 12,185    | 15,000 | 21,999  | 24,999  |
 -- ============================================================================
