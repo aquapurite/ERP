@@ -323,7 +323,16 @@ export default function ProductDetailPage() {
   });
 
   const onSubmit = (data: ProductFormData) => {
+    console.log('Form submitted with data:', data);
     updateMutation.mutate(data);
+  };
+
+  const onFormError = (errors: any) => {
+    console.error('Form validation errors:', errors);
+    const errorMessages = Object.entries(errors)
+      .map(([field, error]: [string, any]) => `${field}: ${error?.message || 'Invalid'}`)
+      .join(', ');
+    toast.error(`Validation failed: ${errorMessages}`);
   };
 
   const resetVariantForm = () => {
@@ -501,7 +510,7 @@ export default function ProductDetailPage() {
               </DialogContent>
             </Dialog>
             <Button
-              onClick={form.handleSubmit(onSubmit)}
+              onClick={form.handleSubmit(onSubmit, onFormError)}
               disabled={updateMutation.isPending}
             >
               {updateMutation.isPending ? (
@@ -525,7 +534,7 @@ export default function ProductDetailPage() {
         </TabsList>
 
         <TabsContent value="details" className="mt-6">
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit, onFormError)} className="space-y-6">
             <div className="grid gap-6 lg:grid-cols-3">
               {/* Main Content */}
               <div className="lg:col-span-2 space-y-6">
