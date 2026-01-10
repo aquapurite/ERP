@@ -502,6 +502,153 @@ async def list_pending_approvals(
     return {"items": items}
 
 
+# ============== Stats Endpoint ==============
+
+@router.get("/stats")
+async def get_approval_stats(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get approval statistics for the dashboard.
+
+    Returns counts of pending, approved today, rejected today, and overdue approvals.
+    """
+    today = date.today()
+    today_start = datetime.combine(today, datetime.min.time())
+    today_end = datetime.combine(today, datetime.max.time())
+
+    # Total pending
+    pending_result = await db.execute(
+        select(func.count(ApprovalRequest.id))
+        .where(ApprovalRequest.status == ApprovalStatus.PENDING)
+    )
+    total_pending = pending_result.scalar() or 0
+
+    # Approved today
+    approved_today_result = await db.execute(
+        select(func.count(ApprovalRequest.id))
+        .where(
+            ApprovalRequest.status == ApprovalStatus.APPROVED,
+            ApprovalRequest.approved_at >= today_start,
+            ApprovalRequest.approved_at <= today_end,
+        )
+    )
+    total_approved_today = approved_today_result.scalar() or 0
+
+    # Rejected today
+    rejected_today_result = await db.execute(
+        select(func.count(ApprovalRequest.id))
+        .where(
+            ApprovalRequest.status == ApprovalStatus.REJECTED,
+            ApprovalRequest.rejected_at >= today_start,
+            ApprovalRequest.rejected_at <= today_end,
+        )
+    )
+    total_rejected_today = rejected_today_result.scalar() or 0
+
+    # Overdue
+    overdue_result = await db.execute(
+        select(func.count(ApprovalRequest.id))
+        .where(
+            ApprovalRequest.status == ApprovalStatus.PENDING,
+            ApprovalRequest.due_date < datetime.utcnow(),
+        )
+    )
+    total_overdue = overdue_result.scalar() or 0
+
+    # By entity type
+    entity_type_result = await db.execute(
+        select(
+            ApprovalRequest.entity_type,
+            func.count(ApprovalRequest.id),
+        )
+        .where(ApprovalRequest.status == ApprovalStatus.PENDING)
+        .group_by(ApprovalRequest.entity_type)
+    )
+    by_entity_type = {row[0].value: row[1] for row in entity_type_result.all()}
+
+    return {
+        "pending_count": total_pending,
+        "approved_today": total_approved_today,
+        "rejected_today": total_rejected_today,
+        "sla_breached": total_overdue,
+        "by_type": by_entity_type,
+        "by_level": {},  # TODO: Add level counts if needed
+    }
+
+
+# ============== History Endpoint ==============
+
+@router.get("/history")
+async def get_approval_history(
+    db: DB,
+    limit: int = Query(20, ge=1, le=100),
+    entity_type: Optional[ApprovalEntityType] = Query(None),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get recent approval activity history.
+
+    Returns recently approved and rejected requests.
+    """
+    query = (
+        select(ApprovalRequest)
+        .options(selectinload(ApprovalRequest.requester))
+        .where(
+            or_(
+                ApprovalRequest.status == ApprovalStatus.APPROVED,
+                ApprovalRequest.status == ApprovalStatus.REJECTED,
+            )
+        )
+    )
+
+    if entity_type:
+        query = query.where(ApprovalRequest.entity_type == entity_type)
+
+    # Order by most recent action
+    query = query.order_by(
+        func.coalesce(
+            ApprovalRequest.approved_at,
+            ApprovalRequest.rejected_at
+        ).desc()
+    ).limit(limit)
+
+    result = await db.execute(query)
+    approvals = result.scalars().all()
+
+    items = []
+    for a in approvals:
+        # Map entity types to frontend expected values
+        entity_type_map = {
+            "PURCHASE_ORDER": "PURCHASE_ORDER",
+            "PURCHASE_REQUISITION": "PURCHASE_ORDER",
+            "VENDOR_ONBOARDING": "VENDOR",
+            "STOCK_TRANSFER": "TRANSFER",
+            "STOCK_ADJUSTMENT": "TRANSFER",
+            "JOURNAL_ENTRY": "JOURNAL_ENTRY",
+            "CREDIT_NOTE": "CREDIT_NOTE",
+            "DEBIT_NOTE": "CREDIT_NOTE",
+            "SALES_CHANNEL": "VENDOR",
+        }
+        mapped_type = entity_type_map.get(a.entity_type.value, a.entity_type.value)
+
+        items.append({
+            "id": str(a.id),
+            "entity_type": mapped_type,
+            "entity_id": str(a.entity_id),
+            "reference": a.entity_number,
+            "title": a.title,
+            "amount": float(a.amount) if a.amount else 0,
+            "level": f"L{a.approval_level.value[-1]}" if a.approval_level else "L1",
+            "status": a.status.value,
+            "requested_by": _get_user_name(a.requester) if a.requester else "Unknown",
+            "requested_at": a.requested_at.isoformat() if a.requested_at else None,
+        })
+
+    return {"items": items, "total": len(items)}
+
+
 # ============== Detail Endpoint ==============
 
 @router.get("/{approval_id}", response_model=ApprovalRequestResponse)
@@ -896,227 +1043,6 @@ async def bulk_approve(
                 to_status=ApprovalStatus.APPROVED.value,
                 performed_by=current_user.id,
                 comments=f"Bulk approval: {request.comments}" if request.comments else "Bulk approval",
-            )
-            db.add(history)
-
-            successful.append(req_id)
-
-        except Exception as e:
-            failed.append({"id": str(req_id), "error": str(e)})
-
-    await db.commit()
-
-    return BulkActionResponse(
-        successful=successful,
-        failed=failed,
-        total_processed=len(request.request_ids),
-        total_successful=len(successful),
-        total_failed=len(failed),
-    )
-
-
-# ============== Stats Endpoint ==============
-
-@router.get("/stats")
-async def get_approval_stats(
-    db: DB,
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Get approval statistics for the dashboard.
-
-    Returns counts of pending, approved today, rejected today, and overdue approvals.
-    """
-    today = date.today()
-    today_start = datetime.combine(today, datetime.min.time())
-    today_end = datetime.combine(today, datetime.max.time())
-
-    # Total pending
-    pending_result = await db.execute(
-        select(func.count(ApprovalRequest.id))
-        .where(ApprovalRequest.status == ApprovalStatus.PENDING)
-    )
-    total_pending = pending_result.scalar() or 0
-
-    # Approved today
-    approved_today_result = await db.execute(
-        select(func.count(ApprovalRequest.id))
-        .where(
-            ApprovalRequest.status == ApprovalStatus.APPROVED,
-            ApprovalRequest.approved_at >= today_start,
-            ApprovalRequest.approved_at <= today_end,
-        )
-    )
-    total_approved_today = approved_today_result.scalar() or 0
-
-    # Rejected today
-    rejected_today_result = await db.execute(
-        select(func.count(ApprovalRequest.id))
-        .where(
-            ApprovalRequest.status == ApprovalStatus.REJECTED,
-            ApprovalRequest.rejected_at >= today_start,
-            ApprovalRequest.rejected_at <= today_end,
-        )
-    )
-    total_rejected_today = rejected_today_result.scalar() or 0
-
-    # Overdue
-    overdue_result = await db.execute(
-        select(func.count(ApprovalRequest.id))
-        .where(
-            ApprovalRequest.status == ApprovalStatus.PENDING,
-            ApprovalRequest.due_date < datetime.utcnow(),
-        )
-    )
-    total_overdue = overdue_result.scalar() or 0
-
-    # By entity type
-    entity_type_result = await db.execute(
-        select(
-            ApprovalRequest.entity_type,
-            func.count(ApprovalRequest.id),
-        )
-        .where(ApprovalRequest.status == ApprovalStatus.PENDING)
-        .group_by(ApprovalRequest.entity_type)
-    )
-    by_entity_type = {row[0].value: row[1] for row in entity_type_result.all()}
-
-    return {
-        "pending_count": total_pending,
-        "approved_today": total_approved_today,
-        "rejected_today": total_rejected_today,
-        "sla_breached": total_overdue,
-        "by_type": by_entity_type,
-        "by_level": {},  # TODO: Add level counts if needed
-    }
-
-
-# ============== History Endpoint ==============
-
-@router.get("/history")
-async def get_approval_history(
-    db: DB,
-    limit: int = Query(20, ge=1, le=100),
-    entity_type: Optional[ApprovalEntityType] = Query(None),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Get recent approval activity history.
-
-    Returns recently approved and rejected requests.
-    """
-    query = (
-        select(ApprovalRequest)
-        .options(selectinload(ApprovalRequest.requester))
-        .where(
-            or_(
-                ApprovalRequest.status == ApprovalStatus.APPROVED,
-                ApprovalRequest.status == ApprovalStatus.REJECTED,
-            )
-        )
-    )
-
-    if entity_type:
-        query = query.where(ApprovalRequest.entity_type == entity_type)
-
-    # Order by most recent action
-    query = query.order_by(
-        func.coalesce(
-            ApprovalRequest.approved_at,
-            ApprovalRequest.rejected_at
-        ).desc()
-    ).limit(limit)
-
-    result = await db.execute(query)
-    approvals = result.scalars().all()
-
-    items = []
-    for a in approvals:
-        # Map entity types to frontend expected values
-        entity_type_map = {
-            "PURCHASE_ORDER": "PURCHASE_ORDER",
-            "PURCHASE_REQUISITION": "PURCHASE_ORDER",  # Map PR to PO for display
-            "VENDOR_ONBOARDING": "VENDOR",
-            "STOCK_TRANSFER": "TRANSFER",
-            "STOCK_ADJUSTMENT": "TRANSFER",
-            "JOURNAL_ENTRY": "JOURNAL_ENTRY",
-            "CREDIT_NOTE": "CREDIT_NOTE",
-            "DEBIT_NOTE": "CREDIT_NOTE",
-            "SALES_CHANNEL": "VENDOR",  # Map sales channel to vendor for display
-        }
-        mapped_type = entity_type_map.get(a.entity_type.value, a.entity_type.value)
-
-        items.append({
-            "id": str(a.id),
-            "entity_type": mapped_type,
-            "entity_id": str(a.entity_id),
-            "reference": a.entity_number,
-            "title": a.title,
-            "amount": float(a.amount) if a.amount else 0,
-            "level": f"L{a.approval_level.value[-1]}" if a.approval_level else "L1",
-            "status": a.status.value,
-            "requested_by": _get_user_name(a.requester) if a.requester else "Unknown",
-            "requested_at": a.requested_at.isoformat() if a.requested_at else None,
-        })
-
-    return {"items": items, "total": len(items)}
-
-
-@router.post("/bulk/reject", response_model=BulkActionResponse)
-async def bulk_reject(
-    request: BulkRejectRequest,
-    db: DB,
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Bulk reject multiple approval requests.
-    """
-    successful = []
-    failed = []
-
-    for req_id in request.request_ids:
-        try:
-            result = await db.execute(
-                select(ApprovalRequest).where(ApprovalRequest.id == req_id)
-            )
-            approval = result.scalar_one_or_none()
-
-            if not approval:
-                failed.append({"id": str(req_id), "error": "Not found"})
-                continue
-
-            if approval.status != ApprovalStatus.PENDING:
-                failed.append({"id": str(req_id), "error": f"Status is {approval.status.value}"})
-                continue
-
-            if approval.requested_by == current_user.id:
-                failed.append({"id": str(req_id), "error": "Cannot reject own request"})
-                continue
-
-            # Reject
-            approval.status = ApprovalStatus.REJECTED
-            approval.rejected_by = current_user.id
-            approval.rejected_at = datetime.utcnow()
-            approval.rejection_reason = request.reason
-
-            # Update entity
-            if approval.entity_type == ApprovalEntityType.PURCHASE_ORDER:
-                po_result = await db.execute(
-                    select(PurchaseOrder).where(PurchaseOrder.id == approval.entity_id)
-                )
-                po = po_result.scalar_one_or_none()
-                if po:
-                    po.status = POStatus.DRAFT
-                    po.rejection_reason = request.reason
-
-            # History
-            history = ApprovalHistory(
-                approval_request_id=approval.id,
-                action="REJECTED",
-                from_status="PENDING",
-                to_status=ApprovalStatus.REJECTED.value,
-                performed_by=current_user.id,
-                comments=f"Bulk rejection: {request.reason}",
             )
             db.add(history)
 
