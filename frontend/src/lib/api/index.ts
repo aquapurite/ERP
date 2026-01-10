@@ -537,6 +537,85 @@ export const vendorsApi = {
   },
 };
 
+// Purchase Requisitions API
+export interface PurchaseRequisition {
+  id: string;
+  requisition_number: string;
+  status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CONVERTED' | 'CANCELLED';
+  requesting_department?: string;
+  priority?: string;
+  reason?: string;
+  request_date: string;
+  required_by_date?: string;
+  delivery_warehouse_id: string;
+  delivery_warehouse_name?: string;
+  estimated_total?: number;
+  approved_by?: string;
+  approved_at?: string;
+  items: Array<{
+    id: string;
+    product_id: string;
+    product_name: string;
+    sku: string;
+    quantity_requested: number;
+    estimated_unit_price?: number;
+    uom?: string;
+    preferred_vendor_id?: string;
+    preferred_vendor_name?: string;
+    notes?: string;
+    monthly_quantities?: Record<string, number>;
+  }>;
+  created_at: string;
+  updated_at: string;
+}
+
+export const purchaseRequisitionsApi = {
+  list: async (params?: { page?: number; size?: number; status?: string; warehouse_id?: string }) => {
+    const queryParams: Record<string, unknown> = {};
+    if (params?.page !== undefined) queryParams.skip = (params.page) * (params.size || 50);
+    if (params?.size) queryParams.limit = params.size;
+    if (params?.status) queryParams.status = params.status;
+    if (params?.warehouse_id) queryParams.warehouse_id = params.warehouse_id;
+    const { data } = await apiClient.get<{ items: PurchaseRequisition[]; total: number }>('/purchase/requisitions', { params: queryParams });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get<PurchaseRequisition>(`/purchase/requisitions/${id}`);
+    return data;
+  },
+  // Get open (approved but not converted) PRs for PO creation
+  getOpenForPO: async () => {
+    const { data } = await apiClient.get<{ items: PurchaseRequisition[]; total: number }>('/purchase/requisitions', {
+      params: { status: 'APPROVED', limit: 100 }
+    });
+    return data.items;
+  },
+  create: async (pr: Partial<PurchaseRequisition>) => {
+    const { data } = await apiClient.post<PurchaseRequisition>('/purchase/requisitions', pr);
+    return data;
+  },
+  submit: async (id: string) => {
+    const { data } = await apiClient.post<PurchaseRequisition>(`/purchase/requisitions/${id}/submit`);
+    return data;
+  },
+  approve: async (id: string) => {
+    const { data } = await apiClient.post<PurchaseRequisition>(`/purchase/requisitions/${id}/approve`);
+    return data;
+  },
+  reject: async (id: string, reason: string) => {
+    const { data } = await apiClient.post<PurchaseRequisition>(`/purchase/requisitions/${id}/reject`, { reason });
+    return data;
+  },
+  cancel: async (id: string, reason: string) => {
+    const { data } = await apiClient.post<PurchaseRequisition>(`/purchase/requisitions/${id}/cancel`, { reason });
+    return data;
+  },
+  convertToPO: async (id: string, data?: { vendor_id?: string }) => {
+    const { data: result } = await apiClient.post<PurchaseOrder>(`/purchase/requisitions/${id}/convert-to-po`, data);
+    return result;
+  },
+};
+
 // Purchase Orders API
 export const purchaseOrdersApi = {
   list: async (params?: { page?: number; size?: number; status?: string; vendor_id?: string }) => {
@@ -1520,6 +1599,156 @@ export const serviceabilityApi = {
   },
   getDashboard: async () => {
     const { data } = await apiClient.get('/serviceability/dashboard');
+    return data;
+  },
+};
+
+// ============================================
+// SERIALIZATION API (Barcode Generation)
+// ============================================
+
+// Serial Number Types
+export interface SerialPreview {
+  supplier_code: string;
+  model_code: string;
+  year_code: string;
+  month_code: string;
+  current_last_serial: number;
+  preview_barcodes: string[];
+}
+
+export interface GeneratedSerialSummary {
+  model_code: string;
+  quantity: number;
+  start_serial: number;
+  end_serial: number;
+  start_barcode: string;
+  end_barcode: string;
+}
+
+export interface POSerialsResponse {
+  po_id: string;
+  total: number;
+  by_status: Record<string, number>;
+  serials: Array<{
+    id: string;
+    barcode: string;
+    model_code: string;
+    serial_number: number;
+    status: string;
+    product_sku?: string;
+  }>;
+}
+
+export interface ModelCodeReference {
+  id: string;
+  fg_code: string;
+  model_code: string;
+  item_type: string;
+  product_id?: string;
+  product_sku?: string;
+  description?: string;
+  is_active: boolean;
+}
+
+export interface SupplierCode {
+  id: string;
+  code: string;
+  name: string;
+  vendor_id?: string;
+  is_active: boolean;
+}
+
+// Serialization API
+export const serializationApi = {
+  // Preview codes without saving
+  preview: async (params: { supplier_code: string; model_code: string; quantity?: number }): Promise<SerialPreview> => {
+    const { data } = await apiClient.post<SerialPreview>('/serialization/preview', params);
+    return data;
+  },
+
+  // Generate serial numbers for a PO (when PO is sent to vendor)
+  generate: async (params: {
+    po_id: string;
+    supplier_code: string;
+    items: Array<{
+      po_item_id?: string;
+      product_id?: string;
+      product_sku?: string;
+      model_code: string;
+      quantity: number;
+      item_type?: string;
+    }>;
+  }) => {
+    const { data } = await apiClient.post('/serialization/generate', params);
+    return data;
+  },
+
+  // Get serials for a PO
+  getByPO: async (poId: string, params?: { status?: string; limit?: number; offset?: number }): Promise<POSerialsResponse> => {
+    const { data } = await apiClient.get<POSerialsResponse>(`/serialization/po/${poId}`, { params });
+    return data;
+  },
+
+  // Export serials for a PO as CSV
+  exportPOSerials: async (poId: string, format: 'csv' | 'txt' = 'csv') => {
+    const { data } = await apiClient.get(`/serialization/po/${poId}/export`, { params: { format } });
+    return data;
+  },
+
+  // Mark serials as sent to vendor
+  markSentToVendor: async (poId: string) => {
+    const { data } = await apiClient.post(`/serialization/po/${poId}/send-to-vendor`);
+    return data;
+  },
+
+  // Get sequence status (to know next available serial)
+  getSequenceStatus: async (modelCode: string, supplierCode: string) => {
+    const { data } = await apiClient.get(`/serialization/sequence/${modelCode}`, { params: { supplier_code: supplierCode } });
+    return data;
+  },
+
+  // Lookup a serial by barcode
+  lookup: async (barcode: string) => {
+    const { data } = await apiClient.get(`/serialization/lookup/${barcode}`);
+    return data;
+  },
+
+  // Validate a barcode
+  validate: async (barcode: string) => {
+    const { data } = await apiClient.post(`/serialization/validate/${barcode}`);
+    return data;
+  },
+
+  // Get dashboard stats
+  getDashboard: async () => {
+    const { data } = await apiClient.get('/serialization/dashboard');
+    return data;
+  },
+
+  // Supplier codes management
+  getSupplierCodes: async (activeOnly: boolean = true): Promise<SupplierCode[]> => {
+    const { data } = await apiClient.get<SupplierCode[]>('/serialization/suppliers', { params: { active_only: activeOnly } });
+    return data;
+  },
+  createSupplierCode: async (supplierCode: { code: string; name: string; vendor_id?: string; description?: string }) => {
+    const { data } = await apiClient.post('/serialization/suppliers', supplierCode);
+    return data;
+  },
+
+  // Model codes management
+  getModelCodes: async (activeOnly: boolean = true, itemType?: string): Promise<ModelCodeReference[]> => {
+    const { data } = await apiClient.get<ModelCodeReference[]>('/serialization/model-codes', { params: { active_only: activeOnly, item_type: itemType } });
+    return data;
+  },
+  createModelCode: async (modelCode: { fg_code: string; model_code: string; item_type?: string; product_id?: string; product_sku?: string; description?: string }) => {
+    const { data } = await apiClient.post('/serialization/model-codes', modelCode);
+    return data;
+  },
+
+  // Generate FG code
+  generateFGCode: async (params: { category_code: string; subcategory_code: string; brand_code: string; model_name: string }) => {
+    const { data } = await apiClient.post('/serialization/fg-code/generate', params);
     return data;
   },
 };

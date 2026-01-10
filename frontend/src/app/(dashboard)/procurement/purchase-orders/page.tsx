@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, FileText, Send, CheckCircle, X, Loader2, Trash2, Download, Printer, Package } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, FileText, Send, CheckCircle, X, Loader2, Trash2, Download, Printer, Package, Barcode } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/providers/auth-provider';
 import { Button } from '@/components/ui/button';
@@ -58,7 +58,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
-import { purchaseOrdersApi, vendorsApi, warehousesApi, productsApi } from '@/lib/api';
+import { purchaseOrdersApi, purchaseRequisitionsApi, PurchaseRequisition, vendorsApi, warehousesApi, productsApi, serializationApi, ModelCodeReference, SupplierCode as SupplierCodeType, POSerialsResponse } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 interface POItem {
@@ -137,6 +137,7 @@ export default function PurchaseOrdersPage() {
   const [deliveryMonths, setDeliveryMonths] = useState<string[]>([]);
 
   const [formData, setFormData] = useState({
+    requisition_id: '',  // Required - PO must be linked to an approved PR
     vendor_id: '',
     delivery_warehouse_id: '',
     expected_delivery_date: '',
@@ -144,6 +145,9 @@ export default function PurchaseOrdersPage() {
     notes: '',
     items: [] as POItem[],
   });
+
+  // Selected PR object for reference
+  const [selectedPR, setSelectedPR] = useState<PurchaseRequisition | null>(null);
 
   const [newItem, setNewItem] = useState({
     product_id: '',
@@ -192,6 +196,27 @@ export default function PurchaseOrdersPage() {
     queryKey: ['products-dropdown'],
     queryFn: () => productsApi.list({ size: 200 }),
   });
+
+  // Open Purchase Requisitions query (for PR dropdown)
+  const { data: openPRsData } = useQuery({
+    queryKey: ['open-purchase-requisitions'],
+    queryFn: () => purchaseRequisitionsApi.getOpenForPO(),
+  });
+
+  // Serialization queries
+  const { data: modelCodesData } = useQuery({
+    queryKey: ['model-codes'],
+    queryFn: () => serializationApi.getModelCodes(true),
+  });
+
+  const { data: supplierCodesData } = useQuery({
+    queryKey: ['supplier-codes'],
+    queryFn: () => serializationApi.getSupplierCodes(true),
+  });
+
+  // State for serial number preview in PO view
+  const [poSerials, setPOSerials] = useState<POSerialsResponse | null>(null);
+  const [loadingSerials, setLoadingSerials] = useState(false);
 
   // Mutations
   const createMutation = useMutation({
@@ -271,6 +296,7 @@ export default function PurchaseOrdersPage() {
 
   const resetForm = () => {
     setFormData({
+      requisition_id: '',
       vendor_id: '',
       delivery_warehouse_id: '',
       expected_delivery_date: '',
@@ -278,6 +304,7 @@ export default function PurchaseOrdersPage() {
       notes: '',
       items: [],
     });
+    setSelectedPR(null);
     setNewItem({ product_id: '', quantity: 1, unit_price: 0, gst_rate: 18, monthlyQtys: {} });
     setIsMultiDelivery(false);
     setDeliveryMonths([]);
@@ -285,46 +312,61 @@ export default function PurchaseOrdersPage() {
   };
 
   const handleAddItem = () => {
-    if (!newItem.product_id || newItem.unit_price <= 0) {
-      toast.error('Please fill all item fields');
+    if (!selectedPR) {
+      toast.error('Please select a Purchase Requisition first');
       return;
     }
 
-    // Calculate total quantity for multi-delivery or use direct quantity
-    let totalQty = newItem.quantity;
-    let monthlyQuantities: Record<string, number> | undefined = undefined;
-
-    if (isMultiDelivery && deliveryMonths.length > 0) {
-      // Validate all selected months have quantities
-      const monthQtys = deliveryMonths.reduce((acc, month) => {
-        const qty = newItem.monthlyQtys[month] || 0;
-        if (qty > 0) acc[month] = qty;
-        return acc;
-      }, {} as Record<string, number>);
-
-      if (Object.keys(monthQtys).length === 0) {
-        toast.error('Please enter quantities for at least one month');
-        return;
-      }
-
-      totalQty = Object.values(monthQtys).reduce((sum, q) => sum + q, 0);
-      monthlyQuantities = monthQtys;
-    } else if (newItem.quantity <= 0) {
-      toast.error('Quantity must be greater than 0');
+    if (!newItem.product_id) {
+      toast.error('Please select a product from the PR');
       return;
     }
 
-    const product = products.find((p: Product) => p.id === newItem.product_id);
+    if (newItem.unit_price <= 0) {
+      toast.error('Please enter a valid unit price');
+      return;
+    }
+
+    // Get month-wise quantities (filter out zero values)
+    const monthQtys = Object.entries(newItem.monthlyQtys).reduce((acc, [month, qty]) => {
+      if (qty && qty > 0) acc[month] = qty;
+      return acc;
+    }, {} as Record<string, number>);
+
+    if (Object.keys(monthQtys).length === 0) {
+      toast.error('Please enter quantities for at least one delivery month');
+      return;
+    }
+
+    const totalQty = Object.values(monthQtys).reduce((sum, q) => sum + q, 0);
+
+    // Get product info from PR item
+    const prItem = selectedPR.items.find(item => item.product_id === newItem.product_id);
+    if (!prItem) {
+      toast.error('Product not found in selected PR');
+      return;
+    }
+
+    // Update delivery months for the PO
+    const allMonths = new Set([...deliveryMonths, ...Object.keys(monthQtys)]);
+    setDeliveryMonths(Array.from(allMonths).sort());
+
+    // Enable multi-delivery mode since we're using month-wise quantities
+    if (Object.keys(monthQtys).length > 0) {
+      setIsMultiDelivery(true);
+    }
+
     setFormData({
       ...formData,
       items: [...formData.items, {
         product_id: newItem.product_id,
-        product_name: product?.name,
-        sku: product?.sku,
+        product_name: prItem.product_name,
+        sku: prItem.sku,
         quantity: totalQty,
         unit_price: newItem.unit_price,
         gst_rate: newItem.gst_rate,
-        monthly_quantities: monthlyQuantities,
+        uom: prItem.uom || 'Nos',
+        monthly_quantities: monthQtys,
       }],
     });
     setNewItem({ product_id: '', quantity: 1, unit_price: 0, gst_rate: 18, monthlyQtys: {} });
@@ -338,11 +380,17 @@ export default function PurchaseOrdersPage() {
   };
 
   const handleCreatePO = () => {
+    // Validate: PR selection is mandatory
+    if (!formData.requisition_id) {
+      toast.error('Please select an approved Purchase Requisition first');
+      return;
+    }
     if (!formData.vendor_id || !formData.delivery_warehouse_id || formData.items.length === 0) {
       toast.error('Please fill all required fields and add at least one item');
       return;
     }
     createMutation.mutate({
+      requisition_id: formData.requisition_id,  // Link PO to PR
       vendor_id: formData.vendor_id,
       delivery_warehouse_id: formData.delivery_warehouse_id,
       expected_delivery_date: formData.expected_delivery_date || undefined,
@@ -365,9 +413,21 @@ export default function PurchaseOrdersPage() {
       const detail = await purchaseOrdersApi.getById(po.id);
       setSelectedPO(detail);
       setIsViewOpen(true);
+
+      // Fetch serial numbers for the PO
+      setLoadingSerials(true);
+      try {
+        const serials = await serializationApi.getByPO(po.id);
+        setPOSerials(serials);
+      } catch {
+        setPOSerials(null);
+      } finally {
+        setLoadingSerials(false);
+      }
     } catch {
       setSelectedPO(po);
       setIsViewOpen(true);
+      setPOSerials(null);
     }
   };
 
@@ -380,7 +440,78 @@ export default function PurchaseOrdersPage() {
   const vendors = vendorsData?.items ?? [];
   const warehouses = warehousesData?.items ?? [];
   const products = productsData?.items ?? [];
+  const openPRs = openPRsData ?? [];
+  const modelCodes = modelCodesData ?? [];
+  const supplierCodes = supplierCodesData ?? [];
   const totals = calculateTotals();
+
+  // Helper to get model code for a product
+  const getModelCodeForProduct = (productId: string, productSku?: string): ModelCodeReference | undefined => {
+    return modelCodes.find(mc => mc.product_id === productId || mc.product_sku === productSku);
+  };
+
+  // Helper to get supplier code for a vendor
+  const getSupplierCodeForVendor = (vendorId: string): SupplierCodeType | undefined => {
+    return supplierCodes.find(sc => sc.vendor_id === vendorId);
+  };
+
+  // Handle PR selection - auto-populate ALL data from PR including items with monthly quantities
+  const handlePRSelect = (prId: string) => {
+    const pr = openPRs.find(p => p.id === prId);
+    setSelectedPR(pr || null);
+
+    if (pr) {
+      // Get preferred vendor from first item that has one
+      const preferredVendorId = pr.items.find(item => item.preferred_vendor_id)?.preferred_vendor_id || '';
+
+      // Convert PR items to PO items - inherit monthly quantities from PR
+      const poItems: POItem[] = pr.items.map(item => ({
+        product_id: item.product_id,
+        product_name: item.product_name,
+        sku: item.sku,
+        quantity: item.quantity_requested,
+        unit_price: item.estimated_unit_price || 0,
+        gst_rate: 18, // Default GST rate
+        uom: item.uom || 'Nos',
+        monthly_quantities: item.monthly_quantities, // Inherit from PR
+      }));
+
+      // Check if multi-delivery and collect delivery months
+      const allMonths = new Set<string>();
+      pr.items.forEach(item => {
+        if (item.monthly_quantities) {
+          Object.keys(item.monthly_quantities).forEach(m => allMonths.add(m));
+        }
+      });
+      const hasMonthlyBreakdown = allMonths.size > 0;
+
+      setIsMultiDelivery(hasMonthlyBreakdown);
+      setDeliveryMonths(Array.from(allMonths).sort());
+
+      setFormData({
+        ...formData,
+        requisition_id: prId,
+        vendor_id: preferredVendorId,
+        delivery_warehouse_id: pr.delivery_warehouse_id,
+        expected_delivery_date: pr.required_by_date || '',
+        notes: pr.reason || '',
+        items: poItems, // Auto-populate items from PR
+      });
+    } else {
+      // Clear form if no PR selected
+      setFormData({
+        ...formData,
+        requisition_id: '',
+        vendor_id: '',
+        delivery_warehouse_id: '',
+        expected_delivery_date: '',
+        notes: '',
+        items: [],
+      });
+      setIsMultiDelivery(false);
+      setDeliveryMonths([]);
+    }
+  };
 
   const columns: ColumnDef<PurchaseOrder>[] = [
     {
@@ -535,12 +666,56 @@ export default function PurchaseOrdersPage() {
                   <DialogDescription>Create a new purchase order for vendor procurement</DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
+                  {/* Purchase Requisition Selection - MANDATORY */}
+                  <div className="space-y-2 p-3 border rounded-lg bg-blue-50/50">
+                    <Label className="text-base font-semibold flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Purchase Requisition *
+                      <span className="text-xs font-normal text-muted-foreground">(Required)</span>
+                    </Label>
+                    <Select
+                      value={formData.requisition_id || 'select'}
+                      onValueChange={(value) => handlePRSelect(value === 'select' ? '' : value)}
+                    >
+                      <SelectTrigger className={!formData.requisition_id ? 'border-amber-400' : ''}>
+                        <SelectValue placeholder="Select an approved Purchase Requisition" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="select" disabled>Select an approved PR</SelectItem>
+                        {openPRs.length === 0 ? (
+                          <SelectItem value="none" disabled>No open PRs available</SelectItem>
+                        ) : (
+                          openPRs.map((pr) => (
+                            <SelectItem key={pr.id} value={pr.id}>
+                              {pr.requisition_number} - {pr.reason || 'No description'} ({formatCurrency(pr.estimated_total || 0)})
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    {selectedPR && (
+                      <div className="text-xs text-muted-foreground mt-1 space-y-1">
+                        <p><strong>Department:</strong> {selectedPR.requesting_department || 'N/A'}</p>
+                        <p><strong>Items:</strong> {selectedPR.items.length} | <strong>Total:</strong> {formatCurrency(selectedPR.estimated_total || 0)}</p>
+                        {selectedPR.required_by_date && <p><strong>Required By:</strong> {formatDate(selectedPR.required_by_date)}</p>}
+                      </div>
+                    )}
+                    {!formData.requisition_id && openPRs.length === 0 && (
+                      <p className="text-xs text-amber-600">
+                        No approved Purchase Requisitions available. Create and approve a PR first.
+                      </p>
+                    )}
+                  </div>
+
+                  <Separator />
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Vendor *</Label>
                       <Select
                         value={formData.vendor_id || 'select'}
                         onValueChange={(value) => setFormData({ ...formData, vendor_id: value === 'select' ? '' : value })}
+                        disabled={!formData.requisition_id}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select vendor" />
@@ -558,6 +733,7 @@ export default function PurchaseOrdersPage() {
                       <Select
                         value={formData.delivery_warehouse_id || 'select'}
                         onValueChange={(value) => setFormData({ ...formData, delivery_warehouse_id: value === 'select' ? '' : value })}
+                        disabled={!formData.requisition_id}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select warehouse" />
@@ -578,7 +754,7 @@ export default function PurchaseOrdersPage() {
                         type="date"
                         value={formData.expected_delivery_date}
                         onChange={(e) => setFormData({ ...formData, expected_delivery_date: e.target.value })}
-                        disabled={isMultiDelivery}
+                        disabled={isMultiDelivery || !formData.requisition_id}
                       />
                     </div>
                     <div className="space-y-2">
@@ -592,164 +768,33 @@ export default function PurchaseOrdersPage() {
                     </div>
                   </div>
 
-                  {/* Multi-Delivery Toggle */}
-                  <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
-                    <div className="space-y-0.5">
-                      <Label className="text-base font-medium">Multi-Delivery Schedule</Label>
-                      <p className="text-sm text-muted-foreground">
-                        Enable for orders with multiple delivery dates (lot-wise)
-                      </p>
-                    </div>
-                    <Switch
-                      checked={isMultiDelivery}
-                      onCheckedChange={(checked) => {
-                        setIsMultiDelivery(checked);
-                        if (!checked) {
-                          setDeliveryMonths([]);
-                          setNewItem({ ...newItem, monthlyQtys: {} });
-                        }
-                      }}
-                    />
-                  </div>
-
-                  {/* Month Selection for Multi-Delivery */}
-                  {isMultiDelivery && (
-                    <div className="space-y-3 p-4 border rounded-lg">
-                      <Label className="text-sm font-medium">Select Delivery Months</Label>
-                      <div className="flex flex-wrap gap-3">
-                        {availableMonths.map((month) => (
-                          <label
-                            key={month.code}
-                            className="flex items-center space-x-2 cursor-pointer"
-                          >
-                            <Checkbox
-                              checked={deliveryMonths.includes(month.code)}
-                              onCheckedChange={(checked) => {
-                                if (checked) {
-                                  setDeliveryMonths([...deliveryMonths, month.code]);
-                                } else {
-                                  setDeliveryMonths(deliveryMonths.filter(m => m !== month.code));
-                                  const newQtys = { ...newItem.monthlyQtys };
-                                  delete newQtys[month.code];
-                                  setNewItem({ ...newItem, monthlyQtys: newQtys });
-                                }
-                              }}
-                            />
-                            <span className="text-sm font-medium">{month.name}</span>
-                          </label>
-                        ))}
-                      </div>
-                      {deliveryMonths.length > 0 && (
-                        <p className="text-xs text-muted-foreground">
-                          Selected: {deliveryMonths.length} month(s) - Each lot gets 25% advance + 75% balance (45 days after delivery)
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  <Separator />
-
-                  {/* Add Item Section */}
+                  {/* Items from PR - Auto-populated, only price is editable */}
                   <div className="space-y-4">
-                    <Label className="text-base font-semibold">Add Items</Label>
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-5 gap-2">
-                        <div className="col-span-2">
-                          <Select
-                            value={newItem.product_id || 'select'}
-                            onValueChange={(value) => {
-                              const product = products.find((p: Product) => p.id === value);
-                              setNewItem({
-                                ...newItem,
-                                product_id: value === 'select' ? '' : value,
-                                unit_price: product?.mrp || 0
-                              });
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select product" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="select" disabled>Select product</SelectItem>
-                              {products.filter((p: Product) => p.id && p.id.trim() !== '').map((p: Product) => (
-                                <SelectItem key={p.id} value={p.id}>{p.name} ({p.sku})</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        {!isMultiDelivery && (
-                          <Input
-                            type="number"
-                            min="1"
-                            placeholder="Qty"
-                            value={newItem.quantity}
-                            onChange={(e) => setNewItem({ ...newItem, quantity: parseInt(e.target.value) || 0 })}
-                          />
-                        )}
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          placeholder="Unit Price"
-                          value={newItem.unit_price || ''}
-                          onChange={(e) => setNewItem({ ...newItem, unit_price: parseFloat(e.target.value) || 0 })}
-                          className={isMultiDelivery ? 'col-span-2' : ''}
-                        />
-                        {!isMultiDelivery && (
-                          <Button type="button" onClick={handleAddItem}>
-                            <Plus className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-
-                      {/* Month-wise quantities for multi-delivery */}
-                      {isMultiDelivery && deliveryMonths.length > 0 && newItem.product_id && (
-                        <div className="p-3 border rounded-lg bg-muted/20 space-y-2">
-                          <Label className="text-sm">Quantity per Month</Label>
-                          <div className="flex flex-wrap gap-2">
-                            {deliveryMonths.sort().map((month) => {
-                              const monthData = availableMonths.find(m => m.code === month);
-                              return (
-                                <div key={month} className="flex items-center gap-1">
-                                  <span className="text-xs font-medium w-16">{monthData?.name}:</span>
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    className="w-20 h-8"
-                                    placeholder="0"
-                                    value={newItem.monthlyQtys[month] || ''}
-                                    onChange={(e) => {
-                                      const qty = parseInt(e.target.value) || 0;
-                                      setNewItem({
-                                        ...newItem,
-                                        monthlyQtys: { ...newItem.monthlyQtys, [month]: qty }
-                                      });
-                                    }}
-                                  />
-                                </div>
-                              );
-                            })}
-                          </div>
-                          <div className="flex items-center justify-between pt-2">
-                            <span className="text-sm text-muted-foreground">
-                              Total: {Object.values(newItem.monthlyQtys).reduce((sum, q) => sum + (q || 0), 0)} units
-                            </span>
-                            <Button type="button" onClick={handleAddItem} size="sm">
-                              <Plus className="h-4 w-4 mr-1" /> Add Item
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-
-                      {isMultiDelivery && deliveryMonths.length === 0 && (
-                        <p className="text-sm text-muted-foreground italic">
-                          Please select at least one delivery month above
-                        </p>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-base font-semibold">Items from Purchase Requisition</Label>
+                      {selectedPR && formData.items.length > 0 && (
+                        <Badge variant="secondary">{formData.items.length} item(s)</Badge>
                       )}
                     </div>
+
+                    {!selectedPR ? (
+                      <p className="text-sm text-muted-foreground italic p-4 border rounded-lg bg-muted/20">
+                        Please select a Purchase Requisition first - items will be auto-populated
+                      </p>
+                    ) : formData.items.length === 0 ? (
+                      <p className="text-sm text-amber-600 p-4 border rounded-lg bg-amber-50">
+                        Selected PR has no items. Please select a different PR.
+                      </p>
+                    ) : (
+                      <div className="p-3 border rounded-lg bg-green-50/30 space-y-2">
+                        <p className="text-xs text-muted-foreground">
+                          Items and delivery schedule inherited from PR. You can adjust unit prices below.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Items List */}
+                  {/* Items List - Editable Prices */}
                   {formData.items.length > 0 && (
                     <div className="space-y-2">
                       <Label className="text-base font-semibold">Order Items</Label>
@@ -762,35 +807,55 @@ export default function PurchaseOrdersPage() {
                               <th className="px-3 py-2 text-right">Unit Price</th>
                               <th className="px-3 py-2 text-right">GST %</th>
                               <th className="px-3 py-2 text-right">Total</th>
-                              <th className="px-3 py-2"></th>
                             </tr>
                           </thead>
                           <tbody>
                             {formData.items.map((item, index) => (
                               <tr key={index} className="border-t">
                                 <td className="px-3 py-2">
-                                  <div>{item.product_name}</div>
+                                  <div className="font-medium">{item.product_name}</div>
                                   <div className="text-xs text-muted-foreground">{item.sku}</div>
                                   {item.monthly_quantities && Object.keys(item.monthly_quantities).length > 0 && (
                                     <div className="flex flex-wrap gap-1 mt-1">
                                       {Object.entries(item.monthly_quantities).sort().map(([month, qty]) => (
-                                        <Badge key={month} variant="secondary" className="text-xs">
+                                        <Badge key={month} variant="outline" className="text-xs">
                                           {availableMonths.find(m => m.code === month)?.name || month}: {qty}
                                         </Badge>
                                       ))}
                                     </div>
                                   )}
                                 </td>
-                                <td className="px-3 py-2 text-right">{item.quantity ?? 0}</td>
-                                <td className="px-3 py-2 text-right">{formatCurrency(item.unit_price)}</td>
-                                <td className="px-3 py-2 text-right">{item.gst_rate ?? 0}%</td>
-                                <td className="px-3 py-2 text-right font-medium">
-                                  {formatCurrency((item.quantity ?? 0) * item.unit_price * (1 + (item.gst_rate ?? 0) / 100))}
+                                <td className="px-3 py-2 text-right font-medium">{item.quantity ?? 0}</td>
+                                <td className="px-3 py-2">
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    className="w-24 h-8 text-right ml-auto"
+                                    value={item.unit_price || ''}
+                                    onChange={(e) => {
+                                      const newItems = [...formData.items];
+                                      newItems[index] = { ...newItems[index], unit_price: parseFloat(e.target.value) || 0 };
+                                      setFormData({ ...formData, items: newItems });
+                                    }}
+                                  />
                                 </td>
                                 <td className="px-3 py-2">
-                                  <Button variant="ghost" size="icon" onClick={() => handleRemoveItem(index)}>
-                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                  </Button>
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    max="28"
+                                    className="w-16 h-8 text-right ml-auto"
+                                    value={item.gst_rate ?? 18}
+                                    onChange={(e) => {
+                                      const newItems = [...formData.items];
+                                      newItems[index] = { ...newItems[index], gst_rate: parseFloat(e.target.value) || 0 };
+                                      setFormData({ ...formData, items: newItems });
+                                    }}
+                                  />
+                                </td>
+                                <td className="px-3 py-2 text-right font-medium">
+                                  {formatCurrency((item.quantity ?? 0) * item.unit_price * (1 + (item.gst_rate ?? 0) / 100))}
                                 </td>
                               </tr>
                             ))}
@@ -799,21 +864,108 @@ export default function PurchaseOrdersPage() {
                             <tr className="border-t">
                               <td colSpan={4} className="px-3 py-2 text-right">Subtotal:</td>
                               <td className="px-3 py-2 text-right font-medium">{formatCurrency(totals.subtotal)}</td>
-                              <td></td>
                             </tr>
                             <tr>
                               <td colSpan={4} className="px-3 py-2 text-right">GST:</td>
                               <td className="px-3 py-2 text-right font-medium">{formatCurrency(totals.gst)}</td>
-                              <td></td>
                             </tr>
                             <tr className="border-t">
                               <td colSpan={4} className="px-3 py-2 text-right font-semibold">Grand Total:</td>
                               <td className="px-3 py-2 text-right font-bold text-lg">{formatCurrency(totals.total)}</td>
-                              <td></td>
                             </tr>
                           </tfoot>
                         </table>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Serial Numbers Preview Section */}
+                  {formData.items.length > 0 && formData.vendor_id && (
+                    <div className="space-y-2 p-4 border rounded-lg bg-muted/30">
+                      <Label className="text-base font-semibold flex items-center gap-2">
+                        <Barcode className="h-4 w-4" />
+                        Serial Numbers Preview
+                      </Label>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Serial numbers will be generated when the PO is sent to vendor
+                      </p>
+                      <div className="border rounded-md bg-background">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted">
+                            <tr>
+                              <th className="px-3 py-2 text-left">Product</th>
+                              <th className="px-3 py-2 text-left">Model Code</th>
+                              <th className="px-3 py-2 text-right">Qty</th>
+                              <th className="px-3 py-2 text-left">Serial Range</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {formData.items.map((item, index) => {
+                              const modelCode = getModelCodeForProduct(item.product_id, item.sku);
+                              const selectedVendor = vendors.find((v: Vendor) => v.id === formData.vendor_id);
+                              const supplierCode = selectedVendor ? getSupplierCodeForVendor(selectedVendor.id) : undefined;
+
+                              return (
+                                <tr key={index} className="border-t">
+                                  <td className="px-3 py-2">
+                                    <div className="font-medium text-xs">{item.product_name || 'Product'}</div>
+                                    <div className="text-xs text-muted-foreground">{item.sku}</div>
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    {modelCode ? (
+                                      <Badge variant="secondary" className="font-mono text-xs">
+                                        {modelCode.model_code}
+                                      </Badge>
+                                    ) : (
+                                      <span className="text-xs text-muted-foreground italic">
+                                        No mapping
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2 text-right">{item.quantity ?? 0}</td>
+                                  <td className="px-3 py-2">
+                                    {modelCode && supplierCode ? (
+                                      <span className="font-mono text-xs text-muted-foreground">
+                                        AP{supplierCode.code}..{modelCode.model_code}XXXXXX - AP{supplierCode.code}..{modelCode.model_code}XXXXXX
+                                      </span>
+                                    ) : !modelCode ? (
+                                      <span className="text-xs text-amber-600">
+                                        Setup model code for this product
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-amber-600">
+                                        Setup supplier code for vendor
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                      {(() => {
+                        const selectedVendor = vendors.find((v: Vendor) => v.id === formData.vendor_id);
+                        const supplierCode = selectedVendor ? getSupplierCodeForVendor(selectedVendor.id) : undefined;
+                        const missingModelCodes = formData.items.filter(item => !getModelCodeForProduct(item.product_id, item.sku));
+
+                        return (
+                          <div className="text-xs space-y-1 pt-2">
+                            {!supplierCode && (
+                              <p className="text-amber-600">
+                                Note: Supplier code not mapped for {selectedVendor?.name || 'selected vendor'}.
+                                Setup in Serialization &gt; Supplier Codes.
+                              </p>
+                            )}
+                            {missingModelCodes.length > 0 && (
+                              <p className="text-amber-600">
+                                Note: {missingModelCodes.length} product(s) missing model code mapping.
+                                Setup in Serialization &gt; Model Codes.
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
 
@@ -949,6 +1101,116 @@ export default function PurchaseOrdersPage() {
                   </CardContent>
                 </Card>
               )}
+
+              {/* Serial Numbers Section */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Barcode className="h-4 w-4" />
+                    Serial Numbers
+                    {poSerials && poSerials.total > 0 && (
+                      <Badge variant="secondary" className="ml-2">{poSerials.total}</Badge>
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {loadingSerials ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                      <span className="ml-2 text-sm text-muted-foreground">Loading serials...</span>
+                    </div>
+                  ) : poSerials && poSerials.total > 0 ? (
+                    <div className="space-y-3">
+                      {/* Status Summary */}
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(poSerials.by_status).map(([status, count]) => (
+                          status !== 'total' && (
+                            <Badge key={status} variant={status === 'received' ? 'default' : 'secondary'}>
+                              {status}: {count}
+                            </Badge>
+                          )
+                        ))}
+                      </div>
+
+                      {/* Serial Numbers by Model */}
+                      <div className="border rounded-md max-h-48 overflow-y-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted sticky top-0">
+                            <tr>
+                              <th className="px-3 py-2 text-left">Model</th>
+                              <th className="px-3 py-2 text-left">Barcode Range</th>
+                              <th className="px-3 py-2 text-right">Count</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(() => {
+                              // Group serials by model_code
+                              const byModel: Record<string, { barcodes: string[]; count: number }> = {};
+                              poSerials.serials.forEach(s => {
+                                if (!byModel[s.model_code]) {
+                                  byModel[s.model_code] = { barcodes: [], count: 0 };
+                                }
+                                byModel[s.model_code].barcodes.push(s.barcode);
+                                byModel[s.model_code].count++;
+                              });
+
+                              return Object.entries(byModel).map(([model, data]) => (
+                                <tr key={model} className="border-t">
+                                  <td className="px-3 py-2 font-mono font-medium">{model}</td>
+                                  <td className="px-3 py-2">
+                                    <span className="font-mono text-xs">
+                                      {data.barcodes[0]}
+                                      {data.barcodes.length > 1 && (
+                                        <> ... {data.barcodes[data.barcodes.length - 1]}</>
+                                      )}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2 text-right">{data.count}</td>
+                                </tr>
+                              ));
+                            })()}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Export Button */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            const csv = await serializationApi.exportPOSerials(selectedPO.id, 'csv');
+                            const blob = new Blob([csv], { type: 'text/csv' });
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `serials_${selectedPO.po_number}.csv`;
+                            a.click();
+                            window.URL.revokeObjectURL(url);
+                            toast.success('Serial numbers exported');
+                          } catch {
+                            toast.error('Failed to export serials');
+                          }
+                        }}
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Export Serials (CSV)
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="text-center py-4">
+                      <p className="text-sm text-muted-foreground">
+                        No serial numbers generated yet.
+                      </p>
+                      {selectedPO.status === 'APPROVED' && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Serials will be generated when PO is sent to vendor.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
 
               <Card className="bg-muted/50">
                 <CardContent className="pt-4 space-y-2">
