@@ -370,13 +370,12 @@ export default function ChannelsPage() {
 
     const channelData = {
       name: formData.name,
-      code: formData.code,
+      code: formData.code || undefined,
       channel_type: formData.channel_type,
-      marketplace_name: formData.marketplace_name || undefined,
-      commission_rate: parseFloat(formData.commission_rate) || undefined,
-      auto_sync_orders: formData.auto_sync_orders,
-      auto_sync_inventory: formData.auto_sync_inventory,
-      description: formData.description || undefined,
+      seller_id: formData.marketplace_name || undefined,
+      commission_percentage: parseFloat(formData.commission_rate) || undefined,
+      auto_confirm_orders: formData.auto_sync_orders,
+      auto_allocate_inventory: formData.auto_sync_inventory,
     };
 
     if (isEditMode && formData.id) {
