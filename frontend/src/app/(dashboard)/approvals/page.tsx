@@ -647,22 +647,27 @@ export default function ApprovalsPage() {
                                         size="sm"
                                         variant="ghost"
                                         onClick={() => handleApprove(item)}
+                                        title="View Details"
                                       >
                                         <Eye className="h-4 w-4" />
                                       </Button>
                                       <Button
                                         size="sm"
                                         variant="outline"
+                                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
                                         onClick={() => handleReject(item)}
                                       >
-                                        <XCircle className="h-4 w-4 text-red-600" />
+                                        <XCircle className="h-4 w-4 mr-1" />
+                                        Reject
                                       </Button>
                                       <Button
                                         size="sm"
+                                        className="bg-green-600 hover:bg-green-700"
                                         onClick={() => approveMutation.mutate({ id: item.id })}
                                         disabled={approveMutation.isPending}
                                       >
-                                        <CheckCircle className="h-4 w-4" />
+                                        <CheckCircle className="h-4 w-4 mr-1" />
+                                        {approveMutation.isPending ? 'Approving...' : 'Approve'}
                                       </Button>
                                     </div>
                                   </div>
