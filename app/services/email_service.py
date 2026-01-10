@@ -65,8 +65,8 @@ class EmailService:
             part2 = MIMEText(html_content, 'html')
             msg.attach(part2)
 
-            # Connect and send
-            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
+            # Connect and send with timeout
+            with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10) as server:
                 server.starttls()
                 server.login(self.smtp_user, self.smtp_password)
                 server.sendmail(self.from_email, to_email, msg.as_string())
@@ -79,6 +79,12 @@ class EmailService:
             return False
         except smtplib.SMTPException as e:
             logger.error(f"SMTP error: {e}")
+            return False
+        except TimeoutError:
+            logger.error("SMTP connection timed out")
+            return False
+        except OSError as e:
+            logger.error(f"Network error sending email: {e}")
             return False
         except Exception as e:
             logger.error(f"Failed to send email: {e}")
