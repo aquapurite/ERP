@@ -359,20 +359,148 @@ export default function PurchaseRequisitionsPage() {
     onError: (error: Error) => toast.error(error.message || 'Failed to delete PR'),
   });
 
-  // Handle Print PR
+  // Handle Print PR - Client-side HTML generation
   const handlePrintPR = async (pr: PurchaseRequisition) => {
     try {
-      const htmlContent = await requisitionsApi.print(pr.id);
-      const blob = new Blob([htmlContent], { type: 'text/html' });
-      const url = window.URL.createObjectURL(blob);
-      const printWindow = window.open(url, '_blank');
+      // Try to get full details, fallback to basic PR info
+      let prDetails: any = pr;
+      try {
+        prDetails = await requisitionsApi.getById(pr.id);
+      } catch {
+        // Use basic PR info
+      }
+
+      // Generate print-friendly HTML
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Purchase Requisition - ${prDetails.pr_number || 'PR'}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+            .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 15px; margin-bottom: 20px; }
+            .header h1 { margin: 0; font-size: 24px; }
+            .header p { margin: 5px 0; color: #666; }
+            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+            .info-item { padding: 8px; background: #f5f5f5; border-radius: 4px; }
+            .info-item label { font-size: 11px; color: #666; display: block; }
+            .info-item span { font-weight: bold; }
+            .items-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            .items-table th, .items-table td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+            .items-table th { background: #f0f0f0; font-size: 12px; }
+            .items-table td { font-size: 13px; }
+            .text-right { text-align: right; }
+            .status-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+            .status-APPROVED { background: #d4edda; color: #155724; }
+            .status-DRAFT { background: #e2e3e5; color: #383d41; }
+            .status-SUBMITTED { background: #cce5ff; color: #004085; }
+            .status-REJECTED { background: #f8d7da; color: #721c24; }
+            .footer { margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; font-size: 11px; color: #666; }
+            .monthly-qty { font-size: 10px; color: #666; margin-top: 4px; }
+            @media print { body { padding: 0; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>PURCHASE REQUISITION</h1>
+            <p><strong>${prDetails.pr_number || 'N/A'}</strong></p>
+            <span class="status-badge status-${prDetails.status}">${prDetails.status}</span>
+          </div>
+
+          <div class="info-grid">
+            <div class="info-item">
+              <label>Requester</label>
+              <span>${prDetails.requester_name || 'N/A'}</span>
+            </div>
+            <div class="info-item">
+              <label>Department</label>
+              <span>${prDetails.department || prDetails.requesting_department || 'N/A'}</span>
+            </div>
+            <div class="info-item">
+              <label>Warehouse</label>
+              <span>${prDetails.warehouse_name || prDetails.delivery_warehouse_name || 'N/A'}</span>
+            </div>
+            <div class="info-item">
+              <label>Required By</label>
+              <span>${prDetails.required_by_date ? new Date(prDetails.required_by_date).toLocaleDateString() : 'N/A'}</span>
+            </div>
+            <div class="info-item">
+              <label>Priority</label>
+              <span>${prDetails.priority || 'NORMAL'}</span>
+            </div>
+            <div class="info-item">
+              <label>Created Date</label>
+              <span>${prDetails.created_at ? new Date(prDetails.created_at).toLocaleDateString() : 'N/A'}</span>
+            </div>
+          </div>
+
+          ${prDetails.justification || prDetails.reason ? `
+            <div style="margin-bottom: 20px; padding: 10px; background: #f9f9f9; border-radius: 4px;">
+              <label style="font-size: 11px; color: #666;">Justification/Reason</label>
+              <p style="margin: 5px 0 0 0;">${prDetails.justification || prDetails.reason}</p>
+            </div>
+          ` : ''}
+
+          <h3 style="margin-bottom: 10px;">Items</h3>
+          <table class="items-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Product</th>
+                <th>SKU</th>
+                <th class="text-right">Quantity</th>
+                <th class="text-right">Est. Price</th>
+                <th class="text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(prDetails.items || []).map((item: any, index: number) => `
+                <tr>
+                  <td>${index + 1}</td>
+                  <td>
+                    ${item.product_name || 'N/A'}
+                    ${item.monthly_quantities && Object.keys(item.monthly_quantities).length > 0 ? `
+                      <div class="monthly-qty">
+                        ${Object.entries(item.monthly_quantities).map(([month, qty]) => {
+                          const d = new Date(month + '-01');
+                          return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }) + ': ' + qty;
+                        }).join(' | ')}
+                      </div>
+                    ` : ''}
+                  </td>
+                  <td>${item.sku || 'N/A'}</td>
+                  <td class="text-right">${item.quantity_requested || item.quantity || 0}</td>
+                  <td class="text-right">₹${(item.estimated_unit_price || item.unit_price || 0).toLocaleString()}</td>
+                  <td class="text-right">₹${((item.quantity_requested || item.quantity || 0) * (item.estimated_unit_price || item.unit_price || 0)).toLocaleString()}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="5" class="text-right"><strong>Total Amount:</strong></td>
+                <td class="text-right"><strong>₹${(prDetails.total_amount || prDetails.estimated_total || 0).toLocaleString()}</strong></td>
+              </tr>
+            </tfoot>
+          </table>
+
+          <div class="footer">
+            <p>Printed on: ${new Date().toLocaleString()}</p>
+          </div>
+        </body>
+        </html>
+      `;
+
+      const printWindow = window.open('', '_blank');
       if (printWindow) {
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
         printWindow.onload = () => {
-          window.URL.revokeObjectURL(url);
           printWindow.print();
         };
+      } else {
+        toast.error('Please allow popups to print');
       }
-    } catch {
+    } catch (error) {
       toast.error('Failed to print PR');
     }
   };
@@ -601,8 +729,8 @@ export default function PurchaseRequisitionsPage() {
                   Convert to PO
                 </DropdownMenuItem>
               )}
-              {/* 3. Delete PR - Only for DRAFT or REJECTED */}
-              {(pr.status === 'DRAFT' || pr.status === 'REJECTED') && (
+              {/* 3. Delete PR - Available for all except CONVERTED */}
+              {pr.status !== 'CONVERTED' && (
                 <DropdownMenuItem
                   className="text-red-600"
                   onClick={() => { setSelectedPR(pr); setIsDeleteDialogOpen(true); }}
