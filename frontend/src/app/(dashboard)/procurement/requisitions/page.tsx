@@ -51,6 +51,7 @@ import { PageHeader, StatusBadge } from '@/components/common';
 import apiClient from '@/lib/api/client';
 import { warehousesApi, productsApi, companyApi, purchaseRequisitionsApi, categoriesApi } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { useAuth } from '@/providers/auth-provider';
 
 interface PurchaseRequisition {
   id: string;
@@ -183,6 +184,7 @@ const priorityColors: Record<string, string> = {
 
 export default function PurchaseRequisitionsPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -428,6 +430,23 @@ export default function PurchaseRequisitionsPage() {
         // Use default company info
       }
 
+      // Get warehouse name from warehouses data if not in PR details
+      const warehouseId = prDetails.warehouse_id || prDetails.delivery_warehouse_id;
+      let warehouseName = prDetails.warehouse_name || prDetails.delivery_warehouse_name;
+      if (!warehouseName && warehouseId && warehouses.length > 0) {
+        const wh = warehouses.find((w: Warehouse) => w.id === warehouseId);
+        warehouseName = wh?.name || '';
+      }
+
+      // Get requester name - use current user if not available
+      const requesterName = prDetails.requester_name || prDetails.created_by_name || user?.full_name || user?.email || 'System User';
+
+      // Get department - use user's department or company default
+      const department = prDetails.department || prDetails.requesting_department || user?.department || 'Procurement';
+
+      // Get PR number - handle both field names
+      const prNumber = prDetails.pr_number || prDetails.requisition_number || 'N/A';
+
       // Generate print-friendly HTML
       const htmlContent = `
         <!DOCTYPE html>
@@ -479,22 +498,22 @@ export default function PurchaseRequisitionsPage() {
 
           <div class="header">
             <h1>PURCHASE REQUISITION</h1>
-            <p><strong>${prDetails.pr_number || 'N/A'}</strong></p>
+            <p><strong>${prNumber}</strong></p>
             <span class="status-badge status-${prDetails.status}">${prDetails.status}</span>
           </div>
 
           <div class="info-grid">
             <div class="info-item">
               <label>Requester</label>
-              <span>${prDetails.requester_name || 'N/A'}</span>
+              <span>${requesterName}</span>
             </div>
             <div class="info-item">
               <label>Department</label>
-              <span>${prDetails.department || prDetails.requesting_department || 'N/A'}</span>
+              <span>${department}</span>
             </div>
             <div class="info-item">
               <label>Warehouse</label>
-              <span>${prDetails.warehouse_name || prDetails.delivery_warehouse_name || 'N/A'}</span>
+              <span>${warehouseName || 'N/A'}</span>
             </div>
             <div class="info-item">
               <label>Required By</label>
@@ -502,7 +521,7 @@ export default function PurchaseRequisitionsPage() {
             </div>
             <div class="info-item">
               <label>Priority</label>
-              <span>${prDetails.priority || 'NORMAL'}</span>
+              <span>${prDetails.priority || 5}</span>
             </div>
             <div class="info-item">
               <label>Created Date</label>
