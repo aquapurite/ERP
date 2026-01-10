@@ -283,7 +283,7 @@ export default function CategoriesPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-5xl">
       <PageHeader
         title="Categories"
         description="Manage product categories and subcategories"
