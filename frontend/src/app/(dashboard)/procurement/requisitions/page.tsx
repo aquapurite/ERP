@@ -862,7 +862,7 @@ export default function PurchaseRequisitionsPage() {
                 Create PR
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Create Purchase Requisition</DialogTitle>
                 <DialogDescription>
@@ -997,11 +997,11 @@ export default function PurchaseRequisitionsPage() {
                 {/* Add Item Section */}
                 <div className="space-y-2">
                   <Label className="text-base font-semibold">Add Items *</Label>
-                  <div className="border rounded-lg p-4 space-y-3">
-                    {/* Category Filter */}
-                    <div className="grid grid-cols-12 gap-2 items-end">
-                      <div className="col-span-4">
-                        <Label className="text-xs">Filter by Category</Label>
+                  <div className="border rounded-lg p-4 space-y-4">
+                    {/* Category Filter - Full width row */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <Label className="text-sm font-medium">Product Category</Label>
                         <Select
                           value={selectedCategoryId}
                           onValueChange={(value) => {
@@ -1010,7 +1010,7 @@ export default function PurchaseRequisitionsPage() {
                             setNewItem({ ...newItem, product_id: '', estimated_price: 0 });
                           }}
                         >
-                          <SelectTrigger>
+                          <SelectTrigger className="w-full">
                             <SelectValue placeholder="All Categories" />
                           </SelectTrigger>
                           <SelectContent>
@@ -1021,8 +1021,8 @@ export default function PurchaseRequisitionsPage() {
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="col-span-8">
-                        <p className="text-xs text-muted-foreground pt-6">
+                      <div className="flex items-end pb-2">
+                        <p className="text-sm text-muted-foreground">
                           {selectedCategoryId === 'all'
                             ? `Showing all ${products.length} products`
                             : `Showing ${products.length} product(s) in selected category`}
@@ -1030,11 +1030,11 @@ export default function PurchaseRequisitionsPage() {
                       </div>
                     </div>
 
-                    {/* Standard layout: Product, Qty (single), Est. Price, Add button */}
+                    {/* Standard layout: Product, Qty, Est. Price, Add button - Better proportions */}
                     {!formData.is_multi_delivery && (
-                      <div className="grid grid-cols-12 gap-2 items-end">
-                        <div className="col-span-5">
-                          <Label className="text-xs">Product {isLoadingProducts && <span className="text-muted-foreground">(loading...)</span>}</Label>
+                      <div className="grid grid-cols-12 gap-3 items-end">
+                        <div className="col-span-6">
+                          <Label className="text-sm font-medium">Product {isLoadingProducts && <span className="text-muted-foreground">(loading...)</span>}</Label>
                           <Select
                             value={newItem.product_id || 'select'}
                             onValueChange={(value) => {
@@ -1047,7 +1047,7 @@ export default function PurchaseRequisitionsPage() {
                             }}
                             disabled={isLoadingProducts}
                           >
-                            <SelectTrigger>
+                            <SelectTrigger className="w-full">
                               <SelectValue placeholder={isLoadingProducts ? "Loading products..." : "Select product"} />
                             </SelectTrigger>
                             <SelectContent>
@@ -1069,27 +1069,30 @@ export default function PurchaseRequisitionsPage() {
                           </Select>
                         </div>
                         <div className="col-span-2">
-                          <Label className="text-xs">Qty</Label>
+                          <Label className="text-sm font-medium">Quantity</Label>
                           <Input
                             type="number"
                             min="1"
                             value={newItem.quantity}
                             onChange={(e) => setNewItem({ ...newItem, quantity: parseInt(e.target.value) || 0 })}
+                            className="w-full"
                           />
                         </div>
-                        <div className="col-span-3">
-                          <Label className="text-xs">Est. Price</Label>
+                        <div className="col-span-2">
+                          <Label className="text-sm font-medium">Est. Price</Label>
                           <Input
                             type="number"
                             min="0"
                             step="0.01"
                             value={newItem.estimated_price || ''}
                             onChange={(e) => setNewItem({ ...newItem, estimated_price: parseFloat(e.target.value) || 0 })}
+                            className="w-full"
                           />
                         </div>
                         <div className="col-span-2">
-                          <Button type="button" onClick={handleAddItem} className="w-full">
-                            <Plus className="h-4 w-4" />
+                          <Button type="button" onClick={handleAddItem} className="w-full h-10">
+                            <Plus className="h-4 w-4 mr-1" />
+                            Add
                           </Button>
                         </div>
                       </div>
