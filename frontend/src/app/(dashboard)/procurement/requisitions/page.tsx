@@ -49,7 +49,7 @@ import { Label } from '@/components/ui/label';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
 import apiClient from '@/lib/api/client';
-import { warehousesApi, productsApi, companyApi, purchaseRequisitionsApi } from '@/lib/api';
+import { warehousesApi, productsApi, companyApi, purchaseRequisitionsApi, categoriesApi } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 interface PurchaseRequisition {
@@ -112,6 +112,7 @@ interface Product {
   name: string;
   sku: string;
   mrp: number;
+  category_id?: string;
 }
 
 const requisitionsApi = {
@@ -212,6 +213,7 @@ export default function PurchaseRequisitionsPage() {
     monthlyQtys: {} as Record<string, number>, // e.g., {"2026-01": 500, "2026-02": 500}
   });
   const [multiDeliveryMonths, setMultiDeliveryMonths] = useState<string[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
 
   // Generate next 12 months for multi-delivery selection
   const availableMonths = useMemo(() => {
@@ -268,6 +270,21 @@ export default function PurchaseRequisitionsPage() {
     console.error('[PR Form] Products fetch error:', productsError);
   }
 
+  // Fetch categories for dropdown filter
+  const { data: categoriesData } = useQuery({
+    queryKey: ['categories-dropdown'],
+    queryFn: async () => {
+      try {
+        const result = await categoriesApi.list({ size: 100 });
+        return result?.items || [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  const categories = categoriesData || [];
+
   const { data: vendorsData } = useQuery({
     queryKey: ['vendors-dropdown'],
     queryFn: async () => {
@@ -277,8 +294,20 @@ export default function PurchaseRequisitionsPage() {
   });
 
   const warehouses = warehousesData?.items ?? [];
-  const products = productsData?.items ?? [];
+  const allProducts = productsData?.items ?? [];
   const vendors = vendorsData?.items ?? [];
+
+  // Filter products by selected category
+  const products = useMemo(() => {
+    if (selectedCategoryId === 'all') {
+      return allProducts;
+    }
+    return allProducts.filter((p: any) => {
+      // Check both category_id and nested category.id
+      const productCategoryId = p.category_id || p.category?.id;
+      return productCategoryId === selectedCategoryId;
+    });
+  }, [allProducts, selectedCategoryId]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['purchase-requisitions', page, pageSize, statusFilter],
@@ -587,6 +616,7 @@ export default function PurchaseRequisitionsPage() {
     setNewItem({ product_id: '', quantity: 1, estimated_price: 0, monthlyQtys: {} });
     setMultiDeliveryMonths([]);
     setNextPRNumber('');
+    setSelectedCategoryId('all');
     setIsDialogOpen(false);
   };
 
@@ -832,7 +862,7 @@ export default function PurchaseRequisitionsPage() {
                 Create PR
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Create Purchase Requisition</DialogTitle>
                 <DialogDescription>
@@ -968,6 +998,38 @@ export default function PurchaseRequisitionsPage() {
                 <div className="space-y-2">
                   <Label className="text-base font-semibold">Add Items *</Label>
                   <div className="border rounded-lg p-4 space-y-3">
+                    {/* Category Filter */}
+                    <div className="grid grid-cols-12 gap-2 items-end">
+                      <div className="col-span-4">
+                        <Label className="text-xs">Filter by Category</Label>
+                        <Select
+                          value={selectedCategoryId}
+                          onValueChange={(value) => {
+                            setSelectedCategoryId(value);
+                            // Reset product selection when category changes
+                            setNewItem({ ...newItem, product_id: '', estimated_price: 0 });
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="All Categories" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Categories ({allProducts.length} products)</SelectItem>
+                            {categories.map((cat: { id: string; name: string }) => (
+                              <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="col-span-8">
+                        <p className="text-xs text-muted-foreground pt-6">
+                          {selectedCategoryId === 'all'
+                            ? `Showing all ${products.length} products`
+                            : `Showing ${products.length} product(s) in selected category`}
+                        </p>
+                      </div>
+                    </div>
+
                     {/* Standard layout: Product, Qty (single), Est. Price, Add button */}
                     {!formData.is_multi_delivery && (
                       <div className="grid grid-cols-12 gap-2 items-end">
@@ -994,7 +1056,7 @@ export default function PurchaseRequisitionsPage() {
                               ) : productsError ? (
                                 <SelectItem value="error" disabled>Error loading products</SelectItem>
                               ) : products.length === 0 ? (
-                                <SelectItem value="empty" disabled>No products found</SelectItem>
+                                <SelectItem value="empty" disabled>No products in this category</SelectItem>
                               ) : (
                                 <>
                                   <SelectItem value="select" disabled>Select product ({products.length} available)</SelectItem>
@@ -1078,10 +1140,10 @@ export default function PurchaseRequisitionsPage() {
                                   ) : productsError ? (
                                     <SelectItem value="error" disabled>Error loading products</SelectItem>
                                   ) : products.length === 0 ? (
-                                    <SelectItem value="empty" disabled>No products found</SelectItem>
+                                    <SelectItem value="empty" disabled>No products in this category</SelectItem>
                                   ) : (
                                     <>
-                                      <SelectItem value="select" disabled>Select product</SelectItem>
+                                      <SelectItem value="select" disabled>Select product ({products.length} available)</SelectItem>
                                       {products.filter((p: Product) => p.id && p.id.trim() !== '').map((p: Product) => (
                                         <SelectItem key={p.id} value={p.id}>{p.name} ({p.sku})</SelectItem>
                                       ))}

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import {
@@ -208,6 +209,8 @@ function GRNActionsCell({
 
 export default function GRNPage() {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const { permissions } = useAuth();
   const isSuperAdmin = permissions?.is_super_admin ?? false;
   const [page, setPage] = useState(0);
@@ -221,6 +224,9 @@ export default function GRNPage() {
   const [grnToComplete, setGrnToComplete] = useState<GRN | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [grnToDelete, setGrnToDelete] = useState<GRN | null>(null);
+
+  // URL parameter handling for PO pre-selection
+  const [urlPoId, setUrlPoId] = useState<string | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -244,10 +250,47 @@ export default function GRNPage() {
     }),
   });
 
+  // Fetch POs that can have GRN created (SENT_TO_VENDOR, CONFIRMED, PARTIALLY_RECEIVED)
   const { data: purchaseOrders } = useQuery({
     queryKey: ['purchase-orders-for-grn'],
-    queryFn: () => purchaseOrdersApi.list({ status: 'SENT_TO_VENDOR' }),
+    queryFn: async () => {
+      // Fetch POs with statuses that allow GRN creation
+      const results = await Promise.all([
+        purchaseOrdersApi.list({ status: 'SENT_TO_VENDOR', size: 100 }),
+        purchaseOrdersApi.list({ status: 'CONFIRMED', size: 100 }),
+        purchaseOrdersApi.list({ status: 'PARTIALLY_RECEIVED', size: 100 }),
+      ]);
+      // Combine all results
+      const allItems = [...(results[0]?.items || []), ...(results[1]?.items || []), ...(results[2]?.items || [])];
+      return { items: allItems };
+    },
   });
+
+  // Handle URL parameters for Create GRN from PO page
+  useEffect(() => {
+    const createParam = searchParams.get('create');
+    const poIdParam = searchParams.get('po_id');
+
+    if (createParam === 'true') {
+      setIsCreateDialogOpen(true);
+      if (poIdParam) {
+        setUrlPoId(poIdParam);
+      }
+      // Clear URL params after handling
+      router.replace('/procurement/grn', { scroll: false });
+    }
+  }, [searchParams, router]);
+
+  // Auto-select PO when purchaseOrders loads and urlPoId is set
+  useEffect(() => {
+    if (urlPoId && purchaseOrders?.items && purchaseOrders.items.length > 0 && isCreateDialogOpen) {
+      const po = purchaseOrders.items.find((p: PurchaseOrder) => p.id === urlPoId);
+      if (po) {
+        handlePOChange(urlPoId);
+        setUrlPoId(null); // Clear after selection
+      }
+    }
+  }, [urlPoId, purchaseOrders, isCreateDialogOpen]);
 
   const { data: warehousesData } = useQuery({
     queryKey: ['warehouses'],

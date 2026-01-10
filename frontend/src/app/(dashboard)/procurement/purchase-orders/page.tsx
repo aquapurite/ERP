@@ -673,6 +673,12 @@ export default function PurchaseOrdersPage() {
                 Send to Vendor
               </DropdownMenuItem>
             )}
+            {['SENT_TO_VENDOR', 'CONFIRMED', 'PARTIALLY_RECEIVED'].includes(row.original.status) && (
+              <DropdownMenuItem onClick={() => router.push(`/procurement/grn?create=true&po_id=${row.original.id}`)}>
+                <Package className="mr-2 h-4 w-4" />
+                Create GRN
+              </DropdownMenuItem>
+            )}
             {isSuperAdmin && row.original.status === 'DRAFT' && (
               <>
                 <DropdownMenuSeparator />
