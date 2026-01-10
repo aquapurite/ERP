@@ -450,20 +450,24 @@ async def delete_user(
 
     # Soft delete - deactivate user
     user.is_active = False
-
-    # Audit log
-    audit_service = AuditService(db)
-    await audit_service.log(
-        action="DELETE",
-        entity_type="User",
-        entity_id=user.id,
-        user_id=current_user.id,
-        old_values={"is_active": True},
-        new_values={"is_active": False}
-    )
-
-    # Commit both user update and audit log
     await db.commit()
+
+    # Audit log (non-blocking - don't fail deletion if audit fails)
+    try:
+        audit_service = AuditService(db)
+        await audit_service.log(
+            action="DELETE",
+            entity_type="User",
+            entity_id=user.id,
+            user_id=current_user.id,
+            old_values={"is_active": True},
+            new_values={"is_active": False}
+        )
+        await db.commit()
+    except Exception as e:
+        # Log the error but don't fail the deletion
+        import logging
+        logging.warning(f"Failed to create audit log for user deletion: {e}")
 
     return None
 
