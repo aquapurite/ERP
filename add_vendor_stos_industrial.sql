@@ -5,7 +5,7 @@
 -- ============================================================================
 
 -- Delete existing vendor if exists (for clean re-run)
-DELETE FROM vendors WHERE vendor_code = 'VND-00002';
+DELETE FROM vendors WHERE vendor_code = 'VND-SPR-00002';
 
 -- Insert vendor
 INSERT INTO vendors (
@@ -92,7 +92,7 @@ INSERT INTO vendors (
     updated_at
 ) VALUES (
     gen_random_uuid(),
-    'VND-00002',
+    'VND-SPR-00002',
     'STOS Industrial',
     'STOS INDUSTRIAL CORPORATION PRIVATE LIMITED',
     'STOS Industrial',
@@ -191,7 +191,7 @@ INSERT INTO supplier_codes (
     updated_at
 ) VALUES (
     gen_random_uuid()::text,
-    (SELECT id::text FROM vendors WHERE vendor_code = 'VND-00002'),
+    (SELECT id::text FROM vendors WHERE vendor_code = 'VND-SPR-00002'),
     'ST',
     'STOS Industrial',
     'STOS Industrial Corporation Pvt. Ltd. - Spare Parts Supplier',
@@ -220,7 +220,7 @@ SELECT
     contact_person,
     created_at
 FROM vendors
-WHERE vendor_code = 'VND-00002';
+WHERE vendor_code = 'VND-SPR-00002';
 
 -- Verify supplier code
 SELECT * FROM supplier_codes WHERE code = 'ST';
@@ -228,7 +228,7 @@ SELECT * FROM supplier_codes WHERE code = 'ST';
 -- ============================================================================
 -- VENDOR SUMMARY
 -- ============================================================================
--- | Field          | Fastrack (VND-00001)     | STOS (VND-00002)         |
+-- | Field          | Fastrack (VND-00001)     | STOS (VND-SPR-00002)         |
 -- |----------------|--------------------------|--------------------------|
 -- | Type           | MANUFACTURER             | SPARE_PARTS              |
 -- | Products       | Water Purifiers (FG)     | Spare Parts (SP)         |

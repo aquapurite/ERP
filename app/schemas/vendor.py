@@ -166,7 +166,7 @@ class VendorResponse(VendorBase):
 
 
 class VendorBrief(BaseModel):
-    """Brief vendor info for dropdowns."""
+    """Brief vendor info for list and dropdowns."""
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -174,7 +174,12 @@ class VendorBrief(BaseModel):
     name: str
     vendor_type: VendorType
     status: VendorStatus
+    grade: VendorGrade = VendorGrade.SILVER
     gstin: Optional[str] = None
+    pan: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    contact_person: Optional[str] = None
     city: str
     state: str
     current_balance: Decimal

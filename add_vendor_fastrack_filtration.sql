@@ -5,7 +5,7 @@
 -- ============================================================================
 
 -- Delete existing vendor if exists (for clean re-run)
-DELETE FROM vendors WHERE vendor_code = 'VND-00001';
+DELETE FROM vendors WHERE vendor_code IN ('VND-MFR-00001', 'VND-MFR-00001', 'MFR-00001');
 
 -- Insert vendor
 INSERT INTO vendors (
@@ -92,7 +92,7 @@ INSERT INTO vendors (
     updated_at
 ) VALUES (
     gen_random_uuid(),
-    'VND-00001',
+    'VND-MFR-00001',
     'Fastrack Filtration',
     'FASTRACK FILTRATION PVT. LTD.',
     'Fastrack Filtration',
@@ -191,7 +191,7 @@ INSERT INTO supplier_codes (
     updated_at
 ) VALUES (
     gen_random_uuid()::text,
-    (SELECT id::text FROM vendors WHERE vendor_code = 'VND-00001'),
+    (SELECT id::text FROM vendors WHERE vendor_code = 'VND-MFR-00001'),
     'FS',
     'Fastrack Filtration',
     'Fastrack Filtration Pvt. Ltd. - Water Purifier Manufacturer',
@@ -233,7 +233,7 @@ SELECT
     tds_rate,
     created_at
 FROM vendors
-WHERE vendor_code = 'VND-00001';
+WHERE vendor_code = 'VND-MFR-00001';
 
 -- Verify supplier code
 SELECT * FROM supplier_codes WHERE code = 'FS';
