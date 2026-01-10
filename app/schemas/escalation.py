@@ -233,8 +233,9 @@ class EscalationListResponse(BaseModel):
     """Paginated escalation list."""
     items: List[EscalationResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 # ==================== Escalation History Schemas ====================

@@ -201,6 +201,14 @@ class BinListResponse(BaseModel):
     pages: int
 
 
+class BinStatsResponse(BaseModel):
+    """Bin statistics response."""
+    total_bins: int
+    available_bins: int
+    occupied_bins: int
+    reserved_bins: int
+
+
 class BinEnquiryRequest(BaseModel):
     """Bin enquiry request."""
     warehouse_id: uuid.UUID
@@ -287,6 +295,14 @@ class PutAwayRuleListResponse(BaseModel):
     page: int
     size: int
     pages: int
+
+
+class PutAwayRuleStatsResponse(BaseModel):
+    """PutAway rule statistics response."""
+    total_rules: int
+    active_rules: int
+    items_processed_today: int
+    unmatched_items: int
 
 
 # ==================== PUTAWAY OPERATIONS ====================

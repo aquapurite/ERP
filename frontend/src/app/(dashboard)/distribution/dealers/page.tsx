@@ -161,8 +161,18 @@ type DealerFormData = {
   email: string;
   phone: string;
   gst_number: string;
+  pan: string;
+  contact_person: string;
   pricing_tier: 'PLATINUM' | 'GOLD' | 'SILVER' | 'BRONZE';
   credit_limit: string;
+  // Address fields
+  address_line1: string;
+  city: string;
+  district: string;
+  state: string;
+  state_code: string;
+  pincode: string;
+  region: 'NORTH' | 'SOUTH' | 'EAST' | 'WEST' | 'CENTRAL';
 };
 
 const initialFormData: DealerFormData = {
@@ -172,8 +182,17 @@ const initialFormData: DealerFormData = {
   email: '',
   phone: '',
   gst_number: '',
+  pan: '',
+  contact_person: '',
   pricing_tier: 'SILVER',
   credit_limit: '',
+  address_line1: '',
+  city: '',
+  district: '',
+  state: '',
+  state_code: '',
+  pincode: '',
+  region: 'NORTH',
 };
 
 export default function DealersPage() {
@@ -196,8 +215,17 @@ export default function DealersPage() {
       email: dealer.email || '',
       phone: dealer.phone || '',
       gst_number: dealer.gst_number || '',
+      pan: dealer.pan || '',
+      contact_person: dealer.contact_person || dealer.name,
       pricing_tier: dealer.pricing_tier,
       credit_limit: String(dealer.credit_limit || 0),
+      address_line1: dealer.registered_address_line1 || '',
+      city: dealer.registered_city || '',
+      district: dealer.registered_district || '',
+      state: dealer.registered_state || '',
+      state_code: dealer.registered_state_code || '',
+      pincode: dealer.registered_pincode || '',
+      region: dealer.region || 'NORTH',
     });
     setIsDialogOpen(true);
   };
@@ -246,6 +274,30 @@ export default function DealersPage() {
       toast.error('Dealer name is required');
       return;
     }
+    if (!formData.gst_number.trim() || formData.gst_number.length !== 15) {
+      toast.error('Valid GSTIN (15 characters) is required');
+      return;
+    }
+    if (!formData.pan.trim() || formData.pan.length !== 10) {
+      toast.error('Valid PAN (10 characters) is required');
+      return;
+    }
+    if (!formData.email.trim()) {
+      toast.error('Email is required');
+      return;
+    }
+    if (!formData.phone.trim()) {
+      toast.error('Phone is required');
+      return;
+    }
+    if (!formData.address_line1.trim()) {
+      toast.error('Address is required');
+      return;
+    }
+    if (!formData.city.trim() || !formData.state.trim() || !formData.pincode.trim()) {
+      toast.error('City, State and Pincode are required');
+      return;
+    }
 
     const dealerData = {
       ...formData,
@@ -288,7 +340,7 @@ export default function DealersPage() {
 
       {/* Create/Edit Dealer Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {selectedDealer ? 'Edit Dealer' : 'Create New Dealer'}
@@ -300,6 +352,8 @@ export default function DealersPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+            {/* Basic Information */}
+            <div className="text-sm font-medium text-muted-foreground">Basic Information</div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Name *</Label>
@@ -366,9 +420,23 @@ export default function DealersPage() {
                 </Select>
               </div>
             </div>
+
+            {/* Contact Information */}
+            <div className="text-sm font-medium text-muted-foreground mt-2">Contact Information</div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="contact_person">Contact Person *</Label>
+                <Input
+                  id="contact_person"
+                  placeholder="Contact person name"
+                  value={formData.contact_person}
+                  onChange={(e) =>
+                    setFormData({ ...formData, contact_person: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email *</Label>
                 <Input
                   id="email"
                   type="email"
@@ -379,24 +447,28 @@ export default function DealersPage() {
                   }
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
-                <Input
-                  id="phone"
-                  placeholder="+91 98765 43210"
-                  value={formData.phone}
-                  onChange={(e) =>
-                    setFormData({ ...formData, phone: e.target.value })
-                  }
-                />
-              </div>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone *</Label>
+              <Input
+                id="phone"
+                placeholder="+91 98765 43210"
+                value={formData.phone}
+                onChange={(e) =>
+                  setFormData({ ...formData, phone: e.target.value })
+                }
+              />
+            </div>
+
+            {/* Tax Information */}
+            <div className="text-sm font-medium text-muted-foreground mt-2">Tax Information</div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="gst_number">GST Number</Label>
+                <Label htmlFor="gst_number">GSTIN * (15 characters)</Label>
                 <Input
                   id="gst_number"
                   placeholder="22AAAAA0000A1Z5"
+                  maxLength={15}
                   value={formData.gst_number}
                   onChange={(e) =>
                     setFormData({ ...formData, gst_number: e.target.value.toUpperCase() })
@@ -404,17 +476,127 @@ export default function DealersPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="credit_limit">Credit Limit</Label>
+                <Label htmlFor="pan">PAN * (10 characters)</Label>
                 <Input
-                  id="credit_limit"
-                  type="number"
-                  placeholder="100000"
-                  value={formData.credit_limit}
+                  id="pan"
+                  placeholder="AAAAA0000A"
+                  maxLength={10}
+                  value={formData.pan}
                   onChange={(e) =>
-                    setFormData({ ...formData, credit_limit: e.target.value })
+                    setFormData({ ...formData, pan: e.target.value.toUpperCase() })
                   }
                 />
               </div>
+            </div>
+
+            {/* Address Information */}
+            <div className="text-sm font-medium text-muted-foreground mt-2">Address Information</div>
+            <div className="space-y-2">
+              <Label htmlFor="address_line1">Address *</Label>
+              <Input
+                id="address_line1"
+                placeholder="Street address"
+                value={formData.address_line1}
+                onChange={(e) =>
+                  setFormData({ ...formData, address_line1: e.target.value })
+                }
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="city">City *</Label>
+                <Input
+                  id="city"
+                  placeholder="City"
+                  value={formData.city}
+                  onChange={(e) =>
+                    setFormData({ ...formData, city: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="district">District *</Label>
+                <Input
+                  id="district"
+                  placeholder="District"
+                  value={formData.district}
+                  onChange={(e) =>
+                    setFormData({ ...formData, district: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="state">State *</Label>
+                <Input
+                  id="state"
+                  placeholder="State"
+                  value={formData.state}
+                  onChange={(e) =>
+                    setFormData({ ...formData, state: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="state_code">State Code * (2 digits)</Label>
+                <Input
+                  id="state_code"
+                  placeholder="07"
+                  maxLength={2}
+                  value={formData.state_code}
+                  onChange={(e) =>
+                    setFormData({ ...formData, state_code: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="pincode">Pincode *</Label>
+                <Input
+                  id="pincode"
+                  placeholder="110001"
+                  maxLength={6}
+                  value={formData.pincode}
+                  onChange={(e) =>
+                    setFormData({ ...formData, pincode: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="region">Region *</Label>
+              <Select
+                value={formData.region}
+                onValueChange={(value: DealerFormData['region']) =>
+                  setFormData({ ...formData, region: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select region" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NORTH">North</SelectItem>
+                  <SelectItem value="SOUTH">South</SelectItem>
+                  <SelectItem value="EAST">East</SelectItem>
+                  <SelectItem value="WEST">West</SelectItem>
+                  <SelectItem value="CENTRAL">Central</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Credit Information */}
+            <div className="text-sm font-medium text-muted-foreground mt-2">Credit Information</div>
+            <div className="space-y-2">
+              <Label htmlFor="credit_limit">Credit Limit</Label>
+              <Input
+                id="credit_limit"
+                type="number"
+                placeholder="100000"
+                value={formData.credit_limit}
+                onChange={(e) =>
+                  setFormData({ ...formData, credit_limit: e.target.value })
+                }
+              />
             </div>
           </div>
           <DialogFooter>

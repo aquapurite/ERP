@@ -203,8 +203,9 @@ class InvoiceListResponse(BaseModel):
     """Response for listing invoices."""
     items: List["InvoiceBrief"]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
     total_value: Decimal = Decimal("0")
 
 
@@ -334,8 +335,9 @@ class CreditDebitNoteListResponse(BaseModel):
     """Response for listing credit/debit notes."""
     items: List[CreditDebitNoteResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 # ==================== E-Way Bill Schemas ====================
@@ -439,8 +441,9 @@ class EWayBillListResponse(BaseModel):
     """Response for listing E-Way Bills."""
     items: List[EWayBillResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 class EWayBillUpdate(BaseModel):
@@ -520,8 +523,9 @@ class PaymentReceiptListResponse(BaseModel):
     """Response for listing payment receipts."""
     items: List[PaymentReceiptResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 # ==================== Invoice Number Sequence Schemas ====================

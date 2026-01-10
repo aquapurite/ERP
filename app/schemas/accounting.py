@@ -77,8 +77,9 @@ class AccountListResponse(BaseModel):
     """Paginated account list response."""
     items: List[ChartOfAccountResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 class AccountBalanceResponse(BaseModel):
@@ -273,8 +274,9 @@ class JournalEntryListResponse(BaseModel):
     """Response for listing journal entries."""
     items: List[JournalEntryResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 # Alias for backward compatibility
@@ -426,8 +428,9 @@ class LedgerListResponse(BaseModel):
     """Paginated ledger list response."""
     items: List[GeneralLedgerResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
     opening_balance: Decimal = Decimal("0")
     closing_balance: Decimal = Decimal("0")
 

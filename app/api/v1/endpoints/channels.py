@@ -152,6 +152,121 @@ async def get_channels_dropdown(
     ]
 
 
+# ==================== Reports (must be before /{channel_id}) ====================
+
+@router.get("/reports/summary")
+async def get_channel_summary(
+    start_date: date,
+    end_date: date,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get sales summary by channel."""
+    # Orders by channel
+    orders_query = select(
+        SalesChannel.name,
+        SalesChannel.channel_type,
+        func.count(ChannelOrder.id).label("order_count"),
+        func.coalesce(func.sum(ChannelOrder.order_value), 0).label("order_value"),
+    ).join(
+        ChannelOrder, ChannelOrder.channel_id == SalesChannel.id
+    ).where(
+        and_(
+            ChannelOrder.channel_order_date >= start_date,
+            ChannelOrder.channel_order_date <= end_date,
+        )
+    ).group_by(SalesChannel.id, SalesChannel.name, SalesChannel.channel_type)
+
+    orders_result = await db.execute(orders_query)
+    by_channel = [
+        {
+            "channel_name": row.name,
+            "channel_type": row.channel_type.value if row.channel_type else None,
+            "order_count": row.order_count,
+            "order_value": float(row.order_value),
+        }
+        for row in orders_result.all()
+    ]
+
+    # Totals
+    total_query = select(
+        func.count(ChannelOrder.id).label("total_orders"),
+        func.coalesce(func.sum(ChannelOrder.order_value), 0).label("total_value"),
+    ).where(
+        and_(
+            ChannelOrder.channel_order_date >= start_date,
+            ChannelOrder.channel_order_date <= end_date,
+        )
+    )
+    total_result = await db.execute(total_query)
+    totals = total_result.one()
+
+    # Channel counts
+    channel_counts = await db.execute(
+        select(
+            SalesChannel.status,
+            func.count(SalesChannel.id).label("count"),
+        ).group_by(SalesChannel.status)
+    )
+    status_counts = {
+        row.status.value: row.count
+        for row in channel_counts.all()
+    }
+
+    return {
+        "period_start": start_date.isoformat(),
+        "period_end": end_date.isoformat(),
+        "by_channel": by_channel,
+        "totals": {
+            "order_count": totals.total_orders,
+            "order_value": float(totals.total_value),
+        },
+        "channels": {
+            "total": sum(status_counts.values()),
+            "by_status": status_counts,
+        }
+    }
+
+
+@router.get("/reports/inventory-status")
+async def get_channel_inventory_status(
+    db: DB,
+    channel_id: Optional[UUID] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Get inventory sync status across channels."""
+    query = select(
+        SalesChannel.id,
+        SalesChannel.name,
+        func.count(ChannelInventory.id).label("products_allocated"),
+        func.coalesce(func.sum(ChannelInventory.allocated_quantity), 0).label("total_allocated"),
+        func.coalesce(func.sum(ChannelInventory.available_quantity), 0).label("total_available"),
+    ).outerjoin(
+        ChannelInventory, ChannelInventory.channel_id == SalesChannel.id
+    ).group_by(SalesChannel.id, SalesChannel.name)
+
+    if channel_id:
+        query = query.where(SalesChannel.id == channel_id)
+
+    result = await db.execute(query)
+    channels = result.all()
+
+    return {
+        "channels": [
+            {
+                "channel_id": str(row.id),
+                "channel_name": row.name,
+                "products_allocated": row.products_allocated,
+                "total_allocated": int(row.total_allocated),
+                "total_available": int(row.total_available),
+            }
+            for row in channels
+        ]
+    }
+
+
+# ==================== Single Channel Operations ====================
+
 @router.get("/{channel_id}", response_model=SalesChannelResponse)
 async def get_sales_channel(
     channel_id: UUID,
@@ -922,116 +1037,3 @@ async def sync_channel_orders(
         status="SUCCESS",
         message="Integration with channel API pending implementation",
     )
-
-
-# ==================== Reports ====================
-
-@router.get("/reports/summary")
-async def get_channel_summary(
-    start_date: date,
-    end_date: date,
-    db: DB,
-    current_user: User = Depends(get_current_user),
-):
-    """Get sales summary by channel."""
-    # Orders by channel
-    orders_query = select(
-        SalesChannel.name,
-        SalesChannel.channel_type,
-        func.count(ChannelOrder.id).label("order_count"),
-        func.coalesce(func.sum(ChannelOrder.order_value), 0).label("order_value"),
-    ).join(
-        ChannelOrder, ChannelOrder.channel_id == SalesChannel.id
-    ).where(
-        and_(
-            ChannelOrder.channel_order_date >= start_date,
-            ChannelOrder.channel_order_date <= end_date,
-        )
-    ).group_by(SalesChannel.id, SalesChannel.name, SalesChannel.channel_type)
-
-    orders_result = await db.execute(orders_query)
-    by_channel = [
-        {
-            "channel_name": row.name,
-            "channel_type": row.channel_type.value if row.channel_type else None,
-            "order_count": row.order_count,
-            "order_value": float(row.order_value),
-        }
-        for row in orders_result.all()
-    ]
-
-    # Totals
-    total_query = select(
-        func.count(ChannelOrder.id).label("total_orders"),
-        func.coalesce(func.sum(ChannelOrder.order_value), 0).label("total_value"),
-    ).where(
-        and_(
-            ChannelOrder.channel_order_date >= start_date,
-            ChannelOrder.channel_order_date <= end_date,
-        )
-    )
-    total_result = await db.execute(total_query)
-    totals = total_result.one()
-
-    # Channel counts
-    channel_counts = await db.execute(
-        select(
-            SalesChannel.status,
-            func.count(SalesChannel.id).label("count"),
-        ).group_by(SalesChannel.status)
-    )
-    status_counts = {
-        row.status.value: row.count
-        for row in channel_counts.all()
-    }
-
-    return {
-        "period_start": start_date.isoformat(),
-        "period_end": end_date.isoformat(),
-        "by_channel": by_channel,
-        "totals": {
-            "order_count": totals.total_orders,
-            "order_value": float(totals.total_value),
-        },
-        "channels": {
-            "total": sum(status_counts.values()),
-            "by_status": status_counts,
-        }
-    }
-
-
-@router.get("/reports/inventory-status")
-async def get_channel_inventory_status(
-    db: DB,
-    channel_id: Optional[UUID] = None,
-    current_user: User = Depends(get_current_user),
-):
-    """Get inventory sync status across channels."""
-    query = select(
-        SalesChannel.id,
-        SalesChannel.name,
-        func.count(ChannelInventory.id).label("products_allocated"),
-        func.coalesce(func.sum(ChannelInventory.allocated_quantity), 0).label("total_allocated"),
-        func.coalesce(func.sum(ChannelInventory.available_quantity), 0).label("total_available"),
-    ).outerjoin(
-        ChannelInventory, ChannelInventory.channel_id == SalesChannel.id
-    ).group_by(SalesChannel.id, SalesChannel.name)
-
-    if channel_id:
-        query = query.where(SalesChannel.id == channel_id)
-
-    result = await db.execute(query)
-    channels = result.all()
-
-    return {
-        "channels": [
-            {
-                "channel_id": str(row.id),
-                "channel_name": row.name,
-                "products_allocated": row.products_allocated,
-                "total_allocated": int(row.total_allocated),
-                "total_available": int(row.total_available),
-            }
-            for row in channels
-        ]
-    }

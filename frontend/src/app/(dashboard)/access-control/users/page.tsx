@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal, Plus, Pencil, Trash2 } from 'lucide-react';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -14,6 +15,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader } from '@/components/common';
 import { StatusBadge } from '@/components/common';
@@ -96,10 +107,71 @@ const columns: ColumnDef<User>[] = [
 export default function UsersPage() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
+  const [deleteUser, setDeleteUser] = useState<User | null>(null);
+  const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ['users', page, pageSize],
     queryFn: () => usersApi.list({ page: page + 1, size: pageSize }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (userId: string) => usersApi.delete(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast.success('User deleted successfully');
+      setDeleteUser(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to delete user');
+    },
+  });
+
+  const handleDeleteClick = (user: User) => {
+    setDeleteUser(user);
+  };
+
+  const confirmDelete = () => {
+    if (deleteUser) {
+      deleteMutation.mutate(deleteUser.id);
+    }
+  };
+
+  // Create columns with delete handler
+  const columnsWithActions: ColumnDef<User>[] = columns.map((col) => {
+    if (col.id === 'actions') {
+      return {
+        ...col,
+        cell: ({ row }) => (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="h-8 w-8 p-0">
+                <span className="sr-only">Open menu</span>
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href={`/access-control/users/${row.original.id}`}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => handleDeleteClick(row.original)}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ),
+      };
+    }
+    return col;
   });
 
   return (
@@ -118,7 +190,7 @@ export default function UsersPage() {
       />
 
       <DataTable
-        columns={columns}
+        columns={columnsWithActions}
         data={data?.items ?? []}
         searchKey="name"
         searchPlaceholder="Search users..."
@@ -130,6 +202,27 @@ export default function UsersPage() {
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
+
+      <AlertDialog open={!!deleteUser} onOpenChange={() => setDeleteUser(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete User</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {deleteUser && getUserDisplayName(deleteUser)}?
+              This action will deactivate the user account.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

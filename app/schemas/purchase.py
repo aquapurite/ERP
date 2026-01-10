@@ -91,8 +91,9 @@ class PRListResponse(BaseModel):
     """Response for listing PRs."""
     items: List[PurchaseRequisitionResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 class PRApproveRequest(BaseModel):
@@ -334,8 +335,9 @@ class POListResponse(BaseModel):
     items: List[POBrief]
     total: int
     total_value: Decimal
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 class POApproveRequest(BaseModel):
@@ -467,8 +469,9 @@ class GRNListResponse(BaseModel):
     items: List[GRNBrief]
     total: int
     total_value: Decimal
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 class GRNQualityCheckRequest(BaseModel):
@@ -572,8 +575,9 @@ class VendorInvoiceListResponse(BaseModel):
     total: int
     total_value: Decimal
     total_balance: Decimal
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 class ThreeWayMatchRequest(BaseModel):
@@ -769,8 +773,9 @@ class VendorProformaListResponse(BaseModel):
     items: List[VendorProformaBrief]
     total: int
     total_value: Decimal
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 class VendorProformaApproveRequest(BaseModel):

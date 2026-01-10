@@ -178,8 +178,9 @@ class FranchiseeListResponse(BaseModel):
     """Paginated franchisee list."""
     items: List[FranchiseeResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 class FranchiseeStatusUpdate(BaseModel):
@@ -583,8 +584,9 @@ class FranchiseeSupportListResponse(BaseModel):
     """Paginated support ticket list."""
     items: List[FranchiseeSupportResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 class SupportAssignRequest(BaseModel):

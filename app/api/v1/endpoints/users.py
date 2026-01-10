@@ -316,7 +316,7 @@ async def create_user(
                 id=ur.role.id,
                 name=ur.role.name,
                 code=ur.role.code,
-                level=__get_level_name(ur.role.level),
+                level=_get_level_name(ur.role.level),
             )
             for ur in user.user_roles
             if ur.role.is_active
@@ -398,7 +398,7 @@ async def update_user(
                 id=ur.role.id,
                 name=ur.role.name,
                 code=ur.role.code,
-                level=__get_level_name(ur.role.level),
+                level=_get_level_name(ur.role.level),
             )
             for ur in user.user_roles
             if ur.role.is_active
@@ -407,6 +407,63 @@ async def update_user(
         updated_at=user.updated_at,
         last_login_at=user.last_login_at,
     )
+
+
+@router.delete(
+    "/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permissions("access_control:delete"))]
+)
+async def delete_user(
+    user_id: uuid.UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """
+    Soft delete a user (deactivate).
+    Requires: access_control:delete permission
+    """
+    # Get user
+    stmt = select(User).where(User.id == user_id)
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # Cannot delete yourself
+    if user.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete your own account"
+        )
+
+    # Cannot delete superusers (unless you are one)
+    if user.is_superuser and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot delete superuser accounts"
+        )
+
+    # Soft delete - deactivate user
+    user.is_active = False
+    await db.commit()
+
+    # Audit log
+    audit_service = AuditService(db)
+    await audit_service.log(
+        action="DELETE",
+        entity_type="User",
+        entity_id=user.id,
+        user_id=current_user.id,
+        old_values={"is_active": True},
+        new_values={"is_active": False}
+    )
+
+    return None
 
 
 @router.get(

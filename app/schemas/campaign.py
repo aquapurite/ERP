@@ -232,8 +232,9 @@ class CampaignListResponse(BaseModel):
     """Paginated campaign list."""
     items: List[CampaignResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 # ==================== Campaign Recipient Schemas ====================
@@ -263,8 +264,9 @@ class CampaignRecipientListResponse(BaseModel):
     """Paginated recipient list."""
     items: List[CampaignRecipientResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 # ==================== Campaign Automation Schemas ====================

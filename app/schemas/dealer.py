@@ -215,8 +215,9 @@ class DealerListResponse(BaseModel):
     """Response for listing dealers."""
     items: List[DealerResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 class DealerBrief(BaseModel):
@@ -491,8 +492,9 @@ class DealerSchemeListResponse(BaseModel):
     """Response for listing schemes."""
     items: List[DealerSchemeResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 class DealerSchemeApplicationCreate(BaseModel):

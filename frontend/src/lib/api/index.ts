@@ -423,9 +423,9 @@ export const warehousesApi = {
     await apiClient.delete(`/warehouses/${id}`);
   },
   dropdown: async () => {
-    // Return warehouses for dropdown selection
-    const { data } = await apiClient.get<PaginatedResponse<Warehouse>>('/warehouses', { params: { is_active: true, size: 100 } });
-    return data.items.map(w => ({ id: w.id, name: w.name, code: w.code }));
+    // Use dedicated dropdown endpoint for better performance
+    const { data } = await apiClient.get<Array<{ id: string; name: string; code: string; warehouse_type: string }>>('/warehouses/dropdown');
+    return data;
   },
 };
 
@@ -499,22 +499,23 @@ export const vendorsApi = {
     gst_number?: string;
     pan_number?: string;
     tier?: string;
-    legal_name?: string;
     vendor_type?: string;
-    address?: string;
-    city?: string;
-    state?: string;
-    pincode?: string;
+    contact_person?: string;
+    address_line1: string;
+    city: string;
+    state: string;
+    pincode: string;
   }) => {
     // Transform frontend fields to backend required fields
     const payload = {
       name: vendor.name,
-      legal_name: vendor.legal_name || vendor.name, // Use name as legal_name if not provided
+      legal_name: vendor.name, // Use name as legal_name
       vendor_type: vendor.vendor_type || 'MANUFACTURER',
-      address_line1: vendor.address || 'To be updated',
-      city: vendor.city || 'Delhi',
-      state: vendor.state || 'Delhi',
-      pincode: vendor.pincode || '110001',
+      address_line1: vendor.address_line1,
+      city: vendor.city,
+      state: vendor.state,
+      pincode: vendor.pincode,
+      contact_person: vendor.contact_person || undefined,
       email: vendor.email || undefined,
       phone: vendor.phone || undefined,
       gstin: vendor.gst_number || undefined,
@@ -613,34 +614,40 @@ export const dealersApi = {
     name: string;
     code?: string;
     type?: string;
-    email?: string;
-    phone?: string;
-    gst_number?: string;
+    email: string;
+    phone: string;
+    gst_number: string;
+    pan: string;
+    contact_person: string;
     pricing_tier?: string;
     credit_limit?: number;
+    address_line1: string;
+    city: string;
+    district: string;
+    state: string;
+    state_code: string;
+    pincode: string;
+    region: string;
   }) => {
     // Transform frontend fields to backend required fields
-    // Backend requires: name, legal_name, dealer_type, gstin, pan, contact_person, email, phone,
-    // registered_address_line1, registered_city, registered_district, registered_state,
-    // registered_state_code, registered_pincode, region, state
     const payload = {
       name: dealer.name,
-      legal_name: dealer.name, // Use name as legal_name
+      legal_name: dealer.name,
       dealer_type: dealer.type || 'DEALER',
-      gstin: dealer.gst_number || '00AAAAA0000A1Z0', // Default dummy GSTIN
-      pan: 'AAAAA0000A', // Default dummy PAN
-      contact_person: dealer.name,
-      email: dealer.email || `${dealer.name.toLowerCase().replace(/\s+/g, '.')}@dealer.com`,
-      phone: dealer.phone || '9999999999',
-      registered_address_line1: 'To be updated',
-      registered_city: 'Delhi',
-      registered_district: 'Central Delhi',
-      registered_state: 'Delhi',
-      registered_state_code: '07',
-      registered_pincode: '110001',
-      region: 'NORTH',
-      state: 'Delhi',
-      pricing_tier: dealer.pricing_tier || 'SILVER',
+      gstin: dealer.gst_number,
+      pan: dealer.pan,
+      contact_person: dealer.contact_person || dealer.name,
+      email: dealer.email,
+      phone: dealer.phone,
+      registered_address_line1: dealer.address_line1,
+      registered_city: dealer.city,
+      registered_district: dealer.district,
+      registered_state: dealer.state,
+      registered_state_code: dealer.state_code,
+      registered_pincode: dealer.pincode,
+      region: dealer.region,
+      state: dealer.state,
+      tier: dealer.pricing_tier || 'STANDARD',
       credit_limit: dealer.credit_limit || 0,
     };
     const { data } = await apiClient.post<Dealer>('/dealers', payload);

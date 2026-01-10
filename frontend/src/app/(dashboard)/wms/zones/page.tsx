@@ -37,6 +37,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
 import apiClient from '@/lib/api/client';
+import { warehousesApi } from '@/lib/api';
 
 interface Zone {
   id: string;
@@ -249,6 +250,12 @@ export default function ZonesPage() {
     queryFn: zonesApi.getStats,
   });
 
+  // Fetch warehouses for dropdown
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['warehouses-dropdown'],
+    queryFn: warehousesApi.dropdown,
+  });
+
   const createMutation = useMutation({
     mutationFn: zonesApi.create,
     onSuccess: () => {
@@ -323,18 +330,21 @@ export default function ZonesPage() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="warehouse">Warehouse</Label>
+                  <Label htmlFor="warehouse">Warehouse *</Label>
                   <Select
-                    value={newZone.warehouse_id}
-                    onValueChange={(value) => setNewZone({ ...newZone, warehouse_id: value })}
+                    value={newZone.warehouse_id || 'select'}
+                    onValueChange={(value) => setNewZone({ ...newZone, warehouse_id: value === 'select' ? '' : value })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select warehouse" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="wh1">Mumbai Main</SelectItem>
-                      <SelectItem value="wh2">Delhi Hub</SelectItem>
-                      <SelectItem value="wh3">Bangalore DC</SelectItem>
+                      <SelectItem value="select" disabled>Select warehouse</SelectItem>
+                      {warehouses.map((wh: { id: string; name: string; code?: string }) => (
+                        <SelectItem key={wh.id} value={wh.id}>
+                          {wh.name} {wh.code && `(${wh.code})`}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

@@ -248,8 +248,7 @@ async def update_vendor(
         entity_type="Vendor",
         entity_id=vendor.id,
         user_id=current_user.id,
-        new_values={"updated_fields": list(update_data.keys(
-    ))}
+        new_values={"updated_fields": list(update_data.keys())}
     )
 
     return vendor
@@ -467,8 +466,7 @@ async def record_vendor_payment(
         entity_id=ledger_entry.id,
         user_id=current_user.id,
         new_values={
-            "vendor_id": str(vendor_id
-    ),
+            "vendor_id": str(vendor_id),
             "amount": str(payment_in.amount),
             "payment_mode": payment_in.payment_mode
         }

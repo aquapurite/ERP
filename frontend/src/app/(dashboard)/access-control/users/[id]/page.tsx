@@ -17,7 +17,8 @@ import { PageHeader } from '@/components/common';
 import { usersApi, rolesApi } from '@/lib/api';
 
 interface UserForm {
-  full_name: string;
+  first_name: string;
+  last_name: string;
   email: string;
   phone: string;
   is_active: boolean;
@@ -31,7 +32,8 @@ export default function EditUserPage() {
   const userId = params.id as string;
 
   const [formData, setFormData] = useState<UserForm>({
-    full_name: '',
+    first_name: '',
+    last_name: '',
     email: '',
     phone: '',
     is_active: true,
@@ -52,7 +54,8 @@ export default function EditUserPage() {
   useEffect(() => {
     if (user) {
       setFormData({
-        full_name: user.full_name || '',
+        first_name: user.first_name || '',
+        last_name: user.last_name || '',
         email: user.email || '',
         phone: user.phone || '',
         is_active: user.is_active ?? true,
@@ -86,8 +89,8 @@ export default function EditUserPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.full_name.trim()) {
-      toast.error('Full name is required');
+    if (!formData.first_name.trim()) {
+      toast.error('First name is required');
       return;
     }
     if (!formData.email.trim()) {
@@ -113,7 +116,7 @@ export default function EditUserPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`Edit User: ${user?.full_name || user?.email || ''}`}
+        title={`Edit User: ${user?.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user?.email || ''}`}
         description="Modify user details and role assignments"
         actions={
           <Button variant="outline" asChild>
@@ -134,14 +137,25 @@ export default function EditUserPage() {
               <CardDescription>Basic user information</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Full Name *</Label>
-                <Input
-                  id="name"
-                  placeholder="John Doe"
-                  value={formData.full_name}
-                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="first_name">First Name *</Label>
+                  <Input
+                    id="first_name"
+                    placeholder="John"
+                    value={formData.first_name}
+                    onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="last_name">Last Name</Label>
+                  <Input
+                    id="last_name"
+                    placeholder="Doe"
+                    value={formData.last_name}
+                    onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                  />
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email *</Label>

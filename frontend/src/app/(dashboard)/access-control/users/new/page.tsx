@@ -37,7 +37,7 @@ const createUserSchema = z.object({
   phone: z.string().optional(),
   department: z.string().optional(),
   designation: z.string().optional(),
-  role_id: z.string().min(1, 'Please select a role'),
+  role_ids: z.array(z.string()).min(1, 'Please select at least one role'),
 });
 
 type CreateUserForm = z.infer<typeof createUserSchema>;
@@ -67,7 +67,7 @@ export default function NewUserPage() {
       phone: '',
       department: '',
       designation: '',
-      role_id: '',
+      role_ids: [],
     },
   });
 
@@ -195,21 +195,26 @@ export default function NewUserPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="role">Role *</Label>
-              <Select onValueChange={(value) => setValue('role_id', value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a role" />
-                </SelectTrigger>
-                <SelectContent>
-                  {rolesData?.items?.map((role: { id: string; name: string; code: string }) => (
-                    <SelectItem key={role.id} value={role.id}>
-                      {role.name} ({role.code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.role_id && (
-                <p className="text-sm text-destructive">{errors.role_id.message}</p>
+              <Label>Roles *</Label>
+              <div className="grid grid-cols-2 gap-2 rounded-md border p-4">
+                {rolesData?.items?.map((role: { id: string; name: string; code: string }) => (
+                  <label key={role.id} className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      value={role.id}
+                      className="h-4 w-4 rounded border-gray-300"
+                      onChange={(e) => {
+                        const currentRoles = (document.querySelectorAll('input[type="checkbox"]:checked') as NodeListOf<HTMLInputElement>);
+                        const selectedRoles = Array.from(currentRoles).map(cb => cb.value);
+                        setValue('role_ids', selectedRoles);
+                      }}
+                    />
+                    <span className="text-sm">{role.name} ({role.code})</span>
+                  </label>
+                ))}
+              </div>
+              {errors.role_ids && (
+                <p className="text-sm text-destructive">{errors.role_ids.message}</p>
               )}
             </div>
 

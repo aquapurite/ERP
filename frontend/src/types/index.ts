@@ -432,10 +432,20 @@ export interface Dealer {
   email?: string;
   phone?: string;
   gst_number?: string;
+  pan?: string;
+  contact_person?: string;
   pricing_tier: 'PLATINUM' | 'GOLD' | 'SILVER' | 'BRONZE';
   credit_limit: number;
   available_credit: number;
   status: 'ACTIVE' | 'INACTIVE' | 'PENDING' | 'SUSPENDED';
+  // Address fields
+  registered_address_line1?: string;
+  registered_city?: string;
+  registered_district?: string;
+  registered_state?: string;
+  registered_state_code?: string;
+  registered_pincode?: string;
+  region?: 'NORTH' | 'SOUTH' | 'EAST' | 'WEST' | 'CENTRAL';
   created_at: string;
 }
 

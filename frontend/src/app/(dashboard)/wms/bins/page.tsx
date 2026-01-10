@@ -41,30 +41,41 @@ import apiClient from '@/lib/api/client';
 interface Bin {
   id: string;
   zone_id: string;
-  zone_name: string;
-  warehouse_name: string;
-  code: string;
-  row: string;
-  column: string;
-  level: string;
-  bin_type: 'STANDARD' | 'BULK' | 'SMALL_PARTS' | 'HAZARDOUS' | 'COLD_STORAGE';
-  max_weight: number;
-  max_volume: number;
+  zone?: { id: string; zone_code: string; zone_name: string };
+  warehouse_id?: string;
+  warehouse?: { id: string; name: string };
+  bin_code: string;
+  aisle?: string;
+  rack?: string;
+  shelf?: string;
+  position?: string;
+  bin_type: 'SHELF' | 'PALLET' | 'FLOOR' | 'RACK' | 'BULK';
+  max_weight_kg?: number;
+  max_capacity?: number;
   current_items: number;
-  current_weight: number;
-  is_locked: boolean;
+  current_weight_kg?: number;
+  is_reserved: boolean;
+  is_pickable: boolean;
+  is_receivable: boolean;
   is_active: boolean;
+}
+
+interface Zone {
+  id: string;
+  zone_code: string;
+  zone_name: string;
+  zone_type: string;
 }
 
 interface BinStats {
   total_bins: number;
   available_bins: number;
   occupied_bins: number;
-  locked_bins: number;
+  reserved_bins: number;
 }
 
 const binsApi = {
-  list: async (params?: { page?: number; size?: number; zone_id?: string; bin_type?: string; is_locked?: boolean }) => {
+  list: async (params?: { page?: number; size?: number; zone_id?: string; bin_type?: string }) => {
     try {
       const { data } = await apiClient.get('/wms/bins', { params });
       return data;
@@ -77,23 +88,30 @@ const binsApi = {
       const { data } = await apiClient.get('/wms/bins/stats');
       return data;
     } catch {
-      return { total_bins: 0, available_bins: 0, occupied_bins: 0, locked_bins: 0 };
+      return { total_bins: 0, available_bins: 0, occupied_bins: 0, reserved_bins: 0 };
     }
   },
   create: async (bin: Partial<Bin>) => {
     const { data } = await apiClient.post('/wms/bins', bin);
     return data;
   },
-  lock: async (id: string) => {
-    const { data } = await apiClient.post(`/wms/bins/${id}/lock`);
-    return data;
-  },
-  unlock: async (id: string) => {
-    const { data } = await apiClient.post(`/wms/bins/${id}/unlock`);
-    return data;
+  update: async (id: string, data: Partial<Bin>) => {
+    const { data: result } = await apiClient.put(`/wms/bins/${id}`, data);
+    return result;
   },
   delete: async (id: string) => {
     await apiClient.delete(`/wms/bins/${id}`);
+  },
+};
+
+const zonesApi = {
+  dropdown: async (): Promise<Zone[]> => {
+    try {
+      const { data } = await apiClient.get('/wms/zones/dropdown');
+      return data;
+    } catch {
+      return [];
+    }
   },
 };
 
@@ -101,20 +119,22 @@ const binsApi = {
 function BinActionsCell({ bin }: { bin: Bin }) {
   const queryClient = useQueryClient();
 
-  const lockMutation = useMutation({
-    mutationFn: () => binsApi.lock(bin.id),
+  const reserveMutation = useMutation({
+    mutationFn: () => binsApi.update(bin.id, { is_reserved: true }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['wms-bins'] });
-      toast.success('Bin locked');
+      toast.success('Bin reserved');
     },
+    onError: () => toast.error('Failed to reserve bin'),
   });
 
-  const unlockMutation = useMutation({
-    mutationFn: () => binsApi.unlock(bin.id),
+  const unreserveMutation = useMutation({
+    mutationFn: () => binsApi.update(bin.id, { is_reserved: false }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['wms-bins'] });
-      toast.success('Bin unlocked');
+      toast.success('Bin unreserved');
     },
+    onError: () => toast.error('Failed to unreserve bin'),
   });
 
   return (
@@ -136,15 +156,15 @@ function BinActionsCell({ bin }: { bin: Bin }) {
           Edit
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        {bin.is_locked ? (
-          <DropdownMenuItem onClick={() => unlockMutation.mutate()}>
+        {bin.is_reserved ? (
+          <DropdownMenuItem onClick={() => unreserveMutation.mutate()}>
             <Unlock className="mr-2 h-4 w-4" />
-            Unlock Bin
+            Unreserve Bin
           </DropdownMenuItem>
         ) : (
-          <DropdownMenuItem onClick={() => lockMutation.mutate()}>
+          <DropdownMenuItem onClick={() => reserveMutation.mutate()}>
             <Lock className="mr-2 h-4 w-4" />
-            Lock Bin
+            Reserve Bin
           </DropdownMenuItem>
         )}
         <DropdownMenuItem className="text-destructive focus:text-destructive">
@@ -157,24 +177,24 @@ function BinActionsCell({ bin }: { bin: Bin }) {
 }
 
 const binTypeColors: Record<string, string> = {
-  STANDARD: 'bg-blue-100 text-blue-800',
-  BULK: 'bg-purple-100 text-purple-800',
-  SMALL_PARTS: 'bg-green-100 text-green-800',
-  HAZARDOUS: 'bg-red-100 text-red-800',
-  COLD_STORAGE: 'bg-cyan-100 text-cyan-800',
+  SHELF: 'bg-blue-100 text-blue-800',
+  PALLET: 'bg-purple-100 text-purple-800',
+  FLOOR: 'bg-green-100 text-green-800',
+  RACK: 'bg-orange-100 text-orange-800',
+  BULK: 'bg-cyan-100 text-cyan-800',
 };
 
 const binTypes = [
-  { label: 'Standard', value: 'STANDARD' },
-  { label: 'Bulk Storage', value: 'BULK' },
-  { label: 'Small Parts', value: 'SMALL_PARTS' },
-  { label: 'Hazardous', value: 'HAZARDOUS' },
-  { label: 'Cold Storage', value: 'COLD_STORAGE' },
+  { label: 'Shelf', value: 'SHELF' },
+  { label: 'Pallet', value: 'PALLET' },
+  { label: 'Floor', value: 'FLOOR' },
+  { label: 'Rack', value: 'RACK' },
+  { label: 'Bulk', value: 'BULK' },
 ];
 
 const columns: ColumnDef<Bin>[] = [
   {
-    accessorKey: 'code',
+    accessorKey: 'bin_code',
     header: 'Bin Location',
     cell: ({ row }) => (
       <div className="flex items-center gap-3">
@@ -182,21 +202,23 @@ const columns: ColumnDef<Bin>[] = [
           <Grid3X3 className="h-5 w-5 text-muted-foreground" />
         </div>
         <div>
-          <div className="font-mono font-medium">{row.original.code}</div>
+          <div className="font-mono font-medium">{row.original.bin_code}</div>
           <div className="text-xs text-muted-foreground">
-            Row {row.original.row}, Col {row.original.column}, Lvl {row.original.level}
+            {row.original.aisle && `Aisle ${row.original.aisle}`}
+            {row.original.rack && `, Rack ${row.original.rack}`}
+            {row.original.shelf && `, Shelf ${row.original.shelf}`}
           </div>
         </div>
       </div>
     ),
   },
   {
-    accessorKey: 'zone_name',
+    accessorKey: 'zone',
     header: 'Zone / Warehouse',
     cell: ({ row }) => (
       <div>
-        <div className="text-sm font-medium">{row.original.zone_name}</div>
-        <div className="text-xs text-muted-foreground">{row.original.warehouse_name}</div>
+        <div className="text-sm font-medium">{row.original.zone?.zone_name || '-'}</div>
+        <div className="text-xs text-muted-foreground">{row.original.warehouse?.name || '-'}</div>
       </div>
     ),
   },
@@ -223,38 +245,40 @@ const columns: ColumnDef<Bin>[] = [
     ),
   },
   {
-    accessorKey: 'weight',
-    header: 'Weight',
+    accessorKey: 'capacity',
+    header: 'Capacity',
     cell: ({ row }) => {
-      const currentWeight = row.original.current_weight ?? 0;
-      const maxWeight = row.original.max_weight ?? 0;
-      const utilization = maxWeight > 0 ? (currentWeight / maxWeight) * 100 : 0;
+      const currentItems = row.original.current_items ?? 0;
+      const maxCapacity = row.original.max_capacity ?? 0;
+      const utilization = maxCapacity > 0 ? (currentItems / maxCapacity) * 100 : 0;
       return (
         <div className="space-y-1">
           <div className="text-sm">
-            {currentWeight.toFixed(1)} / {maxWeight} kg
+            {currentItems} / {maxCapacity || '∞'} items
           </div>
-          <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
-            <div
-              className={`h-full ${utilization > 90 ? 'bg-red-500' : utilization > 70 ? 'bg-yellow-500' : 'bg-green-500'}`}
-              style={{ width: `${Math.min(utilization, 100)}%` }}
-            />
-          </div>
+          {maxCapacity > 0 && (
+            <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
+              <div
+                className={`h-full ${utilization > 90 ? 'bg-red-500' : utilization > 70 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                style={{ width: `${Math.min(utilization, 100)}%` }}
+              />
+            </div>
+          )}
         </div>
       );
     },
   },
   {
-    accessorKey: 'is_locked',
-    header: 'Lock Status',
+    accessorKey: 'is_reserved',
+    header: 'Status',
     cell: ({ row }) => (
       <div className={`inline-flex items-center gap-1.5 text-xs font-medium ${
-        row.original.is_locked ? 'text-orange-600' : 'text-green-600'
+        row.original.is_reserved ? 'text-orange-600' : 'text-green-600'
       }`}>
-        {row.original.is_locked ? (
+        {row.original.is_reserved ? (
           <>
             <Lock className="h-3 w-3" />
-            Locked
+            Reserved
           </>
         ) : (
           <>
@@ -284,27 +308,33 @@ export default function BinsPage() {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [newBin, setNewBin] = useState<{
     zone_id: string;
-    code: string;
-    row: string;
-    column: string;
-    level: string;
-    bin_type: 'STANDARD' | 'BULK' | 'SMALL_PARTS' | 'HAZARDOUS' | 'COLD_STORAGE';
-    max_weight: string;
-    max_volume: string;
+    bin_code: string;
+    aisle: string;
+    rack: string;
+    shelf: string;
+    bin_type: 'SHELF' | 'PALLET' | 'FLOOR' | 'RACK' | 'BULK';
+    max_capacity: string;
+    max_weight_kg: string;
     is_active: boolean;
   }>({
     zone_id: '',
-    code: '',
-    row: '',
-    column: '',
-    level: '',
-    bin_type: 'STANDARD',
-    max_weight: '',
-    max_volume: '',
+    bin_code: '',
+    aisle: '',
+    rack: '',
+    shelf: '',
+    bin_type: 'SHELF',
+    max_capacity: '',
+    max_weight_kg: '',
     is_active: true,
   });
 
   const queryClient = useQueryClient();
+
+  // Fetch zones for dropdown
+  const { data: zones = [] } = useQuery({
+    queryKey: ['wms-zones-dropdown'],
+    queryFn: zonesApi.dropdown,
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['wms-bins', page, pageSize, zoneFilter, typeFilter],
@@ -334,15 +364,21 @@ export default function BinsPage() {
   });
 
   const handleCreate = () => {
-    if (!newBin.code.trim()) {
+    if (!newBin.bin_code.trim()) {
       toast.error('Bin code is required');
       return;
     }
     createMutation.mutate({
-      ...newBin,
-      max_weight: parseFloat(newBin.max_weight) || 0,
-      max_volume: parseFloat(newBin.max_volume) || 0,
-    });
+      zone_id: newBin.zone_id || undefined,
+      bin_code: newBin.bin_code,
+      aisle: newBin.aisle || undefined,
+      rack: newBin.rack || undefined,
+      shelf: newBin.shelf || undefined,
+      bin_type: newBin.bin_type,
+      max_capacity: parseInt(newBin.max_capacity) || undefined,
+      max_weight_kg: parseFloat(newBin.max_weight_kg) || undefined,
+      is_active: newBin.is_active,
+    } as any);
   };
 
   return (
@@ -368,57 +404,60 @@ export default function BinsPage() {
               <div className="grid gap-4 py-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="zone">Zone *</Label>
+                    <Label htmlFor="zone">Zone</Label>
                     <Select
-                      value={newBin.zone_id}
-                      onValueChange={(value) => setNewBin({ ...newBin, zone_id: value })}
+                      value={newBin.zone_id || 'none'}
+                      onValueChange={(value) => setNewBin({ ...newBin, zone_id: value === 'none' ? '' : value })}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select zone" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="z1">Zone A - Storage</SelectItem>
-                        <SelectItem value="z2">Zone B - Picking</SelectItem>
-                        <SelectItem value="z3">Zone C - Bulk</SelectItem>
+                        <SelectItem value="none">No Zone</SelectItem>
+                        {zones.map((zone) => (
+                          <SelectItem key={zone.id} value={zone.id}>
+                            {zone.zone_name} ({zone.zone_code})
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="code">Bin Code *</Label>
+                    <Label htmlFor="bin_code">Bin Code *</Label>
                     <Input
-                      id="code"
+                      id="bin_code"
                       placeholder="A-01-01-01"
-                      value={newBin.code}
-                      onChange={(e) => setNewBin({ ...newBin, code: e.target.value.toUpperCase() })}
+                      value={newBin.bin_code}
+                      onChange={(e) => setNewBin({ ...newBin, bin_code: e.target.value.toUpperCase() })}
                     />
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="row">Row</Label>
+                    <Label htmlFor="aisle">Aisle</Label>
                     <Input
-                      id="row"
-                      placeholder="01"
-                      value={newBin.row}
-                      onChange={(e) => setNewBin({ ...newBin, row: e.target.value })}
+                      id="aisle"
+                      placeholder="A"
+                      value={newBin.aisle}
+                      onChange={(e) => setNewBin({ ...newBin, aisle: e.target.value.toUpperCase() })}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="column">Column</Label>
+                    <Label htmlFor="rack">Rack</Label>
                     <Input
-                      id="column"
+                      id="rack"
                       placeholder="01"
-                      value={newBin.column}
-                      onChange={(e) => setNewBin({ ...newBin, column: e.target.value })}
+                      value={newBin.rack}
+                      onChange={(e) => setNewBin({ ...newBin, rack: e.target.value })}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="level">Level</Label>
+                    <Label htmlFor="shelf">Shelf</Label>
                     <Input
-                      id="level"
+                      id="shelf"
                       placeholder="01"
-                      value={newBin.level}
-                      onChange={(e) => setNewBin({ ...newBin, level: e.target.value })}
+                      value={newBin.shelf}
+                      onChange={(e) => setNewBin({ ...newBin, shelf: e.target.value })}
                     />
                   </div>
                 </div>
@@ -426,7 +465,7 @@ export default function BinsPage() {
                   <Label htmlFor="type">Bin Type</Label>
                   <Select
                     value={newBin.bin_type}
-                    onValueChange={(value: 'STANDARD' | 'BULK' | 'SMALL_PARTS' | 'HAZARDOUS' | 'COLD_STORAGE') =>
+                    onValueChange={(value: 'SHELF' | 'PALLET' | 'FLOOR' | 'RACK' | 'BULK') =>
                       setNewBin({ ...newBin, bin_type: value })
                     }
                   >
@@ -444,24 +483,24 @@ export default function BinsPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="max_weight">Max Weight (kg)</Label>
+                    <Label htmlFor="max_capacity">Max Capacity (items)</Label>
                     <Input
-                      id="max_weight"
+                      id="max_capacity"
                       type="number"
                       placeholder="100"
-                      value={newBin.max_weight}
-                      onChange={(e) => setNewBin({ ...newBin, max_weight: e.target.value })}
+                      value={newBin.max_capacity}
+                      onChange={(e) => setNewBin({ ...newBin, max_capacity: e.target.value })}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="max_volume">Max Volume (m³)</Label>
+                    <Label htmlFor="max_weight_kg">Max Weight (kg)</Label>
                     <Input
-                      id="max_volume"
+                      id="max_weight_kg"
                       type="number"
-                      placeholder="1.0"
+                      placeholder="100"
                       step="0.1"
-                      value={newBin.max_volume}
-                      onChange={(e) => setNewBin({ ...newBin, max_volume: e.target.value })}
+                      value={newBin.max_weight_kg}
+                      onChange={(e) => setNewBin({ ...newBin, max_weight_kg: e.target.value })}
                     />
                   </div>
                 </div>
@@ -516,11 +555,11 @@ export default function BinsPage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Locked</CardTitle>
+            <CardTitle className="text-sm font-medium">Reserved</CardTitle>
             <Lock className="h-4 w-4 text-orange-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-600">{stats?.locked_bins || 0}</div>
+            <div className="text-2xl font-bold text-orange-600">{stats?.reserved_bins || 0}</div>
           </CardContent>
         </Card>
       </div>
@@ -533,9 +572,11 @@ export default function BinsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Zones</SelectItem>
-            <SelectItem value="z1">Zone A</SelectItem>
-            <SelectItem value="z2">Zone B</SelectItem>
-            <SelectItem value="z3">Zone C</SelectItem>
+            {zones.map((zone) => (
+              <SelectItem key={zone.id} value={zone.id}>
+                {zone.zone_name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -556,7 +597,7 @@ export default function BinsPage() {
       <DataTable
         columns={columns}
         data={data?.items ?? []}
-        searchKey="code"
+        searchKey="bin_code"
         searchPlaceholder="Search bins..."
         isLoading={isLoading}
         manualPagination

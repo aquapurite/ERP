@@ -206,8 +206,9 @@ class CallListResponse(BaseModel):
     """Paginated call list response."""
     items: List[CallResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 # ==================== Callback Schemas ====================
@@ -301,8 +302,9 @@ class CallbackListResponse(BaseModel):
     """Paginated callback list response."""
     items: List[CallbackResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
     # Summary counts
     scheduled_count: int = 0
     overdue_count: int = 0

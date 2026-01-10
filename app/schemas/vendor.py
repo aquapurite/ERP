@@ -185,8 +185,9 @@ class VendorListResponse(BaseModel):
     """Response for listing vendors."""
     items: List[VendorBrief]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 # ==================== Vendor Ledger Schemas ====================
@@ -238,8 +239,9 @@ class VendorLedgerListResponse(BaseModel):
     total_debit: Decimal
     total_credit: Decimal
     closing_balance: Decimal
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 # ==================== Vendor Contact Schemas ====================

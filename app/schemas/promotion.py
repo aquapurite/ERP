@@ -144,8 +144,9 @@ class PromotionListResponse(BaseModel):
     """Response for listing promotions."""
     items: List[PromotionResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 class PromotionBrief(BaseModel):
@@ -297,8 +298,9 @@ class ChannelCommissionPlanListResponse(BaseModel):
     """Response for listing commission plans."""
     items: List[ChannelCommissionPlanResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 # ==================== Channel Commission Category Rate Schemas ====================
@@ -383,8 +385,9 @@ class ChannelCommissionEarningListResponse(BaseModel):
     total_commission: Decimal
     total_tds: Decimal
     total_net: Decimal
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 # ==================== Loyalty Program Schemas ====================
@@ -525,8 +528,9 @@ class CustomerReferralListResponse(BaseModel):
     """Response for listing referrals."""
     items: List[CustomerReferralResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 # ==================== Report Schemas ====================

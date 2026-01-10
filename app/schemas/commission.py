@@ -82,8 +82,9 @@ class CommissionPlanListResponse(BaseModel):
     """Response for listing plans."""
     items: List[CommissionPlanResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 # ==================== CommissionCategoryRate Schemas ====================
@@ -205,8 +206,9 @@ class CommissionEarnerListResponse(BaseModel):
     """Response for listing earners."""
     items: List[CommissionEarnerResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 class GenerateReferralCodeRequest(BaseModel):
@@ -269,8 +271,9 @@ class CommissionTransactionListResponse(BaseModel):
     total_commission: Decimal
     total_tds: Decimal
     total_net: Decimal
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 class CommissionApproveRequest(BaseModel):
@@ -352,8 +355,9 @@ class CommissionPayoutListResponse(BaseModel):
     """Response for listing payouts."""
     items: List[CommissionPayoutResponse]
     total: int
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 class PayoutApproveRequest(BaseModel):
@@ -422,8 +426,9 @@ class AffiliateReferralListResponse(BaseModel):
     total_conversions: int
     conversion_rate: Decimal
     total_value: Decimal
-    skip: int
-    limit: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 class ReferralConversionRequest(BaseModel):

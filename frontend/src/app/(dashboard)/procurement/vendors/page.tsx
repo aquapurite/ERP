@@ -139,6 +139,12 @@ export default function VendorsPage() {
     gst_number: string;
     pan_number: string;
     tier: 'PLATINUM' | 'GOLD' | 'SILVER' | 'BRONZE';
+    vendor_type: 'MANUFACTURER' | 'DISTRIBUTOR' | 'WHOLESALER' | 'RETAILER' | 'SERVICE_PROVIDER' | 'OTHER';
+    contact_person: string;
+    address_line1: string;
+    city: string;
+    state: string;
+    pincode: string;
   }>({
     name: '',
     code: '',
@@ -147,6 +153,12 @@ export default function VendorsPage() {
     gst_number: '',
     pan_number: '',
     tier: 'SILVER',
+    vendor_type: 'MANUFACTURER',
+    contact_person: '',
+    address_line1: '',
+    city: '',
+    state: '',
+    pincode: '',
   });
 
   const queryClient = useQueryClient();
@@ -170,6 +182,12 @@ export default function VendorsPage() {
         gst_number: '',
         pan_number: '',
         tier: 'SILVER',
+        vendor_type: 'MANUFACTURER',
+        contact_person: '',
+        address_line1: '',
+        city: '',
+        state: '',
+        pincode: '',
       });
     },
     onError: (error: Error) => {
@@ -180,6 +198,14 @@ export default function VendorsPage() {
   const handleCreate = () => {
     if (!newVendor.name.trim()) {
       toast.error('Vendor name is required');
+      return;
+    }
+    if (!newVendor.address_line1.trim()) {
+      toast.error('Address is required');
+      return;
+    }
+    if (!newVendor.city.trim() || !newVendor.state.trim() || !newVendor.pincode.trim()) {
+      toast.error('City, State and Pincode are required');
       return;
     }
     createMutation.mutate(newVendor);
@@ -198,7 +224,7 @@ export default function VendorsPage() {
                 Add Vendor
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Create New Vendor</DialogTitle>
                 <DialogDescription>
@@ -206,6 +232,8 @@ export default function VendorsPage() {
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
+                {/* Basic Information */}
+                <div className="text-sm font-medium text-muted-foreground">Basic Information</div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="name">Name *</Label>
@@ -230,17 +258,75 @@ export default function VendorsPage() {
                     />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="vendor@example.com"
-                    value={newVendor.email}
-                    onChange={(e) =>
-                      setNewVendor({ ...newVendor, email: e.target.value })
-                    }
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="vendor_type">Vendor Type *</Label>
+                    <Select
+                      value={newVendor.vendor_type}
+                      onValueChange={(value: typeof newVendor.vendor_type) =>
+                        setNewVendor({ ...newVendor, vendor_type: value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="MANUFACTURER">Manufacturer</SelectItem>
+                        <SelectItem value="DISTRIBUTOR">Distributor</SelectItem>
+                        <SelectItem value="WHOLESALER">Wholesaler</SelectItem>
+                        <SelectItem value="RETAILER">Retailer</SelectItem>
+                        <SelectItem value="SERVICE_PROVIDER">Service Provider</SelectItem>
+                        <SelectItem value="OTHER">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="tier">Tier</Label>
+                    <Select
+                      value={newVendor.tier}
+                      onValueChange={(value: 'PLATINUM' | 'GOLD' | 'SILVER' | 'BRONZE') =>
+                        setNewVendor({ ...newVendor, tier: value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select tier" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="PLATINUM">Platinum</SelectItem>
+                        <SelectItem value="GOLD">Gold</SelectItem>
+                        <SelectItem value="SILVER">Silver</SelectItem>
+                        <SelectItem value="BRONZE">Bronze</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Contact Information */}
+                <div className="text-sm font-medium text-muted-foreground mt-2">Contact Information</div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="contact_person">Contact Person</Label>
+                    <Input
+                      id="contact_person"
+                      placeholder="Contact person name"
+                      value={newVendor.contact_person}
+                      onChange={(e) =>
+                        setNewVendor({ ...newVendor, contact_person: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="vendor@example.com"
+                      value={newVendor.email}
+                      onChange={(e) =>
+                        setNewVendor({ ...newVendor, email: e.target.value })
+                      }
+                    />
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="phone">Phone</Label>
@@ -253,12 +339,16 @@ export default function VendorsPage() {
                     }
                   />
                 </div>
+
+                {/* Tax Information */}
+                <div className="text-sm font-medium text-muted-foreground mt-2">Tax Information</div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="gst_number">GST Number</Label>
+                    <Label htmlFor="gst_number">GSTIN (15 characters)</Label>
                     <Input
                       id="gst_number"
                       placeholder="22AAAAA0000A1Z5"
+                      maxLength={15}
                       value={newVendor.gst_number}
                       onChange={(e) =>
                         setNewVendor({ ...newVendor, gst_number: e.target.value.toUpperCase() })
@@ -266,10 +356,11 @@ export default function VendorsPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="pan_number">PAN Number</Label>
+                    <Label htmlFor="pan_number">PAN (10 characters)</Label>
                     <Input
                       id="pan_number"
                       placeholder="AAAAA0000A"
+                      maxLength={10}
                       value={newVendor.pan_number}
                       onChange={(e) =>
                         setNewVendor({ ...newVendor, pan_number: e.target.value.toUpperCase() })
@@ -277,24 +368,55 @@ export default function VendorsPage() {
                     />
                   </div>
                 </div>
+
+                {/* Address Information */}
+                <div className="text-sm font-medium text-muted-foreground mt-2">Address Information</div>
                 <div className="space-y-2">
-                  <Label htmlFor="tier">Tier</Label>
-                  <Select
-                    value={newVendor.tier}
-                    onValueChange={(value: 'PLATINUM' | 'GOLD' | 'SILVER' | 'BRONZE') =>
-                      setNewVendor({ ...newVendor, tier: value })
+                  <Label htmlFor="address_line1">Address *</Label>
+                  <Input
+                    id="address_line1"
+                    placeholder="Street address"
+                    value={newVendor.address_line1}
+                    onChange={(e) =>
+                      setNewVendor({ ...newVendor, address_line1: e.target.value })
                     }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select tier" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="PLATINUM">Platinum</SelectItem>
-                      <SelectItem value="GOLD">Gold</SelectItem>
-                      <SelectItem value="SILVER">Silver</SelectItem>
-                      <SelectItem value="BRONZE">Bronze</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="city">City *</Label>
+                    <Input
+                      id="city"
+                      placeholder="City"
+                      value={newVendor.city}
+                      onChange={(e) =>
+                        setNewVendor({ ...newVendor, city: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="state">State *</Label>
+                    <Input
+                      id="state"
+                      placeholder="State"
+                      value={newVendor.state}
+                      onChange={(e) =>
+                        setNewVendor({ ...newVendor, state: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="pincode">Pincode *</Label>
+                    <Input
+                      id="pincode"
+                      placeholder="110001"
+                      maxLength={6}
+                      value={newVendor.pincode}
+                      onChange={(e) =>
+                        setNewVendor({ ...newVendor, pincode: e.target.value })
+                      }
+                    />
+                  </div>
                 </div>
               </div>
               <DialogFooter>

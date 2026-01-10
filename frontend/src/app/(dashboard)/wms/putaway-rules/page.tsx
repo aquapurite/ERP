@@ -37,6 +37,31 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
 import apiClient from '@/lib/api/client';
+import { warehousesApi } from '@/lib/api';
+
+interface Warehouse {
+  id: string;
+  name: string;
+  code?: string;
+}
+
+interface Zone {
+  id: string;
+  zone_code: string;
+  zone_name: string;
+  zone_type: string;
+}
+
+const zonesDropdownApi = {
+  list: async (): Promise<Zone[]> => {
+    try {
+      const { data } = await apiClient.get('/wms/zones/dropdown');
+      return data;
+    } catch {
+      return [];
+    }
+  },
+};
 
 interface PutawayRule {
   id: string;
@@ -286,6 +311,17 @@ export default function PutawayRulesPage() {
     queryFn: putawayRulesApi.getStats,
   });
 
+  // Fetch warehouses and zones for dropdowns
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['warehouses-dropdown'],
+    queryFn: warehousesApi.dropdown,
+  });
+
+  const { data: zones = [] } = useQuery({
+    queryKey: ['zones-dropdown'],
+    queryFn: zonesDropdownApi.list,
+  });
+
   const createMutation = useMutation({
     mutationFn: putawayRulesApi.create,
     onSuccess: () => {
@@ -338,18 +374,21 @@ export default function PutawayRulesPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="warehouse">Warehouse</Label>
+                    <Label htmlFor="warehouse">Warehouse *</Label>
                     <Select
-                      value={newRule.warehouse_id}
-                      onValueChange={(value) => setNewRule({ ...newRule, warehouse_id: value })}
+                      value={newRule.warehouse_id || 'select'}
+                      onValueChange={(value) => setNewRule({ ...newRule, warehouse_id: value === 'select' ? '' : value })}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select warehouse" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="wh1">Mumbai Main</SelectItem>
-                        <SelectItem value="wh2">Delhi Hub</SelectItem>
-                        <SelectItem value="wh3">Bangalore DC</SelectItem>
+                        <SelectItem value="select" disabled>Select warehouse</SelectItem>
+                        {warehouses.map((wh: Warehouse) => (
+                          <SelectItem key={wh.id} value={wh.id}>
+                            {wh.name} {wh.code && `(${wh.code})`}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -429,31 +468,35 @@ export default function PutawayRulesPage() {
                   </CardHeader>
                   <CardContent className="grid grid-cols-2 gap-4">
                     <Select
-                      value={newRule.target_zone_id}
-                      onValueChange={(value) => setNewRule({ ...newRule, target_zone_id: value })}
+                      value={newRule.target_zone_id || 'select'}
+                      onValueChange={(value) => setNewRule({ ...newRule, target_zone_id: value === 'select' ? '' : value })}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Target Zone" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="z1">Zone A - Storage</SelectItem>
-                        <SelectItem value="z2">Zone B - Picking</SelectItem>
-                        <SelectItem value="z3">Zone C - Bulk</SelectItem>
-                        <SelectItem value="z4">Zone D - Cold Storage</SelectItem>
+                        <SelectItem value="select" disabled>Select zone</SelectItem>
+                        {zones.map((zone: Zone) => (
+                          <SelectItem key={zone.id} value={zone.id}>
+                            {zone.zone_name} ({zone.zone_code})
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <Select
-                      value={newRule.target_bin_type}
-                      onValueChange={(value) => setNewRule({ ...newRule, target_bin_type: value })}
+                      value={newRule.target_bin_type || 'any'}
+                      onValueChange={(value) => setNewRule({ ...newRule, target_bin_type: value === 'any' ? '' : value })}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Bin Type (optional)" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="STANDARD">Standard</SelectItem>
+                        <SelectItem value="any">Any Bin Type</SelectItem>
+                        <SelectItem value="SHELF">Shelf</SelectItem>
+                        <SelectItem value="PALLET">Pallet</SelectItem>
+                        <SelectItem value="FLOOR">Floor</SelectItem>
+                        <SelectItem value="RACK">Rack</SelectItem>
                         <SelectItem value="BULK">Bulk</SelectItem>
-                        <SelectItem value="SMALL_PARTS">Small Parts</SelectItem>
-                        <SelectItem value="COLD_STORAGE">Cold Storage</SelectItem>
                       </SelectContent>
                     </Select>
                   </CardContent>

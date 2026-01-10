@@ -25,6 +25,7 @@ from app.schemas.wms import (
     BinResponse,
     BinBrief,
     BinListResponse,
+    BinStatsResponse,
     BinEnquiryRequest,
     BinEnquiryResponse,
     BinContentItem,
@@ -32,6 +33,7 @@ from app.schemas.wms import (
     PutAwayRuleUpdate,
     PutAwayRuleResponse,
     PutAwayRuleListResponse,
+    PutAwayRuleStatsResponse,
     PutAwaySuggestRequest,
     PutAwaySuggestResponse,
     SuggestedBin,
@@ -261,6 +263,49 @@ async def deactivate_zone(
 
 
 # ==================== BIN CRUD ====================
+
+@router.get(
+    "/bins/stats",
+    response_model=BinStatsResponse,
+    dependencies=[Depends(require_permissions("wms:view"))]
+)
+async def get_bin_stats(db: DB):
+    """Get warehouse bin statistics."""
+    # Total bins
+    total_result = await db.execute(
+        select(func.count(WarehouseBin.id)).where(WarehouseBin.is_active == True)
+    )
+    total_bins = total_result.scalar() or 0
+
+    # Reserved bins
+    reserved_result = await db.execute(
+        select(func.count(WarehouseBin.id)).where(
+            and_(
+                WarehouseBin.is_active == True,
+                WarehouseBin.is_reserved == True
+            )
+        )
+    )
+    reserved_bins = reserved_result.scalar() or 0
+
+    # Occupied bins (bins with stock items)
+    occupied_result = await db.execute(
+        select(func.count(func.distinct(StockItem.bin_id))).where(
+            StockItem.bin_id.isnot(None)
+        )
+    )
+    occupied_bins = occupied_result.scalar() or 0
+
+    # Available = Total - Reserved - Occupied (but not double counting)
+    available_bins = max(0, total_bins - reserved_bins - occupied_bins + min(reserved_bins, occupied_bins))
+
+    return BinStatsResponse(
+        total_bins=total_bins,
+        available_bins=available_bins,
+        occupied_bins=occupied_bins,
+        reserved_bins=reserved_bins,
+    )
+
 
 @router.get(
     "/bins",
@@ -652,6 +697,35 @@ async def bin_enquiry(
 
 
 # ==================== PUTAWAY RULES ====================
+
+@router.get(
+    "/putaway-rules/stats",
+    response_model=PutAwayRuleStatsResponse,
+    dependencies=[Depends(require_permissions("wms:view"))]
+)
+async def get_putaway_rule_stats(db: DB):
+    """Get putaway rule statistics."""
+    # Total rules
+    total_result = await db.execute(
+        select(func.count(PutAwayRule.id))
+    )
+    total_rules = total_result.scalar() or 0
+
+    # Active rules
+    active_result = await db.execute(
+        select(func.count(PutAwayRule.id)).where(PutAwayRule.is_active == True)
+    )
+    active_rules = active_result.scalar() or 0
+
+    # For now, return placeholder values for processed items
+    # These would need proper tracking tables to implement fully
+    return PutAwayRuleStatsResponse(
+        total_rules=total_rules,
+        active_rules=active_rules,
+        items_processed_today=0,
+        unmatched_items=0,
+    )
+
 
 @router.get(
     "/putaway-rules",
