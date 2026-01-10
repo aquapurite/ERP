@@ -55,22 +55,24 @@ import { useAuth } from '@/providers/auth-provider';
 
 interface PurchaseRequisition {
   id: string;
-  pr_number: string;
-  requester_id: string;
-  requester_name: string;
-  department: string;
-  warehouse_id: string;
-  warehouse_name: string;
+  requisition_number: string;  // Backend field name
+  requested_by: string;  // UUID
+  requested_by_name?: string;  // Computed name from backend
+  requesting_department?: string;  // Backend field name
+  delivery_warehouse_id: string;
+  delivery_warehouse_name?: string;  // Computed name from backend
   status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CONVERTED' | 'CANCELLED';
-  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
-  total_items: number;
-  total_amount: number;
+  priority: number;  // Backend uses 1-10 scale
+  estimated_total: number;  // Backend field name
   required_by_date?: string;
-  justification?: string;
+  reason?: string;
+  notes?: string;
   approved_by?: string;
   approved_at?: string;
-  po_number?: string;
+  converted_to_po_id?: string;
+  items?: any[];
   created_at: string;
+  updated_at?: string;
 }
 
 interface PRStats {
@@ -430,29 +432,28 @@ export default function PurchaseRequisitionsPage() {
         // Use default company info
       }
 
-      // Get warehouse name from warehouses data if not in PR details
-      const warehouseId = prDetails.warehouse_id || prDetails.delivery_warehouse_id;
-      let warehouseName = prDetails.warehouse_name || prDetails.delivery_warehouse_name;
-      if (!warehouseName && warehouseId && warehouses.length > 0) {
-        const wh = warehouses.find((w: Warehouse) => w.id === warehouseId);
+      // Get warehouse name - now returned from API, fallback to lookup
+      let warehouseName = prDetails.delivery_warehouse_name;
+      if (!warehouseName && prDetails.delivery_warehouse_id && warehouses.length > 0) {
+        const wh = warehouses.find((w: Warehouse) => w.id === prDetails.delivery_warehouse_id);
         warehouseName = wh?.name || '';
       }
 
-      // Get requester name - use current user if not available
-      const requesterName = prDetails.requester_name || prDetails.created_by_name || user?.full_name || user?.email || 'System User';
+      // Get requester name - now returned from API
+      const requesterName = prDetails.requested_by_name || user?.full_name || user?.email || 'System User';
 
-      // Get department - use user's department or company default
-      const department = prDetails.department || prDetails.requesting_department || user?.department || 'Procurement';
+      // Get department
+      const department = prDetails.requesting_department || user?.department || 'Procurement';
 
-      // Get PR number - handle both field names
-      const prNumber = prDetails.pr_number || prDetails.requisition_number || 'N/A';
+      // Get PR number
+      const prNumber = prDetails.requisition_number || 'N/A';
 
       // Generate print-friendly HTML
       const htmlContent = `
         <!DOCTYPE html>
         <html>
         <head>
-          <title>Purchase Requisition - ${prDetails.pr_number || 'PR'}</title>
+          <title>Purchase Requisition - ${prNumber}</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
             .company-header { text-align: center; margin-bottom: 20px; }
@@ -573,7 +574,7 @@ export default function PurchaseRequisitionsPage() {
             <tfoot>
               <tr>
                 <td colspan="5" class="text-right"><strong>Total Amount:</strong></td>
-                <td class="text-right"><strong>₹${(prDetails.total_amount || prDetails.estimated_total || 0).toLocaleString()}</strong></td>
+                <td class="text-right"><strong>₹${(prDetails.estimated_total || 0).toLocaleString()}</strong></td>
               </tr>
             </tfoot>
           </table>
@@ -720,7 +721,7 @@ export default function PurchaseRequisitionsPage() {
 
   const columns: ColumnDef<PurchaseRequisition>[] = [
     {
-      accessorKey: 'pr_number',
+      accessorKey: 'requisition_number',
       header: 'PR Number',
       cell: ({ row }) => (
         <div className="flex items-center gap-3">
@@ -728,18 +729,18 @@ export default function PurchaseRequisitionsPage() {
             <FileText className="h-5 w-5 text-muted-foreground" />
           </div>
           <div>
-            <div className="font-mono font-medium">{row.original.pr_number}</div>
-            <div className="text-sm text-muted-foreground">{row.original.department}</div>
+            <div className="font-mono font-medium">{row.original.requisition_number}</div>
+            <div className="text-sm text-muted-foreground">{row.original.requesting_department || '-'}</div>
           </div>
         </div>
       ),
     },
     {
-      accessorKey: 'requester_name',
+      accessorKey: 'requested_by_name',
       header: 'Requester',
       cell: ({ row }) => (
         <div>
-          <div className="font-medium">{row.original.requester_name}</div>
+          <div className="font-medium">{row.original.requested_by_name || 'Unknown'}</div>
           <div className="text-sm text-muted-foreground">
             {formatDate(row.original.created_at)}
           </div>
@@ -747,28 +748,32 @@ export default function PurchaseRequisitionsPage() {
       ),
     },
     {
-      accessorKey: 'warehouse_name',
+      accessorKey: 'delivery_warehouse_name',
       header: 'Warehouse',
       cell: ({ row }) => (
-        <span className="text-sm">{row.original.warehouse_name}</span>
+        <span className="text-sm">{row.original.delivery_warehouse_name || '-'}</span>
       ),
     },
     {
       accessorKey: 'priority',
       header: 'Priority',
-      cell: ({ row }) => (
-        <span className={`px-2 py-1 rounded-full text-xs font-medium ${priorityColors[row.original.priority]}`}>
-          {row.original.priority}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const priorityLabel = row.original.priority <= 3 ? 'HIGH' : row.original.priority <= 6 ? 'NORMAL' : 'LOW';
+        const priorityColor = row.original.priority <= 3 ? 'bg-red-100 text-red-700' : row.original.priority <= 6 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700';
+        return (
+          <span className={`px-2 py-1 rounded-full text-xs font-medium ${priorityColor}`}>
+            {priorityLabel}
+          </span>
+        );
+      },
     },
     {
       accessorKey: 'items_amount',
       header: 'Items / Amount',
       cell: ({ row }) => (
         <div>
-          <div className="font-medium">{row.original.total_items} items</div>
-          <div className="text-sm text-muted-foreground">{formatCurrency(row.original.total_amount)}</div>
+          <div className="font-medium">{row.original.items?.length || 0} items</div>
+          <div className="text-sm text-muted-foreground">{formatCurrency(row.original.estimated_total)}</div>
         </div>
       ),
     },
@@ -792,9 +797,9 @@ export default function PurchaseRequisitionsPage() {
           <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[row.original.status]}`}>
             {row.original.status.replace('_', ' ')}
           </span>
-          {row.original.po_number && (
+          {row.original.converted_to_po_id && (
             <div className="text-xs text-muted-foreground mt-1">
-              PO: {row.original.po_number}
+              Converted to PO
             </div>
           )}
         </div>
@@ -1386,7 +1391,7 @@ export default function PurchaseRequisitionsPage() {
       <DataTable
         columns={columns}
         data={data?.items ?? []}
-        searchKey="pr_number"
+        searchKey="requisition_number"
         searchPlaceholder="Search PR number..."
         isLoading={isLoading}
         manualPagination
@@ -1409,7 +1414,7 @@ export default function PurchaseRequisitionsPage() {
           <DialogHeader>
             <DialogTitle>Convert to Purchase Order</DialogTitle>
             <DialogDescription>
-              Select a vendor to create a Purchase Order from PR {selectedPR?.pr_number}
+              Select a vendor to create a Purchase Order from PR {selectedPR?.requisition_number}
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
@@ -1436,11 +1441,11 @@ export default function PurchaseRequisitionsPage() {
               <div className="text-sm space-y-1">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Items:</span>
-                  <span className="font-medium">{selectedPR?.total_items || 0}</span>
+                  <span className="font-medium">{selectedPR?.items?.length || 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Amount:</span>
-                  <span className="font-medium">{formatCurrency(selectedPR?.total_amount || 0)}</span>
+                  <span className="font-medium">{formatCurrency(selectedPR?.estimated_total || 0)}</span>
                 </div>
               </div>
             </div>
@@ -1470,7 +1475,7 @@ export default function PurchaseRequisitionsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Purchase Requisition</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete PR <strong>{selectedPR?.pr_number}</strong>?
+              Are you sure you want to delete PR <strong>{selectedPR?.requisition_number}</strong>?
               This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1502,7 +1507,7 @@ export default function PurchaseRequisitionsPage() {
           <DialogHeader>
             <DialogTitle>Purchase Requisition Details</DialogTitle>
             <DialogDescription>
-              {selectedPR?.pr_number}
+              {selectedPR?.requisition_number}
             </DialogDescription>
           </DialogHeader>
           {viewPRDetails && (
@@ -1519,22 +1524,25 @@ export default function PurchaseRequisitionsPage() {
                 <div>
                   <Label className="text-muted-foreground text-xs">Priority</Label>
                   <div className="mt-1">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${priorityColors[viewPRDetails.priority] || ''}`}>
-                      {viewPRDetails.priority}
-                    </span>
+                    {(() => {
+                      const p = viewPRDetails.priority;
+                      const label = p <= 3 ? 'HIGH' : p <= 6 ? 'NORMAL' : 'LOW';
+                      const color = p <= 3 ? 'bg-red-100 text-red-700' : p <= 6 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700';
+                      return <span className={`px-2 py-1 rounded-full text-xs font-medium ${color}`}>{label}</span>;
+                    })()}
                   </div>
                 </div>
                 <div>
                   <Label className="text-muted-foreground text-xs">Requester</Label>
-                  <p className="font-medium">{viewPRDetails.requester_name || 'N/A'}</p>
+                  <p className="font-medium">{viewPRDetails.requested_by_name || 'N/A'}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground text-xs">Department</Label>
-                  <p className="font-medium">{viewPRDetails.department || viewPRDetails.requesting_department || 'N/A'}</p>
+                  <p className="font-medium">{viewPRDetails.requesting_department || 'N/A'}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground text-xs">Warehouse</Label>
-                  <p className="font-medium">{viewPRDetails.warehouse_name || viewPRDetails.delivery_warehouse_name || 'N/A'}</p>
+                  <p className="font-medium">{viewPRDetails.delivery_warehouse_name || 'N/A'}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground text-xs">Required By</Label>
@@ -1546,14 +1554,14 @@ export default function PurchaseRequisitionsPage() {
                 </div>
                 <div>
                   <Label className="text-muted-foreground text-xs">Total Amount</Label>
-                  <p className="font-medium text-lg">{formatCurrency(viewPRDetails.total_amount || viewPRDetails.estimated_total || 0)}</p>
+                  <p className="font-medium text-lg">{formatCurrency(viewPRDetails.estimated_total || 0)}</p>
                 </div>
               </div>
 
-              {viewPRDetails.justification || viewPRDetails.reason ? (
+              {viewPRDetails.reason ? (
                 <div>
                   <Label className="text-muted-foreground text-xs">Justification</Label>
-                  <p className="mt-1 text-sm">{viewPRDetails.justification || viewPRDetails.reason}</p>
+                  <p className="mt-1 text-sm">{viewPRDetails.reason}</p>
                 </div>
               ) : null}
 
@@ -1604,10 +1612,10 @@ export default function PurchaseRequisitionsPage() {
                 </div>
               )}
 
-              {viewPRDetails.po_number && (
+              {viewPRDetails.converted_to_po_id && (
                 <div className="p-3 bg-purple-50 rounded-lg">
                   <Label className="text-muted-foreground text-xs">Converted to PO</Label>
-                  <p className="font-medium text-purple-700">{viewPRDetails.po_number}</p>
+                  <p className="font-medium text-purple-700">Yes</p>
                 </div>
               )}
             </div>

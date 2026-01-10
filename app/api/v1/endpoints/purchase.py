@@ -287,7 +287,11 @@ async def list_purchase_requisitions(
     current_user: User = Depends(get_current_user),
 ):
     """List purchase requisitions."""
-    query = select(PurchaseRequisition).options(selectinload(PurchaseRequisition.items))
+    query = select(PurchaseRequisition).options(
+        selectinload(PurchaseRequisition.items),
+        selectinload(PurchaseRequisition.requested_by_user),
+        selectinload(PurchaseRequisition.delivery_warehouse),
+    )
     count_query = select(func.count(PurchaseRequisition.id))
 
     filters = []
@@ -311,8 +315,36 @@ async def list_purchase_requisitions(
     result = await db.execute(query)
     prs = result.scalars().all()
 
+    # Build response with computed fields
+    pr_responses = []
+    for pr in prs:
+        pr_dict = {
+            "id": pr.id,
+            "requisition_number": pr.requisition_number,
+            "status": pr.status,
+            "request_date": pr.request_date,
+            "requested_by": pr.requested_by,
+            "requested_by_name": pr.requested_by_user.full_name if pr.requested_by_user else None,
+            "requesting_department": pr.requesting_department,
+            "required_by_date": pr.required_by_date,
+            "delivery_warehouse_id": pr.delivery_warehouse_id,
+            "delivery_warehouse_name": pr.delivery_warehouse.name if pr.delivery_warehouse else None,
+            "priority": pr.priority,
+            "reason": pr.reason,
+            "notes": pr.notes,
+            "estimated_total": pr.estimated_total,
+            "approved_by": pr.approved_by,
+            "approved_at": pr.approved_at,
+            "rejection_reason": pr.rejection_reason,
+            "converted_to_po_id": pr.converted_to_po_id,
+            "items": pr.items,
+            "created_at": pr.created_at,
+            "updated_at": pr.updated_at,
+        }
+        pr_responses.append(PurchaseRequisitionResponse.model_validate(pr_dict))
+
     return PRListResponse(
-        items=[PurchaseRequisitionResponse.model_validate(pr) for pr in prs],
+        items=pr_responses,
         total=total,
         skip=skip,
         limit=limit
@@ -328,7 +360,11 @@ async def get_purchase_requisition(
     """Get purchase requisition by ID."""
     result = await db.execute(
         select(PurchaseRequisition)
-        .options(selectinload(PurchaseRequisition.items))
+        .options(
+            selectinload(PurchaseRequisition.items),
+            selectinload(PurchaseRequisition.requested_by_user),
+            selectinload(PurchaseRequisition.delivery_warehouse),
+        )
         .where(PurchaseRequisition.id == pr_id)
     )
     pr = result.scalar_one_or_none()
@@ -336,7 +372,32 @@ async def get_purchase_requisition(
     if not pr:
         raise HTTPException(status_code=404, detail="Purchase Requisition not found")
 
-    return pr
+    # Build response with computed fields
+    pr_dict = {
+        "id": pr.id,
+        "requisition_number": pr.requisition_number,
+        "status": pr.status,
+        "request_date": pr.request_date,
+        "requested_by": pr.requested_by,
+        "requested_by_name": pr.requested_by_user.full_name if pr.requested_by_user else None,
+        "requesting_department": pr.requesting_department,
+        "required_by_date": pr.required_by_date,
+        "delivery_warehouse_id": pr.delivery_warehouse_id,
+        "delivery_warehouse_name": pr.delivery_warehouse.name if pr.delivery_warehouse else None,
+        "priority": pr.priority,
+        "reason": pr.reason,
+        "notes": pr.notes,
+        "estimated_total": pr.estimated_total,
+        "approved_by": pr.approved_by,
+        "approved_at": pr.approved_at,
+        "rejection_reason": pr.rejection_reason,
+        "converted_to_po_id": pr.converted_to_po_id,
+        "items": pr.items,
+        "created_at": pr.created_at,
+        "updated_at": pr.updated_at,
+    }
+
+    return PurchaseRequisitionResponse.model_validate(pr_dict)
 
 
 @router.post("/requisitions/{pr_id}/approve", response_model=PurchaseRequisitionResponse)
@@ -455,6 +516,42 @@ async def cancel_purchase_requisition(
     await db.refresh(pr)
 
     return pr
+
+
+@router.delete("/requisitions/{pr_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_purchase_requisition(
+    pr_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a purchase requisition. Only DRAFT and CANCELLED PRs can be deleted."""
+    result = await db.execute(
+        select(PurchaseRequisition)
+        .options(selectinload(PurchaseRequisition.items))
+        .where(PurchaseRequisition.id == pr_id)
+    )
+    pr = result.scalar_one_or_none()
+
+    if not pr:
+        raise HTTPException(status_code=404, detail="Purchase Requisition not found")
+
+    # Only allow deletion of DRAFT or CANCELLED PRs
+    if pr.status not in [RequisitionStatus.DRAFT, RequisitionStatus.CANCELLED]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete PR in {pr.status} status. Only DRAFT or CANCELLED PRs can be deleted."
+        )
+
+    # Delete items first (due to foreign key constraint)
+    await db.execute(
+        delete(PurchaseRequisitionItem).where(PurchaseRequisitionItem.requisition_id == pr_id)
+    )
+
+    # Delete the PR
+    await db.delete(pr)
+    await db.commit()
+
+    return None
 
 
 @router.post("/requisitions/{pr_id}/convert-to-po", response_model=PurchaseOrderResponse)

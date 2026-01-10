@@ -77,6 +77,8 @@ class PurchaseRequisitionResponse(PurchaseRequisitionBase):
     status: RequisitionStatus
     request_date: date
     requested_by: UUID
+    requested_by_name: Optional[str] = None  # Computed from relationship
+    delivery_warehouse_name: Optional[str] = None  # Computed from relationship
     estimated_total: Decimal
     approved_by: Optional[UUID] = None
     approved_at: Optional[datetime] = None
