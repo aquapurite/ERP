@@ -463,6 +463,7 @@ async def list_pending_approvals(
         "JOURNAL_ENTRY": "JOURNAL_ENTRY",
         "CREDIT_NOTE": "CREDIT_NOTE",
         "DEBIT_NOTE": "CREDIT_NOTE",
+        "SALES_CHANNEL": "VENDOR",  # Map sales channel to vendor for display
     }
 
     # Map priority numbers to labels
@@ -1041,6 +1042,7 @@ async def get_approval_history(
             "JOURNAL_ENTRY": "JOURNAL_ENTRY",
             "CREDIT_NOTE": "CREDIT_NOTE",
             "DEBIT_NOTE": "CREDIT_NOTE",
+            "SALES_CHANNEL": "VENDOR",  # Map sales channel to vendor for display
         }
         mapped_type = entity_type_map.get(a.entity_type.value, a.entity_type.value)
 

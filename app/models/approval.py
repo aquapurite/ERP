@@ -43,6 +43,7 @@ class ApprovalEntityType(str, Enum):
     JOURNAL_ENTRY = "JOURNAL_ENTRY"
     CREDIT_NOTE = "CREDIT_NOTE"
     DEBIT_NOTE = "DEBIT_NOTE"
+    SALES_CHANNEL = "SALES_CHANNEL"
 
 
 class ApprovalLevel(str, Enum):

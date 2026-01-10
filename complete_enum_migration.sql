@@ -415,6 +415,7 @@ ALTER TYPE approvalentitytype ADD VALUE IF NOT EXISTS 'FRANCHISEE_CONTRACT';
 ALTER TYPE approvalentitytype ADD VALUE IF NOT EXISTS 'JOURNAL_ENTRY';
 ALTER TYPE approvalentitytype ADD VALUE IF NOT EXISTS 'CREDIT_NOTE';
 ALTER TYPE approvalentitytype ADD VALUE IF NOT EXISTS 'DEBIT_NOTE';
+ALTER TYPE approvalentitytype ADD VALUE IF NOT EXISTS 'SALES_CHANNEL';
 
 -- ============================================================================
 -- END OF MIGRATION SCRIPT
