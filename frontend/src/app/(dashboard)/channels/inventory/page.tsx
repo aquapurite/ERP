@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal, RefreshCw, Package, AlertTriangle, CheckCircle, XCircle, Loader2 } from 'lucide-react';
@@ -69,9 +69,10 @@ const channelInventoryApi = {
       return { items: [], total: 0, pages: 0 };
     }
   },
-  getStats: async (): Promise<InventoryStats> => {
+  getStats: async (channelId?: string): Promise<InventoryStats> => {
     try {
-      const { data } = await apiClient.get('/channels/inventory/stats');
+      const params = channelId ? { channel_id: channelId } : {};
+      const { data } = await apiClient.get('/channels/inventory/stats', { params });
       return data;
     } catch {
       return { total_products: 0, synced_count: 0, out_of_sync_count: 0, failed_count: 0 };
@@ -82,11 +83,14 @@ const channelInventoryApi = {
     return data;
   },
   syncAll: async (channelId?: string) => {
-    const { data } = await apiClient.post('/channels/inventory/sync-all', { channel_id: channelId });
+    const params = channelId ? { channel_id: channelId } : {};
+    const { data } = await apiClient.post('/channels/inventory/sync-all', null, { params });
     return data;
   },
   updateBuffer: async (id: string, bufferStock: number) => {
-    const { data } = await apiClient.put(`/channels/inventory/${id}/buffer`, { buffer_stock: bufferStock });
+    const { data } = await apiClient.put(`/channels/inventory/${id}/buffer`, null, {
+      params: { buffer_stock: bufferStock }
+    });
     return data;
   },
 };
@@ -281,8 +285,21 @@ export default function ChannelInventoryPage() {
   });
 
   const { data: stats } = useQuery({
-    queryKey: ['channel-inventory-stats'],
-    queryFn: channelInventoryApi.getStats,
+    queryKey: ['channel-inventory-stats', channelFilter],
+    queryFn: () => channelInventoryApi.getStats(channelFilter !== 'all' ? channelFilter : undefined),
+  });
+
+  // Fetch channels for dropdown
+  const { data: channelsData } = useQuery({
+    queryKey: ['channels-dropdown'],
+    queryFn: async () => {
+      try {
+        const { data } = await apiClient.get('/channels/dropdown');
+        return data.items || data || [];
+      } catch {
+        return [];
+      }
+    },
   });
 
   const syncAllMutation = useMutation({
@@ -361,9 +378,11 @@ export default function ChannelInventoryPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Channels</SelectItem>
-            <SelectItem value="d2c">D2C</SelectItem>
-            <SelectItem value="amazon">Amazon</SelectItem>
-            <SelectItem value="flipkart">Flipkart</SelectItem>
+            {(channelsData || []).map((channel: { id: string; name: string; channel_code?: string }) => (
+              <SelectItem key={channel.id} value={channel.id}>
+                {channel.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>

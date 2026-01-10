@@ -279,6 +279,271 @@ async def get_channel_inventory_status(
     }
 
 
+# ==================== Global Channel Inventory (All Channels) ====================
+
+@router.get("/inventory")
+async def list_all_channel_inventory(
+    db: DB,
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=100),
+    channel_id: Optional[UUID] = None,
+    sync_status: Optional[str] = None,
+    product_id: Optional[UUID] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """List channel inventory across all channels with optional filters."""
+    # Base query with joins
+    query = (
+        select(ChannelInventory)
+        .options(
+            selectinload(ChannelInventory.channel),
+            selectinload(ChannelInventory.product),
+            selectinload(ChannelInventory.warehouse),
+        )
+    )
+
+    # Apply filters
+    conditions = []
+    if channel_id:
+        conditions.append(ChannelInventory.channel_id == channel_id)
+    if product_id:
+        conditions.append(ChannelInventory.product_id == product_id)
+    if sync_status:
+        # Map sync status to conditions
+        if sync_status == "SYNCED":
+            conditions.append(ChannelInventory.last_synced_at.isnot(None))
+            conditions.append(ChannelInventory.is_active == True)
+        elif sync_status == "PENDING":
+            conditions.append(ChannelInventory.last_synced_at.is_(None))
+        elif sync_status == "OUT_OF_SYNC":
+            # Items where marketplace_quantity differs from available
+            conditions.append(ChannelInventory.marketplace_quantity != ChannelInventory.available_quantity)
+        elif sync_status == "FAILED":
+            conditions.append(ChannelInventory.is_active == False)
+
+    if conditions:
+        query = query.where(and_(*conditions))
+
+    # Count total
+    count_query = select(func.count(ChannelInventory.id))
+    if conditions:
+        count_query = count_query.where(and_(*conditions))
+    count_result = await db.execute(count_query)
+    total = count_result.scalar() or 0
+
+    # Apply pagination
+    offset = (page - 1) * size
+    query = query.offset(offset).limit(size).order_by(ChannelInventory.updated_at.desc())
+
+    result = await db.execute(query)
+    items = result.scalars().all()
+
+    # Transform to response format
+    inventory_items = []
+    for inv in items:
+        # Determine sync status
+        if not inv.is_active:
+            status = "FAILED"
+        elif inv.last_synced_at is None:
+            status = "PENDING"
+        elif inv.marketplace_quantity != inv.available_quantity:
+            status = "OUT_OF_SYNC"
+        else:
+            status = "SYNCED"
+
+        inventory_items.append({
+            "id": str(inv.id),
+            "channel_id": str(inv.channel_id),
+            "channel_name": inv.channel.name if inv.channel else "Unknown",
+            "product_id": str(inv.product_id),
+            "product_name": inv.product.name if inv.product else "Unknown",
+            "product_sku": inv.product.sku if inv.product else "",
+            "warehouse_id": str(inv.warehouse_id) if inv.warehouse_id else None,
+            "warehouse_name": inv.warehouse.name if inv.warehouse else None,
+            "allocated_quantity": inv.allocated_quantity or 0,
+            "warehouse_quantity": inv.allocated_quantity or 0,  # Alias for frontend
+            "channel_quantity": inv.marketplace_quantity or 0,
+            "reserved_quantity": inv.reserved_quantity or 0,
+            "available_quantity": inv.available_quantity or 0,
+            "buffer_stock": inv.buffer_quantity or 0,
+            "sync_status": status,
+            "last_synced_at": inv.last_synced_at.isoformat() if inv.last_synced_at else None,
+            "is_active": inv.is_active,
+        })
+
+    return {
+        "items": inventory_items,
+        "total": total,
+        "page": page,
+        "size": size,
+        "pages": ceil(total / size) if size > 0 else 0,
+    }
+
+
+@router.get("/inventory/stats")
+async def get_channel_inventory_stats(
+    db: DB,
+    channel_id: Optional[UUID] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Get channel inventory statistics."""
+    # Base condition
+    conditions = []
+    if channel_id:
+        conditions.append(ChannelInventory.channel_id == channel_id)
+
+    # Total products mapped
+    total_query = select(func.count(ChannelInventory.id))
+    if conditions:
+        total_query = total_query.where(and_(*conditions))
+    total_result = await db.execute(total_query)
+    total_products = total_result.scalar() or 0
+
+    # Synced count (has last_synced_at and is_active)
+    synced_query = select(func.count(ChannelInventory.id)).where(
+        and_(
+            ChannelInventory.last_synced_at.isnot(None),
+            ChannelInventory.is_active == True,
+            ChannelInventory.marketplace_quantity == ChannelInventory.available_quantity,
+            *conditions
+        )
+    )
+    synced_result = await db.execute(synced_query)
+    synced_count = synced_result.scalar() or 0
+
+    # Out of sync count
+    out_of_sync_query = select(func.count(ChannelInventory.id)).where(
+        and_(
+            ChannelInventory.last_synced_at.isnot(None),
+            ChannelInventory.is_active == True,
+            ChannelInventory.marketplace_quantity != ChannelInventory.available_quantity,
+            *conditions
+        )
+    )
+    out_of_sync_result = await db.execute(out_of_sync_query)
+    out_of_sync_count = out_of_sync_result.scalar() or 0
+
+    # Failed count (inactive)
+    failed_query = select(func.count(ChannelInventory.id)).where(
+        and_(
+            ChannelInventory.is_active == False,
+            *conditions
+        )
+    )
+    failed_result = await db.execute(failed_query)
+    failed_count = failed_result.scalar() or 0
+
+    return {
+        "total_products": total_products,
+        "synced_count": synced_count,
+        "out_of_sync_count": out_of_sync_count,
+        "failed_count": failed_count,
+    }
+
+
+@router.post("/inventory/{inventory_id}/sync")
+async def sync_single_inventory(
+    inventory_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Sync a single inventory item to its channel."""
+    result = await db.execute(
+        select(ChannelInventory)
+        .options(selectinload(ChannelInventory.channel))
+        .where(ChannelInventory.id == inventory_id)
+    )
+    inventory = result.scalar_one_or_none()
+
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Channel inventory not found")
+
+    # In a real implementation, this would call the marketplace API
+    # For now, we simulate sync by updating marketplace_quantity to match available
+    inventory.marketplace_quantity = inventory.available_quantity
+    inventory.last_synced_at = datetime.utcnow()
+    inventory.is_active = True
+
+    await db.commit()
+    await db.refresh(inventory)
+
+    return {
+        "success": True,
+        "message": "Inventory synced successfully",
+        "inventory_id": str(inventory.id),
+        "synced_quantity": inventory.marketplace_quantity,
+    }
+
+
+@router.post("/inventory/sync-all")
+async def sync_all_inventory(
+    db: DB,
+    channel_id: Optional[UUID] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Sync all inventory items to their channels."""
+    # Build query
+    query = select(ChannelInventory).where(ChannelInventory.is_active == True)
+    if channel_id:
+        query = query.where(ChannelInventory.channel_id == channel_id)
+
+    result = await db.execute(query)
+    items = result.scalars().all()
+
+    synced_count = 0
+    failed_count = 0
+
+    for item in items:
+        try:
+            # In real implementation, call marketplace API here
+            item.marketplace_quantity = item.available_quantity
+            item.last_synced_at = datetime.utcnow()
+            synced_count += 1
+        except Exception:
+            failed_count += 1
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "message": f"Synced {synced_count} items, {failed_count} failed",
+        "synced_count": synced_count,
+        "failed_count": failed_count,
+    }
+
+
+@router.put("/inventory/{inventory_id}/buffer")
+async def update_inventory_buffer(
+    inventory_id: UUID,
+    db: DB,
+    buffer_stock: int = Query(..., ge=0, description="Buffer stock quantity"),
+    current_user: User = Depends(get_current_user),
+):
+    """Update buffer stock for a channel inventory item."""
+    result = await db.execute(
+        select(ChannelInventory).where(ChannelInventory.id == inventory_id)
+    )
+    inventory = result.scalar_one_or_none()
+
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Channel inventory not found")
+
+    inventory.buffer_quantity = buffer_stock
+    # Recalculate available quantity
+    inventory.available_quantity = max(0, (inventory.allocated_quantity or 0) - buffer_stock - (inventory.reserved_quantity or 0))
+
+    await db.commit()
+    await db.refresh(inventory)
+
+    return {
+        "success": True,
+        "message": "Buffer stock updated successfully",
+        "inventory_id": str(inventory.id),
+        "buffer_stock": inventory.buffer_quantity,
+        "available_quantity": inventory.available_quantity,
+    }
+
+
 # ==================== Single Channel Operations ====================
 
 @router.get("/{channel_id}", response_model=SalesChannelResponse)
