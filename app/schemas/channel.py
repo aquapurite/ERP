@@ -12,10 +12,10 @@ from app.models.channel import ChannelType, ChannelStatus
 
 class SalesChannelBase(BaseModel):
     """Base schema for SalesChannel."""
-    code: str = Field(..., min_length=2, max_length=30)
     name: str = Field(..., min_length=2, max_length=200)
-    display_name: str = Field(..., min_length=2, max_length=200)
     channel_type: ChannelType
+    code: Optional[str] = Field(None, min_length=2, max_length=30)
+    display_name: Optional[str] = Field(None, min_length=2, max_length=200)
     status: ChannelStatus = ChannelStatus.ACTIVE
 
     # Marketplace Integration

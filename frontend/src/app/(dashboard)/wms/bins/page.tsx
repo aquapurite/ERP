@@ -37,6 +37,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
 import apiClient from '@/lib/api/client';
+import { warehousesApi } from '@/lib/api';
 
 interface Bin {
   id: string;
@@ -307,6 +308,7 @@ export default function BinsPage() {
   const [zoneFilter, setZoneFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [newBin, setNewBin] = useState<{
+    warehouse_id: string;
     zone_id: string;
     bin_code: string;
     aisle: string;
@@ -317,6 +319,7 @@ export default function BinsPage() {
     max_weight_kg: string;
     is_active: boolean;
   }>({
+    warehouse_id: '',
     zone_id: '',
     bin_code: '',
     aisle: '',
@@ -329,6 +332,12 @@ export default function BinsPage() {
   });
 
   const queryClient = useQueryClient();
+
+  // Fetch warehouses for dropdown
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['warehouses-dropdown'],
+    queryFn: warehousesApi.dropdown,
+  });
 
   // Fetch zones for dropdown
   const { data: zones = [] } = useQuery({
@@ -368,7 +377,12 @@ export default function BinsPage() {
       toast.error('Bin code is required');
       return;
     }
+    if (!newBin.warehouse_id) {
+      toast.error('Warehouse is required');
+      return;
+    }
     createMutation.mutate({
+      warehouse_id: newBin.warehouse_id,
       zone_id: newBin.zone_id || undefined,
       bin_code: newBin.bin_code,
       aisle: newBin.aisle || undefined,
@@ -402,6 +416,25 @@ export default function BinsPage() {
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="warehouse">Warehouse *</Label>
+                  <Select
+                    value={newBin.warehouse_id || 'select'}
+                    onValueChange={(value) => setNewBin({ ...newBin, warehouse_id: value === 'select' ? '' : value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select warehouse" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="select" disabled>Select warehouse</SelectItem>
+                      {warehouses.map((wh: { id: string; name: string; code?: string }) => (
+                        <SelectItem key={wh.id} value={wh.id}>
+                          {wh.name} {wh.code && `(${wh.code})`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="zone">Zone</Label>

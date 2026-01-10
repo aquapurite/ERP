@@ -64,9 +64,10 @@ interface Transporter {
 
 const transporterTypes = [
   { label: 'Courier Partner', value: 'COURIER' },
-  { label: 'Logistics Provider', value: 'LOGISTICS' },
-  { label: 'Self-Delivery', value: 'SELF' },
-  { label: 'Third Party', value: 'THIRD_PARTY' },
+  { label: 'Self-Delivery', value: 'SELF_SHIP' },
+  { label: 'Marketplace', value: 'MARKETPLACE' },
+  { label: 'Local', value: 'LOCAL' },
+  { label: 'Franchise', value: 'FRANCHISE' },
 ];
 
 export default function TransportersPage() {
@@ -173,10 +174,12 @@ export default function TransportersPage() {
         data: {
           name: formData.name,
           code: formData.code.toUpperCase(),
-          type: formData.type,
+          transporter_type: formData.type,
           contact_name: formData.contact_name || undefined,
           contact_phone: formData.contact_phone || undefined,
           contact_email: formData.contact_email || undefined,
+          address: formData.website || undefined,
+          tracking_url_template: formData.tracking_url_pattern || undefined,
           is_active: formData.is_active,
         },
       });
@@ -184,12 +187,12 @@ export default function TransportersPage() {
       createMutation.mutate({
         name: formData.name,
         code: formData.code.toUpperCase(),
-        type: formData.type,
+        transporter_type: formData.type,
         contact_name: formData.contact_name || undefined,
         contact_phone: formData.contact_phone || undefined,
         contact_email: formData.contact_email || undefined,
-        website: formData.website || undefined,
-        tracking_url_pattern: formData.tracking_url_pattern || undefined,
+        address: formData.website || undefined,
+        tracking_url_template: formData.tracking_url_pattern || undefined,
         is_active: formData.is_active,
       });
     }

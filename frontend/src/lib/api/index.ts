@@ -825,11 +825,11 @@ export const transportersApi = {
     const { data } = await apiClient.get(`/transporters/${id}`);
     return data;
   },
-  create: async (transporter: { name: string; code: string; type?: string; contact_name?: string; contact_phone?: string; contact_email?: string; website?: string; tracking_url_pattern?: string; is_active?: boolean }) => {
+  create: async (transporter: { name: string; code: string; transporter_type?: string; contact_name?: string; contact_phone?: string; contact_email?: string; address?: string; tracking_url_template?: string; is_active?: boolean }) => {
     const { data } = await apiClient.post('/transporters', transporter);
     return data;
   },
-  update: async (id: string, transporter: Partial<{ name: string; code: string; type?: string; contact_name?: string; contact_phone?: string; contact_email?: string; is_active?: boolean }>) => {
+  update: async (id: string, transporter: Partial<{ name: string; code: string; transporter_type?: string; contact_name?: string; contact_phone?: string; contact_email?: string; address?: string; tracking_url_template?: string; is_active?: boolean }>) => {
     const { data } = await apiClient.put(`/transporters/${id}`, transporter);
     return data;
   },

@@ -44,12 +44,15 @@ async def create_sales_channel(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new sales channel."""
-    # Generate channel code
+    # Generate channel code if not provided
     count_result = await db.execute(select(func.count(SalesChannel.id)))
     count = count_result.scalar() or 0
 
     prefix_map = {
         ChannelType.D2C: "D2C",
+        ChannelType.D2C_WEBSITE: "D2C",
+        ChannelType.D2C_APP: "D2C",
+        ChannelType.MARKETPLACE: "MKT",
         ChannelType.AMAZON: "AMZ",
         ChannelType.FLIPKART: "FLK",
         ChannelType.MYNTRA: "MYN",
@@ -58,17 +61,29 @@ async def create_sales_channel(
         ChannelType.TATACLIQ: "TTA",
         ChannelType.AJIO: "AJI",
         ChannelType.NYKAA: "NYK",
+        ChannelType.B2B: "B2B",
         ChannelType.B2B_PORTAL: "B2B",
+        ChannelType.DEALER: "DLR",
         ChannelType.DEALER_PORTAL: "DLR",
         ChannelType.OFFLINE: "OFL",
+        ChannelType.RETAIL_STORE: "RET",
         ChannelType.OTHER: "OTH",
     }
     prefix = prefix_map.get(channel_in.channel_type, "CHN")
-    channel_code = f"{prefix}-{str(count + 1).zfill(3)}"
+
+    # Use provided code or generate one
+    channel_code = channel_in.code if channel_in.code else f"{prefix}-{str(count + 1).zfill(3)}"
+
+    # Use name as display_name if not provided
+    display_name = channel_in.display_name if channel_in.display_name else channel_in.name
+
+    # Prepare channel data
+    channel_data = channel_in.model_dump(exclude={'code', 'display_name'})
 
     channel = SalesChannel(
-        channel_code=channel_code,
-        **channel_in.model_dump(),
+        code=channel_code,
+        display_name=display_name,
+        **channel_data,
         created_by=current_user.id,
     )
 

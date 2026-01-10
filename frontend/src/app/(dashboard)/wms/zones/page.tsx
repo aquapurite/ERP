@@ -61,6 +61,16 @@ interface ZoneStats {
   utilization_percent: number;
 }
 
+interface ZoneCreateInput {
+  zone_name: string;
+  zone_code?: string;
+  warehouse_id: string;
+  zone_type: string;
+  max_capacity?: number;
+  temperature_controlled?: boolean;
+  is_active?: boolean;
+}
+
 const zonesApi = {
   list: async (params?: { page?: number; size?: number; warehouse_id?: string; zone_type?: string }) => {
     try {
@@ -78,7 +88,7 @@ const zonesApi = {
       return { total_zones: 0, active_zones: 0, total_capacity: 0, current_occupancy: 0, utilization_percent: 0 };
     }
   },
-  create: async (zone: Partial<Zone>) => {
+  create: async (zone: ZoneCreateInput) => {
     const { data } = await apiClient.post('/wms/zones', zone);
     return data;
   },
@@ -282,9 +292,18 @@ export default function ZonesPage() {
       toast.error('Zone name is required');
       return;
     }
+    if (!newZone.warehouse_id) {
+      toast.error('Warehouse is required');
+      return;
+    }
     createMutation.mutate({
-      ...newZone,
+      zone_name: newZone.name,
+      zone_code: newZone.code || undefined,
+      warehouse_id: newZone.warehouse_id,
+      zone_type: newZone.zone_type,
       max_capacity: parseInt(newZone.max_capacity) || 0,
+      temperature_controlled: newZone.temperature_controlled,
+      is_active: newZone.is_active,
     });
   };
 

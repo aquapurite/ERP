@@ -23,24 +23,36 @@ if TYPE_CHECKING:
 
 class ChannelType(str, Enum):
     """Sales channel type enumeration."""
+    # Simplified types (for UI compatibility)
+    D2C = "D2C"                         # Direct to Consumer (general)
+    MARKETPLACE = "MARKETPLACE"         # Marketplace (general)
+    B2B = "B2B"                         # Business to Business
+    OFFLINE = "OFFLINE"                 # Offline/Retail (general)
+    # Detailed D2C types
     D2C_WEBSITE = "D2C_WEBSITE"         # Own website (Shopify, custom)
     D2C_APP = "D2C_APP"                 # Own mobile app
-    MARKETPLACE_AMAZON = "MARKETPLACE_AMAZON"
-    MARKETPLACE_FLIPKART = "MARKETPLACE_FLIPKART"
-    MARKETPLACE_MYNTRA = "MARKETPLACE_MYNTRA"
-    MARKETPLACE_TATACLIQ = "MARKETPLACE_TATACLIQ"
-    MARKETPLACE_JIOMART = "MARKETPLACE_JIOMART"
-    MARKETPLACE_MEESHO = "MARKETPLACE_MEESHO"
-    MARKETPLACE_OTHER = "MARKETPLACE_OTHER"
+    # Specific marketplaces
+    AMAZON = "AMAZON"
+    FLIPKART = "FLIPKART"
+    MYNTRA = "MYNTRA"
+    TATACLIQ = "TATACLIQ"
+    JIOMART = "JIOMART"
+    MEESHO = "MEESHO"
+    NYKAA = "NYKAA"
+    AJIO = "AJIO"
+    # Other channel types
     RETAIL_STORE = "RETAIL_STORE"       # Own retail stores
     FRANCHISE = "FRANCHISE"             # Franchise stores
     DEALER = "DEALER"                   # Authorized dealers
+    DEALER_PORTAL = "DEALER_PORTAL"     # Dealer portal
     DISTRIBUTOR = "DISTRIBUTOR"         # Regional distributors
     MODERN_TRADE = "MODERN_TRADE"       # Croma, Reliance Digital, Vijay Sales
     CORPORATE = "CORPORATE"             # B2B corporate sales
+    B2B_PORTAL = "B2B_PORTAL"           # B2B portal
     GOVERNMENT = "GOVERNMENT"           # Govt tenders/GeM
     EXPORT = "EXPORT"                   # International sales
     QUICK_COMMERCE = "QUICK_COMMERCE"   # Blinkit, Zepto, Instamart
+    OTHER = "OTHER"                     # Other channels
 
 
 class ChannelStatus(str, Enum):
