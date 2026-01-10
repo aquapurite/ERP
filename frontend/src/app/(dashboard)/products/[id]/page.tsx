@@ -24,7 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { PageHeader } from '@/components/common';
@@ -145,17 +145,18 @@ export default function ProductDetailPage() {
       sku: product.sku || '',
       slug: product.slug || '',
       description: product.description || '',
-      category_id: product.category_id || '',
-      brand_id: product.brand_id || '',
+      // Handle both direct category_id and nested category.id
+      category_id: product.category_id || product.category?.id || '',
+      brand_id: product.brand_id || product.brand?.id || '',
       mrp: product.mrp || 0,
       selling_price: product.selling_price || 0,
       cost_price: product.cost_price || 0,
       gst_rate: product.gst_rate || 18,
       hsn_code: product.hsn_code || '',
-      weight: product.weight || 0,
-      length: product.length || 0,
-      width: product.width || 0,
-      height: product.height || 0,
+      weight: product.weight || (product as any).dead_weight_kg || 0,
+      length: product.length || (product as any).length_cm || 0,
+      width: product.width || (product as any).width_cm || 0,
+      height: product.height || (product as any).height_cm || 0,
       is_active: product.is_active ?? true,
       is_featured: product.is_featured ?? false,
       requires_installation: product.requires_installation ?? false,
@@ -483,7 +484,9 @@ export default function ProductDetailPage() {
                   </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
-                  <Button variant="outline">Cancel</Button>
+                  <DialogClose asChild>
+                    <Button variant="outline">Cancel</Button>
+                  </DialogClose>
                   <Button
                     variant="destructive"
                     onClick={() => deleteMutation.mutate()}
