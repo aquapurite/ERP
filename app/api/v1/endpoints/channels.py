@@ -78,13 +78,12 @@ async def create_sales_channel(
     display_name = channel_in.display_name if channel_in.display_name else channel_in.name
 
     # Prepare channel data
-    channel_data = channel_in.model_dump(exclude={'code', 'display_name'})
+    channel_data = channel_in.model_dump(exclude={'code', 'display_name', 'api_key', 'api_secret', 'config'})
 
     channel = SalesChannel(
         code=channel_code,
         display_name=display_name,
         **channel_data,
-        created_by=current_user.id,
     )
 
     db.add(channel)
@@ -320,8 +319,6 @@ async def update_sales_channel(
     for field, value in update_data.items():
         setattr(channel, field, value)
 
-    channel.updated_by = current_user.id
-
     await db.commit()
     await db.refresh(channel)
 
@@ -361,7 +358,6 @@ async def delete_sales_channel(
         )
 
     channel.status = ChannelStatus.INACTIVE
-    channel.updated_by = current_user.id
 
     await db.commit()
     return None
@@ -383,7 +379,6 @@ async def activate_channel(
         raise HTTPException(status_code=404, detail="Sales channel not found")
 
     channel.status = ChannelStatus.ACTIVE
-    channel.updated_by = current_user.id
 
     await db.commit()
     await db.refresh(channel)
@@ -407,7 +402,6 @@ async def deactivate_channel(
         raise HTTPException(status_code=404, detail="Sales channel not found")
 
     channel.status = ChannelStatus.INACTIVE
-    channel.updated_by = current_user.id
 
     await db.commit()
     await db.refresh(channel)
@@ -490,7 +484,6 @@ async def create_channel_pricing(
     pricing = ChannelPricing(
         channel_id=channel_id,
         **pricing_in.model_dump(),
-        created_by=current_user.id,
     )
 
     db.add(pricing)
@@ -525,8 +518,6 @@ async def update_channel_pricing(
     update_data = pricing_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(pricing, field, value)
-
-    pricing.updated_by = current_user.id
 
     await db.commit()
     await db.refresh(pricing)
@@ -684,7 +675,6 @@ async def create_channel_inventory(
     inventory = ChannelInventory(
         channel_id=channel_id,
         **inventory_in.model_dump(),
-        created_by=current_user.id,
     )
 
     db.add(inventory)
@@ -719,8 +709,6 @@ async def update_channel_inventory(
     update_data = inventory_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(inventory, field, value)
-
-    inventory.updated_by = current_user.id
 
     await db.commit()
     await db.refresh(inventory)
@@ -898,7 +886,6 @@ async def create_channel_order(
         channel_id=channel_id,
         channel_name=channel.name,
         **order_in.model_dump(),
-        created_by=current_user.id,
     )
 
     db.add(order)
@@ -933,8 +920,6 @@ async def update_channel_order(
     update_data = order_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(order, field, value)
-
-    order.updated_by = current_user.id
 
     await db.commit()
     await db.refresh(order)
