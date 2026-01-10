@@ -2951,6 +2951,7 @@ async def download_grn(
 ):
     """Download Goods Receipt Note as printable HTML."""
     from fastapi.responses import HTMLResponse
+    from app.models.company import Company
 
     result = await db.execute(
         select(GoodsReceiptNote)
@@ -2961,6 +2962,13 @@ async def download_grn(
 
     if not grn:
         raise HTTPException(status_code=404, detail="GRN not found")
+
+    # Get company details
+    company_result = await db.execute(select(Company).where(Company.is_primary == True).limit(1))
+    company = company_result.scalar_one_or_none()
+    if not company:
+        company_result = await db.execute(select(Company).limit(1))
+        company = company_result.scalar_one_or_none()
 
     # Get PO details
     po_result = await db.execute(
@@ -3135,9 +3143,12 @@ async def download_grn(
         <button class="print-btn no-print" onclick="window.print()">🖨️ Print / Save PDF</button>
 
         <div class="header">
-            <div class="company-name">AQUAPURITE INDIA PVT LTD</div>
+            <div class="company-name">{company.legal_name if company else 'AQUAPURITE PRIVATE LIMITED'}</div>
             <div style="font-size: 12px; color: #666;">
-                123 Industrial Area, Sector 5, Noida, UP - 201301
+                {company.address_line1 if company else 'PLOT 36-A, KH NO 181, PH-1, SHYAM VIHAR, DINDAPUR EXT'}, {company.city if company else 'New Delhi'} - {company.pincode if company else '110043'}, {company.state if company else 'Delhi'}
+            </div>
+            <div style="font-size: 10px; color: #888; margin-top: 5px;">
+                GSTIN: {company.gstin if company else '07ABDCA6170C1Z0'} | PAN: {company.pan if company else 'ABDCA6170C'} | CIN: {getattr(company, 'cin', None) or 'U32909DL2025PTC454115'}
             </div>
             <div class="document-title">GOODS RECEIPT NOTE (GRN)</div>
         </div>
@@ -3251,6 +3262,7 @@ async def download_vendor_invoice(
 ):
     """Download Vendor Invoice as printable HTML."""
     from fastapi.responses import HTMLResponse
+    from app.models.company import Company
 
     result = await db.execute(
         select(VendorInvoice).where(VendorInvoice.id == invoice_id)
@@ -3259,6 +3271,13 @@ async def download_vendor_invoice(
 
     if not invoice:
         raise HTTPException(status_code=404, detail="Vendor Invoice not found")
+
+    # Get company details
+    company_result = await db.execute(select(Company).where(Company.is_primary == True).limit(1))
+    company = company_result.scalar_one_or_none()
+    if not company:
+        company_result = await db.execute(select(Company).limit(1))
+        company = company_result.scalar_one_or_none()
 
     # Get vendor details
     vendor_result = await db.execute(
@@ -3428,10 +3447,10 @@ async def download_vendor_invoice(
         <button class="print-btn no-print" onclick="window.print()">🖨️ Print / Save PDF</button>
 
         <div class="header">
-            <div class="company-name">AQUAPURITE INDIA PVT LTD</div>
+            <div class="company-name">{company.legal_name if company else 'AQUAPURITE PRIVATE LIMITED'}</div>
             <div style="font-size: 12px; color: #666;">
-                123 Industrial Area, Sector 5, Noida, UP - 201301<br>
-                GSTIN: 09AAACA1234M1Z5
+                {company.address_line1 if company else 'PLOT 36-A, KH NO 181, PH-1, SHYAM VIHAR, DINDAPUR EXT'}, {company.city if company else 'New Delhi'} - {company.pincode if company else '110043'}, {company.state if company else 'Delhi'}<br>
+                GSTIN: {company.gstin if company else '07ABDCA6170C1Z0'} | PAN: {company.pan if company else 'ABDCA6170C'}
             </div>
             <div class="document-title">VENDOR INVOICE RECORD</div>
         </div>
@@ -3990,6 +4009,7 @@ async def download_vendor_proforma(
 ):
     """Download vendor proforma invoice as printable HTML."""
     from fastapi.responses import HTMLResponse
+    from app.models.company import Company
 
     result = await db.execute(
         select(VendorProformaInvoice)
@@ -4003,6 +4023,13 @@ async def download_vendor_proforma(
 
     if not proforma:
         raise HTTPException(status_code=404, detail="Vendor Proforma not found")
+
+    # Get company details
+    company_result = await db.execute(select(Company).where(Company.is_primary == True).limit(1))
+    company = company_result.scalar_one_or_none()
+    if not company:
+        company_result = await db.execute(select(Company).limit(1))
+        company = company_result.scalar_one_or_none()
 
     vendor = proforma.vendor
     status_val = proforma.status.value if hasattr(proforma.status, 'value') else str(proforma.status) if proforma.status else ""
@@ -4160,10 +4187,10 @@ async def download_vendor_proforma(
         <button class="print-btn no-print" onclick="window.print()">Print / Save PDF</button>
 
         <div class="header">
-            <div class="company-name">AQUAPURITE INDIA PVT LTD</div>
+            <div class="company-name">{company.legal_name if company else 'AQUAPURITE PRIVATE LIMITED'}</div>
             <div style="font-size: 12px; color: #666;">
-                123 Industrial Area, Sector 5, Noida, UP - 201301<br>
-                GSTIN: 09AAACA1234M1Z5
+                {company.address_line1 if company else 'PLOT 36-A, KH NO 181, PH-1, SHYAM VIHAR, DINDAPUR EXT'}, {company.city if company else 'New Delhi'} - {company.pincode if company else '110043'}, {company.state if company else 'Delhi'}<br>
+                GSTIN: {company.gstin if company else '07ABDCA6170C1Z0'} | PAN: {company.pan if company else 'ABDCA6170C'}
             </div>
             <div class="document-title">VENDOR PROFORMA INVOICE / QUOTATION</div>
         </div>

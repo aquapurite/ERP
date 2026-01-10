@@ -49,7 +49,7 @@ import { Label } from '@/components/ui/label';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
 import apiClient from '@/lib/api/client';
-import { warehousesApi, productsApi } from '@/lib/api';
+import { warehousesApi, productsApi, companyApi } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 interface PurchaseRequisition {
@@ -364,10 +364,19 @@ export default function PurchaseRequisitionsPage() {
     try {
       // Try to get full details, fallback to basic PR info
       let prDetails: any = pr;
+      let company: any = null;
+
       try {
         prDetails = await requisitionsApi.getById(pr.id);
       } catch {
         // Use basic PR info
+      }
+
+      // Fetch company details
+      try {
+        company = await companyApi.getPrimary();
+      } catch {
+        // Use default company info
       }
 
       // Generate print-friendly HTML
@@ -378,8 +387,12 @@ export default function PurchaseRequisitionsPage() {
           <title>Purchase Requisition - ${prDetails.pr_number || 'PR'}</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
-            .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 15px; margin-bottom: 20px; }
-            .header h1 { margin: 0; font-size: 24px; }
+            .company-header { text-align: center; margin-bottom: 20px; }
+            .company-name { font-size: 22px; font-weight: bold; color: #1a1a1a; margin: 0; }
+            .company-details { font-size: 11px; color: #666; margin: 5px 0; }
+            .company-tax { font-size: 10px; color: #888; margin-top: 8px; }
+            .header { text-align: center; border-top: 2px solid #333; border-bottom: 2px solid #333; padding: 10px 0; margin-bottom: 20px; }
+            .header h1 { margin: 0; font-size: 18px; }
             .header p { margin: 5px 0; color: #666; }
             .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
             .info-item { padding: 8px; background: #f5f5f5; border-radius: 4px; }
@@ -401,6 +414,20 @@ export default function PurchaseRequisitionsPage() {
           </style>
         </head>
         <body>
+          <div class="company-header">
+            <p class="company-name">${company?.legal_name || 'AQUAPURITE PRIVATE LIMITED'}</p>
+            <p class="company-details">
+              ${company?.address_line1 || 'PLOT 36-A, KH NO 181, PH-1, SHYAM VIHAR, DINDAPUR EXT'}${company?.address_line2 ? ', ' + company.address_line2 : ', Najafgarh'}<br/>
+              ${company?.city || 'New Delhi'} - ${company?.pincode || '110043'}, ${company?.state || 'Delhi'}
+            </p>
+            <p class="company-details">
+              Phone: ${company?.phone || '9013034083'} | Email: ${company?.email || 'riaansh97@gmail.com'}
+            </p>
+            <p class="company-tax">
+              GSTIN: ${company?.gstin || '07ABDCA6170C1Z0'} | PAN: ${company?.pan || 'ABDCA6170C'} | CIN: ${company?.cin || 'U32909DL2025PTC454115'}
+            </p>
+          </div>
+
           <div class="header">
             <h1>PURCHASE REQUISITION</h1>
             <p><strong>${prDetails.pr_number || 'N/A'}</strong></p>
