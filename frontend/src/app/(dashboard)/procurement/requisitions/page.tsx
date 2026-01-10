@@ -1,12 +1,23 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, Send, CheckCircle, XCircle, FileText, ShoppingCart, Clock, AlertCircle, ArrowRight, Trash2, Loader2, Calendar } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, Send, CheckCircle, XCircle, FileText, ShoppingCart, Clock, AlertCircle, ArrowRight, Trash2, Loader2, Calendar, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -140,6 +151,17 @@ const requisitionsApi = {
     const { data } = await apiClient.post(`/purchase/requisitions/${id}/convert-to-po`, { vendor_id: vendorId });
     return data;
   },
+  delete: async (id: string) => {
+    await apiClient.delete(`/purchase/requisitions/${id}`);
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/purchase/requisitions/${id}`);
+    return data;
+  },
+  print: async (id: string) => {
+    const { data } = await apiClient.get(`/purchase/requisitions/${id}/print`, { responseType: 'text' });
+    return data;
+  },
 };
 
 const statusColors: Record<string, string> = {
@@ -159,12 +181,16 @@ const priorityColors: Record<string, string> = {
 };
 
 export default function PurchaseRequisitionsPage() {
+  const router = useRouter();
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedPR, setSelectedPR] = useState<PurchaseRequisition | null>(null);
   const [isConvertDialogOpen, setIsConvertDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [viewPRDetails, setViewPRDetails] = useState<any>(null);
   const [selectedVendorId, setSelectedVendorId] = useState('');
 
   // Form state
@@ -321,6 +347,57 @@ export default function PurchaseRequisitionsPage() {
     onError: (error: Error) => toast.error(error.message || 'Failed to convert to PO'),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => requisitionsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-requisitions'] });
+      queryClient.invalidateQueries({ queryKey: ['pr-stats'] });
+      toast.success('PR deleted successfully');
+      setIsDeleteDialogOpen(false);
+      setSelectedPR(null);
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to delete PR'),
+  });
+
+  // Handle Print PR
+  const handlePrintPR = async (pr: PurchaseRequisition) => {
+    try {
+      const htmlContent = await requisitionsApi.print(pr.id);
+      const blob = new Blob([htmlContent], { type: 'text/html' });
+      const url = window.URL.createObjectURL(blob);
+      const printWindow = window.open(url, '_blank');
+      if (printWindow) {
+        printWindow.onload = () => {
+          window.URL.revokeObjectURL(url);
+          printWindow.print();
+        };
+      }
+    } catch {
+      toast.error('Failed to print PR');
+    }
+  };
+
+  // Handle View Details
+  const handleViewDetails = async (pr: PurchaseRequisition) => {
+    try {
+      const details = await requisitionsApi.getById(pr.id);
+      setViewPRDetails(details);
+      setSelectedPR(pr);
+      setIsViewDialogOpen(true);
+    } catch {
+      // Use basic PR info if details fetch fails
+      setViewPRDetails(pr);
+      setSelectedPR(pr);
+      setIsViewDialogOpen(true);
+    }
+  };
+
+  // Handle Convert to PO - Navigate to PO page with PR ID
+  const handleConvertToPO = (pr: PurchaseRequisition) => {
+    // Navigate to Purchase Orders page with the PR ID as a query param
+    router.push(`/procurement/purchase-orders?create=true&pr_id=${pr.id}`);
+  };
+
   // Helper functions
   const resetForm = () => {
     setFormData({
@@ -332,7 +409,7 @@ export default function PurchaseRequisitionsPage() {
       items: [],
       is_multi_delivery: false,
     });
-    setNewItem({ product_id: '', quantity: 1, estimated_price: 0 });
+    setNewItem({ product_id: '', quantity: 1, estimated_price: 0, monthlyQtys: {} });
     setMultiDeliveryMonths([]);
     setIsDialogOpen(false);
   };
@@ -512,10 +589,35 @@ export default function PurchaseRequisitionsPage() {
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
+              {/* 1. View Details - Always available */}
+              <DropdownMenuItem onClick={() => handleViewDetails(pr)}>
                 <Eye className="mr-2 h-4 w-4" />
                 View Details
               </DropdownMenuItem>
+              {/* 2. Convert to PO - Only for APPROVED */}
+              {pr.status === 'APPROVED' && (
+                <DropdownMenuItem onClick={() => handleConvertToPO(pr)}>
+                  <ArrowRight className="mr-2 h-4 w-4" />
+                  Convert to PO
+                </DropdownMenuItem>
+              )}
+              {/* 3. Delete PR - Only for DRAFT or REJECTED */}
+              {(pr.status === 'DRAFT' || pr.status === 'REJECTED') && (
+                <DropdownMenuItem
+                  className="text-red-600"
+                  onClick={() => { setSelectedPR(pr); setIsDeleteDialogOpen(true); }}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete PR
+                </DropdownMenuItem>
+              )}
+              {/* 4. Print PDF - Always available */}
+              <DropdownMenuItem onClick={() => handlePrintPR(pr)}>
+                <Printer className="mr-2 h-4 w-4" />
+                Print PDF
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {/* Status actions */}
               {pr.status === 'DRAFT' && (
                 <DropdownMenuItem onClick={() => submitMutation.mutate(pr.id)}>
                   <Send className="mr-2 h-4 w-4" />
@@ -533,12 +635,6 @@ export default function PurchaseRequisitionsPage() {
                     Reject
                   </DropdownMenuItem>
                 </>
-              )}
-              {pr.status === 'APPROVED' && (
-                <DropdownMenuItem onClick={() => { setSelectedPR(pr); setIsConvertDialogOpen(true); }}>
-                  <ArrowRight className="mr-2 h-4 w-4" />
-                  Convert to PO
-                </DropdownMenuItem>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1086,6 +1182,164 @@ export default function PurchaseRequisitionsPage() {
             >
               {convertToPOMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create Purchase Order
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Purchase Requisition</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete PR <strong>{selectedPR?.pr_number}</strong>?
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setIsDeleteDialogOpen(false); setSelectedPR(null); }}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => selectedPR && deleteMutation.mutate(selectedPR.id)}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* View Details Dialog */}
+      <Dialog open={isViewDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setIsViewDialogOpen(false);
+          setViewPRDetails(null);
+          setSelectedPR(null);
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Purchase Requisition Details</DialogTitle>
+            <DialogDescription>
+              {selectedPR?.pr_number}
+            </DialogDescription>
+          </DialogHeader>
+          {viewPRDetails && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground text-xs">Status</Label>
+                  <div className="mt-1">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[viewPRDetails.status]}`}>
+                      {viewPRDetails.status}
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-xs">Priority</Label>
+                  <div className="mt-1">
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${priorityColors[viewPRDetails.priority] || ''}`}>
+                      {viewPRDetails.priority}
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-xs">Requester</Label>
+                  <p className="font-medium">{viewPRDetails.requester_name || 'N/A'}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-xs">Department</Label>
+                  <p className="font-medium">{viewPRDetails.department || viewPRDetails.requesting_department || 'N/A'}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-xs">Warehouse</Label>
+                  <p className="font-medium">{viewPRDetails.warehouse_name || viewPRDetails.delivery_warehouse_name || 'N/A'}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-xs">Required By</Label>
+                  <p className="font-medium">{viewPRDetails.required_by_date ? formatDate(viewPRDetails.required_by_date) : 'N/A'}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-xs">Created At</Label>
+                  <p className="font-medium">{formatDate(viewPRDetails.created_at)}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-xs">Total Amount</Label>
+                  <p className="font-medium text-lg">{formatCurrency(viewPRDetails.total_amount || viewPRDetails.estimated_total || 0)}</p>
+                </div>
+              </div>
+
+              {viewPRDetails.justification || viewPRDetails.reason ? (
+                <div>
+                  <Label className="text-muted-foreground text-xs">Justification</Label>
+                  <p className="mt-1 text-sm">{viewPRDetails.justification || viewPRDetails.reason}</p>
+                </div>
+              ) : null}
+
+              {/* Items Table */}
+              {viewPRDetails.items && viewPRDetails.items.length > 0 && (
+                <div>
+                  <Label className="text-muted-foreground text-xs mb-2 block">Items ({viewPRDetails.items.length})</Label>
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Product</th>
+                          <th className="px-3 py-2 text-right">Qty</th>
+                          <th className="px-3 py-2 text-right">Est. Price</th>
+                          <th className="px-3 py-2 text-right">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {viewPRDetails.items.map((item: any, index: number) => (
+                          <tr key={index} className="border-t">
+                            <td className="px-3 py-2">
+                              <div className="font-medium">{item.product_name}</div>
+                              <div className="text-xs text-muted-foreground">{item.sku}</div>
+                              {item.monthly_quantities && Object.keys(item.monthly_quantities).length > 0 && (
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {Object.entries(item.monthly_quantities).map(([month, qty]: [string, any]) => {
+                                    const d = new Date(`${month}-01`);
+                                    const label = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+                                    return (
+                                      <span key={month} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-blue-100 text-blue-700">
+                                        {label}: {qty}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right">{item.quantity_requested || item.quantity}</td>
+                            <td className="px-3 py-2 text-right">{formatCurrency(item.estimated_unit_price || item.unit_price || 0)}</td>
+                            <td className="px-3 py-2 text-right font-medium">
+                              {formatCurrency((item.quantity_requested || item.quantity || 0) * (item.estimated_unit_price || item.unit_price || 0))}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {viewPRDetails.po_number && (
+                <div className="p-3 bg-purple-50 rounded-lg">
+                  <Label className="text-muted-foreground text-xs">Converted to PO</Label>
+                  <p className="font-medium text-purple-700">{viewPRDetails.po_number}</p>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>Close</Button>
+            <Button onClick={() => selectedPR && handlePrintPR(selectedPR)}>
+              <Printer className="mr-2 h-4 w-4" />
+              Print
             </Button>
           </DialogFooter>
         </DialogContent>

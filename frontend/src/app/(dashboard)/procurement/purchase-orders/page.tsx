@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal, Plus, Eye, FileText, Send, CheckCircle, X, Loader2, Trash2, Download, Printer, Package, Barcode } from 'lucide-react';
@@ -74,6 +75,7 @@ interface POItem {
   gst_rate: number;
   total?: number;
   monthly_quantities?: Record<string, number>;
+  uom?: string;
 }
 
 interface MonthQuantity {
@@ -122,6 +124,8 @@ interface Product {
 
 export default function PurchaseOrdersPage() {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const { permissions } = useAuth();
   const isSuperAdmin = permissions?.is_super_admin ?? false;
   const [page, setPage] = useState(0);
@@ -132,6 +136,7 @@ export default function PurchaseOrdersPage() {
   const [isSubmitOpen, setIsSubmitOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+  const [urlPrId, setUrlPrId] = useState<string | null>(null);
 
   const [isMultiDelivery, setIsMultiDelivery] = useState(false);
   const [deliveryMonths, setDeliveryMonths] = useState<string[]>([]);
@@ -217,6 +222,30 @@ export default function PurchaseOrdersPage() {
   // State for serial number preview in PO view
   const [poSerials, setPOSerials] = useState<POSerialsResponse | null>(null);
   const [loadingSerials, setLoadingSerials] = useState(false);
+
+  // Handle URL parameters for Convert to PO navigation
+  useEffect(() => {
+    const createParam = searchParams.get('create');
+    const prIdParam = searchParams.get('pr_id');
+
+    if (createParam === 'true' && prIdParam) {
+      setUrlPrId(prIdParam);
+      setIsCreateOpen(true);
+      // Clear URL params after handling
+      router.replace('/procurement/purchase-orders', { scroll: false });
+    }
+  }, [searchParams, router]);
+
+  // Auto-select PR when openPRsData loads and urlPrId is set
+  useEffect(() => {
+    if (urlPrId && openPRsData && openPRsData.length > 0 && isCreateOpen) {
+      const pr = openPRsData.find((p: PurchaseRequisition) => p.id === urlPrId);
+      if (pr) {
+        handlePRSelect(urlPrId);
+        setUrlPrId(null); // Clear after selection
+      }
+    }
+  }, [urlPrId, openPRsData, isCreateOpen]);
 
   // Mutations
   const createMutation = useMutation({
