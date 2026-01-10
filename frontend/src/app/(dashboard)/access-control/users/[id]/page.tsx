@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Loader2, Save } from 'lucide-react';
+import { ArrowLeft, Loader2, Save, KeyRound } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -13,8 +13,17 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { PageHeader } from '@/components/common';
 import { usersApi, rolesApi } from '@/lib/api';
+import { useAuth } from '@/providers';
 
 interface UserForm {
   first_name: string;
@@ -29,6 +38,7 @@ export default function EditUserPage() {
   const params = useParams();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAuth();
   const userId = params.id as string;
 
   const [formData, setFormData] = useState<UserForm>({
@@ -39,6 +49,16 @@ export default function EditUserPage() {
     is_active: true,
     role_ids: [],
   });
+
+  // Reset Password state
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  // Check if current user is Super Admin
+  const isSuperAdmin = currentUser?.roles?.some(
+    (role: { code?: string; name?: string }) => role.code === 'SUPER_ADMIN' || role.name === 'Super Admin'
+  );
 
   const { data: user, isLoading: userLoading } = useQuery({
     queryKey: ['user', userId],
@@ -88,6 +108,33 @@ export default function EditUserPage() {
     },
   });
 
+  const resetPasswordMutation = useMutation({
+    mutationFn: async (password: string) => {
+      return usersApi.adminResetPassword(userId, password);
+    },
+    onSuccess: () => {
+      toast.success('Password reset successfully');
+      setShowResetPassword(false);
+      setNewPassword('');
+      setConfirmPassword('');
+    },
+    onError: (error: Error & { response?: { data?: { detail?: string } } }) => {
+      toast.error(error.response?.data?.detail || error.message || 'Failed to reset password');
+    },
+  });
+
+  const handleResetPassword = () => {
+    if (newPassword.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('Passwords do not match');
+      return;
+    }
+    resetPasswordMutation.mutate(newPassword);
+  };
+
   const handleRoleToggle = (roleId: string) => {
     setFormData((prev) => ({
       ...prev,
@@ -130,12 +177,23 @@ export default function EditUserPage() {
         title={`Edit User: ${user?.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user?.email || ''}`}
         description="Modify user details and role assignments"
         actions={
-          <Button variant="outline" asChild>
-            <Link href="/access-control/users">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Users
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            {isSuperAdmin && (
+              <Button
+                variant="outline"
+                onClick={() => setShowResetPassword(true)}
+              >
+                <KeyRound className="mr-2 h-4 w-4" />
+                Reset Password
+              </Button>
+            )}
+            <Button variant="outline" asChild>
+              <Link href="/access-control/users">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Users
+              </Link>
+            </Button>
+          </div>
         }
       />
 
@@ -264,6 +322,61 @@ export default function EditUserPage() {
           </Button>
         </div>
       </form>
+
+      {/* Reset Password Dialog - Super Admin Only */}
+      <Dialog open={showResetPassword} onOpenChange={setShowResetPassword}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset User Password</DialogTitle>
+            <DialogDescription>
+              Set a new password for {user?.first_name} {user?.last_name} ({user?.email})
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-password">New Password</Label>
+              <Input
+                id="new-password"
+                type="password"
+                placeholder="Enter new password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirm-password">Confirm Password</Label>
+              <Input
+                id="confirm-password"
+                type="password"
+                placeholder="Confirm new password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowResetPassword(false);
+                setNewPassword('');
+                setConfirmPassword('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleResetPassword}
+              disabled={resetPasswordMutation.isPending}
+            >
+              {resetPasswordMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Reset Password
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

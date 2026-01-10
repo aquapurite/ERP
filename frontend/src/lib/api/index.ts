@@ -29,6 +29,10 @@ export const usersApi = {
     const { data } = await apiClient.put<User>(`/users/${userId}/roles`, { role_ids: roleIds });
     return data;
   },
+  adminResetPassword: async (userId: string, newPassword: string) => {
+    const { data } = await apiClient.post('/auth/admin-reset-password', { user_id: userId, new_password: newPassword });
+    return data;
+  },
 };
 
 // Roles API

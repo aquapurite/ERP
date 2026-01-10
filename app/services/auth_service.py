@@ -160,6 +160,10 @@ class AuthService:
         """
         password_hash = get_password_hash(password)
 
+        # Convert empty strings to None for optional fields with unique constraints
+        phone = phone if phone else None
+        last_name = last_name if last_name else None
+
         user = User(
             email=email.lower(),
             password_hash=password_hash,

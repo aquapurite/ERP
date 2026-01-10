@@ -261,3 +261,61 @@ async def reset_password(
     del password_reset_tokens[data.token]
 
     return {"message": "Password has been reset successfully. You can now login with your new password."}
+
+
+class AdminResetPasswordRequest(BaseModel):
+    user_id: str
+    new_password: str
+
+
+@router.post("/admin-reset-password")
+async def admin_reset_password(
+    data: AdminResetPasswordRequest,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """
+    Reset a user's password (Super Admin only).
+    """
+    import uuid as uuid_module
+
+    # Check if current user is super admin
+    is_super_admin = any(role.code == "SUPER_ADMIN" for role in current_user.roles)
+    if not is_super_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Super Admin can reset user passwords"
+        )
+
+    # Validate user_id
+    try:
+        user_uuid = uuid_module.UUID(data.user_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid user ID"
+        )
+
+    # Find user
+    stmt = select(User).where(User.id == user_uuid)
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # Cannot reset own password through this endpoint
+    if user.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Use the regular password change feature for your own account"
+        )
+
+    # Update password
+    user.password_hash = get_password_hash(data.new_password)
+    await db.commit()
+
+    return {"message": f"Password for {user.email} has been reset successfully."}
