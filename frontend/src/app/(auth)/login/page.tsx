@@ -117,11 +117,6 @@ export default function LoginPage() {
               </Link>
             </Button>
           </div>
-
-          <div className="mt-6 text-center text-sm text-muted-foreground">
-            <p>Demo credentials:</p>
-            <p className="font-mono">admin@aquapurite.com / Admin@123</p>
-          </div>
         </CardContent>
       </Card>
     </div>
