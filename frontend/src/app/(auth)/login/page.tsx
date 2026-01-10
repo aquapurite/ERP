@@ -110,6 +110,14 @@ export default function LoginPage() {
             </Button>
           </form>
 
+          <div className="mt-4">
+            <Button variant="outline" className="w-full" asChild>
+              <Link href="/forgot-password">
+                Forgot Password?
+              </Link>
+            </Button>
+          </div>
+
           <div className="mt-6 text-center text-sm text-muted-foreground">
             <p>Demo credentials:</p>
             <p className="font-mono">admin@aquapurite.com / Admin@123</p>
