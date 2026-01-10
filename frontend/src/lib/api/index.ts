@@ -1455,7 +1455,34 @@ export const grnApi = {
     const { data } = await apiClient.get(`/purchase/grn/${id}`);
     return data;
   },
-  create: async (grn: { po_id: string; warehouse_id: string; received_date: string; notes?: string }) => {
+  create: async (grn: {
+    purchase_order_id: string;
+    warehouse_id: string;
+    grn_date: string;
+    vendor_challan_number?: string;
+    vendor_challan_date?: string;
+    transporter_name?: string;
+    vehicle_number?: string;
+    lr_number?: string;
+    e_way_bill_number?: string;
+    qc_required?: boolean;
+    receiving_remarks?: string;
+    items: {
+      po_item_id: string;
+      product_id: string;
+      variant_id?: string;
+      product_name: string;
+      sku: string;
+      quantity_expected: number;
+      quantity_received: number;
+      quantity_accepted?: number;
+      quantity_rejected?: number;
+      uom?: string;
+      batch_number?: string;
+      serial_numbers?: string[];
+      remarks?: string;
+    }[];
+  }) => {
     const { data } = await apiClient.post('/purchase/grn', grn);
     return data;
   },

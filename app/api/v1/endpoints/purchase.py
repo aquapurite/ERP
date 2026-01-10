@@ -1601,6 +1601,17 @@ async def create_grn(
         if not po_item:
             raise HTTPException(status_code=400, detail=f"PO item {item_data.po_item_id} not found")
 
+        # Validate quantity - prevent over-receiving
+        pending_qty = po_item.quantity_ordered - po_item.quantity_received
+        if item_data.quantity_received > pending_qty:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot receive {item_data.quantity_received} units for {po_item.product_name}. "
+                       f"PO ordered: {po_item.quantity_ordered}, "
+                       f"Already received: {po_item.quantity_received}, "
+                       f"Pending: {pending_qty} units"
+            )
+
         unit_price = po_item.unit_price
         accepted_value = item_data.quantity_accepted * unit_price
 

@@ -234,7 +234,12 @@ export default function GRNPage() {
     warehouse_id: '',
     received_date: new Date(),
     notes: '',
+    vendor_challan_number: '',
+    vehicle_number: '',
   });
+
+  // Item quantities state - maps po_item_id to received quantity
+  const [itemQuantities, setItemQuantities] = useState<Record<string, number>>({});
 
   // Serial scanning state
   const [serialInput, setSerialInput] = useState('');
@@ -383,7 +388,10 @@ export default function GRNPage() {
       warehouse_id: '',
       received_date: new Date(),
       notes: '',
+      vendor_challan_number: '',
+      vehicle_number: '',
     });
+    setItemQuantities({});
     setScannedSerials([]);
     setSerialInput('');
     setIsCreateDialogOpen(false);
@@ -395,11 +403,68 @@ export default function GRNPage() {
       return;
     }
 
+    // Build items array from PO items and entered quantities
+    const items: {
+      po_item_id: string;
+      product_id: string;
+      variant_id?: string;
+      product_name: string;
+      sku: string;
+      quantity_expected: number;
+      quantity_received: number;
+      quantity_accepted: number;
+      uom: string;
+    }[] = [];
+
+    const po = (purchaseOrders?.items ?? []).find((p: PurchaseOrder) => p.id === formData.po_id);
+    if (!po?.items) {
+      toast.error('No items found in selected PO');
+      return;
+    }
+
+    // Build items with quantities
+    for (const poItem of po.items) {
+      if (!poItem.id) continue;
+
+      const receivedQty = itemQuantities[poItem.id] || 0;
+      if (receivedQty <= 0) continue; // Skip items with 0 quantity
+
+      const ordered = poItem.quantity_ordered || poItem.quantity || 0;
+      const alreadyReceived = poItem.quantity_received || 0;
+      const pending = ordered - alreadyReceived;
+
+      // Validate quantity doesn't exceed pending
+      if (receivedQty > pending) {
+        toast.error(`Cannot receive ${receivedQty} units for ${poItem.product_name}. Only ${pending} units pending.`);
+        return;
+      }
+
+      items.push({
+        po_item_id: poItem.id,
+        product_id: poItem.product_id,
+        product_name: poItem.product_name || 'Unknown Product',
+        sku: poItem.sku || '',
+        quantity_expected: pending,
+        quantity_received: receivedQty,
+        quantity_accepted: receivedQty, // Default: all received are accepted
+        uom: 'PCS',
+      });
+    }
+
+    if (items.length === 0) {
+      toast.error('Please enter quantity for at least one item');
+      return;
+    }
+
     createMutation.mutate({
-      po_id: formData.po_id,
+      purchase_order_id: formData.po_id,
       warehouse_id: formData.warehouse_id,
-      received_date: format(formData.received_date, 'yyyy-MM-dd'),
-      notes: formData.notes || undefined,
+      grn_date: format(formData.received_date, 'yyyy-MM-dd'),
+      vendor_challan_number: formData.vendor_challan_number || undefined,
+      vehicle_number: formData.vehicle_number || undefined,
+      receiving_remarks: formData.notes || undefined,
+      qc_required: false, // Default to no QC
+      items,
     });
   };
 
@@ -408,8 +473,24 @@ export default function GRNPage() {
     setFormData({
       ...formData,
       po_id: poId,
-      warehouse_id: po?.delivery_warehouse_id || '',
+      warehouse_id: po?.delivery_warehouse_id || po?.warehouse_id || '',
     });
+    // Initialize item quantities - default to pending quantity for each item
+    if (po?.items) {
+      const initialQuantities: Record<string, number> = {};
+      po.items.forEach((item: POItem) => {
+        if (item.id) {
+          const ordered = item.quantity_ordered || item.quantity || 0;
+          const received = item.quantity_received || 0;
+          const pending = ordered - received;
+          // Default to pending quantity (what's left to receive)
+          initialQuantities[item.id] = Math.max(0, pending);
+        }
+      });
+      setItemQuantities(initialQuantities);
+    } else {
+      setItemQuantities({});
+    }
   };
 
   const handleView = (grn: GRN) => {
@@ -541,7 +622,7 @@ export default function GRNPage() {
                   Create GRN
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl">
+              <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Create Goods Receipt Note</DialogTitle>
                   <DialogDescription>
@@ -599,14 +680,56 @@ export default function GRNPage() {
                         </div>
                         {selectedPO.items && selectedPO.items.length > 0 && (
                           <div className="mt-3 border-t pt-3">
-                            <p className="text-xs text-muted-foreground mb-2">Items to receive:</p>
-                            <div className="space-y-1">
-                              {selectedPO.items.map((item: POItem) => (
-                                <div key={item.id} className="flex justify-between text-sm">
-                                  <span>{item.product_name}</span>
-                                  <span className="text-muted-foreground">Qty: {item.quantity_ordered}</span>
-                                </div>
-                              ))}
+                            <p className="text-xs font-medium mb-2">Enter quantities to receive:</p>
+                            <div className="space-y-2 max-h-64 overflow-y-auto">
+                              {selectedPO.items.map((item: POItem) => {
+                                const ordered = item.quantity_ordered || item.quantity || 0;
+                                const alreadyReceived = item.quantity_received || 0;
+                                const pending = Math.max(0, ordered - alreadyReceived);
+                                const itemId = item.id || '';
+                                const currentQty = itemQuantities[itemId] || 0;
+                                const isOverQuantity = currentQty > pending;
+
+                                return (
+                                  <div key={itemId} className="flex items-center justify-between gap-3 p-2 bg-muted/50 rounded-lg">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-medium text-sm truncate">{item.product_name}</div>
+                                      <div className="text-xs text-muted-foreground">
+                                        {item.sku} | Ordered: {ordered} | Received: {alreadyReceived} | <span className="text-green-600 font-medium">Pending: {pending}</span>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Input
+                                        type="number"
+                                        min={0}
+                                        max={pending}
+                                        value={currentQty}
+                                        onChange={(e) => {
+                                          const val = parseInt(e.target.value) || 0;
+                                          setItemQuantities(prev => ({
+                                            ...prev,
+                                            [itemId]: val
+                                          }));
+                                        }}
+                                        className={cn(
+                                          "w-24 text-right",
+                                          isOverQuantity && "border-red-500 focus-visible:ring-red-500"
+                                        )}
+                                      />
+                                      <span className="text-xs text-muted-foreground w-12">/ {pending}</span>
+                                    </div>
+                                    {isOverQuantity && (
+                                      <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0" />
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div className="mt-2 pt-2 border-t flex justify-between text-sm">
+                              <span className="text-muted-foreground">Total items to receive:</span>
+                              <span className="font-medium">
+                                {Object.values(itemQuantities).reduce((sum, qty) => sum + (qty || 0), 0)} units
+                              </span>
                             </div>
                           </div>
                         )}
@@ -662,13 +785,32 @@ export default function GRNPage() {
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Vendor Challan No.</Label>
+                      <Input
+                        placeholder="DC/Challan number"
+                        value={formData.vendor_challan_number}
+                        onChange={(e) => setFormData({ ...formData, vendor_challan_number: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Vehicle Number</Label>
+                      <Input
+                        placeholder="e.g., DL 01 AB 1234"
+                        value={formData.vehicle_number}
+                        onChange={(e) => setFormData({ ...formData, vehicle_number: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
-                    <Label>Notes</Label>
+                    <Label>Remarks</Label>
                     <Textarea
-                      placeholder="Any additional notes for this GRN..."
+                      placeholder="Any additional remarks for this GRN..."
                       value={formData.notes}
                       onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                      rows={3}
+                      rows={2}
                     />
                   </div>
                 </div>
@@ -679,7 +821,18 @@ export default function GRNPage() {
                   </Button>
                   <Button
                     onClick={handleCreate}
-                    disabled={createMutation.isPending || !formData.po_id || !formData.warehouse_id}
+                    disabled={
+                      createMutation.isPending ||
+                      !formData.po_id ||
+                      !formData.warehouse_id ||
+                      Object.values(itemQuantities).every(q => !q || q === 0) ||
+                      (selectedPO?.items || []).some((item: POItem) => {
+                        const ordered = item.quantity_ordered || item.quantity || 0;
+                        const received = item.quantity_received || 0;
+                        const pending = ordered - received;
+                        return (itemQuantities[item.id || ''] || 0) > pending;
+                      })
+                    }
                   >
                     {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Create GRN
