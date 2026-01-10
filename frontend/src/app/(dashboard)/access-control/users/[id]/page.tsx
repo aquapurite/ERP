@@ -65,7 +65,18 @@ export default function EditUserPage() {
   }, [user]);
 
   const updateMutation = useMutation({
-    mutationFn: (data: UserForm) => usersApi.update(userId, data),
+    mutationFn: async (data: UserForm) => {
+      // First update user details (without role_ids)
+      const { role_ids, ...userDetails } = data;
+      await usersApi.update(userId, userDetails);
+
+      // Then update roles via the dedicated endpoint
+      if (role_ids && role_ids.length >= 0) {
+        await usersApi.assignRoles(userId, role_ids);
+      }
+
+      return data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       queryClient.invalidateQueries({ queryKey: ['user', userId] });
