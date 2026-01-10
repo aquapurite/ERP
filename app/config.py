@@ -27,7 +27,9 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://localhost:3001",
         "http://localhost:5173",
-        "https://erp-five-phi.vercel.app"
+        "https://erp-five-phi.vercel.app",
+        "https://www.aquapurite.org",
+        "https://aquapurite.org"
     ]
 
     # Email/SMTP Settings (Gmail)
