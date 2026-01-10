@@ -122,8 +122,19 @@ export default function UsersPage() {
       toast.success('User deleted successfully');
       setDeleteUser(null);
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to delete user');
+    onError: (error: unknown) => {
+      // Extract error message from axios error
+      let message = 'Failed to delete user';
+      if (error && typeof error === 'object') {
+        const axiosError = error as { response?: { data?: { detail?: string } }; message?: string };
+        if (axiosError.response?.data?.detail) {
+          message = axiosError.response.data.detail;
+        } else if (axiosError.message) {
+          message = axiosError.message;
+        }
+      }
+      toast.error(message);
+      setDeleteUser(null);
     },
   });
 

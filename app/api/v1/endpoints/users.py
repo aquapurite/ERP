@@ -450,7 +450,6 @@ async def delete_user(
 
     # Soft delete - deactivate user
     user.is_active = False
-    await db.commit()
 
     # Audit log
     audit_service = AuditService(db)
@@ -462,6 +461,9 @@ async def delete_user(
         old_values={"is_active": True},
         new_values={"is_active": False}
     )
+
+    # Commit both user update and audit log
+    await db.commit()
 
     return None
 
