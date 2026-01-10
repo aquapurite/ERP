@@ -194,27 +194,29 @@ export default function CategoriesPage() {
     {
       accessorKey: 'name',
       header: 'Category',
+      size: 200,
       cell: ({ row }) => (
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted flex-shrink-0">
             <FolderTree className="h-5 w-5 text-muted-foreground" />
           </div>
-          <div>
-            <div className="font-medium">{row.original.name}</div>
-            <div className="text-sm text-muted-foreground">{row.original.slug}</div>
+          <div className="min-w-0">
+            <div className="font-medium truncate">{row.original.name}</div>
+            <div className="text-sm text-muted-foreground truncate">{row.original.slug}</div>
           </div>
         </div>
       ),
     },
     {
       accessorKey: 'parent',
-      header: 'Parent Category',
+      header: 'Parent',
+      size: 100,
       cell: ({ row }) => {
         const parentId = row.original.parent_id;
         return parentId ? (
           <span className="flex items-center gap-1 text-sm text-muted-foreground">
             <ChevronRight className="h-3 w-3" />
-            Sub-category
+            Sub
           </span>
         ) : (
           <span className="text-sm font-medium">Root</span>
@@ -224,15 +226,20 @@ export default function CategoriesPage() {
     {
       accessorKey: 'description',
       header: 'Description',
+      size: 250,
+      maxSize: 300,
       cell: ({ row }) => (
-        <span className="text-sm text-muted-foreground line-clamp-1">
-          {row.original.description || '-'}
-        </span>
+        <div className="max-w-[250px]">
+          <span className="text-sm text-muted-foreground line-clamp-1 truncate block" title={row.original.description || ''}>
+            {row.original.description || '-'}
+          </span>
+        </div>
       ),
     },
     {
       accessorKey: 'sort_order',
       header: 'Order',
+      size: 70,
       cell: ({ row }) => (
         <span className="text-sm">{row.original.sort_order ?? 0}</span>
       ),
@@ -240,12 +247,14 @@ export default function CategoriesPage() {
     {
       accessorKey: 'is_active',
       header: 'Status',
+      size: 80,
       cell: ({ row }) => (
         <StatusBadge status={row.original.is_active ? 'ACTIVE' : 'INACTIVE'} />
       ),
     },
     {
       id: 'actions',
+      size: 50,
       cell: ({ row }) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
