@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Pencil, Trash2, Building, Phone, Mail, Lock } from 'lucide-react';
+import { MoreHorizontal, Plus, Pencil, Trash2, Building, Phone, Mail, Lock, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -23,6 +23,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -38,133 +48,184 @@ import { vendorsApi } from '@/lib/api';
 import { Vendor } from '@/types';
 
 const tierColors: Record<string, string> = {
+  'A+': 'bg-purple-100 text-purple-800',
+  'A': 'bg-green-100 text-green-800',
+  'B': 'bg-blue-100 text-blue-800',
+  'C': 'bg-yellow-100 text-yellow-800',
+  'D': 'bg-red-100 text-red-800',
   PLATINUM: 'bg-purple-100 text-purple-800',
   GOLD: 'bg-yellow-100 text-yellow-800',
   SILVER: 'bg-gray-100 text-gray-800',
   BRONZE: 'bg-orange-100 text-orange-800',
 };
 
-const columns: ColumnDef<Vendor>[] = [
-  {
-    accessorKey: 'name',
-    header: 'Vendor',
-    cell: ({ row }) => (
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-          <Building className="h-5 w-5 text-muted-foreground" />
-        </div>
-        <div>
-          <div className="font-medium">{row.original.name}</div>
-          <div className="text-sm text-muted-foreground">{row.original.code}</div>
-        </div>
-      </div>
-    ),
-  },
-  {
-    accessorKey: 'contact',
-    header: 'Contact',
-    cell: ({ row }) => (
-      <div className="space-y-1">
-        {row.original.email && (
-          <div className="flex items-center gap-1 text-sm">
-            <Mail className="h-3 w-3 text-muted-foreground" />
-            {row.original.email}
+// Action cell component to handle edit/delete
+function VendorActionsCell({
+  vendor,
+  onEdit,
+  onDelete,
+}: {
+  vendor: Vendor;
+  onEdit: (vendor: Vendor) => void;
+  onDelete: (vendor: Vendor) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-8 w-8">
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => onEdit(vendor)}>
+          <Pencil className="mr-2 h-4 w-4" />
+          Edit
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="text-destructive focus:text-destructive"
+          onClick={() => onDelete(vendor)}
+        >
+          <Trash2 className="mr-2 h-4 w-4" />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// Column definitions factory
+function getColumns(
+  onEdit: (vendor: Vendor) => void,
+  onDelete: (vendor: Vendor) => void
+): ColumnDef<Vendor>[] {
+  return [
+    {
+      accessorKey: 'name',
+      header: 'Vendor',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+            <Building className="h-5 w-5 text-muted-foreground" />
           </div>
-        )}
-        {row.original.phone && (
-          <div className="flex items-center gap-1 text-sm">
-            <Phone className="h-3 w-3 text-muted-foreground" />
-            {row.original.phone}
+          <div>
+            <div className="font-medium">{row.original.name}</div>
+            <div className="text-sm text-muted-foreground font-mono">{row.original.code}</div>
           </div>
-        )}
-      </div>
-    ),
-  },
-  {
-    accessorKey: 'gst_number',
-    header: 'GST Number',
-    cell: ({ row }) => (
-      <span className="font-mono text-sm">{row.original.gst_number || '-'}</span>
-    ),
-  },
-  {
-    accessorKey: 'tier',
-    header: 'Tier',
-    cell: ({ row }) => (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${tierColors[row.original.tier] || 'bg-gray-100'}`}>
-        {row.original.tier}
-      </span>
-    ),
-  },
-  {
-    accessorKey: 'status',
-    header: 'Status',
-    cell: ({ row }) => <StatusBadge status={row.original.status} />,
-  },
-  {
-    id: 'actions',
-    cell: ({ row }) => (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-8 w-8">
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem>
-            <Pencil className="mr-2 h-4 w-4" />
-            Edit
-          </DropdownMenuItem>
-          <DropdownMenuItem className="text-destructive focus:text-destructive">
-            <Trash2 className="mr-2 h-4 w-4" />
-            Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    ),
-  },
-];
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'contact',
+      header: 'Contact',
+      cell: ({ row }) => (
+        <div className="space-y-1">
+          {row.original.email ? (
+            <div className="flex items-center gap-1 text-sm">
+              <Mail className="h-3 w-3 text-muted-foreground" />
+              {row.original.email}
+            </div>
+          ) : null}
+          {row.original.phone ? (
+            <div className="flex items-center gap-1 text-sm">
+              <Phone className="h-3 w-3 text-muted-foreground" />
+              {row.original.phone}
+            </div>
+          ) : null}
+          {!row.original.email && !row.original.phone && (
+            <span className="text-sm text-muted-foreground">-</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'gst_number',
+      header: 'GST Number',
+      cell: ({ row }) => (
+        <span className="font-mono text-sm">{row.original.gst_number || '-'}</span>
+      ),
+    },
+    {
+      accessorKey: 'tier',
+      header: 'Tier',
+      cell: ({ row }) => (
+        <span className={`px-2 py-1 rounded-full text-xs font-medium ${tierColors[row.original.tier] || 'bg-gray-100'}`}>
+          {row.original.tier}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'status',
+      header: 'Status',
+      cell: ({ row }) => <StatusBadge status={row.original.status} />,
+    },
+    {
+      id: 'actions',
+      cell: ({ row }) => (
+        <VendorActionsCell
+          vendor={row.original}
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />
+      ),
+    },
+  ];
+}
+
+type VendorFormData = {
+  name: string;
+  code: string;
+  email: string;
+  phone: string;
+  gst_number: string;
+  pan_number: string;
+  tier: 'PLATINUM' | 'GOLD' | 'SILVER' | 'BRONZE';
+  vendor_type: 'MANUFACTURER' | 'DISTRIBUTOR' | 'SPARE_PARTS' | 'SERVICE_PROVIDER' | 'RAW_MATERIAL' | 'TRANSPORTER';
+  contact_person: string;
+  address_line1: string;
+  city: string;
+  state: string;
+  pincode: string;
+};
+
+const emptyFormData: VendorFormData = {
+  name: '',
+  code: '',
+  email: '',
+  phone: '',
+  gst_number: '',
+  pan_number: '',
+  tier: 'SILVER',
+  vendor_type: 'MANUFACTURER',
+  contact_person: '',
+  address_line1: '',
+  city: '',
+  state: '',
+  pincode: '',
+};
 
 export default function VendorsPage() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  // Create dialog state
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isLoadingCode, setIsLoadingCode] = useState(false);
-  const [newVendor, setNewVendor] = useState<{
-    name: string;
-    code: string;
-    email: string;
-    phone: string;
-    gst_number: string;
-    pan_number: string;
-    tier: 'PLATINUM' | 'GOLD' | 'SILVER' | 'BRONZE';
-    vendor_type: 'MANUFACTURER' | 'DISTRIBUTOR' | 'SPARE_PARTS' | 'SERVICE_PROVIDER' | 'RAW_MATERIAL' | 'TRANSPORTER';
-    contact_person: string;
-    address_line1: string;
-    city: string;
-    state: string;
-    pincode: string;
-  }>({
-    name: '',
-    code: '',
-    email: '',
-    phone: '',
-    gst_number: '',
-    pan_number: '',
-    tier: 'SILVER',
-    vendor_type: 'MANUFACTURER',
-    contact_person: '',
-    address_line1: '',
-    city: '',
-    state: '',
-    pincode: '',
-  });
+  const [newVendor, setNewVendor] = useState<VendorFormData>(emptyFormData);
+
+  // Edit dialog state
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
+  const [editFormData, setEditFormData] = useState<VendorFormData>(emptyFormData);
+
+  // Delete confirmation state
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deletingVendor, setDeletingVendor] = useState<Vendor | null>(null);
 
   const queryClient = useQueryClient();
 
-  // Fetch next vendor code when dialog opens or vendor type changes
+  // Fetch next vendor code when create dialog opens or vendor type changes
   const fetchNextCode = async (vendorType: string) => {
     setIsLoadingCode(true);
     try {
@@ -177,12 +238,12 @@ export default function VendorsPage() {
     }
   };
 
-  // Fetch code when dialog opens
+  // Fetch code when create dialog opens
   useEffect(() => {
-    if (isDialogOpen) {
+    if (isCreateDialogOpen) {
       fetchNextCode(newVendor.vendor_type);
     }
-  }, [isDialogOpen]);
+  }, [isCreateDialogOpen]);
 
   // Update code when vendor type changes
   const handleVendorTypeChange = (value: typeof newVendor.vendor_type) => {
@@ -190,38 +251,41 @@ export default function VendorsPage() {
     fetchNextCode(value);
   };
 
+  // Fetch vendors
   const { data, isLoading } = useQuery({
     queryKey: ['vendors', page, pageSize],
     queryFn: () => vendorsApi.list({ page: page + 1, size: pageSize }),
   });
 
+  // Create mutation
   const createMutation = useMutation({
     mutationFn: vendorsApi.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vendors'] });
       toast.success('Vendor created successfully');
-      setIsDialogOpen(false);
-      setNewVendor({
-        name: '',
-        code: '',
-        email: '',
-        phone: '',
-        gst_number: '',
-        pan_number: '',
-        tier: 'SILVER',
-        vendor_type: 'MANUFACTURER',
-        contact_person: '',
-        address_line1: '',
-        city: '',
-        state: '',
-        pincode: '',
-      });
+      setIsCreateDialogOpen(false);
+      setNewVendor(emptyFormData);
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to create vendor');
     },
   });
 
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: vendorsApi.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['vendors'] });
+      toast.success('Vendor deleted successfully');
+      setIsDeleteDialogOpen(false);
+      setDeletingVendor(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to delete vendor');
+    },
+  });
+
+  // Handlers
   const handleCreate = () => {
     if (!newVendor.name.trim()) {
       toast.error('Vendor name is required');
@@ -238,13 +302,50 @@ export default function VendorsPage() {
     createMutation.mutate(newVendor);
   };
 
+  const handleEdit = (vendor: Vendor) => {
+    setEditingVendor(vendor);
+    setEditFormData({
+      name: vendor.name,
+      code: vendor.code,
+      email: vendor.email || '',
+      phone: vendor.phone || '',
+      gst_number: vendor.gst_number || '',
+      pan_number: vendor.pan_number || '',
+      tier: (vendor.tier as VendorFormData['tier']) || 'SILVER',
+      vendor_type: 'MANUFACTURER', // Default, would need to fetch from backend
+      contact_person: vendor.contact_person || '',
+      address_line1: '',
+      city: vendor.city || '',
+      state: vendor.state || '',
+      pincode: '',
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleDelete = (vendor: Vendor) => {
+    setDeletingVendor(vendor);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (deletingVendor) {
+      deleteMutation.mutate(deletingVendor.id);
+    }
+  };
+
+  // Generate columns with handlers
+  const columns = useMemo(
+    () => getColumns(handleEdit, handleDelete),
+    []
+  );
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Vendors"
         description="Manage suppliers and vendor relationships"
         actions={
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="mr-2 h-4 w-4" />
@@ -448,7 +549,7 @@ export default function VendorsPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                   Cancel
                 </Button>
                 <Button onClick={handleCreate} disabled={createMutation.isPending}>
@@ -473,6 +574,99 @@ export default function VendorsPage() {
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
+
+      {/* Edit Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Vendor</DialogTitle>
+            <DialogDescription>
+              Update vendor information for {editingVendor?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label>Vendor Code</Label>
+              <Input value={editFormData.code} disabled className="bg-muted font-mono" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Name</Label>
+              <Input
+                id="edit-name"
+                value={editFormData.name}
+                onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-email">Email</Label>
+              <Input
+                id="edit-email"
+                type="email"
+                value={editFormData.email}
+                onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-phone">Phone</Label>
+              <Input
+                id="edit-phone"
+                value={editFormData.phone}
+                onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-gst">GSTIN</Label>
+              <Input
+                id="edit-gst"
+                value={editFormData.gst_number}
+                maxLength={15}
+                onChange={(e) => setEditFormData({ ...editFormData, gst_number: e.target.value.toUpperCase() })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => {
+              toast.info('Edit functionality will be connected to backend API');
+              setIsEditDialogOpen(false);
+            }}>
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Vendor</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{deletingVendor?.name}</strong> ({deletingVendor?.code})?
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeletingVendor(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
