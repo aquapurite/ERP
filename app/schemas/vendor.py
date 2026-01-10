@@ -174,7 +174,7 @@ class VendorBrief(BaseModel):
     name: str
     vendor_type: VendorType
     status: VendorStatus
-    grade: VendorGrade = VendorGrade.SILVER
+    grade: VendorGrade = VendorGrade.B
     gstin: Optional[str] = None
     pan: Optional[str] = None
     phone: Optional[str] = None
