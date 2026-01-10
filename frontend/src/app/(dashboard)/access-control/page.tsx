@@ -11,7 +11,7 @@ import { usersApi, rolesApi } from '@/lib/api';
 export default function AccessControlPage() {
   const { data: usersData } = useQuery({
     queryKey: ['users-count'],
-    queryFn: () => usersApi.list({ page: 1, size: 1 }),
+    queryFn: () => usersApi.list({ page: 1, size: 1, is_active: true }),
   });
 
   const { data: rolesData } = useQuery({

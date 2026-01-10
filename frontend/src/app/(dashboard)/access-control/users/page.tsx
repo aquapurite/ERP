@@ -112,7 +112,7 @@ export default function UsersPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['users', page, pageSize],
-    queryFn: () => usersApi.list({ page: page + 1, size: pageSize }),
+    queryFn: () => usersApi.list({ page: page + 1, size: pageSize, is_active: true }),
   });
 
   const deleteMutation = useMutation({
