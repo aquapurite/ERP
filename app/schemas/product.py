@@ -311,8 +311,8 @@ class ProductResponse(BaseModel):
     description: Optional[str] = None
     features: Optional[str] = None
 
-    category: CategoryBrief
-    brand: BrandBrief
+    category: Optional[CategoryBrief] = None
+    brand: Optional[BrandBrief] = None
 
     mrp: Decimal
     selling_price: Decimal
