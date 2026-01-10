@@ -278,7 +278,7 @@ export default function VendorsPage() {
                     <div className="relative">
                       <Input
                         id="code"
-                        placeholder={isLoadingCode ? "Loading..." : "MFR-00001"}
+                        placeholder={isLoadingCode ? "Loading..." : "VND-MFR-00001"}
                         value={newVendor.code}
                         readOnly
                         disabled

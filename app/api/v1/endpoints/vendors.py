@@ -32,49 +32,63 @@ router = APIRouter()
 
 # ==================== Next Code Generation ====================
 
+# Type prefix mapping for vendor codes
+VENDOR_TYPE_PREFIX_MAP = {
+    VendorType.MANUFACTURER: "MFR",
+    VendorType.IMPORTER: "IMP",
+    VendorType.DISTRIBUTOR: "DST",
+    VendorType.TRADER: "TRD",
+    VendorType.SERVICE_PROVIDER: "SVC",
+    VendorType.RAW_MATERIAL: "RAW",
+    VendorType.SPARE_PARTS: "SPR",
+    VendorType.CONSUMABLES: "CNS",
+    VendorType.TRANSPORTER: "TRN",
+    VendorType.CONTRACTOR: "CTR",
+}
+
+
+async def get_next_global_vendor_number(db: DB) -> int:
+    """Get the next global vendor sequence number across ALL vendor types."""
+    # Find the highest number from ALL vendor codes (format: VND-XXX-NNNNN)
+    result = await db.execute(
+        select(Vendor.vendor_code)
+        .where(Vendor.vendor_code.like("VND-%"))
+        .order_by(Vendor.vendor_code.desc())
+    )
+    all_codes = result.scalars().all()
+
+    max_num = 0
+    for code in all_codes:
+        try:
+            # Extract the number part from VND-XXX-NNNNN format
+            parts = code.split("-")
+            if len(parts) >= 3:
+                num = int(parts[2])
+                if num > max_num:
+                    max_num = num
+        except (IndexError, ValueError):
+            continue
+
+    return max_num + 1
+
+
 @router.get("/next-code")
 async def get_next_vendor_code(
     db: DB,
     vendor_type: VendorType = Query(VendorType.MANUFACTURER, description="Vendor type for code prefix"),
 ):
-    """Get the next available vendor code based on vendor type."""
-    # Determine prefix based on vendor type
-    prefix_map = {
-        VendorType.MANUFACTURER: "MFR",
-        VendorType.IMPORTER: "IMP",
-        VendorType.DISTRIBUTOR: "DST",
-        VendorType.TRADER: "TRD",
-        VendorType.SERVICE_PROVIDER: "SVC",
-        VendorType.RAW_MATERIAL: "RAW",
-        VendorType.SPARE_PARTS: "SPR",
-        VendorType.CONSUMABLES: "CNS",
-        VendorType.TRANSPORTER: "TRN",
-        VendorType.CONTRACTOR: "CTR",
-    }
-    prefix = prefix_map.get(vendor_type, "VND")
+    """Get the next available vendor code based on vendor type.
 
-    # Get the highest number for this prefix
-    result = await db.execute(
-        select(Vendor.vendor_code)
-        .where(Vendor.vendor_code.like(f"{prefix}-%"))
-        .order_by(Vendor.vendor_code.desc())
-        .limit(1)
-    )
-    last_code = result.scalar_one_or_none()
+    Format: VND-{TYPE}-{GLOBAL_NUMBER}
+    Example: VND-MFR-00001, VND-SPR-00002, VND-DST-00003
 
-    if last_code:
-        # Extract number and increment
-        try:
-            last_num = int(last_code.split("-")[1])
-            next_num = last_num + 1
-        except (IndexError, ValueError):
-            next_num = 1
-    else:
-        next_num = 1
+    The number is a SINGLE GLOBAL SEQUENCE across all vendor types.
+    """
+    type_prefix = VENDOR_TYPE_PREFIX_MAP.get(vendor_type, "OTH")
+    next_num = await get_next_global_vendor_number(db)
+    next_code = f"VND-{type_prefix}-{str(next_num).zfill(5)}"
 
-    next_code = f"{prefix}-{str(next_num).zfill(5)}"
-
-    return {"next_code": next_code, "prefix": prefix}
+    return {"next_code": next_code, "prefix": f"VND-{type_prefix}"}
 
 
 # ==================== Vendor CRUD ====================
@@ -97,40 +111,11 @@ async def create_vendor(
                 detail=f"Vendor with GSTIN {vendor_in.gstin} already exists"
             )
 
-    # Generate vendor code - find highest number for this vendor type prefix
-    prefix_map = {
-        VendorType.MANUFACTURER: "MFR",
-        VendorType.IMPORTER: "IMP",
-        VendorType.DISTRIBUTOR: "DST",
-        VendorType.TRADER: "TRD",
-        VendorType.SERVICE_PROVIDER: "SVC",
-        VendorType.RAW_MATERIAL: "RAW",
-        VendorType.SPARE_PARTS: "SPR",
-        VendorType.CONSUMABLES: "CNS",
-        VendorType.TRANSPORTER: "TRN",
-        VendorType.CONTRACTOR: "CTR",
-    }
-    prefix = prefix_map.get(vendor_in.vendor_type, "VND")
-
-    # Get the highest number for this prefix
-    result = await db.execute(
-        select(Vendor.vendor_code)
-        .where(Vendor.vendor_code.like(f"{prefix}-%"))
-        .order_by(Vendor.vendor_code.desc())
-        .limit(1)
-    )
-    last_code = result.scalar_one_or_none()
-
-    if last_code:
-        try:
-            last_num = int(last_code.split("-")[1])
-            next_num = last_num + 1
-        except (IndexError, ValueError):
-            next_num = 1
-    else:
-        next_num = 1
-
-    vendor_code = f"{prefix}-{str(next_num).zfill(5)}"
+    # Generate vendor code with global sequence
+    # Format: VND-{TYPE}-{GLOBAL_NUMBER} (e.g., VND-MFR-00001, VND-SPR-00002)
+    type_prefix = VENDOR_TYPE_PREFIX_MAP.get(vendor_in.vendor_type, "OTH")
+    next_num = await get_next_global_vendor_number(db)
+    vendor_code = f"VND-{type_prefix}-{str(next_num).zfill(5)}"
 
     # Extract state code from GSTIN
     gst_state_code = vendor_in.gstin[:2] if vendor_in.gstin else None
