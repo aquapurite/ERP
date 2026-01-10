@@ -24,6 +24,7 @@ type ForgotPasswordForm = z.infer<typeof forgotPasswordSchema>;
 export default function ForgotPasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [resetToken, setResetToken] = useState<string | null>(null);
+  const [emailSent, setEmailSent] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const {
@@ -41,9 +42,12 @@ export default function ForgotPasswordPage() {
     setIsLoading(true);
     try {
       const response = await apiClient.post('/auth/forgot-password', data);
-      if (response.data.token) {
+      if (response.data.email_sent) {
+        setEmailSent(true);
+        toast.success('Password reset email sent! Check your inbox.');
+      } else if (response.data.token) {
         setResetToken(response.data.token);
-        toast.success('Reset token generated successfully!');
+        toast.info('Email not configured. Use the token below.');
       } else {
         toast.info(response.data.message);
       }
@@ -78,14 +82,29 @@ export default function ForgotPasswordPage() {
           </div>
           <CardTitle className="text-2xl font-bold">{siteConfig.name}</CardTitle>
           <CardDescription>
-            {resetToken
+            {emailSent
+              ? 'Check your email for the reset link'
+              : resetToken
               ? 'Use this token to reset your password'
-              : 'Enter your email to receive a password reset token'
+              : 'Enter your email to receive a password reset link'
             }
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {!resetToken ? (
+          {emailSent ? (
+            <div className="space-y-4 text-center">
+              <div className="flex justify-center">
+                <Check className="h-16 w-16 text-green-500" />
+              </div>
+              <p className="text-muted-foreground">
+                We&apos;ve sent a password reset link to your email address.
+                Please check your inbox and spam folder.
+              </p>
+              <Button asChild variant="outline" className="w-full">
+                <Link href="/login">Back to Login</Link>
+              </Button>
+            </div>
+          ) : !resetToken ? (
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email Address</Label>
@@ -102,7 +121,7 @@ export default function ForgotPasswordPage() {
               </div>
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Get Reset Token
+                Send Reset Link
               </Button>
             </form>
           ) : (

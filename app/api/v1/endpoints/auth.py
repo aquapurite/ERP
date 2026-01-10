@@ -11,6 +11,8 @@ from app.services.auth_service import AuthService
 from app.services.audit_service import AuditService
 from app.models.user import User
 from app.core.security import get_password_hash
+from app.services.email_service import get_email_service
+from app.config import settings
 
 
 router = APIRouter(tags=["Authentication"])
@@ -160,8 +162,7 @@ async def forgot_password(
     db: DB,
 ):
     """
-    Request a password reset. Generates a reset token.
-    In production, this would send an email with the reset link.
+    Request a password reset. Generates a reset token and sends email.
     """
     # Find user by email
     stmt = select(User).where(User.email == data.email.lower())
@@ -172,7 +173,7 @@ async def forgot_password(
     if not user:
         return {
             "message": "If this email exists, a password reset link has been sent.",
-            "token": None  # Don't reveal if user exists
+            "email_sent": False
         }
 
     # Generate reset token
@@ -186,14 +187,34 @@ async def forgot_password(
         "expires_at": expires_at
     }
 
-    # For development/testing, return the token directly
-    # In production, send email instead
-    return {
-        "message": "Password reset token generated. Use this token to reset your password.",
-        "token": reset_token,
-        "expires_in": "1 hour",
-        "reset_url": f"/reset-password?token={reset_token}"
-    }
+    # Build reset URL
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'https://erp-five-phi.vercel.app')
+    reset_url = f"{frontend_url}/reset-password?token={reset_token}"
+
+    # Try to send email
+    email_service = get_email_service()
+    user_name = user.first_name or user.email.split('@')[0]
+    email_sent = email_service.send_password_reset_email(
+        to_email=user.email,
+        reset_token=reset_token,
+        reset_url=reset_url,
+        user_name=user_name
+    )
+
+    # Return response
+    if email_sent:
+        return {
+            "message": "Password reset link has been sent to your email.",
+            "email_sent": True
+        }
+    else:
+        # If email fails, return token directly (for development/testing)
+        return {
+            "message": "Email service not configured. Use the token below to reset your password.",
+            "email_sent": False,
+            "token": reset_token,
+            "reset_url": reset_url
+        }
 
 
 @router.post("/reset-password")

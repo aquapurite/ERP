@@ -30,6 +30,17 @@ class Settings(BaseSettings):
         "https://erp-five-phi.vercel.app"
     ]
 
+    # Email/SMTP Settings (Gmail)
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""  # Your Gmail address
+    SMTP_PASSWORD: str = ""  # Gmail App Password
+    SMTP_FROM_EMAIL: str = ""  # Sender email (defaults to SMTP_USER)
+    SMTP_FROM_NAME: str = "Aquapurite ERP"
+
+    # Frontend URL for email links
+    FRONTEND_URL: str = "https://erp-five-phi.vercel.app"
+
     @field_validator('CORS_ORIGINS', mode='before')
     @classmethod
     def parse_cors_origins(cls, v):
