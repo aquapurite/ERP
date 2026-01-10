@@ -1107,21 +1107,23 @@ export default function PurchaseRequisitionsPage() {
                           </p>
                         ) : (
                           <>
-                            <div className="grid gap-2" style={{ gridTemplateColumns: `2fr 1fr ${multiDeliveryMonths.map(() => '1fr').join(' ')} 0.8fr 0.5fr` }}>
-                              {/* Header */}
-                              <div className="text-xs font-medium text-muted-foreground">Product</div>
-                              <div className="text-xs font-medium text-muted-foreground">Est. Price</div>
+                            {/* Header Row */}
+                            <div className="grid gap-3 items-center" style={{ gridTemplateColumns: `2fr 100px ${multiDeliveryMonths.map(() => '80px').join(' ')} 80px 50px` }}>
+                              <div className="text-sm font-semibold text-foreground">Product</div>
+                              <div className="text-sm font-semibold text-foreground">Est. Price</div>
                               {multiDeliveryMonths.map((month) => {
                                 const d = new Date(`${month}-01`);
                                 const label = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
                                 return (
-                                  <div key={month} className="text-xs font-medium text-muted-foreground text-center">{label}</div>
+                                  <div key={month} className="text-sm font-semibold text-foreground text-center">{label}</div>
                                 );
                               })}
-                              <div className="text-xs font-medium text-muted-foreground text-right">Total</div>
+                              <div className="text-sm font-semibold text-foreground text-center">Total</div>
                               <div></div>
+                            </div>
 
-                              {/* Input Row */}
+                            {/* Input Row */}
+                            <div className="grid gap-3 items-center" style={{ gridTemplateColumns: `2fr 100px ${multiDeliveryMonths.map(() => '80px').join(' ')} 80px 50px` }}>
                               <Select
                                 value={newItem.product_id || 'select'}
                                 onValueChange={(value) => {
@@ -1134,7 +1136,7 @@ export default function PurchaseRequisitionsPage() {
                                 }}
                                 disabled={isLoadingProducts}
                               >
-                                <SelectTrigger className="h-9">
+                                <SelectTrigger className="h-10">
                                   <SelectValue placeholder={isLoadingProducts ? "Loading..." : "Select product"} />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -1159,7 +1161,7 @@ export default function PurchaseRequisitionsPage() {
                                 type="number"
                                 min="0"
                                 step="0.01"
-                                className="h-9"
+                                className="h-10"
                                 placeholder="Price"
                                 value={newItem.estimated_price || ''}
                                 onChange={(e) => setNewItem({ ...newItem, estimated_price: parseFloat(e.target.value) || 0 })}
@@ -1170,8 +1172,8 @@ export default function PurchaseRequisitionsPage() {
                                   key={month}
                                   type="number"
                                   min="0"
-                                  className="h-9 text-center"
-                                  placeholder="Qty"
+                                  className="h-10 text-center"
+                                  placeholder="0"
                                   value={newItem.monthlyQtys[month] || ''}
                                   onChange={(e) => {
                                     const qty = parseInt(e.target.value) || 0;
@@ -1183,11 +1185,11 @@ export default function PurchaseRequisitionsPage() {
                                 />
                               ))}
 
-                              <div className="h-9 flex items-center justify-end font-medium text-sm bg-muted rounded px-2">
-                                {Object.values(newItem.monthlyQtys).reduce((sum, qty) => sum + (qty || 0), 0)}
+                              <div className="h-10 flex items-center justify-center font-bold text-base bg-muted rounded px-2">
+                                {Object.values(newItem.monthlyQtys).reduce((sum: number, qty) => sum + (Number(qty) || 0), 0)}
                               </div>
 
-                              <Button type="button" onClick={handleAddItem} size="sm" className="h-9">
+                              <Button type="button" onClick={handleAddItem} size="sm" className="h-10">
                                 <Plus className="h-4 w-4" />
                               </Button>
                             </div>
