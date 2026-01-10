@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Pencil, Trash2, Building, Phone, Mail } from 'lucide-react';
+import { MoreHorizontal, Plus, Pencil, Trash2, Building, Phone, Mail, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -131,6 +131,7 @@ export default function VendorsPage() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isLoadingCode, setIsLoadingCode] = useState(false);
   const [newVendor, setNewVendor] = useState<{
     name: string;
     code: string;
@@ -139,7 +140,7 @@ export default function VendorsPage() {
     gst_number: string;
     pan_number: string;
     tier: 'PLATINUM' | 'GOLD' | 'SILVER' | 'BRONZE';
-    vendor_type: 'MANUFACTURER' | 'DISTRIBUTOR' | 'WHOLESALER' | 'RETAILER' | 'SERVICE_PROVIDER' | 'OTHER';
+    vendor_type: 'MANUFACTURER' | 'DISTRIBUTOR' | 'SPARE_PARTS' | 'SERVICE_PROVIDER' | 'RAW_MATERIAL' | 'TRANSPORTER';
     contact_person: string;
     address_line1: string;
     city: string;
@@ -162,6 +163,32 @@ export default function VendorsPage() {
   });
 
   const queryClient = useQueryClient();
+
+  // Fetch next vendor code when dialog opens or vendor type changes
+  const fetchNextCode = async (vendorType: string) => {
+    setIsLoadingCode(true);
+    try {
+      const result = await vendorsApi.getNextCode(vendorType);
+      setNewVendor(prev => ({ ...prev, code: result.next_code }));
+    } catch (error) {
+      console.error('Failed to fetch next vendor code:', error);
+    } finally {
+      setIsLoadingCode(false);
+    }
+  };
+
+  // Fetch code when dialog opens
+  useEffect(() => {
+    if (isDialogOpen) {
+      fetchNextCode(newVendor.vendor_type);
+    }
+  }, [isDialogOpen]);
+
+  // Update code when vendor type changes
+  const handleVendorTypeChange = (value: typeof newVendor.vendor_type) => {
+    setNewVendor(prev => ({ ...prev, vendor_type: value }));
+    fetchNextCode(value);
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['vendors', page, pageSize],
@@ -247,15 +274,18 @@ export default function VendorsPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="code">Code</Label>
-                    <Input
-                      id="code"
-                      placeholder="VND001"
-                      value={newVendor.code}
-                      onChange={(e) =>
-                        setNewVendor({ ...newVendor, code: e.target.value.toUpperCase() })
-                      }
-                    />
+                    <Label htmlFor="code">Code (Auto-generated)</Label>
+                    <div className="relative">
+                      <Input
+                        id="code"
+                        placeholder={isLoadingCode ? "Loading..." : "MFR-00001"}
+                        value={newVendor.code}
+                        readOnly
+                        disabled
+                        className="bg-muted pr-8 font-mono"
+                      />
+                      <Lock className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -263,20 +293,18 @@ export default function VendorsPage() {
                     <Label htmlFor="vendor_type">Vendor Type *</Label>
                     <Select
                       value={newVendor.vendor_type}
-                      onValueChange={(value: typeof newVendor.vendor_type) =>
-                        setNewVendor({ ...newVendor, vendor_type: value })
-                      }
+                      onValueChange={handleVendorTypeChange}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select type" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="MANUFACTURER">Manufacturer</SelectItem>
-                        <SelectItem value="DISTRIBUTOR">Distributor</SelectItem>
-                        <SelectItem value="WHOLESALER">Wholesaler</SelectItem>
-                        <SelectItem value="RETAILER">Retailer</SelectItem>
-                        <SelectItem value="SERVICE_PROVIDER">Service Provider</SelectItem>
-                        <SelectItem value="OTHER">Other</SelectItem>
+                        <SelectItem value="MANUFACTURER">Manufacturer (MFR)</SelectItem>
+                        <SelectItem value="SPARE_PARTS">Spare Parts (SPR)</SelectItem>
+                        <SelectItem value="DISTRIBUTOR">Distributor (DST)</SelectItem>
+                        <SelectItem value="RAW_MATERIAL">Raw Material (RAW)</SelectItem>
+                        <SelectItem value="SERVICE_PROVIDER">Service Provider (SVC)</SelectItem>
+                        <SelectItem value="TRANSPORTER">Transporter (TRN)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

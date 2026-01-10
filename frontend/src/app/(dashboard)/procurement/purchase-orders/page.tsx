@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, FileText, Send, CheckCircle, X, Loader2, Trash2, Download, Printer, Package, Barcode } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, FileText, Send, CheckCircle, X, Loader2, Trash2, Download, Printer, Package, Barcode, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/providers/auth-provider';
 import { Button } from '@/components/ui/button';
@@ -140,6 +140,8 @@ export default function PurchaseOrdersPage() {
 
   const [isMultiDelivery, setIsMultiDelivery] = useState(false);
   const [deliveryMonths, setDeliveryMonths] = useState<string[]>([]);
+  const [nextPONumber, setNextPONumber] = useState<string>('');
+  const [isLoadingPONumber, setIsLoadingPONumber] = useState(false);
 
   const [formData, setFormData] = useState({
     requisition_id: '',  // Required - PO must be linked to an approved PR
@@ -235,6 +237,24 @@ export default function PurchaseOrdersPage() {
       router.replace('/procurement/purchase-orders', { scroll: false });
     }
   }, [searchParams, router]);
+
+  // Fetch next PO number when dialog opens
+  useEffect(() => {
+    if (isCreateOpen) {
+      const fetchNextPONumber = async () => {
+        setIsLoadingPONumber(true);
+        try {
+          const result = await purchaseOrdersApi.getNextNumber();
+          setNextPONumber(result.next_number);
+        } catch (error) {
+          console.error('Failed to fetch next PO number:', error);
+        } finally {
+          setIsLoadingPONumber(false);
+        }
+      };
+      fetchNextPONumber();
+    }
+  }, [isCreateOpen]);
 
   // Auto-select PR when openPRsData loads and urlPrId is set
   useEffect(() => {
@@ -337,6 +357,7 @@ export default function PurchaseOrdersPage() {
     setNewItem({ product_id: '', quantity: 1, unit_price: 0, gst_rate: 18, monthlyQtys: {} });
     setIsMultiDelivery(false);
     setDeliveryMonths([]);
+    setNextPONumber('');
     setIsCreateOpen(false);
   };
 
@@ -706,6 +727,22 @@ export default function PurchaseOrdersPage() {
                   <DialogDescription>Create a new purchase order for vendor procurement</DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
+                  {/* PO Number - Auto-generated, Read-only */}
+                  <div className="space-y-2">
+                    <Label htmlFor="po_number">PO Number (Auto-generated)</Label>
+                    <div className="relative">
+                      <Input
+                        id="po_number"
+                        placeholder={isLoadingPONumber ? "Loading..." : "PO/APL/YY-YY/0001"}
+                        value={nextPONumber}
+                        readOnly
+                        disabled
+                        className="bg-muted pr-8 font-mono"
+                      />
+                      <Lock className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </div>
+
                   {/* Purchase Requisition Selection - MANDATORY */}
                   <div className="space-y-2 p-3 border rounded-lg bg-blue-50/50">
                     <Label className="text-base font-semibold flex items-center gap-2">

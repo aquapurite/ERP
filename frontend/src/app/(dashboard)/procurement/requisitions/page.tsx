@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, Send, CheckCircle, XCircle, FileText, ShoppingCart, Clock, AlertCircle, ArrowRight, Trash2, Loader2, Calendar, Printer } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, Send, CheckCircle, XCircle, FileText, ShoppingCart, Clock, AlertCircle, ArrowRight, Trash2, Loader2, Calendar, Printer, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -49,7 +49,7 @@ import { Label } from '@/components/ui/label';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
 import apiClient from '@/lib/api/client';
-import { warehousesApi, productsApi, companyApi } from '@/lib/api';
+import { warehousesApi, productsApi, companyApi, purchaseRequisitionsApi } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 interface PurchaseRequisition {
@@ -194,6 +194,8 @@ export default function PurchaseRequisitionsPage() {
   const [selectedVendorId, setSelectedVendorId] = useState('');
 
   // Form state
+  const [nextPRNumber, setNextPRNumber] = useState<string>('');
+  const [isLoadingPRNumber, setIsLoadingPRNumber] = useState(false);
   const [formData, setFormData] = useState<PRFormData>({
     delivery_warehouse_id: '',
     required_by_date: '',
@@ -223,6 +225,24 @@ export default function PurchaseRequisitionsPage() {
     }
     return months;
   }, []);
+
+  // Fetch next PR number when dialog opens
+  useEffect(() => {
+    if (isDialogOpen) {
+      const fetchNextPRNumber = async () => {
+        setIsLoadingPRNumber(true);
+        try {
+          const result = await purchaseRequisitionsApi.getNextNumber();
+          setNextPRNumber(result.next_number);
+        } catch (error) {
+          console.error('Failed to fetch next PR number:', error);
+        } finally {
+          setIsLoadingPRNumber(false);
+        }
+      };
+      fetchNextPRNumber();
+    }
+  }, [isDialogOpen]);
 
   const queryClient = useQueryClient();
 
@@ -566,6 +586,7 @@ export default function PurchaseRequisitionsPage() {
     });
     setNewItem({ product_id: '', quantity: 1, estimated_price: 0, monthlyQtys: {} });
     setMultiDeliveryMonths([]);
+    setNextPRNumber('');
     setIsDialogOpen(false);
   };
 
@@ -819,6 +840,21 @@ export default function PurchaseRequisitionsPage() {
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
+                {/* PR Number - Auto-generated, Read-only */}
+                <div className="space-y-2">
+                  <Label htmlFor="pr_number">PR Number (Auto-generated)</Label>
+                  <div className="relative">
+                    <Input
+                      id="pr_number"
+                      placeholder={isLoadingPRNumber ? "Loading..." : "PR-YYYYMMDD-0001"}
+                      value={nextPRNumber}
+                      readOnly
+                      disabled
+                      className="bg-muted pr-8 font-mono"
+                    />
+                    <Lock className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Delivery Warehouse *</Label>

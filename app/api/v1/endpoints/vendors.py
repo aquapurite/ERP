@@ -30,6 +30,53 @@ from app.models.approval import ApprovalEntityType
 router = APIRouter()
 
 
+# ==================== Next Code Generation ====================
+
+@router.get("/next-code")
+async def get_next_vendor_code(
+    db: DB,
+    vendor_type: VendorType = Query(VendorType.MANUFACTURER, description="Vendor type for code prefix"),
+):
+    """Get the next available vendor code based on vendor type."""
+    # Determine prefix based on vendor type
+    prefix_map = {
+        VendorType.MANUFACTURER: "MFR",
+        VendorType.IMPORTER: "IMP",
+        VendorType.DISTRIBUTOR: "DST",
+        VendorType.TRADER: "TRD",
+        VendorType.SERVICE_PROVIDER: "SVC",
+        VendorType.RAW_MATERIAL: "RAW",
+        VendorType.SPARE_PARTS: "SPR",
+        VendorType.CONSUMABLES: "CNS",
+        VendorType.TRANSPORTER: "TRN",
+        VendorType.CONTRACTOR: "CTR",
+    }
+    prefix = prefix_map.get(vendor_type, "VND")
+
+    # Get the highest number for this prefix
+    result = await db.execute(
+        select(Vendor.vendor_code)
+        .where(Vendor.vendor_code.like(f"{prefix}-%"))
+        .order_by(Vendor.vendor_code.desc())
+        .limit(1)
+    )
+    last_code = result.scalar_one_or_none()
+
+    if last_code:
+        # Extract number and increment
+        try:
+            last_num = int(last_code.split("-")[1])
+            next_num = last_num + 1
+        except (IndexError, ValueError):
+            next_num = 1
+    else:
+        next_num = 1
+
+    next_code = f"{prefix}-{str(next_num).zfill(5)}"
+
+    return {"next_code": next_code, "prefix": prefix}
+
+
 # ==================== Vendor CRUD ====================
 
 @router.post("", response_model=VendorResponse, status_code=status.HTTP_201_CREATED)
@@ -50,13 +97,7 @@ async def create_vendor(
                 detail=f"Vendor with GSTIN {vendor_in.gstin} already exists"
             )
 
-    # Generate vendor code
-    result = await db.execute(
-        select(func.count(Vendor.id))
-    )
-    count = result.scalar() or 0
-
-    # Determine prefix based on vendor type
+    # Generate vendor code - find highest number for this vendor type prefix
     prefix_map = {
         VendorType.MANUFACTURER: "MFR",
         VendorType.IMPORTER: "IMP",
@@ -70,7 +111,26 @@ async def create_vendor(
         VendorType.CONTRACTOR: "CTR",
     }
     prefix = prefix_map.get(vendor_in.vendor_type, "VND")
-    vendor_code = f"{prefix}-{str(count + 1).zfill(5)}"
+
+    # Get the highest number for this prefix
+    result = await db.execute(
+        select(Vendor.vendor_code)
+        .where(Vendor.vendor_code.like(f"{prefix}-%"))
+        .order_by(Vendor.vendor_code.desc())
+        .limit(1)
+    )
+    last_code = result.scalar_one_or_none()
+
+    if last_code:
+        try:
+            last_num = int(last_code.split("-")[1])
+            next_num = last_num + 1
+        except (IndexError, ValueError):
+            next_num = 1
+    else:
+        next_num = 1
+
+    vendor_code = f"{prefix}-{str(next_num).zfill(5)}"
 
     # Extract state code from GSTIN
     gst_state_code = vendor_in.gstin[:2] if vendor_in.gstin else None

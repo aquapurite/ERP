@@ -53,6 +53,101 @@ from app.models.approval import ApprovalEntityType
 router = APIRouter()
 
 
+# ==================== Next Number Generation ====================
+
+@router.get("/requisitions/next-number")
+async def get_next_pr_number(
+    db: DB,
+):
+    """Get the next available Purchase Requisition number."""
+    today = date.today()
+
+    # Find the highest PR number for today
+    result = await db.execute(
+        select(PurchaseRequisition.requisition_number)
+        .where(func.date(PurchaseRequisition.created_at) == today)
+        .order_by(PurchaseRequisition.requisition_number.desc())
+        .limit(1)
+    )
+    last_pr = result.scalar_one_or_none()
+
+    if last_pr:
+        try:
+            # Extract the sequence number from PR-YYYYMMDD-XXXX
+            last_num = int(last_pr.split("-")[-1])
+            next_num = last_num + 1
+        except (IndexError, ValueError):
+            next_num = 1
+    else:
+        next_num = 1
+
+    next_pr = f"PR-{today.strftime('%Y%m%d')}-{str(next_num).zfill(4)}"
+    return {"next_number": next_pr, "prefix": f"PR-{today.strftime('%Y%m%d')}"}
+
+
+@router.get("/orders/next-number")
+async def get_next_po_number(
+    db: DB,
+):
+    """Get the next available Purchase Order number."""
+    today = date.today()
+    fy_year = today.year if today.month >= 4 else today.year - 1
+    fy_suffix = f"{str(fy_year)[-2:]}-{str(fy_year + 1)[-2:]}"
+
+    # Find the highest PO number for this financial year
+    result = await db.execute(
+        select(PurchaseOrder.po_number)
+        .where(PurchaseOrder.po_number.like(f"PO/APL/{fy_suffix}/%"))
+        .order_by(PurchaseOrder.po_number.desc())
+        .limit(1)
+    )
+    last_po = result.scalar_one_or_none()
+
+    if last_po:
+        try:
+            # Extract the sequence number from PO/APL/YY-YY/XXXX
+            last_num = int(last_po.split("/")[-1])
+            next_num = last_num + 1
+        except (IndexError, ValueError):
+            next_num = 1
+    else:
+        next_num = 1
+
+    next_po = f"PO/APL/{fy_suffix}/{str(next_num).zfill(4)}"
+    return {"next_number": next_po, "prefix": f"PO/APL/{fy_suffix}"}
+
+
+@router.get("/grn/next-number")
+async def get_next_grn_number(
+    db: DB,
+):
+    """Get the next available Goods Receipt Note number."""
+    today = date.today()
+    fy_year = today.year if today.month >= 4 else today.year - 1
+    fy_suffix = f"{str(fy_year)[-2:]}-{str(fy_year + 1)[-2:]}"
+
+    # Find the highest GRN number for this financial year
+    result = await db.execute(
+        select(GoodsReceiptNote.grn_number)
+        .where(GoodsReceiptNote.grn_number.like(f"GRN/APL/{fy_suffix}/%"))
+        .order_by(GoodsReceiptNote.grn_number.desc())
+        .limit(1)
+    )
+    last_grn = result.scalar_one_or_none()
+
+    if last_grn:
+        try:
+            last_num = int(last_grn.split("/")[-1])
+            next_num = last_num + 1
+        except (IndexError, ValueError):
+            next_num = 1
+    else:
+        next_num = 1
+
+    next_grn = f"GRN/APL/{fy_suffix}/{str(next_num).zfill(4)}"
+    return {"next_number": next_grn, "prefix": f"GRN/APL/{fy_suffix}"}
+
+
 # ==================== Purchase Requisition (PR) ====================
 
 @router.post("/requisitions", response_model=PurchaseRequisitionResponse, status_code=status.HTTP_201_CREATED)

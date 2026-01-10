@@ -326,9 +326,12 @@ export interface Vendor {
   phone?: string;
   gst_number?: string;
   pan_number?: string;
-  status: 'ACTIVE' | 'INACTIVE' | 'PENDING' | 'BLOCKED';
-  tier: 'PLATINUM' | 'GOLD' | 'SILVER' | 'BRONZE';
+  status: 'ACTIVE' | 'INACTIVE' | 'PENDING' | 'BLOCKED' | 'PENDING_APPROVAL' | 'SUSPENDED' | 'BLACKLISTED';
+  tier: 'PLATINUM' | 'GOLD' | 'SILVER' | 'BRONZE' | 'A+' | 'A' | 'B' | 'C' | 'D';
   created_at: string;
+  contact_person?: string;
+  city?: string;
+  state?: string;
 }
 
 // Purchase Order Types

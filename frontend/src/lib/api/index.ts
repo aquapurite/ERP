@@ -486,13 +486,39 @@ export const inventoryApi = {
 };
 
 // Vendors API
+// Helper to transform vendor response from backend to frontend format
+const transformVendorResponse = (vendor: Record<string, unknown>): Vendor => ({
+  id: vendor.id as string,
+  name: vendor.name as string,
+  code: (vendor.vendor_code || vendor.code || '') as string,
+  email: vendor.email as string | undefined,
+  phone: vendor.phone as string | undefined,
+  gst_number: (vendor.gstin || vendor.gst_number) as string | undefined,
+  pan_number: (vendor.pan || vendor.pan_number) as string | undefined,
+  status: (vendor.status || 'ACTIVE') as Vendor['status'],
+  tier: (vendor.grade || vendor.tier || 'SILVER') as Vendor['tier'],
+  created_at: vendor.created_at as string,
+  contact_person: vendor.contact_person as string | undefined,
+  city: vendor.city as string | undefined,
+  state: vendor.state as string | undefined,
+});
+
 export const vendorsApi = {
   list: async (params?: { page?: number; size?: number; status?: string; search?: string }) => {
-    const { data } = await apiClient.get<PaginatedResponse<Vendor>>('/vendors', { params });
-    return data;
+    const { data } = await apiClient.get<{ items: Record<string, unknown>[]; total: number; pages: number }>('/vendors', { params });
+    return {
+      ...data,
+      items: data.items.map(transformVendorResponse),
+    };
   },
   getById: async (id: string) => {
-    const { data } = await apiClient.get<Vendor>(`/vendors/${id}`);
+    const { data } = await apiClient.get<Record<string, unknown>>(`/vendors/${id}`);
+    return transformVendorResponse(data);
+  },
+  getNextCode: async (vendorType: string = 'MANUFACTURER') => {
+    const { data } = await apiClient.get<{ next_code: string; prefix: string }>('/vendors/next-code', {
+      params: { vendor_type: vendorType }
+    });
     return data;
   },
   create: async (vendor: {
@@ -525,12 +551,12 @@ export const vendorsApi = {
       gstin: vendor.gst_number || undefined,
       pan: vendor.pan_number || undefined,
     };
-    const { data } = await apiClient.post<Vendor>('/vendors', payload);
-    return data;
+    const { data } = await apiClient.post<Record<string, unknown>>('/vendors', payload);
+    return transformVendorResponse(data);
   },
   update: async (id: string, vendor: Partial<Vendor>) => {
-    const { data } = await apiClient.put<Vendor>(`/vendors/${id}`, vendor);
-    return data;
+    const { data } = await apiClient.put<Record<string, unknown>>(`/vendors/${id}`, vendor);
+    return transformVendorResponse(data);
   },
   delete: async (id: string) => {
     await apiClient.delete(`/vendors/${id}`);
@@ -570,6 +596,10 @@ export interface PurchaseRequisition {
 }
 
 export const purchaseRequisitionsApi = {
+  getNextNumber: async () => {
+    const { data } = await apiClient.get<{ next_number: string; prefix: string }>('/purchase/requisitions/next-number');
+    return data;
+  },
   list: async (params?: { page?: number; size?: number; status?: string; warehouse_id?: string }) => {
     const queryParams: Record<string, unknown> = {};
     if (params?.page !== undefined) queryParams.skip = (params.page) * (params.size || 50);
@@ -618,6 +648,10 @@ export const purchaseRequisitionsApi = {
 
 // Purchase Orders API
 export const purchaseOrdersApi = {
+  getNextNumber: async () => {
+    const { data } = await apiClient.get<{ next_number: string; prefix: string }>('/purchase/orders/next-number');
+    return data;
+  },
   list: async (params?: { page?: number; size?: number; status?: string; vendor_id?: string }) => {
     const { data } = await apiClient.get<PaginatedResponse<PurchaseOrder>>('/purchase/orders', { params });
     return data;
