@@ -185,6 +185,7 @@ export default function ApprovalsPage() {
   const [rejectReason, setRejectReason] = useState('');
   const [approveNotes, setApproveNotes] = useState('');
   const [bulkAction, setBulkAction] = useState<'approve' | 'reject' | null>(null);
+  const [processingId, setProcessingId] = useState<string | null>(null); // Track which item is being processed
 
   // Queries
   const { data: pendingData, isLoading: pendingLoading } = useQuery({
@@ -206,22 +207,30 @@ export default function ApprovalsPage() {
   const approveMutation = useMutation({
     mutationFn: ({ id, notes }: { id: string; notes?: string }) =>
       approvalsApi.approve(id, notes),
+    onMutate: ({ id }) => {
+      setProcessingId(id);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
       queryClient.invalidateQueries({ queryKey: ['approval-stats'] });
       queryClient.invalidateQueries({ queryKey: ['approval-history'] });
       toast.success('Approved successfully');
       setDetailsDialog(false);
+      setProcessingId(null);
     },
     onError: (error: Error & { response?: { data?: { detail?: string } } }) => {
       const message = error.response?.data?.detail || error.message || 'Failed to approve';
       toast.error(message);
+      setProcessingId(null);
     },
   });
 
   const rejectMutation = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       approvalsApi.reject(id, reason),
+    onMutate: ({ id }) => {
+      setProcessingId(id);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pending-approvals'] });
       queryClient.invalidateQueries({ queryKey: ['approval-stats'] });
@@ -229,10 +238,12 @@ export default function ApprovalsPage() {
       toast.success('Rejected successfully');
       setRejectDialog(false);
       setRejectReason('');
+      setProcessingId(null);
     },
     onError: (error: Error & { response?: { data?: { detail?: string } } }) => {
       const message = error.response?.data?.detail || error.message || 'Failed to reject';
       toast.error(message);
+      setProcessingId(null);
     },
   });
 
@@ -653,9 +664,9 @@ export default function ApprovalsPage() {
                                       </Button>
                                       <Button
                                         size="sm"
-                                        variant="outline"
-                                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                        variant="destructive"
                                         onClick={() => handleReject(item)}
+                                        disabled={processingId === item.id}
                                       >
                                         <XCircle className="h-4 w-4 mr-1" />
                                         Reject
@@ -664,10 +675,10 @@ export default function ApprovalsPage() {
                                         size="sm"
                                         className="bg-green-600 hover:bg-green-700"
                                         onClick={() => approveMutation.mutate({ id: item.id })}
-                                        disabled={approveMutation.isPending}
+                                        disabled={processingId === item.id}
                                       >
                                         <CheckCircle className="h-4 w-4 mr-1" />
-                                        {approveMutation.isPending ? 'Approving...' : 'Approve'}
+                                        {processingId === item.id && approveMutation.isPending ? 'Approving...' : 'Approve'}
                                       </Button>
                                     </div>
                                   </div>
