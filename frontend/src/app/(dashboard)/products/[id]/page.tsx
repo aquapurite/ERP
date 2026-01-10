@@ -324,7 +324,38 @@ export default function ProductDetailPage() {
 
   const onSubmit = (data: ProductFormData) => {
     console.log('Form submitted with data:', data);
-    updateMutation.mutate(data);
+    // Transform frontend field names to backend field names
+    const transformedData: any = {
+      name: data.name,
+      sku: data.sku,
+      slug: data.slug,
+      description: data.description,
+      category_id: data.category_id || undefined,
+      brand_id: data.brand_id || undefined,
+      mrp: data.mrp,
+      selling_price: data.selling_price,
+      cost_price: data.cost_price || undefined,
+      gst_rate: data.gst_rate || undefined,
+      hsn_code: data.hsn_code || undefined,
+      // Map frontend field names to backend field names
+      dead_weight_kg: data.weight || undefined,
+      length_cm: data.length || undefined,
+      width_cm: data.width || undefined,
+      height_cm: data.height || undefined,
+      is_active: data.is_active,
+      is_featured: data.is_featured,
+      warranty_months: data.warranty_months || undefined,
+      meta_title: data.meta_title || undefined,
+      meta_description: data.meta_description || undefined,
+    };
+    // Remove undefined values
+    Object.keys(transformedData).forEach(key => {
+      if (transformedData[key] === undefined || transformedData[key] === '') {
+        delete transformedData[key];
+      }
+    });
+    console.log('Transformed data for API:', transformedData);
+    updateMutation.mutate(transformedData);
   };
 
   const onFormError = (errors: any) => {
