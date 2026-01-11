@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, Download, QrCode, Barcode, CheckCircle, XCircle, Settings, Package, Truck, Loader2 } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, Download, QrCode, Barcode, CheckCircle, XCircle, Settings, Package, Truck, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -355,6 +355,19 @@ export default function SerializationPage() {
     onError: (error: Error) => toast.error(error.message || 'Failed to create supplier code'),
   });
 
+  const seedCodesMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await apiClient.post('/serialization/seed-codes');
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['model-codes'] });
+      queryClient.invalidateQueries({ queryKey: ['supplier-codes'] });
+      toast.success(`Codes seeded: ${data.supplier_codes_created} suppliers, ${data.model_codes_created} model codes`);
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to seed codes'),
+  });
+
   const handleValidate = async () => {
     if (!validateBarcode.trim()) return;
     try {
@@ -399,6 +412,22 @@ export default function SerializationPage() {
         description="Manage product serial numbers, barcodes, and code mappings"
         actions={
           <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (confirm('This will delete all existing codes and create new ones. Continue?')) {
+                  seedCodesMutation.mutate();
+                }
+              }}
+              disabled={seedCodesMutation.isPending}
+            >
+              {seedCodesMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              Seed Codes
+            </Button>
             <Button variant="outline">
               <Download className="mr-2 h-4 w-4" />
               Export

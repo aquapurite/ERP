@@ -567,3 +567,221 @@ async def serialization_dashboard(
         "current_year_code": current_year_code,
         "current_month_code": service.get_month_code(),
     }
+
+
+# ==================== Seed / Reset Codes ====================
+
+@router.post("/seed-codes")
+async def seed_serialization_codes(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Reset and seed all model codes and supplier codes.
+
+    WARNING: This deletes all existing codes and creates new ones.
+
+    Creates proper codes for:
+    - Water Purifier category (FG)
+    - Spare Parts category (SP)
+    - Supplier codes for vendors
+    """
+    import uuid
+
+    # Delete existing codes
+    await db.execute(select(ModelCodeReference).execution_options(synchronize_session="fetch"))
+    await db.execute(select(SupplierCode).execution_options(synchronize_session="fetch"))
+
+    # Delete all model codes
+    result = await db.execute(select(ModelCodeReference))
+    for code in result.scalars().all():
+        await db.delete(code)
+
+    # Delete all supplier codes
+    result = await db.execute(select(SupplierCode))
+    for code in result.scalars().all():
+        await db.delete(code)
+
+    await db.flush()
+
+    # ==================== SUPPLIER CODES ====================
+    # These are 2-character codes for vendors/manufacturers
+
+    supplier_codes_data = [
+        # FG Suppliers (Finished Goods manufacturers)
+        {"code": "FS", "name": "FastTrack Manufacturing", "description": "Primary FG manufacturer"},
+        {"code": "ST", "name": "STOS Industries", "description": "Premium product manufacturer"},
+        {"code": "AP", "name": "Aquapurite In-house", "description": "In-house manufacturing"},
+
+        # Spare Parts Suppliers
+        {"code": "EC", "name": "Economical Spares", "description": "Budget spare parts supplier"},
+        {"code": "PR", "name": "Premium Spares", "description": "Premium spare parts supplier"},
+        {"code": "GN", "name": "Generic Parts", "description": "Generic replacement parts"},
+    ]
+
+    created_suppliers = []
+    for data in supplier_codes_data:
+        supplier = SupplierCode(
+            id=str(uuid.uuid4()).replace("-", ""),
+            code=data["code"],
+            name=data["name"],
+            description=data["description"],
+            is_active=True,
+        )
+        db.add(supplier)
+        created_suppliers.append(data["code"])
+
+    # ==================== MODEL CODES - WATER PURIFIERS (FG) ====================
+    # Format: WPRAIEL001 -> WP(Category) R(Subcategory) A(Brand) IEL(Model) 001(Seq)
+    # Barcode Model Code: IEL (3 chars)
+
+    water_purifier_codes = [
+        # RO Water Purifiers
+        {"fg_code": "WPRAIEL001", "model_code": "IEL", "item_type": ItemType.FINISHED_GOODS,
+         "product_sku": "WPRO-IEL-001", "description": "IELITZ RO Water Purifier"},
+        {"fg_code": "WPRAIPX001", "model_code": "IPX", "item_type": ItemType.FINISHED_GOODS,
+         "product_sku": "WPRO-IPX-001", "description": "IPX RO Water Purifier"},
+        {"fg_code": "WPRAPRM001", "model_code": "PRM", "item_type": ItemType.FINISHED_GOODS,
+         "product_sku": "WPRO-PRM-001", "description": "Premium RO Water Purifier"},
+
+        # UV Water Purifiers
+        {"fg_code": "WPUAUVX001", "model_code": "UVX", "item_type": ItemType.FINISHED_GOODS,
+         "product_sku": "WPUV-UVX-001", "description": "UVX UV Water Purifier"},
+        {"fg_code": "WPUAULX001", "model_code": "ULX", "item_type": ItemType.FINISHED_GOODS,
+         "product_sku": "WPUV-ULX-001", "description": "Ultra UV Water Purifier"},
+
+        # Gravity Water Purifiers
+        {"fg_code": "WPGAGRY001", "model_code": "GRY", "item_type": ItemType.FINISHED_GOODS,
+         "product_sku": "WPGR-GRY-001", "description": "Gravity Water Purifier"},
+
+        # RO+UV Combo
+        {"fg_code": "WPCARUV001", "model_code": "RUV", "item_type": ItemType.FINISHED_GOODS,
+         "product_sku": "WPCM-RUV-001", "description": "RO+UV Combo Water Purifier"},
+    ]
+
+    # ==================== MODEL CODES - SPARE PARTS (SP) ====================
+    # Format: SPSDFSDF001 -> SP(Category) SD(Subcategory) F(Brand) SDF(Model) 001(Seq)
+    # Barcode Channel Code: EC or PR (based on supplier)
+
+    spare_parts_codes = [
+        # Sediment Filters
+        {"fg_code": "SPSDFSD001", "model_code": "SDF", "item_type": ItemType.SPARE_PART,
+         "product_sku": "SDF001", "description": "Sediment Filter (PP Yarn Wound) 10\""},
+        {"fg_code": "SPSDFSD002", "model_code": "SD2", "item_type": ItemType.SPARE_PART,
+         "product_sku": "SDF002", "description": "Sediment Filter 20\""},
+
+        # Carbon Filters
+        {"fg_code": "SPCBFCB001", "model_code": "CBF", "item_type": ItemType.SPARE_PART,
+         "product_sku": "CBF001", "description": "Carbon Block Filter 10\""},
+        {"fg_code": "SPCBFCB002", "model_code": "CB2", "item_type": ItemType.SPARE_PART,
+         "product_sku": "CBF002", "description": "Granular Activated Carbon Filter"},
+
+        # Alkaline Filters
+        {"fg_code": "SPALFAL001", "model_code": "ALK", "item_type": ItemType.SPARE_PART,
+         "product_sku": "ALK001", "description": "Alkaline Mineral Block"},
+        {"fg_code": "SPALFAL002", "model_code": "AL2", "item_type": ItemType.SPARE_PART,
+         "product_sku": "ALK002", "description": "Alkaline Cartridge"},
+
+        # RO Membranes
+        {"fg_code": "SPMBFMB001", "model_code": "MBR", "item_type": ItemType.SPARE_PART,
+         "product_sku": "MBR001", "description": "RO Membrane 80 GPD"},
+        {"fg_code": "SPMBFMB002", "model_code": "MB2", "item_type": ItemType.SPARE_PART,
+         "product_sku": "MBR002", "description": "RO Membrane 100 GPD"},
+
+        # UV Lamps
+        {"fg_code": "SPUVLUL001", "model_code": "UVL", "item_type": ItemType.SPARE_PART,
+         "product_sku": "UVL001", "description": "UV Lamp 11W"},
+        {"fg_code": "SPUVLUL002", "model_code": "UV2", "item_type": ItemType.SPARE_PART,
+         "product_sku": "UVL002", "description": "UV Lamp 16W"},
+
+        # Pumps
+        {"fg_code": "SPPMPPM001", "model_code": "PMP", "item_type": ItemType.SPARE_PART,
+         "product_sku": "PMP001", "description": "Booster Pump 100 GPD"},
+        {"fg_code": "SPPMPPM002", "model_code": "PM2", "item_type": ItemType.SPARE_PART,
+         "product_sku": "PMP002", "description": "Booster Pump 75 GPD"},
+
+        # SMPS / Adapters
+        {"fg_code": "SPSMPSM001", "model_code": "SMP", "item_type": ItemType.SPARE_PART,
+         "product_sku": "SMP001", "description": "SMPS 24V 2.5A"},
+        {"fg_code": "SPSMPSM002", "model_code": "SM2", "item_type": ItemType.SPARE_PART,
+         "product_sku": "SMP002", "description": "SMPS 36V 2A"},
+
+        # Solenoid Valves
+        {"fg_code": "SPSVLSV001", "model_code": "SVL", "item_type": ItemType.SPARE_PART,
+         "product_sku": "SVL001", "description": "Solenoid Valve 24V"},
+
+        # Flow Restrictors
+        {"fg_code": "SPFRFFR001", "model_code": "FRF", "item_type": ItemType.SPARE_PART,
+         "product_sku": "FRF001", "description": "Flow Restrictor 300ml"},
+
+        # Connectors & Fittings
+        {"fg_code": "SPCNFCN001", "model_code": "CNF", "item_type": ItemType.SPARE_PART,
+         "product_sku": "CNF001", "description": "Quick Connect Fittings Set"},
+
+        # Tubing
+        {"fg_code": "SPTBGTB001", "model_code": "TBG", "item_type": ItemType.SPARE_PART,
+         "product_sku": "TBG001", "description": "PE Tubing 1/4\" (10m)"},
+
+        # Tanks
+        {"fg_code": "SPTNKTN001", "model_code": "TNK", "item_type": ItemType.SPARE_PART,
+         "product_sku": "TNK001", "description": "Storage Tank 8L"},
+        {"fg_code": "SPTNKTN002", "model_code": "TN2", "item_type": ItemType.SPARE_PART,
+         "product_sku": "TNK002", "description": "Storage Tank 12L"},
+
+        # Pre-Filter Housing
+        {"fg_code": "SPPFHPF001", "model_code": "PFH", "item_type": ItemType.SPARE_PART,
+         "product_sku": "PFH001", "description": "Pre-Filter Housing 10\""},
+    ]
+
+    created_model_codes = []
+
+    # Add Water Purifier codes
+    for data in water_purifier_codes:
+        model_ref = ModelCodeReference(
+            id=str(uuid.uuid4()).replace("-", ""),
+            fg_code=data["fg_code"],
+            model_code=data["model_code"],
+            item_type=data["item_type"],
+            product_sku=data["product_sku"],
+            description=data["description"],
+            is_active=True,
+        )
+        db.add(model_ref)
+        created_model_codes.append({"fg_code": data["fg_code"], "model_code": data["model_code"], "type": "FG"})
+
+    # Add Spare Parts codes
+    for data in spare_parts_codes:
+        model_ref = ModelCodeReference(
+            id=str(uuid.uuid4()).replace("-", ""),
+            fg_code=data["fg_code"],
+            model_code=data["model_code"],
+            item_type=data["item_type"],
+            product_sku=data["product_sku"],
+            description=data["description"],
+            is_active=True,
+        )
+        db.add(model_ref)
+        created_model_codes.append({"fg_code": data["fg_code"], "model_code": data["model_code"], "type": "SP"})
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "message": "Serialization codes seeded successfully",
+        "supplier_codes_created": len(created_suppliers),
+        "supplier_codes": created_suppliers,
+        "model_codes_created": len(created_model_codes),
+        "model_codes": {
+            "water_purifiers": [c for c in created_model_codes if c["type"] == "FG"],
+            "spare_parts": [c for c in created_model_codes if c["type"] == "SP"],
+        },
+        "barcode_format": {
+            "finished_goods": "AP + YearCode(2) + MonthCode(1) + ModelCode(3) + Serial(8) = 16 chars",
+            "spare_parts": "AP + SupplierCode(2) + YearCode(1) + MonthCode(1) + ChannelCode(2) + Serial(8) = 16 chars",
+        },
+        "examples": {
+            "fg_barcode": "APAAAIIEL00000001 (IELITZ Water Purifier, Jan 2026, Serial 1)",
+            "sp_barcode_economical": "APFSAAEC00000001 (Economical spare from FastTrack)",
+            "sp_barcode_premium": "APSTAAPR00000001 (Premium spare from STOS)",
+        }
+    }
