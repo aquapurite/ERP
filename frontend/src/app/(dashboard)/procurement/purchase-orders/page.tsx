@@ -570,7 +570,7 @@ export default function PurchaseOrdersPage() {
         vendor_id: preferredVendorId,
         delivery_warehouse_id: pr.delivery_warehouse_id,
         expected_delivery_date: pr.required_by_date || '',
-        notes: pr.reason || '',
+        terms_and_conditions: pr.reason || '',
         items: poItems, // Auto-populate items from PR
       });
     } else {
@@ -581,7 +581,7 @@ export default function PurchaseOrdersPage() {
         vendor_id: '',
         delivery_warehouse_id: '',
         expected_delivery_date: '',
-        notes: '',
+        terms_and_conditions: '',
         items: [],
       });
       setIsMultiDelivery(false);
