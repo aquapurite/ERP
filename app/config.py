@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     SMTP_FROM_NAME: str = "Aquapurite ERP"
 
     # Frontend URL for email links
-    FRONTEND_URL: str = "https://erp-five-phi.vercel.app"
+    FRONTEND_URL: str = "https://erp-woad-eight.vercel.app"
 
     # Redis Cache Settings
     REDIS_URL: Optional[str] = None  # e.g., "redis://localhost:6379/0"
