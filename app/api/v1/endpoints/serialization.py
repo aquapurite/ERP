@@ -903,10 +903,19 @@ async def seed_serialization_codes(
 
     created_model_codes = []
 
+    # Get ALL products from database to link by product_id
+    products_result = await db.execute(select(Product))
+    all_products = {p.sku: p for p in products_result.scalars().all()}
+
     # Add Water Purifier codes
     for data in water_purifier_codes:
+        # Try to find matching product by SKU
+        product = all_products.get(data["product_sku"])
+        product_id = str(product.id) if product else None
+
         model_ref = ModelCodeReference(
             id=str(uuid.uuid4()).replace("-", ""),
+            product_id=product_id,  # Link to actual product
             fg_code=data["fg_code"],
             model_code=data["model_code"],
             item_type=data["item_type"],
@@ -915,12 +924,23 @@ async def seed_serialization_codes(
             is_active=True,
         )
         db.add(model_ref)
-        created_model_codes.append({"fg_code": data["fg_code"], "model_code": data["model_code"], "type": "FG"})
+        created_model_codes.append({
+            "fg_code": data["fg_code"],
+            "model_code": data["model_code"],
+            "product_sku": data["product_sku"],
+            "product_linked": product_id is not None,
+            "type": "FG"
+        })
 
     # Add Spare Parts codes
     for data in spare_parts_codes:
+        # Try to find matching product by SKU
+        product = all_products.get(data["product_sku"])
+        product_id = str(product.id) if product else None
+
         model_ref = ModelCodeReference(
             id=str(uuid.uuid4()).replace("-", ""),
+            product_id=product_id,  # Link to actual product
             fg_code=data["fg_code"],
             model_code=data["model_code"],
             item_type=data["item_type"],
@@ -929,7 +949,13 @@ async def seed_serialization_codes(
             is_active=True,
         )
         db.add(model_ref)
-        created_model_codes.append({"fg_code": data["fg_code"], "model_code": data["model_code"], "type": "SP"})
+        created_model_codes.append({
+            "fg_code": data["fg_code"],
+            "model_code": data["model_code"],
+            "product_sku": data["product_sku"],
+            "product_linked": product_id is not None,
+            "type": "SP"
+        })
 
     await db.commit()
 
@@ -951,5 +977,169 @@ async def seed_serialization_codes(
             "fg_barcode": "APAAAIIEL00000001 (IELITZ Water Purifier, Jan 2026, Serial 1)",
             "sp_barcode_economical": "APFSAAEC00000001 (Economical spare from FastTrack)",
             "sp_barcode_premium": "APSTAAPR00000001 (Premium spare from STOS)",
-        }
+        },
+        "products_found_in_db": len(all_products),
+        "products_linked": len([c for c in created_model_codes if c.get("product_linked")])
+    }
+
+
+@router.post("/auto-link-products")
+async def auto_link_products_to_model_codes(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    permissions: Permissions = None,
+):
+    """
+    Auto-link existing products to model codes.
+
+    This endpoint will:
+    1. Get all products from the database
+    2. Get all model codes
+    3. Try to match them by SKU
+    4. Update model codes with product_id where matches are found
+
+    This is useful when products exist but weren't linked to model codes.
+    """
+    # Only super admin can auto-link
+    if not permissions or not permissions.is_super_admin():
+        raise HTTPException(
+            status_code=403,
+            detail="Only Super Admin can auto-link products"
+        )
+
+    # Get all products
+    products_result = await db.execute(select(Product))
+    all_products = {p.sku: p for p in products_result.scalars().all()}
+
+    # Get all model codes
+    model_codes_result = await db.execute(select(ModelCodeReference))
+    all_model_codes = model_codes_result.scalars().all()
+
+    linked_count = 0
+    already_linked = 0
+    not_found = []
+
+    for mc in all_model_codes:
+        # Skip if already linked
+        if mc.product_id:
+            already_linked += 1
+            continue
+
+        # Try to find product by product_sku
+        product = all_products.get(mc.product_sku)
+
+        if product:
+            mc.product_id = str(product.id)
+            linked_count += 1
+        else:
+            not_found.append({"fg_code": mc.fg_code, "product_sku": mc.product_sku})
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "message": f"Auto-linked {linked_count} model codes to products",
+        "total_model_codes": len(all_model_codes),
+        "already_linked": already_linked,
+        "newly_linked": linked_count,
+        "not_found": not_found,
+        "products_in_db": len(all_products),
+        "tip": "If products are not found, the product SKU in your catalog might be different. Use 'Create New Product' in Serialization to create products with correct codes."
+    }
+
+
+@router.post("/sync-products-to-model-codes")
+async def sync_products_to_model_codes(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    permissions: Permissions = None,
+):
+    """
+    Create model codes for ALL existing products that don't have one.
+
+    This is the reverse of auto-link - it creates ModelCodeReferences for products
+    that exist but don't have a model code assigned.
+
+    For each product:
+    - Creates a ModelCodeReference
+    - Generates model_code from first 3 chars of SKU
+    - Links by product_id
+    """
+    import re
+
+    # Only super admin can sync
+    if not permissions or not permissions.is_super_admin():
+        raise HTTPException(
+            status_code=403,
+            detail="Only Super Admin can sync products"
+        )
+
+    # Get all products
+    products_result = await db.execute(select(Product))
+    all_products = products_result.scalars().all()
+
+    # Get existing model codes to avoid duplicates
+    model_codes_result = await db.execute(select(ModelCodeReference))
+    existing_model_codes = {mc.product_id: mc for mc in model_codes_result.scalars().all() if mc.product_id}
+    existing_skus = {mc.product_sku: mc for mc in model_codes_result.scalars().all() if mc.product_sku}
+
+    created_count = 0
+    skipped_count = 0
+    created_codes = []
+
+    for product in all_products:
+        product_id_str = str(product.id)
+
+        # Skip if already has a model code
+        if product_id_str in existing_model_codes or product.sku in existing_skus:
+            skipped_count += 1
+            continue
+
+        # Generate model code from SKU (first 3 alpha chars after category prefix)
+        sku = product.sku or ""
+        # Try to extract 3-letter model code
+        # For SKU like "SPSDF001", extract "SDF"
+        # For SKU like "WPIEL001", extract "IEL"
+        alpha_chars = re.findall(r'[A-Z]', sku.upper())
+        if len(alpha_chars) >= 5:
+            # Skip first 2 chars (category), take next 3
+            model_code = ''.join(alpha_chars[2:5])
+        elif len(alpha_chars) >= 3:
+            model_code = ''.join(alpha_chars[:3])
+        else:
+            model_code = sku[:3].upper() if len(sku) >= 3 else "UNK"
+
+        # Determine item type from SKU prefix
+        item_type = ItemType.SPARE_PART if sku.upper().startswith("SP") else ItemType.FINISHED_GOODS
+
+        # Create model code reference
+        model_ref = ModelCodeReference(
+            id=str(uuid.uuid4()).replace("-", ""),
+            product_id=product_id_str,
+            product_sku=product.sku,
+            fg_code=product.fg_code or product.sku,  # Use fg_code if available, else sku
+            model_code=model_code,
+            item_type=item_type,
+            description=product.name,
+            is_active=True,
+        )
+        db.add(model_ref)
+        created_count += 1
+        created_codes.append({
+            "product_sku": product.sku,
+            "product_name": product.name,
+            "model_code": model_code,
+            "fg_code": model_ref.fg_code,
+            "item_type": item_type.value
+        })
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "message": f"Created {created_count} model codes for products",
+        "total_products": len(all_products),
+        "created": created_count,
+        "skipped": skipped_count,
+        "created_codes": created_codes
     }
