@@ -644,27 +644,27 @@ async def seed_serialization_codes(
     # Barcode Model Code: IEL (3 chars)
 
     water_purifier_codes = [
-        # RO Water Purifiers
+        # RO Water Purifiers - product_sku matches actual catalog SKU
         {"fg_code": "WPRAIEL001", "model_code": "IEL", "item_type": ItemType.FINISHED_GOODS,
-         "product_sku": "WPRAIEL001", "description": "IELITZ RO Water Purifier"},
+         "product_sku": "WPIEL001", "description": "IELITZ RO Water Purifier"},
         {"fg_code": "WPRAIPX001", "model_code": "IPX", "item_type": ItemType.FINISHED_GOODS,
-         "product_sku": "WPRAIPX001", "description": "IPX RO Water Purifier"},
+         "product_sku": "WPIPX001", "description": "IPX RO Water Purifier"},
         {"fg_code": "WPRAPRM001", "model_code": "PRM", "item_type": ItemType.FINISHED_GOODS,
-         "product_sku": "WPRAPRM001", "description": "Premium RO Water Purifier"},
+         "product_sku": "WPPRM001", "description": "Premium RO Water Purifier"},
 
         # UV Water Purifiers
         {"fg_code": "WPUAUVX001", "model_code": "UVX", "item_type": ItemType.FINISHED_GOODS,
-         "product_sku": "WPUAUVX001", "description": "UVX UV Water Purifier"},
+         "product_sku": "WPUVX001", "description": "UVX UV Water Purifier"},
         {"fg_code": "WPUAULX001", "model_code": "ULX", "item_type": ItemType.FINISHED_GOODS,
-         "product_sku": "WPUAULX001", "description": "Ultra UV Water Purifier"},
+         "product_sku": "WPULX001", "description": "Ultra UV Water Purifier"},
 
         # Gravity Water Purifiers
         {"fg_code": "WPGAGRY001", "model_code": "GRY", "item_type": ItemType.FINISHED_GOODS,
-         "product_sku": "WPGAGRY001", "description": "Gravity Water Purifier"},
+         "product_sku": "WPGRY001", "description": "Gravity Water Purifier"},
 
         # RO+UV Combo
         {"fg_code": "WPCARUV001", "model_code": "RUV", "item_type": ItemType.FINISHED_GOODS,
-         "product_sku": "WPCARUV001", "description": "RO+UV Combo Water Purifier"},
+         "product_sku": "WPRUV001", "description": "RO+UV Combo Water Purifier"},
     ]
 
     # ==================== MODEL CODES - SPARE PARTS (SP) ====================
@@ -672,73 +672,73 @@ async def seed_serialization_codes(
     # Barcode Channel Code: EC or PR (based on supplier)
 
     spare_parts_codes = [
-        # Sediment Filters
+        # Sediment Filters - product_sku matches actual catalog SKU
         {"fg_code": "SPSDFSD001", "model_code": "SDF", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPSDFSD001", "description": "Sediment Filter (PP Yarn Wound) 10\""},
+         "product_sku": "SPSDF001", "description": "Sediment Filter (PP Yarn Wound) 10\""},
         {"fg_code": "SPSDFSD002", "model_code": "SD2", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPSDFSD002", "description": "Sediment Filter 20\""},
+         "product_sku": "SPSDF002", "description": "Sediment Filter 20\""},
 
         # Carbon Filters
         {"fg_code": "SPCBFCB001", "model_code": "CBF", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPCBFCB001", "description": "Carbon Block Filter 10\""},
+         "product_sku": "SPCBF001", "description": "Carbon Block Filter 10\""},
         {"fg_code": "SPCBFCB002", "model_code": "CB2", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPCBFCB002", "description": "Granular Activated Carbon Filter"},
+         "product_sku": "SPCBF002", "description": "Granular Activated Carbon Filter"},
 
         # Alkaline Filters
         {"fg_code": "SPALFAL001", "model_code": "ALK", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPALFAL001", "description": "Alkaline Mineral Block"},
+         "product_sku": "SPALK001", "description": "Alkaline Mineral Block"},
         {"fg_code": "SPALFAL002", "model_code": "AL2", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPALFAL002", "description": "Alkaline Cartridge"},
+         "product_sku": "SPALK002", "description": "Alkaline Cartridge"},
 
         # RO Membranes
         {"fg_code": "SPMBFMB001", "model_code": "MBR", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPMBFMB001", "description": "RO Membrane 80 GPD"},
+         "product_sku": "SPMBR001", "description": "RO Membrane 80 GPD"},
         {"fg_code": "SPMBFMB002", "model_code": "MB2", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPMBFMB002", "description": "RO Membrane 100 GPD"},
+         "product_sku": "SPMBR002", "description": "RO Membrane 100 GPD"},
 
         # UV Lamps
         {"fg_code": "SPUVLUL001", "model_code": "UVL", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPUVLUL001", "description": "UV Lamp 11W"},
+         "product_sku": "SPUVL001", "description": "UV Lamp 11W"},
         {"fg_code": "SPUVLUL002", "model_code": "UV2", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPUVLUL002", "description": "UV Lamp 16W"},
+         "product_sku": "SPUVL002", "description": "UV Lamp 16W"},
 
         # Pumps
         {"fg_code": "SPPMPPM001", "model_code": "PMP", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPPMPPM001", "description": "Booster Pump 100 GPD"},
+         "product_sku": "SPPMP001", "description": "Booster Pump 100 GPD"},
         {"fg_code": "SPPMPPM002", "model_code": "PM2", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPPMPPM002", "description": "Booster Pump 75 GPD"},
+         "product_sku": "SPPMP002", "description": "Booster Pump 75 GPD"},
 
         # SMPS / Adapters
         {"fg_code": "SPSMPSM001", "model_code": "SMP", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPSMPSM001", "description": "SMPS 24V 2.5A"},
+         "product_sku": "SPSMP001", "description": "SMPS 24V 2.5A"},
         {"fg_code": "SPSMPSM002", "model_code": "SM2", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPSMPSM002", "description": "SMPS 36V 2A"},
+         "product_sku": "SPSMP002", "description": "SMPS 36V 2A"},
 
         # Solenoid Valves
         {"fg_code": "SPSVLSV001", "model_code": "SVL", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPSVLSV001", "description": "Solenoid Valve 24V"},
+         "product_sku": "SPSVL001", "description": "Solenoid Valve 24V"},
 
         # Flow Restrictors
         {"fg_code": "SPFRFFR001", "model_code": "FRF", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPFRFFR001", "description": "Flow Restrictor 300ml"},
+         "product_sku": "SPFRF001", "description": "Flow Restrictor 300ml"},
 
         # Connectors & Fittings
         {"fg_code": "SPCNFCN001", "model_code": "CNF", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPCNFCN001", "description": "Quick Connect Fittings Set"},
+         "product_sku": "SPCNF001", "description": "Quick Connect Fittings Set"},
 
         # Tubing
         {"fg_code": "SPTBGTB001", "model_code": "TBG", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPTBGTB001", "description": "PE Tubing 1/4\" (10m)"},
+         "product_sku": "SPTBG001", "description": "PE Tubing 1/4\" (10m)"},
 
         # Tanks
         {"fg_code": "SPTNKTN001", "model_code": "TNK", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPTNKTN001", "description": "Storage Tank 8L"},
+         "product_sku": "SPTNK001", "description": "Storage Tank 8L"},
         {"fg_code": "SPTNKTN002", "model_code": "TN2", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPTNKTN002", "description": "Storage Tank 12L"},
+         "product_sku": "SPTNK002", "description": "Storage Tank 12L"},
 
         # Pre-Filter Housing
         {"fg_code": "SPPFHPF001", "model_code": "PFH", "item_type": ItemType.SPARE_PART,
-         "product_sku": "SPPFHPF001", "description": "Pre-Filter Housing 10\""},
+         "product_sku": "SPPFH001", "description": "Pre-Filter Housing 10\""},
     ]
 
     created_model_codes = []
