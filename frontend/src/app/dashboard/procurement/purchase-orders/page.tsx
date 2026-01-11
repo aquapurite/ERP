@@ -216,7 +216,7 @@ export default function PurchaseOrdersPage() {
 
   const { data: productsData } = useQuery({
     queryKey: ['products-dropdown'],
-    queryFn: () => productsApi.list({ size: 200 }),
+    queryFn: () => productsApi.list({ size: 100 }),
   });
 
   // Open Purchase Requisitions query (for PR dropdown)
