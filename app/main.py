@@ -1,11 +1,14 @@
 from contextlib import asynccontextmanager
+import traceback
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.api.v1.router import api_router
 from app.database import init_db, async_session_factory
+from app.jobs.scheduler import start_scheduler, shutdown_scheduler
 
 
 async def auto_seed_admin():
@@ -85,8 +88,12 @@ async def lifespan(app: FastAPI):
     print("Database initialized")
     # Auto-seed admin user if needed
     await auto_seed_admin()
+    # Start background job scheduler
+    start_scheduler()
+    print("Background scheduler started")
     yield
     # Shutdown
+    shutdown_scheduler()
     print("Shutting down...")
 
 
@@ -128,6 +135,23 @@ app.add_middleware(
 
 # Include API router
 app.include_router(api_router)
+
+
+# Global exception handler to return detailed error for debugging
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Return detailed error information for debugging."""
+    error_detail = {
+        "error": str(exc),
+        "type": type(exc).__name__,
+        "path": str(request.url.path),
+        "method": request.method,
+        "traceback": traceback.format_exc()
+    }
+    return JSONResponse(
+        status_code=500,
+        content=error_detail
+    )
 
 
 # Health check endpoint
