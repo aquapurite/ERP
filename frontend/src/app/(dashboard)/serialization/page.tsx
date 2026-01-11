@@ -263,6 +263,7 @@ const supplierCodeColumns: ColumnDef<SupplierCode>[] = [
 export default function SerializationPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('serials');
+  const [itemTypeFilter, setItemTypeFilter] = useState<'FG' | 'SP'>('FG'); // FG = Finished Goods, SP = Spare Parts
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [validateBarcode, setValidateBarcode] = useState('');
@@ -411,9 +412,31 @@ export default function SerializationPage() {
         title="Serialization"
         description="Manage product serial numbers, barcodes, and code mappings"
         actions={
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            {/* Item Type Filter Buttons */}
+            <div className="flex border rounded-lg overflow-hidden mr-2">
+              <Button
+                variant={itemTypeFilter === 'FG' ? 'default' : 'ghost'}
+                size="sm"
+                className={`rounded-none ${itemTypeFilter === 'FG' ? '' : 'hover:bg-muted'}`}
+                onClick={() => setItemTypeFilter('FG')}
+              >
+                <Package className="mr-2 h-4 w-4" />
+                Finished Goods
+              </Button>
+              <Button
+                variant={itemTypeFilter === 'SP' ? 'default' : 'ghost'}
+                size="sm"
+                className={`rounded-none border-l ${itemTypeFilter === 'SP' ? '' : 'hover:bg-muted'}`}
+                onClick={() => setItemTypeFilter('SP')}
+              >
+                <Settings className="mr-2 h-4 w-4" />
+                Spare Parts
+              </Button>
+            </div>
             <Button
               variant="outline"
+              size="sm"
               onClick={() => {
                 if (confirm('This will delete all existing codes and create new ones. Continue?')) {
                   seedCodesMutation.mutate();
@@ -428,13 +451,9 @@ export default function SerializationPage() {
               )}
               Seed Codes
             </Button>
-            <Button variant="outline">
+            <Button variant="outline" size="sm">
               <Download className="mr-2 h-4 w-4" />
               Export
-            </Button>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Generate Serials
             </Button>
           </div>
         }
@@ -526,35 +545,62 @@ export default function SerializationPage() {
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2">
-                  <Package className="h-5 w-5" />
-                  Model Codes
+                  {itemTypeFilter === 'FG' ? (
+                    <Package className="h-5 w-5" />
+                  ) : (
+                    <Settings className="h-5 w-5" />
+                  )}
+                  {itemTypeFilter === 'FG' ? 'Water Purifier Codes (Finished Goods)' : 'Spare Parts Codes'}
                 </CardTitle>
                 <CardDescription>
-                  Map products to 3-character model codes for barcode generation
+                  {itemTypeFilter === 'FG'
+                    ? 'Map Water Purifier products to 3-character model codes for barcode generation'
+                    : 'Map Spare Parts to 3-character model codes for barcode generation'
+                  }
                 </CardDescription>
               </div>
-              <Button onClick={() => setIsModelCodeDialogOpen(true)}>
+              <Button onClick={() => {
+                setNewModelCode({ ...newModelCode, item_type: itemTypeFilter });
+                setIsModelCodeDialogOpen(true);
+              }}>
                 <Plus className="mr-2 h-4 w-4" />
-                Add Model Code
+                Add {itemTypeFilter === 'FG' ? 'FG' : 'SP'} Code
               </Button>
             </CardHeader>
             <CardContent>
-              <div className="p-4 mb-4 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-sm text-blue-800">
-                  <strong>Barcode Format:</strong> AP + Supplier(2) + Year(1) + Month(1) + <strong>Model(3)</strong> + Serial(6)
-                </p>
-                <p className="text-xs text-blue-600 mt-1">
-                  Example: APFS<strong>A</strong><strong>A</strong><strong>SDF</strong>000001 (FS=Supplier, A=2026, A=Jan, SDF=Model, 000001=Serial)
-                </p>
-              </div>
+              {itemTypeFilter === 'FG' ? (
+                <div className="p-4 mb-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <p className="text-sm text-blue-800">
+                    <strong>FG Barcode Format (16 chars):</strong> AP + YearCode(2) + MonthCode(1) + <strong>ModelCode(3)</strong> + Serial(8)
+                  </p>
+                  <p className="text-xs text-blue-600 mt-1">
+                    Example: AP<strong>AA</strong><strong>A</strong><strong>IEL</strong>00000001 (AA=2026, A=Jan, IEL=Model, Serial)
+                  </p>
+                  <p className="text-xs text-blue-600 mt-1">
+                    <strong>FG Code Format:</strong> WP(Category) + R(Subcategory) + A(Brand) + IEL(Model) + 001(Seq) = WPRAIEL001
+                  </p>
+                </div>
+              ) : (
+                <div className="p-4 mb-4 bg-orange-50 rounded-lg border border-orange-200">
+                  <p className="text-sm text-orange-800">
+                    <strong>SP Barcode Format (16 chars):</strong> AP + SupplierCode(2) + YearCode(1) + MonthCode(1) + ChannelCode(2) + Serial(8)
+                  </p>
+                  <p className="text-xs text-orange-600 mt-1">
+                    Example: AP<strong>FS</strong><strong>A</strong><strong>A</strong><strong>EC</strong>00000001 (FS=FastTrack, A=2026, A=Jan, EC=Economical)
+                  </p>
+                  <p className="text-xs text-orange-600 mt-1">
+                    <strong>SP Code Format:</strong> SP(Category) + SD(Subcategory) + F(Brand) + SDF(Model) + 001(Seq) = SPSDFSD001
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
           <DataTable
             columns={modelCodeColumns}
-            data={modelCodes}
+            data={modelCodes.filter((code: ModelCodeReference) => code.item_type === itemTypeFilter)}
             searchKey="product_sku"
-            searchPlaceholder="Search by SKU..."
+            searchPlaceholder={itemTypeFilter === 'FG' ? 'Search Water Purifiers...' : 'Search Spare Parts...'}
             isLoading={modelCodesLoading}
           />
         </TabsContent>
