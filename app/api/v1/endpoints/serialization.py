@@ -1048,6 +1048,74 @@ async def auto_link_products_to_model_codes(
     }
 
 
+@router.post("/link-product-model-code")
+async def link_product_to_model_code(
+    product_id: str = Query(..., description="Product ID to link"),
+    model_code: str = Query(..., min_length=3, max_length=3, description="3-letter model code"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Manually link an existing product to a model code.
+
+    This creates or updates the ModelCodeReference for a product.
+    Use this when you have existing products that need model codes for barcode generation.
+    """
+    import uuid as uuid_module
+
+    # Get the product
+    result = await db.execute(
+        select(Product).where(Product.id == product_id)
+    )
+    product = result.scalar_one_or_none()
+
+    if not product:
+        raise HTTPException(status_code=404, detail=f"Product {product_id} not found")
+
+    # Check if model code reference already exists for this product
+    existing_ref = await db.execute(
+        select(ModelCodeReference).where(ModelCodeReference.product_id == product_id)
+    )
+    model_ref = existing_ref.scalar_one_or_none()
+
+    if model_ref:
+        # Update existing
+        model_ref.model_code = model_code.upper()
+        model_ref.product_sku = product.sku
+        model_ref.fg_code = product.fg_code or product.sku
+        model_ref.description = product.name
+        message = "Updated existing model code reference"
+    else:
+        # Determine item type
+        item_type = ItemType.SPARE_PART if (product.sku or "").upper().startswith("SP") else ItemType.FINISHED_GOODS
+
+        # Create new
+        model_ref = ModelCodeReference(
+            id=str(uuid_module.uuid4()).replace("-", ""),
+            product_id=product_id,
+            product_sku=product.sku,
+            fg_code=product.fg_code or product.sku,
+            model_code=model_code.upper(),
+            item_type=item_type,
+            description=product.name,
+            is_active=True,
+        )
+        db.add(model_ref)
+        message = "Created new model code reference"
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "message": message,
+        "product_id": product_id,
+        "product_sku": product.sku,
+        "product_name": product.name,
+        "model_code": model_code.upper(),
+        "fg_code": model_ref.fg_code,
+    }
+
+
 @router.post("/sync-products-to-model-codes")
 async def sync_products_to_model_codes(
     db: AsyncSession = Depends(get_db),
@@ -1066,6 +1134,7 @@ async def sync_products_to_model_codes(
     - Links by product_id
     """
     import re
+    import uuid
 
     # Only super admin can sync
     if not permissions or not permissions.is_super_admin():
