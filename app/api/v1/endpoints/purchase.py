@@ -719,6 +719,14 @@ async def convert_requisition_to_po(
     # Create delivery schedules from monthly_quantities
     if month_totals:
         from calendar import monthrange
+
+        # Get the last serial number from all previous delivery schedules
+        last_serial_result = await db.execute(
+            select(func.max(PODeliverySchedule.serial_number_end))
+        )
+        last_serial = last_serial_result.scalar() or 0
+        current_serial = last_serial
+
         sorted_months = sorted(month_totals.keys())
         lot_number = 0
 
@@ -740,6 +748,12 @@ async def convert_requisition_to_po(
                           "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
             lot_name = f"{month_names[month]} {year}"
 
+            # Calculate serial number range for this lot
+            lot_qty = month_data["qty"]
+            serial_start = current_serial + 1
+            serial_end = current_serial + lot_qty
+            current_serial = serial_end
+
             delivery_schedule = PODeliverySchedule(
                 purchase_order_id=po.id,
                 lot_number=lot_number,
@@ -748,11 +762,13 @@ async def convert_requisition_to_po(
                 expected_delivery_date=expected_date,
                 delivery_window_start=window_start,
                 delivery_window_end=window_end,
-                total_quantity=month_data["qty"],
+                total_quantity=lot_qty,
                 lot_value=lot_value,
                 lot_tax=lot_tax,
                 lot_total=lot_total,
                 status=DeliveryLotStatus.PENDING,
+                serial_number_start=serial_start,
+                serial_number_end=serial_end,
             )
             db.add(delivery_schedule)
 
@@ -1005,9 +1021,18 @@ async def create_purchase_order(
     if month_totals:
         from datetime import timedelta
         from calendar import monthrange
+        from sqlalchemy import func
+
+        # Get the last serial number from all previous delivery schedules
+        # Serial numbers are global across all POs and continue from the last used
+        last_serial_result = await db.execute(
+            select(func.max(PODeliverySchedule.serial_number_end))
+        )
+        last_serial = last_serial_result.scalar() or 0  # Start from 0 if no previous serials
 
         sorted_months = sorted(month_totals.keys())
         lot_number = 0
+        current_serial = last_serial  # Track running serial number
 
         for month_code in sorted_months:
             lot_number += 1
@@ -1039,6 +1064,12 @@ async def create_purchase_order(
                           "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
             lot_name = f"{month_names[month]} {year}"
 
+            # Calculate serial number range for this lot
+            lot_qty = month_data["qty"]
+            serial_start = current_serial + 1
+            serial_end = current_serial + lot_qty
+            current_serial = serial_end  # Update for next lot
+
             delivery_schedule = PODeliverySchedule(
                 purchase_order_id=po.id,
                 lot_number=lot_number,
@@ -1047,7 +1078,7 @@ async def create_purchase_order(
                 expected_delivery_date=expected_date,
                 delivery_window_start=window_start,
                 delivery_window_end=window_end,
-                total_quantity=month_data["qty"],
+                total_quantity=lot_qty,
                 lot_value=lot_value,
                 lot_tax=lot_tax,
                 lot_total=lot_total,
@@ -1057,6 +1088,9 @@ async def create_purchase_order(
                 balance_due_days=po_in.credit_days,
                 balance_due_date=balance_due_date,
                 status=DeliveryLotStatus.PENDING,
+                # Serial number range for this lot
+                serial_number_start=serial_start,
+                serial_number_end=serial_end,
             )
             db.add(delivery_schedule)
 
@@ -2582,26 +2616,43 @@ async def download_purchase_order(
         total_advance = Decimal("0")
         total_balance = Decimal("0")
 
+        # Track total serial range
+        first_serial = None
+        last_serial = None
+
         for sched in delivery_schedules:
             total_qty_sched += sched.total_quantity
             total_lot_value += Decimal(str(sched.lot_total))
             total_advance += Decimal(str(sched.advance_amount))
             total_balance += Decimal(str(sched.balance_amount))
 
+            # Track overall serial range
+            if sched.serial_number_start is not None:
+                if first_serial is None:
+                    first_serial = sched.serial_number_start
+                last_serial = sched.serial_number_end
+
             adv_due_text = "With PO" if sched.lot_number == 1 else f"{sched.expected_delivery_date.strftime('%d %b %Y') if sched.expected_delivery_date else 'TBD'}"
             balance_due_text = sched.balance_due_date.strftime('%d %b %Y') if sched.balance_due_date else "TBD"
+
+            # Serial number range display
+            serial_range_text = f"{sched.serial_number_start} - {sched.serial_number_end}" if sched.serial_number_start and sched.serial_number_end else "-"
 
             schedule_rows += f"""
                 <tr>
                     <td class="text-center"><strong>LOT {sched.lot_number} ({sched.lot_name})</strong></td>
                     <td class="text-center">{sched.expected_delivery_date.strftime('%d %b %Y') if sched.expected_delivery_date else 'TBD'}</td>
                     <td class="text-center">{sched.total_quantity:,}</td>
+                    <td class="text-center" style="font-family: monospace; font-size: 9px;">{serial_range_text}</td>
                     <td class="text-right">Rs. {float(sched.lot_total):,.2f}</td>
                     <td class="text-right">Rs. {float(sched.advance_amount):,.2f}</td>
                     <td class="text-center">{adv_due_text}</td>
                     <td class="text-right">Rs. {float(sched.balance_amount):,.2f}</td>
                     <td class="text-center">{balance_due_text}</td>
                 </tr>"""
+
+        # Total serial range display
+        total_serial_range = f"{first_serial} - {last_serial}" if first_serial and last_serial else "-"
 
         delivery_schedule_html = f"""
         <!-- Delivery Schedule Section -->
@@ -2612,14 +2663,15 @@ async def download_purchase_order(
             <table style="font-size: 10px;">
                 <thead>
                     <tr style="background: #e0e0e0;">
-                        <th style="width: 14%">LOT</th>
-                        <th style="width: 12%">DELIVERY DATE</th>
-                        <th style="width: 8%">QTY</th>
-                        <th style="width: 14%">LOT VALUE (incl. GST)</th>
-                        <th style="width: 12%">ADVANCE (25%)</th>
-                        <th style="width: 12%">ADVANCE DUE</th>
-                        <th style="width: 12%">BALANCE (75%)</th>
-                        <th style="width: 12%">BALANCE DUE</th>
+                        <th style="width: 12%">LOT</th>
+                        <th style="width: 10%">DELIVERY DATE</th>
+                        <th style="width: 6%">QTY</th>
+                        <th style="width: 12%">SERIAL NO. RANGE</th>
+                        <th style="width: 12%">LOT VALUE (incl. GST)</th>
+                        <th style="width: 10%">ADVANCE (25%)</th>
+                        <th style="width: 10%">ADVANCE DUE</th>
+                        <th style="width: 10%">BALANCE (75%)</th>
+                        <th style="width: 10%">BALANCE DUE</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -2628,6 +2680,7 @@ async def download_purchase_order(
                         <td class="text-center">TOTAL</td>
                         <td class="text-center"></td>
                         <td class="text-center">{total_qty_sched:,}</td>
+                        <td class="text-center" style="font-family: monospace; font-size: 9px;">{total_serial_range}</td>
                         <td class="text-right">Rs. {float(total_lot_value):,.2f}</td>
                         <td class="text-right">Rs. {float(total_advance):,.2f}</td>
                         <td class="text-center"></td>
@@ -2637,7 +2690,7 @@ async def download_purchase_order(
                 </tbody>
             </table>
             <p style="padding: 8px; font-size: 9px; color: #666; background: #fff3cd;">
-                <strong>Note:</strong> Advance for each lot must be paid before delivery. Balance is due 45 days after each lot's delivery.
+                <strong>Note:</strong> Serial numbers indicate the range to be supplied by vendor. Advance for each lot must be paid before delivery. Balance is due 45 days after each lot's delivery.
             </p>
         </div>
         """
@@ -2710,6 +2763,16 @@ async def download_purchase_order(
     # PO details
     po_date_str = po.po_date.strftime('%d.%m.%Y') if po.po_date else datetime.now().strftime('%d.%m.%Y')
     expected_delivery_str = po.expected_delivery_date.strftime('%d.%m.%Y') if po.expected_delivery_date else "TBD"
+
+    # Terms & Conditions from PO (user-entered, not hardcoded)
+    po_terms = getattr(po, 'terms_and_conditions', None) or ""
+    if po_terms:
+        # Convert newlines to HTML line breaks and escape HTML
+        import html
+        po_terms_html = html.escape(po_terms).replace('\n', '<br>')
+    else:
+        # Default message if no terms entered
+        po_terms_html = "<em>Terms and conditions as per agreement.</em>"
 
     # Build serial numbers section HTML (goes after Terms & Conditions)
     serials_html = ""
@@ -3093,28 +3156,7 @@ async def download_purchase_order(
         <!-- Terms & Conditions -->
         <div class="terms">
             <h4>TERMS & CONDITIONS:</h4>
-            <ol>
-                <li><strong>Payment Terms:</strong>
-                    <ul style="margin-left: 15px;">
-                        <li>25% Advance against Proforma Invoice</li>
-                        <li>25% at the time of dispatch</li>
-                        <li>Balance 50% against Post Dated Cheque</li>
-                    </ul>
-                </li>
-                <li><strong>Delivery:</strong> Within 30 days from receipt of advance payment and packing material design from buyer.</li>
-                <li><strong>Warranty:</strong>
-                    <ul style="margin-left: 15px;">
-                        <li>18 months on electronic parts from date of invoice</li>
-                        <li>1 year general service warranty</li>
-                    </ul>
-                </li>
-                <li><strong>Packing Material:</strong> UV LED to be provided by buyer.</li>
-                <li><strong>Quality:</strong> All products must meet Aquapurite quality standards and pass inspection before acceptance.</li>
-                <li><strong>Serialization:</strong> Each unit must have individual barcode label as per Aquapurite serialization format.</li>
-                <li><strong>Documentation:</strong> Packing list with barcode details (CSV/Excel) must accompany each shipment.</li>
-                <li>This PO is subject to the terms agreed in the Proforma Invoice.</li>
-                <li>All disputes subject to Delhi jurisdiction.</li>
-            </ol>
+            <div style="white-space: pre-wrap; font-size: 11px; line-height: 1.5;">{po_terms_html}</div>
         </div>
 
         {serials_html}

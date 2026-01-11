@@ -198,6 +198,10 @@ class PODeliveryScheduleResponse(PODeliveryScheduleBase):
     actual_delivery_date: Optional[date] = None
     quantity_received: int
     grn_id: Optional[UUID] = None
+    # Serial number range for this lot
+    serial_number_start: Optional[int] = None
+    serial_number_end: Optional[int] = None
+    serial_number_range: Optional[str] = None  # Computed property
     created_at: datetime
     updated_at: datetime
 
@@ -221,6 +225,10 @@ class PODeliveryScheduleBrief(BaseModel):
     advance_amount: Decimal
     balance_amount: Decimal
     status: DeliveryLotStatus
+    # Serial number range
+    serial_number_start: Optional[int] = None
+    serial_number_end: Optional[int] = None
+    serial_number_range: Optional[str] = None
 
 
 class PODeliveryPaymentRequest(BaseModel):

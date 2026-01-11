@@ -59,7 +59,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
-import { purchaseOrdersApi, purchaseRequisitionsApi, PurchaseRequisition, vendorsApi, warehousesApi, productsApi, serializationApi, ModelCodeReference, SupplierCode as SupplierCodeType, POSerialsResponse } from '@/lib/api';
+import { purchaseOrdersApi, purchaseRequisitionsApi, PurchaseRequisition, vendorsApi, warehousesApi, productsApi, serializationApi, companyApi, Company, ModelCodeReference, SupplierCode as SupplierCodeType, POSerialsResponse } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 interface POItem {
@@ -149,7 +149,10 @@ export default function PurchaseOrdersPage() {
     delivery_warehouse_id: '',
     expected_delivery_date: '',
     credit_days: 30,
-    notes: '',
+    advance_required: 0,  // Advance payment amount
+    bill_to: null as any,  // Bill To address
+    ship_to: null as any,  // Ship To address
+    terms_and_conditions: '',  // Terms & Conditions (previously notes)
     items: [] as POItem[],
   });
 
@@ -219,6 +222,12 @@ export default function PurchaseOrdersPage() {
   const { data: supplierCodesData } = useQuery({
     queryKey: ['supplier-codes'],
     queryFn: () => serializationApi.getSupplierCodes(true),
+  });
+
+  // Company data for Bill To address
+  const { data: companyData } = useQuery({
+    queryKey: ['company-primary'],
+    queryFn: () => companyApi.getPrimary(),
   });
 
   // State for serial number preview in PO view
@@ -350,7 +359,10 @@ export default function PurchaseOrdersPage() {
       delivery_warehouse_id: '',
       expected_delivery_date: '',
       credit_days: 30,
-      notes: '',
+      advance_required: 0,
+      bill_to: null,
+      ship_to: null,
+      terms_and_conditions: '',
       items: [],
     });
     setSelectedPR(null);
@@ -456,7 +468,10 @@ export default function PurchaseOrdersPage() {
       delivery_warehouse_id: formData.delivery_warehouse_id,
       expected_delivery_date: formData.expected_delivery_date || undefined,
       credit_days: formData.credit_days,
-      notes: formData.notes || undefined,
+      advance_required: formData.advance_required || 0,  // Include advance payment
+      bill_to: formData.bill_to || undefined,  // Bill To address
+      ship_to: formData.ship_to || undefined,  // Ship To address
+      terms_and_conditions: formData.terms_and_conditions || undefined,  // Terms & Conditions
       items: formData.items.map(item => ({
         product_id: item.product_id,
         product_name: item.product_name,
@@ -830,6 +845,109 @@ export default function PurchaseOrdersPage() {
                       </Select>
                     </div>
                   </div>
+                  {/* Bill To & Ship To Section */}
+                  <div className="space-y-4 p-4 border rounded-lg bg-blue-50/30">
+                    <Label className="text-base font-semibold">Billing & Shipping Addresses</Label>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Bill To */}
+                      <div className="space-y-2">
+                        <Label>Bill To (Invoice Address) *</Label>
+                        <Select
+                          value={formData.bill_to ? 'company' : 'select'}
+                          onValueChange={(value) => {
+                            if (value === 'company' && companyData) {
+                              setFormData({
+                                ...formData,
+                                bill_to: {
+                                  name: companyData.legal_name,
+                                  address_line1: companyData.address_line1,
+                                  address_line2: companyData.address_line2 || '',
+                                  city: companyData.city,
+                                  state: companyData.state,
+                                  pincode: companyData.pincode,
+                                  gstin: companyData.gstin,
+                                  state_code: companyData.state_code,
+                                }
+                              });
+                            } else {
+                              setFormData({ ...formData, bill_to: null });
+                            }
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select billing address" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="select" disabled>Select billing address</SelectItem>
+                            {companyData && (
+                              <SelectItem value="company">
+                                {companyData.legal_name} - {companyData.city}
+                              </SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                        {formData.bill_to && (
+                          <div className="text-xs text-muted-foreground p-2 bg-white rounded border">
+                            <strong>{formData.bill_to.name}</strong><br />
+                            {formData.bill_to.address_line1}<br />
+                            {formData.bill_to.city}, {formData.bill_to.state} - {formData.bill_to.pincode}<br />
+                            GSTIN: {formData.bill_to.gstin}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Ship To */}
+                      <div className="space-y-2">
+                        <Label>Ship To (Delivery Address) *</Label>
+                        <Select
+                          value={formData.ship_to ? (formData.ship_to.type || 'warehouse') : 'select'}
+                          onValueChange={(value) => {
+                            if (value === 'warehouse') {
+                              const selectedWarehouse = warehouses.find((w: Warehouse) => w.id === formData.delivery_warehouse_id);
+                              if (selectedWarehouse) {
+                                setFormData({
+                                  ...formData,
+                                  ship_to: {
+                                    type: 'warehouse',
+                                    name: selectedWarehouse.name,
+                                    address_line1: (selectedWarehouse as any).address_line1 || '',
+                                    city: (selectedWarehouse as any).city || '',
+                                    state: (selectedWarehouse as any).state || '',
+                                    pincode: (selectedWarehouse as any).pincode || '',
+                                  }
+                                });
+                              }
+                            } else if (value === 'same_as_bill') {
+                              setFormData({
+                                ...formData,
+                                ship_to: formData.bill_to ? { ...formData.bill_to, type: 'same_as_bill' } : null
+                              });
+                            } else {
+                              setFormData({ ...formData, ship_to: null });
+                            }
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select shipping address" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="select" disabled>Select shipping address</SelectItem>
+                            <SelectItem value="warehouse">Delivery Warehouse Address</SelectItem>
+                            <SelectItem value="same_as_bill">Same as Bill To</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {formData.ship_to && (
+                          <div className="text-xs text-muted-foreground p-2 bg-white rounded border">
+                            <strong>{formData.ship_to.name}</strong><br />
+                            {formData.ship_to.address_line1}<br />
+                            {formData.ship_to.city}, {formData.ship_to.state} - {formData.ship_to.pincode}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Expected Delivery Date</Label>
@@ -848,6 +966,55 @@ export default function PurchaseOrdersPage() {
                         value={formData.credit_days}
                         onChange={(e) => setFormData({ ...formData, credit_days: parseInt(e.target.value) || 0 })}
                       />
+                    </div>
+                  </div>
+
+                  {/* Advance Payment Section */}
+                  <div className="space-y-2 p-3 border rounded-lg bg-green-50/50">
+                    <Label className="text-base font-semibold">Advance Payment</Label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="advance_required">Advance Amount (₹)</Label>
+                        <Input
+                          id="advance_required"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="Enter advance payment amount"
+                          value={formData.advance_required || ''}
+                          onChange={(e) => setFormData({ ...formData, advance_required: parseFloat(e.target.value) || 0 })}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Amount to be paid in advance before delivery
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Advance Percentage</Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="text"
+                            readOnly
+                            value={totals.total > 0 ? `${((formData.advance_required / totals.total) * 100).toFixed(1)}%` : '0%'}
+                            className="bg-muted w-20"
+                          />
+                          <span className="text-sm text-muted-foreground">of total {formatCurrency(totals.total)}</span>
+                        </div>
+                        {/* Quick percentage buttons */}
+                        <div className="flex gap-1 mt-1">
+                          {[10, 25, 50].map((pct) => (
+                            <Button
+                              key={pct}
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="text-xs h-6 px-2"
+                              onClick={() => setFormData({ ...formData, advance_required: Math.round((totals.total * pct / 100) * 100) / 100 })}
+                            >
+                              {pct}%
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -1148,12 +1315,18 @@ export default function PurchaseOrdersPage() {
                     </div>
                   )}
 
-                  <div className="space-y-2">
-                    <Label>Notes</Label>
+                  {/* Terms & Conditions Section */}
+                  <div className="space-y-2 p-4 border rounded-lg bg-amber-50/30">
+                    <Label className="text-base font-semibold">Terms & Conditions</Label>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Enter the terms and conditions for this Purchase Order. These will appear on the printed PO.
+                    </p>
                     <Textarea
-                      placeholder="Additional notes or instructions..."
-                      value={formData.notes}
-                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                      placeholder="Enter terms and conditions for this PO...&#10;&#10;Example:&#10;1. Delivery must be as per schedule mentioned above.&#10;2. All goods must be in original packing with serial numbers as specified.&#10;3. Payment will be released as per lot-wise schedule.&#10;4. Quality check will be done before acceptance."
+                      value={formData.terms_and_conditions}
+                      onChange={(e) => setFormData({ ...formData, terms_and_conditions: e.target.value })}
+                      rows={6}
+                      className="font-mono text-sm"
                     />
                   </div>
                 </div>
@@ -1276,6 +1449,78 @@ export default function PurchaseOrdersPage() {
                           </div>
                         </div>
                       ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Delivery Schedule & Lot-wise Payment Plan */}
+              {(selectedPO as any).delivery_schedules && (selectedPO as any).delivery_schedules.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Delivery Schedule & Lot-wise Payment Plan
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="border rounded-md overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted">
+                          <tr>
+                            <th className="px-3 py-2 text-left">Lot</th>
+                            <th className="px-3 py-2 text-right">Qty</th>
+                            <th className="px-3 py-2 text-center">Serial No. Range</th>
+                            <th className="px-3 py-2 text-right">Value</th>
+                            <th className="px-3 py-2 text-center">Delivery Date</th>
+                            <th className="px-3 py-2 text-center">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(selectedPO as any).delivery_schedules.map((schedule: any) => (
+                            <tr key={schedule.id} className="border-t">
+                              <td className="px-3 py-2 font-medium">{schedule.lot_name}</td>
+                              <td className="px-3 py-2 text-right">{schedule.total_quantity}</td>
+                              <td className="px-3 py-2 text-center font-mono">
+                                {schedule.serial_number_start && schedule.serial_number_end ? (
+                                  <Badge variant="outline" className="font-mono text-xs">
+                                    {schedule.serial_number_start} - {schedule.serial_number_end}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">-</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-right">{formatCurrency(schedule.lot_total)}</td>
+                              <td className="px-3 py-2 text-center text-xs">
+                                {formatDate(schedule.expected_delivery_date)}
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                <StatusBadge status={schedule.status} />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="bg-muted/50">
+                          <tr className="border-t font-medium">
+                            <td className="px-3 py-2">Total</td>
+                            <td className="px-3 py-2 text-right">
+                              {(selectedPO as any).delivery_schedules.reduce((sum: number, s: any) => sum + s.total_quantity, 0)}
+                            </td>
+                            <td className="px-3 py-2 text-center font-mono text-xs">
+                              {(() => {
+                                const schedules = (selectedPO as any).delivery_schedules;
+                                const first = schedules[0]?.serial_number_start;
+                                const last = schedules[schedules.length - 1]?.serial_number_end;
+                                return first && last ? `${first} - ${last}` : '-';
+                              })()}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {formatCurrency((selectedPO as any).delivery_schedules.reduce((sum: number, s: any) => sum + parseFloat(s.lot_total || 0), 0))}
+                            </td>
+                            <td colSpan={2}></td>
+                          </tr>
+                        </tfoot>
+                      </table>
                     </div>
                   </CardContent>
                 </Card>

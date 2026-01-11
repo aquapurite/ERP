@@ -880,6 +880,20 @@ class PODeliverySchedule(Base):
         nullable=True
     )
 
+    # Serial Number Range for this Lot
+    # These represent the range of product serial numbers to be supplied
+    # Serial numbers are auto-incremented based on last PO's ending serial
+    serial_number_start: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Starting serial number for this lot (e.g., 101)"
+    )
+    serial_number_end: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Ending serial number for this lot (e.g., 200)"
+    )
+
     # Notes
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
@@ -927,6 +941,13 @@ class PODeliverySchedule(Base):
     def pending_balance(self) -> Decimal:
         """Pending balance amount."""
         return max(Decimal("0"), self.balance_amount - self.balance_paid)
+
+    @property
+    def serial_number_range(self) -> Optional[str]:
+        """Get formatted serial number range string."""
+        if self.serial_number_start is not None and self.serial_number_end is not None:
+            return f"{self.serial_number_start} - {self.serial_number_end}"
+        return None
 
     def __repr__(self) -> str:
         return f"<PODeliverySchedule(lot={self.lot_name}, status={self.status.value})>"
