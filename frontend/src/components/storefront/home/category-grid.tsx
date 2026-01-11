@@ -9,7 +9,7 @@ interface CategoryGridProps {
 }
 
 // Default categories if API returns empty (Eureka Forbes inspired)
-const defaultCategories = [
+const defaultCategories: Array<{ id: string; name: string; slug: string; icon: string; image_url?: string }> = [
   { id: '1', name: 'RO Water Purifiers', slug: 'ro-water-purifiers', icon: 'droplet' },
   { id: '2', name: 'UV Water Purifiers', slug: 'uv-water-purifiers', icon: 'zap' },
   { id: '3', name: 'RO+UV Purifiers', slug: 'ro-uv-water-purifiers', icon: 'shield' },
@@ -69,7 +69,7 @@ export default function CategoryGrid({ categories }: CategoryGridProps) {
               >
                 {/* Icon Container - Eureka Forbes style */}
                 <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl bg-primary/10 flex items-center justify-center mb-3 group-hover:bg-primary group-hover:scale-105 transition-all duration-300">
-                  {'image_url' in category && category.image_url ? (
+                  {category.image_url ? (
                     <img
                       src={category.image_url}
                       alt={category.name}
