@@ -1225,93 +1225,84 @@ export default function PurchaseOrdersPage() {
                     </div>
                   )}
 
-                  {/* Serial Numbers Preview Section */}
-                  {formData.items.length > 0 && formData.vendor_id && (
-                    <div className="space-y-2 p-4 border rounded-lg bg-muted/30">
+                  {/* Serial Numbers Preview Section - Lot-wise */}
+                  {formData.items.length > 0 && isMultiDelivery && deliveryMonths.length > 0 && (
+                    <div className="space-y-2 p-4 border rounded-lg bg-purple-50/50">
                       <Label className="text-base font-semibold flex items-center gap-2">
                         <Barcode className="h-4 w-4" />
-                        Serial Numbers Preview
+                        Serial Numbers Preview (Lot-wise)
                       </Label>
                       <p className="text-xs text-muted-foreground mb-2">
-                        Serial numbers will be generated when the PO is sent to vendor
+                        <strong>System Generated:</strong> Serial numbers will be auto-assigned when PO is created
                       </p>
                       <div className="border rounded-md bg-background">
                         <table className="w-full text-sm">
                           <thead className="bg-muted">
                             <tr>
-                              <th className="px-3 py-2 text-left">Product</th>
-                              <th className="px-3 py-2 text-left">Model Code</th>
+                              <th className="px-3 py-2 text-left">Lot (Month)</th>
                               <th className="px-3 py-2 text-right">Qty</th>
-                              <th className="px-3 py-2 text-left">Serial Range</th>
+                              <th className="px-3 py-2 text-center">Serial Range (Preview)</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {formData.items.map((item, index) => {
-                              const modelCode = getModelCodeForProduct(item.product_id, item.sku);
-                              const selectedVendor = vendors.find((v: Vendor) => v.id === formData.vendor_id);
-                              const supplierCode = selectedVendor ? getSupplierCodeForVendor(selectedVendor.id) : undefined;
+                            {(() => {
+                              // Calculate quantities per month
+                              const monthQtys: Record<string, number> = {};
+                              formData.items.forEach(item => {
+                                if (item.monthly_quantities) {
+                                  Object.entries(item.monthly_quantities).forEach(([month, qty]) => {
+                                    monthQtys[month] = (monthQtys[month] || 0) + (qty || 0);
+                                  });
+                                }
+                              });
+
+                              // Sort months and calculate serial ranges
+                              const sortedMonths = Object.keys(monthQtys).sort();
+                              let runningSerial = 1; // Preview starts from 1 (actual will continue from last)
+                              const totalQty = Object.values(monthQtys).reduce((sum, q) => sum + q, 0);
 
                               return (
-                                <tr key={index} className="border-t">
-                                  <td className="px-3 py-2">
-                                    <div className="font-medium text-xs">{item.product_name || 'Product'}</div>
-                                    <div className="text-xs text-muted-foreground">{item.sku}</div>
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    {modelCode ? (
+                                <>
+                                  {sortedMonths.map((month, idx) => {
+                                    const qty = monthQtys[month];
+                                    const startSerial = runningSerial;
+                                    const endSerial = runningSerial + qty - 1;
+                                    runningSerial = endSerial + 1;
+
+                                    const monthName = availableMonths.find(m => m.code === month)?.name || month;
+
+                                    return (
+                                      <tr key={month} className="border-t">
+                                        <td className="px-3 py-2 font-medium">
+                                          LOT {idx + 1} ({monthName})
+                                        </td>
+                                        <td className="px-3 py-2 text-right">{qty.toLocaleString()}</td>
+                                        <td className="px-3 py-2 text-center">
+                                          <Badge variant="outline" className="font-mono text-xs">
+                                            {startSerial.toLocaleString()} - {endSerial.toLocaleString()}
+                                          </Badge>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                  <tr className="border-t bg-muted/50 font-medium">
+                                    <td className="px-3 py-2">TOTAL</td>
+                                    <td className="px-3 py-2 text-right">{totalQty.toLocaleString()}</td>
+                                    <td className="px-3 py-2 text-center">
                                       <Badge variant="secondary" className="font-mono text-xs">
-                                        {modelCode.model_code}
+                                        1 - {totalQty.toLocaleString()}
                                       </Badge>
-                                    ) : (
-                                      <span className="text-xs text-muted-foreground italic">
-                                        No mapping
-                                      </span>
-                                    )}
-                                  </td>
-                                  <td className="px-3 py-2 text-right">{item.quantity ?? 0}</td>
-                                  <td className="px-3 py-2">
-                                    {modelCode && supplierCode ? (
-                                      <span className="font-mono text-xs text-muted-foreground">
-                                        AP{supplierCode.code}..{modelCode.model_code}XXXXXX - AP{supplierCode.code}..{modelCode.model_code}XXXXXX
-                                      </span>
-                                    ) : !modelCode ? (
-                                      <span className="text-xs text-amber-600">
-                                        Setup model code for this product
-                                      </span>
-                                    ) : (
-                                      <span className="text-xs text-amber-600">
-                                        Setup supplier code for vendor
-                                      </span>
-                                    )}
-                                  </td>
-                                </tr>
+                                    </td>
+                                  </tr>
+                                </>
                               );
-                            })}
+                            })()}
                           </tbody>
                         </table>
                       </div>
-                      {(() => {
-                        const selectedVendor = vendors.find((v: Vendor) => v.id === formData.vendor_id);
-                        const supplierCode = selectedVendor ? getSupplierCodeForVendor(selectedVendor.id) : undefined;
-                        const missingModelCodes = formData.items.filter(item => !getModelCodeForProduct(item.product_id, item.sku));
-
-                        return (
-                          <div className="text-xs space-y-1 pt-2">
-                            {!supplierCode && (
-                              <p className="text-amber-600">
-                                Note: Supplier code not mapped for {selectedVendor?.name || 'selected vendor'}.
-                                Setup in Serialization &gt; Supplier Codes.
-                              </p>
-                            )}
-                            {missingModelCodes.length > 0 && (
-                              <p className="text-amber-600">
-                                Note: {missingModelCodes.length} product(s) missing model code mapping.
-                                Setup in Serialization &gt; Model Codes.
-                              </p>
-                            )}
-                          </div>
-                        );
-                      })()}
+                      <p className="text-xs text-muted-foreground italic">
+                        Note: Actual serial numbers will continue from last PO's ending serial. Preview shows relative range.
+                      </p>
                     </div>
                   )}
 

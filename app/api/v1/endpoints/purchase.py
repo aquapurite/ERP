@@ -1562,6 +1562,30 @@ async def mark_lot_delivered(
     return schedule
 
 
+# ==================== Serial Number Preview ====================
+
+@router.get("/orders/next-serial")
+async def get_next_serial_number(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get the next available serial number for PO delivery schedules.
+    Used for preview in PO creation form.
+    """
+    last_serial_result = await db.execute(
+        select(func.max(PODeliverySchedule.serial_number_end))
+    )
+    last_serial = last_serial_result.scalar() or 0
+    next_serial = last_serial + 1
+
+    return {
+        "last_serial": last_serial,
+        "next_serial": next_serial,
+        "message": f"Next available serial starts from {next_serial}"
+    }
+
+
 # ==================== Goods Receipt Note (GRN) ====================
 
 @router.post("/grn", response_model=GoodsReceiptResponse, status_code=status.HTTP_201_CREATED)
@@ -3161,25 +3185,20 @@ async def download_purchase_order(
 
         {serials_html}
 
-        <!-- Signature Section -->
-        <div class="signature-section">
-            <div class="signature-box">
-                <p><strong>Prepared By:</strong></p>
-                <div class="signature-line">Purchase Department</div>
-            </div>
-            <div class="signature-box">
-                <p><strong>Verified By:</strong></p>
-                <div class="signature-line">Accounts Department</div>
-            </div>
-            <div class="signature-box">
-                <p><strong>Approved By:</strong></p>
-                <div class="signature-line">For {company_name}<br>(Authorized Signatory)</div>
-            </div>
+        <!-- System Generated Notice -->
+        <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; text-align: center;">
+            <p style="margin: 0; font-size: 12px; color: #495057;">
+                <strong>SYSTEM GENERATED PURCHASE ORDER</strong>
+            </p>
+            <p style="margin: 5px 0 0 0; font-size: 10px; color: #6c757d;">
+                This is an electronically generated document from Aquapurite ERP System.<br>
+                No signature required. Document ID: {po.po_number}
+            </p>
         </div>
 
         <!-- Footer -->
         <div class="footer">
-            This is a system generated Purchase Order from Aquapurite ERP | Document ID: {po.po_number} | Generated on: {datetime.now().strftime("%d-%m-%Y %H:%M:%S")}
+            System Generated Purchase Order | Aquapurite ERP | Document ID: {po.po_number} | Generated: {datetime.now().strftime("%d-%m-%Y %H:%M:%S")}
         </div>
     </div>
 </body>

@@ -652,6 +652,10 @@ export const purchaseOrdersApi = {
     const { data } = await apiClient.get<{ next_number: string; prefix: string }>('/purchase/orders/next-number');
     return data;
   },
+  getNextSerial: async () => {
+    const { data } = await apiClient.get<{ last_serial: number; next_serial: number; message: string }>('/purchase/orders/next-serial');
+    return data;
+  },
   list: async (params?: { page?: number; size?: number; status?: string; vendor_id?: string }) => {
     const { data } = await apiClient.get<PaginatedResponse<PurchaseOrder>>('/purchase/orders', { params });
     return data;
