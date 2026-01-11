@@ -101,7 +101,7 @@ export default function EditUserPage() {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       queryClient.invalidateQueries({ queryKey: ['user', userId] });
       toast.success('User updated successfully');
-      router.push('/access-control/users');
+      router.push('/dashboard/access-control/users');
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to update user');
@@ -188,7 +188,7 @@ export default function EditUserPage() {
               </Button>
             )}
             <Button variant="outline" asChild>
-              <Link href="/dashboard/access-control/users">
+              <Link href="/dashboard/dashboard/access-control/users">
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to Users
               </Link>

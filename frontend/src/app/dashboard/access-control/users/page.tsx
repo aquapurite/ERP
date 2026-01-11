@@ -89,7 +89,7 @@ const columns: ColumnDef<User>[] = [
           <DropdownMenuLabel>Actions</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
-            <Link href={`/access-control/users/${row.original.id}`}>
+            <Link href={`/dashboard/access-control/users/${row.original.id}`}>
               <Pencil className="mr-2 h-4 w-4" />
               Edit
             </Link>
@@ -165,7 +165,7 @@ export default function UsersPage() {
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href={`/access-control/users/${row.original.id}`}>
+                <Link href={`/dashboard/access-control/users/${row.original.id}`}>
                   <Pencil className="mr-2 h-4 w-4" />
                   Edit
                 </Link>
@@ -192,7 +192,7 @@ export default function UsersPage() {
         description="Manage user accounts and their roles"
         actions={
           <Button asChild>
-            <Link href="/dashboard/access-control/users/new">
+            <Link href="/dashboard/dashboard/access-control/users/new">
               <Plus className="mr-2 h-4 w-4" />
               Add User
             </Link>
