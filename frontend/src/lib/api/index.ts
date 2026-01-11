@@ -1875,25 +1875,25 @@ export interface Company {
 export const companyApi = {
   // Get primary company (most commonly used for documents)
   getPrimary: async (): Promise<Company> => {
-    const { data } = await apiClient.get<Company>('/companies/primary');
+    const { data } = await apiClient.get<Company>('/company/primary');
     return data;
   },
 
   // List all companies
   list: async (params?: { is_active?: boolean }) => {
-    const { data } = await apiClient.get<{ items: Company[]; total: number }>('/companies', { params });
+    const { data } = await apiClient.get<{ items: Company[]; total: number }>('/company', { params });
     return data;
   },
 
   // Get company by ID
   getById: async (id: string): Promise<Company> => {
-    const { data } = await apiClient.get<Company>(`/companies/${id}`);
+    const { data } = await apiClient.get<Company>(`/company/${id}`);
     return data;
   },
 
   // Update company
   update: async (id: string, company: Partial<Company>) => {
-    const { data } = await apiClient.put<Company>(`/companies/${id}`, company);
+    const { data } = await apiClient.put<Company>(`/company/${id}`, company);
     return data;
   },
 };
