@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, Download, QrCode, Barcode, CheckCircle, XCircle, Settings, Package, Truck, Loader2, RefreshCw } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, Download, QrCode, Barcode, CheckCircle, XCircle, Settings, Package, Truck, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
