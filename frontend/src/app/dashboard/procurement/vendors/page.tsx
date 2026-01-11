@@ -271,6 +271,20 @@ export default function VendorsPage() {
     },
   });
 
+  // Update mutation
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => vendorsApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['vendors'] });
+      toast.success('Vendor updated successfully');
+      setIsEditDialogOpen(false);
+      setEditingVendor(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to update vendor');
+    },
+  });
+
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: vendorsApi.delete,
@@ -331,6 +345,29 @@ export default function VendorsPage() {
     if (deletingVendor) {
       deleteMutation.mutate(deletingVendor.id);
     }
+  };
+
+  const handleUpdate = () => {
+    if (!editingVendor) return;
+    if (!editFormData.name.trim()) {
+      toast.error('Vendor name is required');
+      return;
+    }
+
+    // Transform frontend fields to backend fields
+    const updateData: Record<string, unknown> = {
+      name: editFormData.name,
+      legal_name: editFormData.name,
+      email: editFormData.email || undefined,
+      phone: editFormData.phone || undefined,
+      gstin: editFormData.gst_number || undefined,
+      pan: editFormData.pan_number || undefined,
+      contact_person: editFormData.contact_person || undefined,
+      city: editFormData.city || undefined,
+      state: editFormData.state || undefined,
+    };
+
+    updateMutation.mutate({ id: editingVendor.id, data: updateData });
   };
 
   // Generate columns with handlers
@@ -628,11 +665,8 @@ export default function VendorsPage() {
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={() => {
-              toast.info('Edit functionality will be connected to backend API');
-              setIsEditDialogOpen(false);
-            }}>
-              Save Changes
+            <Button onClick={handleUpdate} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
             </Button>
           </DialogFooter>
         </DialogContent>
