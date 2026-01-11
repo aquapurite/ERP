@@ -28,6 +28,7 @@ class Settings(BaseSettings):
         "http://localhost:3001",
         "http://localhost:5173",
         "https://erp-five-phi.vercel.app",
+        "https://erp-woad-eight.vercel.app",
         "https://www.aquapurite.org",
         "https://aquapurite.org"
     ]
