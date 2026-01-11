@@ -148,12 +148,11 @@ export default function PurchaseOrdersPage() {
   const [formData, setFormData] = useState({
     requisition_id: '',  // Required - PO must be linked to an approved PR
     vendor_id: '',
-    delivery_warehouse_id: '',
     expected_delivery_date: '',
     credit_days: 30,
     advance_required: 0,  // Advance payment amount
-    bill_to: null as any,  // Bill To address
-    ship_to: null as any,  // Ship To address
+    bill_to: null as any,  // Bill To address (from warehouse)
+    ship_to: null as any,  // Ship To address (warehouse or manual)
     terms_and_conditions: '',  // Terms & Conditions (previously notes)
     items: [] as POItem[],
   });
@@ -167,6 +166,17 @@ export default function PurchaseOrdersPage() {
     unit_price: 0,
     gst_rate: 18,
     monthlyQtys: {} as Record<string, number>,
+  });
+
+  // Ship To type selection
+  const [shipToType, setShipToType] = useState<'warehouse' | 'other' | ''>('');
+  const [manualShipTo, setManualShipTo] = useState({
+    name: '',
+    address_line1: '',
+    address_line2: '',
+    city: '',
+    state: '',
+    pincode: '',
   });
 
   // Generate next 6 months for multi-delivery selection
@@ -428,7 +438,6 @@ export default function PurchaseOrdersPage() {
     setFormData({
       requisition_id: '',
       vendor_id: '',
-      delivery_warehouse_id: '',
       expected_delivery_date: '',
       credit_days: 30,
       advance_required: 0,
@@ -442,6 +451,8 @@ export default function PurchaseOrdersPage() {
     setIsMultiDelivery(false);
     setDeliveryMonths([]);
     setNextPONumber('');
+    setShipToType('');
+    setManualShipTo({ name: '', address_line1: '', address_line2: '', city: '', state: '', pincode: '' });
     setIsCreateOpen(false);
   };
 
@@ -519,8 +530,16 @@ export default function PurchaseOrdersPage() {
       toast.error('Please select an approved Purchase Requisition first');
       return;
     }
-    if (!formData.vendor_id || !formData.delivery_warehouse_id || formData.items.length === 0) {
-      toast.error('Please fill all required fields and add at least one item');
+    if (!formData.vendor_id || formData.items.length === 0) {
+      toast.error('Please select vendor and add at least one item');
+      return;
+    }
+    if (!formData.bill_to) {
+      toast.error('Please select a Bill To address');
+      return;
+    }
+    if (!formData.ship_to) {
+      toast.error('Please select or enter a Ship To address');
       return;
     }
 
@@ -534,10 +553,13 @@ export default function PurchaseOrdersPage() {
       return;
     }
 
+    // Get delivery_warehouse_id from ship_to if it's a warehouse
+    const deliveryWarehouseId = formData.ship_to?.warehouse_id || formData.bill_to?.warehouse_id || '';
+
     createMutation.mutate({
       requisition_id: formData.requisition_id,  // Link PO to PR
       vendor_id: formData.vendor_id,
-      delivery_warehouse_id: formData.delivery_warehouse_id,
+      delivery_warehouse_id: deliveryWarehouseId,
       expected_delivery_date: formData.expected_delivery_date || undefined,
       credit_days: formData.credit_days,
       advance_required: formData.advance_required || 0,  // Include advance payment
@@ -640,7 +662,6 @@ export default function PurchaseOrdersPage() {
         ...formData,
         requisition_id: prId,
         vendor_id: preferredVendorId,
-        delivery_warehouse_id: pr.delivery_warehouse_id,
         expected_delivery_date: pr.required_by_date || '',
         terms_and_conditions: pr.reason || '',
         items: poItems, // Auto-populate items from PR
@@ -651,7 +672,6 @@ export default function PurchaseOrdersPage() {
         ...formData,
         requisition_id: '',
         vendor_id: '',
-        delivery_warehouse_id: '',
         expected_delivery_date: '',
         terms_and_conditions: '',
         items: [],
@@ -879,84 +899,68 @@ export default function PurchaseOrdersPage() {
 
                   <Separator />
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Vendor *</Label>
-                      <Select
-                        value={formData.vendor_id || 'select'}
-                        onValueChange={(value) => setFormData({ ...formData, vendor_id: value === 'select' ? '' : value })}
-                        disabled={!formData.requisition_id}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select vendor" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="select" disabled>Select vendor</SelectItem>
-                          {vendors.filter((v: Vendor) => v.id && v.id.trim() !== '').map((v: Vendor) => (
-                            <SelectItem key={v.id} value={v.id}>{v.name} ({v.code})</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Delivery Warehouse *</Label>
-                      <Select
-                        value={formData.delivery_warehouse_id || 'select'}
-                        onValueChange={(value) => setFormData({ ...formData, delivery_warehouse_id: value === 'select' ? '' : value })}
-                        disabled={!formData.requisition_id}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select warehouse" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="select" disabled>Select warehouse</SelectItem>
-                          {warehouses.filter((w: Warehouse) => w.id && w.id.trim() !== '').map((w: Warehouse) => (
-                            <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  <div className="space-y-2">
+                    <Label>Vendor *</Label>
+                    <Select
+                      value={formData.vendor_id || 'select'}
+                      onValueChange={(value) => setFormData({ ...formData, vendor_id: value === 'select' ? '' : value })}
+                      disabled={!formData.requisition_id}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select vendor" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="select" disabled>Select vendor</SelectItem>
+                        {vendors.filter((v: Vendor) => v.id && v.id.trim() !== '').map((v: Vendor) => (
+                          <SelectItem key={v.id} value={v.id}>{v.name} ({v.code})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   {/* Bill To & Ship To Section */}
                   <div className="space-y-4 p-4 border rounded-lg bg-blue-50/30">
                     <Label className="text-base font-semibold">Billing & Shipping Addresses</Label>
 
                     <div className="grid grid-cols-2 gap-4">
-                      {/* Bill To */}
+                      {/* Bill To - Warehouse Selection */}
                       <div className="space-y-2">
                         <Label>Bill To (Invoice Address) *</Label>
                         <Select
-                          value={formData.bill_to ? 'company' : 'select'}
+                          value={formData.bill_to?.warehouse_id || 'select'}
                           onValueChange={(value) => {
-                            if (value === 'company' && companyData) {
+                            if (value === 'select') {
+                              setFormData({ ...formData, bill_to: null });
+                              return;
+                            }
+                            const selectedWarehouse = warehouses.find((w: Warehouse) => w.id === value);
+                            if (selectedWarehouse) {
                               setFormData({
                                 ...formData,
                                 bill_to: {
-                                  name: companyData.legal_name,
-                                  address_line1: companyData.address_line1,
-                                  address_line2: companyData.address_line2 || '',
-                                  city: companyData.city,
-                                  state: companyData.state,
-                                  pincode: companyData.pincode,
-                                  gstin: companyData.gstin,
-                                  state_code: companyData.state_code,
+                                  warehouse_id: selectedWarehouse.id,
+                                  name: selectedWarehouse.name,
+                                  address_line1: (selectedWarehouse as any).address_line1 || '',
+                                  address_line2: (selectedWarehouse as any).address_line2 || '',
+                                  city: (selectedWarehouse as any).city || '',
+                                  state: (selectedWarehouse as any).state || '',
+                                  pincode: (selectedWarehouse as any).pincode || '',
+                                  gstin: companyData?.gstin || '',
+                                  state_code: companyData?.state_code || '',
                                 }
                               });
-                            } else {
-                              setFormData({ ...formData, bill_to: null });
                             }
                           }}
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="Select billing address" />
+                            <SelectValue placeholder="Select warehouse" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="select" disabled>Select billing address</SelectItem>
-                            {companyData && (
-                              <SelectItem value="company">
-                                {companyData.legal_name} - {companyData.city}
+                            <SelectItem value="select" disabled>Select warehouse</SelectItem>
+                            {warehouses.filter((w: Warehouse) => w.id && w.id.trim() !== '').map((w: Warehouse) => (
+                              <SelectItem key={w.id} value={w.id}>
+                                {w.name} {(w as any).city ? `- ${(w as any).city}` : ''}
                               </SelectItem>
-                            )}
+                            ))}
                           </SelectContent>
                         </Select>
                         {formData.bill_to && (
@@ -964,52 +968,161 @@ export default function PurchaseOrdersPage() {
                             <strong>{formData.bill_to.name}</strong><br />
                             {formData.bill_to.address_line1}<br />
                             {formData.bill_to.city}, {formData.bill_to.state} - {formData.bill_to.pincode}<br />
-                            GSTIN: {formData.bill_to.gstin}
+                            {formData.bill_to.gstin && <>GSTIN: {formData.bill_to.gstin}</>}
                           </div>
                         )}
                       </div>
 
-                      {/* Ship To */}
+                      {/* Ship To - Warehouse or Other */}
                       <div className="space-y-2">
                         <Label>Ship To (Delivery Address) *</Label>
                         <Select
-                          value={formData.ship_to ? (formData.ship_to.type || 'warehouse') : 'select'}
+                          value={shipToType || 'select'}
                           onValueChange={(value) => {
-                            if (value === 'warehouse') {
-                              const selectedWarehouse = warehouses.find((w: Warehouse) => w.id === formData.delivery_warehouse_id);
+                            if (value === 'select') {
+                              setShipToType('');
+                              setFormData({ ...formData, ship_to: null });
+                              return;
+                            }
+                            setShipToType(value as 'warehouse' | 'other');
+                            if (value === 'other') {
+                              // Clear ship_to, will be filled from manual form
+                              setFormData({ ...formData, ship_to: null });
+                            }
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select address type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="select" disabled>Select address type</SelectItem>
+                            <SelectItem value="warehouse">Warehouse Address</SelectItem>
+                            <SelectItem value="other">Other (Manual Entry)</SelectItem>
+                          </SelectContent>
+                        </Select>
+
+                        {/* Warehouse Selection */}
+                        {shipToType === 'warehouse' && (
+                          <Select
+                            value={formData.ship_to?.warehouse_id || 'select'}
+                            onValueChange={(value) => {
+                              if (value === 'select') {
+                                setFormData({ ...formData, ship_to: null });
+                                return;
+                              }
+                              const selectedWarehouse = warehouses.find((w: Warehouse) => w.id === value);
                               if (selectedWarehouse) {
                                 setFormData({
                                   ...formData,
                                   ship_to: {
                                     type: 'warehouse',
+                                    warehouse_id: selectedWarehouse.id,
                                     name: selectedWarehouse.name,
                                     address_line1: (selectedWarehouse as any).address_line1 || '',
+                                    address_line2: (selectedWarehouse as any).address_line2 || '',
                                     city: (selectedWarehouse as any).city || '',
                                     state: (selectedWarehouse as any).state || '',
                                     pincode: (selectedWarehouse as any).pincode || '',
                                   }
                                 });
                               }
-                            } else if (value === 'same_as_bill') {
-                              setFormData({
-                                ...formData,
-                                ship_to: formData.bill_to ? { ...formData.bill_to, type: 'same_as_bill' } : null
-                              });
-                            } else {
-                              setFormData({ ...formData, ship_to: null });
-                            }
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select shipping address" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="select" disabled>Select shipping address</SelectItem>
-                            <SelectItem value="warehouse">Delivery Warehouse Address</SelectItem>
-                            <SelectItem value="same_as_bill">Same as Bill To</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        {formData.ship_to && (
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select warehouse" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="select" disabled>Select warehouse</SelectItem>
+                              {warehouses.filter((w: Warehouse) => w.id && w.id.trim() !== '').map((w: Warehouse) => (
+                                <SelectItem key={w.id} value={w.id}>
+                                  {w.name} {(w as any).city ? `- ${(w as any).city}` : ''}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+
+                        {/* Manual Address Entry */}
+                        {shipToType === 'other' && (
+                          <div className="space-y-2 p-2 border rounded bg-white">
+                            <Input
+                              placeholder="Name / Company"
+                              value={manualShipTo.name}
+                              onChange={(e) => {
+                                const updated = { ...manualShipTo, name: e.target.value };
+                                setManualShipTo(updated);
+                                setFormData({
+                                  ...formData,
+                                  ship_to: { type: 'other', ...updated }
+                                });
+                              }}
+                            />
+                            <Input
+                              placeholder="Address Line 1"
+                              value={manualShipTo.address_line1}
+                              onChange={(e) => {
+                                const updated = { ...manualShipTo, address_line1: e.target.value };
+                                setManualShipTo(updated);
+                                setFormData({
+                                  ...formData,
+                                  ship_to: { type: 'other', ...updated }
+                                });
+                              }}
+                            />
+                            <Input
+                              placeholder="Address Line 2 (Optional)"
+                              value={manualShipTo.address_line2}
+                              onChange={(e) => {
+                                const updated = { ...manualShipTo, address_line2: e.target.value };
+                                setManualShipTo(updated);
+                                setFormData({
+                                  ...formData,
+                                  ship_to: { type: 'other', ...updated }
+                                });
+                              }}
+                            />
+                            <div className="grid grid-cols-3 gap-2">
+                              <Input
+                                placeholder="City"
+                                value={manualShipTo.city}
+                                onChange={(e) => {
+                                  const updated = { ...manualShipTo, city: e.target.value };
+                                  setManualShipTo(updated);
+                                  setFormData({
+                                    ...formData,
+                                    ship_to: { type: 'other', ...updated }
+                                  });
+                                }}
+                              />
+                              <Input
+                                placeholder="State"
+                                value={manualShipTo.state}
+                                onChange={(e) => {
+                                  const updated = { ...manualShipTo, state: e.target.value };
+                                  setManualShipTo(updated);
+                                  setFormData({
+                                    ...formData,
+                                    ship_to: { type: 'other', ...updated }
+                                  });
+                                }}
+                              />
+                              <Input
+                                placeholder="Pincode"
+                                value={manualShipTo.pincode}
+                                onChange={(e) => {
+                                  const updated = { ...manualShipTo, pincode: e.target.value };
+                                  setManualShipTo(updated);
+                                  setFormData({
+                                    ...formData,
+                                    ship_to: { type: 'other', ...updated }
+                                  });
+                                }}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {formData.ship_to && shipToType === 'warehouse' && (
                           <div className="text-xs text-muted-foreground p-2 bg-white rounded border">
                             <strong>{formData.ship_to.name}</strong><br />
                             {formData.ship_to.address_line1}<br />
