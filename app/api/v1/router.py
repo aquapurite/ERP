@@ -59,6 +59,8 @@ from app.api.v1.endpoints import (
     serialization,
     # Multi-Level Approval Workflow
     approvals,
+    # Payments (Razorpay)
+    payments,
 )
 
 
@@ -291,4 +293,11 @@ api_router.include_router(
 api_router.include_router(
     approvals.router,
     tags=["Approvals (Finance)"]
+)
+
+# ==================== Payments (Razorpay) ====================
+api_router.include_router(
+    payments.router,
+    prefix="/payments",
+    tags=["Payments"]
 )

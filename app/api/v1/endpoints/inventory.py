@@ -1,10 +1,11 @@
 """Inventory API endpoints for stock management."""
-from typing import Optional
+from typing import Optional, List
 import uuid
 from math import ceil
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, status, Query, Depends
+from fastapi import APIRouter, HTTPException, status, Query, Depends, Body
+from pydantic import BaseModel
 
 from app.api.deps import DB, CurrentUser, require_permissions
 from app.models.inventory import StockItemStatus, StockMovementType
@@ -28,6 +29,164 @@ from app.services.inventory_service import InventoryService
 
 
 router = APIRouter(tags=["Inventory"])
+
+
+# ==================== PUBLIC STOCK VERIFICATION (Phase 2) ====================
+
+class StockVerificationRequest(BaseModel):
+    """Request model for stock verification."""
+    product_id: uuid.UUID
+    quantity: int = 1
+    pincode: Optional[str] = None
+    warehouse_id: Optional[uuid.UUID] = None
+
+
+class StockVerificationResponse(BaseModel):
+    """Response model for stock verification."""
+    product_id: uuid.UUID
+    in_stock: bool
+    available_quantity: int
+    requested_quantity: int
+    warehouse_id: Optional[uuid.UUID] = None
+    delivery_estimate: Optional[str] = None
+    message: Optional[str] = None
+
+
+class BulkStockVerificationRequest(BaseModel):
+    """Request for bulk stock verification."""
+    items: List[StockVerificationRequest]
+
+
+class BulkStockVerificationResponse(BaseModel):
+    """Response for bulk stock verification."""
+    all_in_stock: bool
+    items: List[StockVerificationResponse]
+
+
+@router.post(
+    "/verify-stock",
+    response_model=StockVerificationResponse,
+    summary="Verify product stock availability (Phase 2)",
+    description="Real-time stock verification for Add to Cart. No authentication required."
+)
+async def verify_stock(
+    data: StockVerificationRequest,
+    db: DB,
+):
+    """
+    Phase 2: Live stock verification for Add to Cart.
+
+    Target response time: 300-500ms
+
+    This endpoint checks real-time stock availability for a product.
+    Used by the storefront when a customer adds items to cart.
+
+    No authentication required for public access.
+    """
+    service = InventoryService(db)
+
+    # Get inventory summary for the product
+    summaries, _ = await service.get_inventory_summary(
+        product_id=data.product_id,
+        warehouse_id=data.warehouse_id,
+        skip=0,
+        limit=100,
+    )
+
+    # Calculate total available across warehouses
+    total_available = 0
+    primary_warehouse_id = None
+
+    for summary in summaries:
+        available = summary.available_quantity - (summary.reserved_quantity or 0)
+        if available > 0:
+            total_available += available
+            if primary_warehouse_id is None:
+                primary_warehouse_id = summary.warehouse_id
+
+    in_stock = total_available >= data.quantity
+
+    # Build response
+    response = StockVerificationResponse(
+        product_id=data.product_id,
+        in_stock=in_stock,
+        available_quantity=total_available,
+        requested_quantity=data.quantity,
+        warehouse_id=primary_warehouse_id,
+    )
+
+    if in_stock:
+        # Calculate delivery estimate based on pincode if provided
+        if data.pincode:
+            response.delivery_estimate = "2-4 business days"
+            response.message = f"In stock! Delivery available to {data.pincode}"
+        else:
+            response.message = "In stock and ready to ship"
+    else:
+        if total_available > 0:
+            response.message = f"Only {total_available} units available (requested {data.quantity})"
+        else:
+            response.message = "Currently out of stock"
+
+    return response
+
+
+@router.post(
+    "/verify-stock/bulk",
+    response_model=BulkStockVerificationResponse,
+    summary="Bulk verify stock for multiple products",
+    description="Check stock availability for multiple products at once (e.g., for cart checkout)."
+)
+async def verify_stock_bulk(
+    data: BulkStockVerificationRequest,
+    db: DB,
+):
+    """
+    Bulk stock verification for checkout validation.
+
+    Checks stock availability for all items in the cart before checkout.
+    """
+    service = InventoryService(db)
+    results = []
+    all_in_stock = True
+
+    for item in data.items:
+        # Get inventory summary for each product
+        summaries, _ = await service.get_inventory_summary(
+            product_id=item.product_id,
+            warehouse_id=item.warehouse_id,
+            skip=0,
+            limit=100,
+        )
+
+        # Calculate total available
+        total_available = 0
+        primary_warehouse_id = None
+
+        for summary in summaries:
+            available = summary.available_quantity - (summary.reserved_quantity or 0)
+            if available > 0:
+                total_available += available
+                if primary_warehouse_id is None:
+                    primary_warehouse_id = summary.warehouse_id
+
+        in_stock = total_available >= item.quantity
+        if not in_stock:
+            all_in_stock = False
+
+        results.append(StockVerificationResponse(
+            product_id=item.product_id,
+            in_stock=in_stock,
+            available_quantity=total_available,
+            requested_quantity=item.quantity,
+            warehouse_id=primary_warehouse_id,
+            message="In stock" if in_stock else f"Only {total_available} available",
+        ))
+
+    return BulkStockVerificationResponse(
+        all_in_stock=all_in_stock,
+        items=results,
+    )
 
 
 # ==================== STOCK ITEMS ====================

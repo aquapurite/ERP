@@ -2,15 +2,16 @@
 Serviceability and Allocation API Endpoints.
 
 Covers:
-1. Pincode serviceability check (public)
+1. Pincode serviceability check (public) - with caching for fast response
 2. Warehouse serviceability management (admin)
 3. Allocation rules management (admin)
 4. Order allocation (internal)
 """
 from typing import Optional, List
 from uuid import UUID
+import time
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -18,6 +19,8 @@ from app.api.deps import get_current_user
 from app.models.user import User
 from app.services.serviceability_service import ServiceabilityService
 from app.services.allocation_service import AllocationService
+from app.services.cache_service import get_cache
+from app.config import settings
 from app.schemas.serviceability import (
     # Serviceability Check
     ServiceabilityCheckRequest,
@@ -57,42 +60,116 @@ router = APIRouter(prefix="/serviceability", tags=["Serviceability"])
     Check if a pincode is serviceable.
 
     This endpoint:
-    1. Finds warehouses that serve this pincode
-    2. Finds transporters that can deliver to this pincode
-    3. Returns serviceability info, warehouse options, and transporter options
+    1. Checks cache first for fast response (< 50ms)
+    2. If not cached, finds warehouses that serve this pincode
+    3. Finds transporters that can deliver to this pincode
+    4. Returns serviceability info, warehouse options, and transporter options
+    5. Caches result for future requests
 
     Use this at checkout to verify delivery availability.
+    Response includes X-Cache header indicating HIT or MISS.
     """
 )
 async def check_serviceability(
     request: ServiceabilityCheckRequest,
+    response: Response,
     db: AsyncSession = Depends(get_db)
 ):
-    """Check if a pincode is serviceable."""
+    """Check if a pincode is serviceable with caching."""
+    start_time = time.time()
+    cache = get_cache()
+    channel = request.channel_code or "D2C"
+
+    # Try cache first
+    if settings.CACHE_ENABLED:
+        cached = await cache.get_serviceability(request.pincode, channel)
+        if cached:
+            response.headers["X-Cache"] = "HIT"
+            response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+            return ServiceabilityCheckResponse(**cached)
+
+    # Cache miss - query database
     service = ServiceabilityService(db)
-    return await service.check_serviceability(request)
+    result = await service.check_serviceability(request)
+
+    # Cache the result
+    if settings.CACHE_ENABLED:
+        cache_data = result.model_dump()
+        # Convert any non-serializable types
+        if cache_data.get("warehouse_candidates"):
+            for wc in cache_data["warehouse_candidates"]:
+                if wc.get("shipping_cost"):
+                    wc["shipping_cost"] = float(wc["shipping_cost"])
+        if cache_data.get("minimum_shipping_cost"):
+            cache_data["minimum_shipping_cost"] = float(cache_data["minimum_shipping_cost"])
+
+        await cache.set_serviceability(
+            request.pincode,
+            cache_data,
+            channel,
+            ttl=settings.SERVICEABILITY_CACHE_TTL
+        )
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result
 
 
 @router.get(
     "/check/{pincode}",
     response_model=ServiceabilityCheckResponse,
     summary="Quick pincode check",
-    description="Quick check for pincode serviceability (GET version)"
+    description="Quick check for pincode serviceability (GET version) - optimized for fast response with caching"
 )
 async def quick_check_serviceability(
     pincode: str,
+    response: Response,
     payment_mode: Optional[str] = Query(None, description="COD or PREPAID"),
     channel_code: Optional[str] = Query("D2C", description="Sales channel"),
     db: AsyncSession = Depends(get_db)
 ):
-    """Quick pincode serviceability check."""
+    """Quick pincode serviceability check with caching."""
+    start_time = time.time()
+    cache = get_cache()
+    channel = channel_code or "D2C"
+
+    # Try cache first
+    if settings.CACHE_ENABLED:
+        cached = await cache.get_serviceability(pincode, channel)
+        if cached:
+            response.headers["X-Cache"] = "HIT"
+            response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+            return ServiceabilityCheckResponse(**cached)
+
+    # Cache miss - query database
     service = ServiceabilityService(db)
     request = ServiceabilityCheckRequest(
         pincode=pincode,
         payment_mode=payment_mode,
         channel_code=channel_code
     )
-    return await service.check_serviceability(request)
+    result = await service.check_serviceability(request)
+
+    # Cache the result
+    if settings.CACHE_ENABLED:
+        cache_data = result.model_dump()
+        if cache_data.get("warehouse_candidates"):
+            for wc in cache_data["warehouse_candidates"]:
+                if wc.get("shipping_cost"):
+                    wc["shipping_cost"] = float(wc["shipping_cost"])
+        if cache_data.get("minimum_shipping_cost"):
+            cache_data["minimum_shipping_cost"] = float(cache_data["minimum_shipping_cost"])
+
+        await cache.set_serviceability(
+            pincode,
+            cache_data,
+            channel,
+            ttl=settings.SERVICEABILITY_CACHE_TTL
+        )
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result
 
 
 # ==================== Warehouse Serviceability (Admin) ====================
@@ -169,6 +246,11 @@ async def create_warehouse_serviceability(
     """Create warehouse serviceability mapping."""
     service = ServiceabilityService(db)
     item = await service.create_warehouse_serviceability(data)
+
+    # Invalidate cache for this pincode
+    cache = get_cache()
+    await cache.invalidate_serviceability(data.pincode)
+
     return WarehouseServiceabilityResponse(
         id=item.id,
         warehouse_id=item.warehouse_id,
@@ -565,3 +647,43 @@ async def get_dashboard(
     """Get serviceability dashboard."""
     service = ServiceabilityService(db)
     return await service.get_dashboard()
+
+
+# ==================== Cache Management ====================
+
+@router.post(
+    "/cache/clear",
+    summary="Clear serviceability cache",
+    description="Clear all cached serviceability data. Use this after bulk updates."
+)
+async def clear_serviceability_cache(
+    channel: Optional[str] = Query("D2C", description="Channel to clear cache for"),
+    pincode: Optional[str] = Query(None, description="Specific pincode to clear (optional)"),
+    current_user: User = Depends(get_current_user)
+):
+    """Clear serviceability cache."""
+    cache = get_cache()
+
+    if pincode:
+        await cache.invalidate_serviceability(pincode, channel)
+        return {"message": f"Cache cleared for pincode {pincode}", "channel": channel}
+    else:
+        count = await cache.invalidate_serviceability(channel=channel)
+        return {"message": f"Cache cleared for {count} entries", "channel": channel}
+
+
+@router.get(
+    "/cache/status",
+    summary="Get cache status",
+    description="Check if caching is enabled and get cache configuration"
+)
+async def get_cache_status(
+    current_user: User = Depends(get_current_user)
+):
+    """Get cache status and configuration."""
+    return {
+        "enabled": settings.CACHE_ENABLED,
+        "redis_configured": bool(settings.REDIS_URL),
+        "serviceability_ttl_seconds": settings.SERVICEABILITY_CACHE_TTL,
+        "product_ttl_seconds": settings.PRODUCT_CACHE_TTL,
+    }

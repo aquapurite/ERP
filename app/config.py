@@ -43,6 +43,17 @@ class Settings(BaseSettings):
     # Frontend URL for email links
     FRONTEND_URL: str = "https://erp-five-phi.vercel.app"
 
+    # Redis Cache Settings
+    REDIS_URL: Optional[str] = None  # e.g., "redis://localhost:6379/0"
+    CACHE_ENABLED: bool = True
+    SERVICEABILITY_CACHE_TTL: int = 3600  # 1 hour in seconds
+    PRODUCT_CACHE_TTL: int = 300  # 5 minutes in seconds
+
+    # Razorpay Payment Gateway
+    RAZORPAY_KEY_ID: str = ""  # Razorpay Key ID
+    RAZORPAY_KEY_SECRET: str = ""  # Razorpay Key Secret
+    RAZORPAY_WEBHOOK_SECRET: Optional[str] = None  # For webhook verification
+
     @field_validator('CORS_ORIGINS', mode='before')
     @classmethod
     def parse_cors_origins(cls, v):

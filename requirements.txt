@@ -23,5 +23,15 @@ email-validator>=2.1.0
 python-dotenv>=1.0.0
 httpx>=0.26.0
 
+# Background Jobs
+apscheduler>=3.10.0
+
+# Caching
+redis>=5.0.0
+aioredis>=2.0.0
+
+# Payment Gateway
+razorpay>=1.4.0
+
 # Production server
 gunicorn>=21.2.0

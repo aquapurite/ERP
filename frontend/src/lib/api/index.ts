@@ -123,7 +123,7 @@ export const permissionsApi = {
 
 // Products API
 export const productsApi = {
-  list: async (params?: { page?: number; size?: number; search?: string; category_id?: string; brand_id?: string; status?: string; is_active?: boolean; is_featured?: boolean; min_price?: number; max_price?: number }) => {
+  list: async (params?: { page?: number; size?: number; search?: string; category_id?: string; brand_id?: string; status?: string; is_active?: boolean; is_featured?: boolean; is_bestseller?: boolean; is_new_arrival?: boolean; min_price?: number; max_price?: number; sort_by?: string; sort_order?: string }) => {
     const { data } = await apiClient.get<PaginatedResponse<Product>>('/products', { params });
     return data;
   },

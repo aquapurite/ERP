@@ -174,6 +174,8 @@ export interface Product {
   reorder_point?: number;
   // Tags
   tags?: string[];
+  // Features (key selling points - newline separated string)
+  features?: string;
   // Timestamps
   created_at: string;
   updated_at: string;

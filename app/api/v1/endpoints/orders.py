@@ -1,10 +1,11 @@
-from typing import Optional
+from typing import Optional, List
 import uuid
 from math import ceil
 from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends
+from pydantic import BaseModel, Field, EmailStr
 
 from app.api.deps import DB, CurrentUser, Permissions, require_permissions
 from app.models.order import OrderStatus, PaymentStatus, PaymentMethod, OrderSource
@@ -24,6 +25,60 @@ from app.schemas.order import (
 )
 from app.schemas.customer import CustomerBrief
 from app.services.order_service import OrderService
+
+
+# ==================== D2C ORDER SCHEMAS ====================
+
+class D2CCustomerInfo(BaseModel):
+    """Customer info for D2C orders."""
+    name: str = Field(..., min_length=2)
+    phone: str = Field(..., pattern=r"^\d{10}$")
+    email: EmailStr
+
+
+class D2CAddressInfo(BaseModel):
+    """Address info for D2C orders."""
+    name: str
+    phone: str
+    address_line_1: str
+    address_line_2: Optional[str] = None
+    city: str
+    state: str
+    pincode: str = Field(..., pattern=r"^\d{6}$")
+    landmark: Optional[str] = None
+    country: str = "India"
+
+
+class D2COrderItem(BaseModel):
+    """Item for D2C order."""
+    product_id: uuid.UUID
+    sku: str
+    name: str
+    quantity: int = Field(..., ge=1)
+    unit_price: Decimal = Field(..., ge=0)
+    mrp: Decimal = Field(..., ge=0)
+
+
+class D2COrderCreate(BaseModel):
+    """D2C order creation - no authentication required."""
+    channel: str = "D2C"
+    customer: D2CCustomerInfo
+    shipping_address: D2CAddressInfo
+    billing_address: Optional[D2CAddressInfo] = None
+    items: List[D2COrderItem] = Field(..., min_length=1)
+    payment_method: str = "cod"
+    subtotal: Decimal
+    discount_amount: Decimal = Decimal("0")
+    shipping_amount: Decimal = Decimal("0")
+    total_amount: Decimal
+
+
+class D2COrderResponse(BaseModel):
+    """Simple response for D2C order."""
+    id: uuid.UUID
+    order_number: str
+    total_amount: Decimal
+    status: str
 
 
 router = APIRouter(tags=["Orders"])
@@ -426,3 +481,176 @@ async def generate_invoice(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
+
+
+# ==================== D2C PUBLIC ENDPOINTS ====================
+
+@router.post(
+    "/d2c",
+    response_model=D2COrderResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_d2c_order(
+    data: D2COrderCreate,
+    db: DB,
+):
+    """
+    Create a D2C order from the website.
+    No authentication required - creates guest customer if needed.
+    """
+    service = OrderService(db)
+
+    try:
+        # Find or create customer by phone
+        customer = await service.get_customer_by_phone(data.customer.phone)
+
+        if not customer:
+            # Parse name into first/last
+            name_parts = data.customer.name.strip().split(" ", 1)
+            first_name = name_parts[0]
+            last_name = name_parts[1] if len(name_parts) > 1 else ""
+
+            customer = await service.create_customer({
+                "first_name": first_name,
+                "last_name": last_name,
+                "phone": data.customer.phone,
+                "email": data.customer.email,
+                "customer_type": "retail",
+                "is_active": True,
+            })
+
+        # Map payment method
+        payment_method_map = {
+            "cod": PaymentMethod.COD,
+            "upi": PaymentMethod.UPI,
+            "card": PaymentMethod.CARD,
+            "netbanking": PaymentMethod.NETBANKING,
+        }
+        payment_method = payment_method_map.get(data.payment_method.lower(), PaymentMethod.COD)
+
+        # Build shipping address dict
+        shipping_addr = {
+            "contact_name": data.shipping_address.name,
+            "contact_phone": data.shipping_address.phone,
+            "address_line1": data.shipping_address.address_line_1,
+            "address_line2": data.shipping_address.address_line_2 or "",
+            "city": data.shipping_address.city,
+            "state": data.shipping_address.state,
+            "pincode": data.shipping_address.pincode,
+            "landmark": data.shipping_address.landmark or "",
+            "country": data.shipping_address.country,
+        }
+
+        billing_addr = None
+        if data.billing_address:
+            billing_addr = {
+                "contact_name": data.billing_address.name,
+                "contact_phone": data.billing_address.phone,
+                "address_line1": data.billing_address.address_line_1,
+                "address_line2": data.billing_address.address_line_2 or "",
+                "city": data.billing_address.city,
+                "state": data.billing_address.state,
+                "pincode": data.billing_address.pincode,
+                "landmark": data.billing_address.landmark or "",
+                "country": data.billing_address.country,
+            }
+
+        # Create order using service
+        from app.schemas.order import OrderItemCreate, AddressInput
+
+        order_items = [
+            OrderItemCreate(
+                product_id=item.product_id,
+                quantity=item.quantity,
+                unit_price=item.unit_price,
+            )
+            for item in data.items
+        ]
+
+        order_create = OrderCreate(
+            customer_id=customer.id,
+            source=OrderSource.WEBSITE,
+            items=order_items,
+            shipping_address=AddressInput(
+                address_line1=shipping_addr["address_line1"],
+                address_line2=shipping_addr["address_line2"],
+                city=shipping_addr["city"],
+                state=shipping_addr["state"],
+                pincode=shipping_addr["pincode"],
+                contact_name=shipping_addr["contact_name"],
+                contact_phone=shipping_addr["contact_phone"],
+                landmark=shipping_addr["landmark"],
+            ),
+            billing_address=AddressInput(
+                address_line1=billing_addr["address_line1"] if billing_addr else shipping_addr["address_line1"],
+                address_line2=billing_addr["address_line2"] if billing_addr else shipping_addr["address_line2"],
+                city=billing_addr["city"] if billing_addr else shipping_addr["city"],
+                state=billing_addr["state"] if billing_addr else shipping_addr["state"],
+                pincode=billing_addr["pincode"] if billing_addr else shipping_addr["pincode"],
+                contact_name=billing_addr["contact_name"] if billing_addr else shipping_addr["contact_name"],
+                contact_phone=billing_addr["contact_phone"] if billing_addr else shipping_addr["contact_phone"],
+            ) if billing_addr else None,
+            payment_method=payment_method,
+        )
+
+        order = await service.create_order(order_create)
+
+        return D2COrderResponse(
+            id=order.id,
+            order_number=order.order_number,
+            total_amount=order.total_amount,
+            status=order.status.value,
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create order: {str(e)}"
+        )
+
+
+@router.get(
+    "/track/{order_number}",
+    response_model=OrderResponse,
+)
+async def track_order_public(
+    order_number: str,
+    phone: str = Query(..., description="Customer phone for verification"),
+    db: DB = None,
+):
+    """
+    Public order tracking endpoint.
+    Requires order number and customer phone for verification.
+    """
+    service = OrderService(db)
+
+    order = await service.get_order_by_number(order_number)
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+
+    # Verify customer phone
+    if order.customer:
+        if order.customer.phone != phone:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Phone number doesn't match order"
+            )
+    else:
+        # Check shipping address phone
+        shipping_phone = order.shipping_address.get("contact_phone", "")
+        if shipping_phone != phone:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Phone number doesn't match order"
+            )
+
+    return _build_order_response(order)
