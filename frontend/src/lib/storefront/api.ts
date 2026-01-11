@@ -21,10 +21,11 @@ const storefrontClient = axios.create({
   },
 });
 
-// API base path
+// API base paths
 const API_PATH = '/api/v1';
+const STOREFRONT_PATH = '/api/v1/storefront';
 
-// Products API
+// Products API - Uses public storefront endpoints
 export const productsApi = {
   list: async (filters?: ProductFilters): Promise<PaginatedResponse<StorefrontProduct>> => {
     const params = new URLSearchParams();
@@ -42,98 +43,98 @@ export const productsApi = {
       if (filters.page) params.append('page', filters.page.toString());
       if (filters.size) params.append('size', filters.size.toString());
     }
-    params.append('is_active', 'true');
 
-    const { data } = await storefrontClient.get(`${API_PATH}/products?${params.toString()}`);
+    const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/products?${params.toString()}`);
     return data;
   },
 
   getBySlug: async (slug: string): Promise<StorefrontProduct> => {
-    const { data } = await storefrontClient.get(`${API_PATH}/products/slug/${slug}`);
+    const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/products/${slug}`);
     return data;
   },
 
   getById: async (id: string): Promise<StorefrontProduct> => {
-    const { data } = await storefrontClient.get(`${API_PATH}/products/${id}`);
+    const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/products/${id}`);
     return data;
   },
 
   getFeatured: async (limit = 8): Promise<StorefrontProduct[]> => {
-    const { data } = await storefrontClient.get(`${API_PATH}/products?is_featured=true&is_active=true&size=${limit}`);
+    const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/products?is_featured=true&size=${limit}`);
     return data.items || [];
   },
 
   getBestsellers: async (limit = 8): Promise<StorefrontProduct[]> => {
-    const { data } = await storefrontClient.get(`${API_PATH}/products?is_bestseller=true&is_active=true&size=${limit}`);
+    const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/products?is_bestseller=true&size=${limit}`);
     return data.items || [];
   },
 
   getNewArrivals: async (limit = 8): Promise<StorefrontProduct[]> => {
-    const { data } = await storefrontClient.get(`${API_PATH}/products?is_new_arrival=true&is_active=true&size=${limit}&sort_by=created_at&sort_order=desc`);
+    const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/products?is_new_arrival=true&size=${limit}&sort_by=created_at&sort_order=desc`);
     return data.items || [];
   },
 
   getRelated: async (productId: string, categoryId?: string, limit = 4): Promise<StorefrontProduct[]> => {
     const params = new URLSearchParams();
-    params.append('is_active', 'true');
     params.append('size', limit.toString());
     if (categoryId) params.append('category_id', categoryId);
 
-    const { data } = await storefrontClient.get(`${API_PATH}/products?${params.toString()}`);
+    const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/products?${params.toString()}`);
     // Filter out the current product
     return (data.items || []).filter((p: StorefrontProduct) => p.id !== productId);
   },
 };
 
-// Categories API
+// Categories API - Uses public storefront endpoints
 export const categoriesApi = {
   list: async (): Promise<StorefrontCategory[]> => {
-    const { data } = await storefrontClient.get(`${API_PATH}/categories?is_active=true&size=100`);
-    return data.items || [];
+    const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/categories`);
+    return data || [];
   },
 
   getTree: async (): Promise<StorefrontCategory[]> => {
-    try {
-      const { data } = await storefrontClient.get(`${API_PATH}/categories/tree`);
-      return data || [];
-    } catch {
-      // Fallback to flat list if tree endpoint doesn't exist
-      const { data } = await storefrontClient.get(`${API_PATH}/categories?is_active=true&size=100`);
-      return data.items || [];
-    }
+    const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/categories`);
+    return data || [];
   },
 
   getBySlug: async (slug: string): Promise<StorefrontCategory> => {
-    const { data } = await storefrontClient.get(`${API_PATH}/categories/slug/${slug}`);
-    return data;
+    const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/categories`);
+    const category = (data || []).find((c: StorefrontCategory) => c.slug === slug);
+    if (!category) throw new Error('Category not found');
+    return category;
   },
 
   getById: async (id: string): Promise<StorefrontCategory> => {
-    const { data } = await storefrontClient.get(`${API_PATH}/categories/${id}`);
-    return data;
+    const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/categories`);
+    const category = (data || []).find((c: StorefrontCategory) => c.id === id);
+    if (!category) throw new Error('Category not found');
+    return category;
   },
 
   getFeatured: async (): Promise<StorefrontCategory[]> => {
-    const { data } = await storefrontClient.get(`${API_PATH}/categories?is_featured=true&is_active=true&size=20`);
-    return data.items || [];
+    const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/categories`);
+    return data || [];
   },
 };
 
-// Brands API
+// Brands API - Uses public storefront endpoints
 export const brandsApi = {
   list: async (): Promise<StorefrontBrand[]> => {
-    const { data } = await storefrontClient.get(`${API_PATH}/brands?is_active=true&size=100`);
-    return data.items || [];
+    const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/brands`);
+    return data || [];
   },
 
   getBySlug: async (slug: string): Promise<StorefrontBrand> => {
-    const { data } = await storefrontClient.get(`${API_PATH}/brands/slug/${slug}`);
-    return data;
+    const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/brands`);
+    const brand = (data || []).find((b: StorefrontBrand) => b.slug === slug);
+    if (!brand) throw new Error('Brand not found');
+    return brand;
   },
 
   getById: async (id: string): Promise<StorefrontBrand> => {
-    const { data } = await storefrontClient.get(`${API_PATH}/brands/${id}`);
-    return data;
+    const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/brands`);
+    const brand = (data || []).find((b: StorefrontBrand) => b.id === id);
+    if (!brand) throw new Error('Brand not found');
+    return brand;
   },
 };
 
@@ -171,16 +172,27 @@ export const inventoryApi = {
     }
   },
 
-  checkDelivery: async (pincode: string): Promise<{ serviceable: boolean; estimate_days?: number; message?: string }> => {
+  checkDelivery: async (pincode: string): Promise<{
+    serviceable: boolean;
+    estimate_days?: number;
+    message?: string;
+    cod_available?: boolean;
+    shipping_cost?: number;
+  }> => {
     try {
-      const { data } = await storefrontClient.get(`${API_PATH}/delivery/check?pincode=${pincode}`);
-      return data;
-    } catch {
-      // Return default response
+      const { data } = await storefrontClient.get(`${API_PATH}/serviceability/check/${pincode}`);
       return {
-        serviceable: true,
-        estimate_days: 5,
-        message: 'Delivery available',
+        serviceable: data.is_serviceable,
+        estimate_days: data.estimated_delivery_days,
+        message: data.message,
+        cod_available: data.cod_available,
+        shipping_cost: data.minimum_shipping_cost,
+      };
+    } catch {
+      // Return not serviceable if API fails
+      return {
+        serviceable: false,
+        message: 'Unable to check delivery. Please try again.',
       };
     }
   },
@@ -199,17 +211,18 @@ export const ordersApi = {
   },
 };
 
-// Search API
+// Search API - Uses public storefront endpoints
 export const searchApi = {
   products: async (query: string, limit = 10): Promise<StorefrontProduct[]> => {
-    const { data } = await storefrontClient.get(`${API_PATH}/products?search=${encodeURIComponent(query)}&is_active=true&size=${limit}`);
+    const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/products?search=${encodeURIComponent(query)}&size=${limit}`);
     return data.items || [];
   },
 
   suggestions: async (query: string): Promise<string[]> => {
     try {
-      const { data } = await storefrontClient.get(`${API_PATH}/search/suggestions?q=${encodeURIComponent(query)}`);
-      return data || [];
+      // Use products endpoint with search for suggestions
+      const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/products?search=${encodeURIComponent(query)}&size=5`);
+      return (data.items || []).map((p: StorefrontProduct) => p.name);
     } catch {
       return [];
     }
