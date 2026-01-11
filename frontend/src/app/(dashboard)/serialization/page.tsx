@@ -471,45 +471,6 @@ export default function SerializationPage() {
     onError: (error: Error) => toast.error(error.message || 'Failed to create supplier code'),
   });
 
-  const seedCodesMutation = useMutation({
-    mutationFn: async () => {
-      const { data } = await apiClient.post('/serialization/seed-codes');
-      return data;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['model-codes'] });
-      queryClient.invalidateQueries({ queryKey: ['supplier-codes'] });
-      toast.success(
-        <div>
-          <p className="font-medium">Codes seeded successfully!</p>
-          <p className="text-sm">Suppliers: {data.supplier_codes_created}, Model codes: {data.model_codes_created}</p>
-          <p className="text-sm">Products linked: {data.products_linked || 0} / {data.products_found_in_db || 0}</p>
-        </div>
-      );
-    },
-    onError: (error: Error) => toast.error(error.message || 'Failed to seed codes'),
-  });
-
-  // Sync products to model codes - creates model codes for all products
-  const syncProductsMutation = useMutation({
-    mutationFn: async () => {
-      const { data } = await apiClient.post('/serialization/sync-products-to-model-codes');
-      return data;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['model-codes'] });
-      queryClient.invalidateQueries({ queryKey: ['products-for-model-codes'] });
-      toast.success(
-        <div>
-          <p className="font-medium">Products synced!</p>
-          <p className="text-sm">Created {data.created} model codes</p>
-          <p className="text-sm">Skipped {data.skipped} (already have codes)</p>
-        </div>
-      );
-    },
-    onError: (error: Error) => toast.error(error.message || 'Failed to sync products'),
-  });
-
   const createProductMutation = useMutation({
     mutationFn: async (productData: CreateProductFormData) => {
       const { data } = await apiClient.post('/serialization/create-product', {
@@ -670,44 +631,6 @@ export default function SerializationPage() {
               <Plus className="mr-2 h-4 w-4" />
               Create New Product
             </Button>
-            {isSuperAdmin && (
-              <>
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => {
-                    if (confirm('This will create model codes for ALL existing products. Continue?')) {
-                      syncProductsMutation.mutate();
-                    }
-                  }}
-                  disabled={syncProductsMutation.isPending}
-                >
-                  {syncProductsMutation.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                  )}
-                  Sync Products
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    if (confirm('This will delete all existing codes and create new ones. Continue?')) {
-                      seedCodesMutation.mutate();
-                    }
-                  }}
-                  disabled={seedCodesMutation.isPending}
-                >
-                  {seedCodesMutation.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                  )}
-                  Seed Codes
-                </Button>
-              </>
-            )}
             <Button variant="outline" size="sm">
               <Download className="mr-2 h-4 w-4" />
               Export
