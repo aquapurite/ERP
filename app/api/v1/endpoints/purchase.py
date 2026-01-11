@@ -55,7 +55,7 @@ router = APIRouter()
 
 # ==================== Debug Test Endpoint ====================
 
-@router.post("/orders/debug-create")
+@router.post("/orders/debug-create", response_model=PurchaseOrderResponse)
 async def debug_create_po(
     po_in: PurchaseOrderCreate,
     db: DB,
@@ -148,7 +148,8 @@ async def debug_create_po(
                 .where(PurchaseOrder.id == po.id)
             )
             po_loaded = result.scalar_one()
-            return {"success": True, "po_number": po_loaded.po_number, "po_id": str(po_loaded.id), "items_count": len(po_loaded.items)}
+            # Return the PO object - FastAPI will serialize with PurchaseOrderResponse
+            return po_loaded
         except Exception as e2:
             return {"error": "Failed at selectinload", "detail": str(e2), "traceback": traceback.format_exc()}
 
