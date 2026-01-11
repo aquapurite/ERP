@@ -39,6 +39,7 @@ import { PageHeader, StatusBadge } from '@/components/common';
 import apiClient from '@/lib/api/client';
 import { serializationApi, ModelCodeReference, SupplierCode } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
+import { useAuth } from '@/providers/auth-provider';
 
 interface SerialItem {
   id: string;
@@ -299,6 +300,8 @@ const supplierCodeColumns: ColumnDef<SupplierCode>[] = [
 
 export default function SerializationPage() {
   const queryClient = useQueryClient();
+  const { permissions } = useAuth();
+  const isSuperAdmin = permissions?.is_super_admin === true;
   const [activeTab, setActiveTab] = useState('serials');
   const [itemTypeFilter, setItemTypeFilter] = useState<'FG' | 'SP'>('FG'); // FG = Finished Goods, SP = Spare Parts
   const [page, setPage] = useState(0);
@@ -471,23 +474,25 @@ export default function SerializationPage() {
                 Spare Parts
               </Button>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (confirm('This will delete all existing codes and create new ones. Continue?')) {
-                  seedCodesMutation.mutate();
-                }
-              }}
-              disabled={seedCodesMutation.isPending}
-            >
-              {seedCodesMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="mr-2 h-4 w-4" />
-              )}
-              Seed Codes
-            </Button>
+            {isSuperAdmin && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (confirm('This will delete all existing codes and create new ones. Continue?')) {
+                    seedCodesMutation.mutate();
+                  }
+                }}
+                disabled={seedCodesMutation.isPending}
+              >
+                {seedCodesMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Seed Codes
+              </Button>
+            )}
             <Button variant="outline" size="sm">
               <Download className="mr-2 h-4 w-4" />
               Export

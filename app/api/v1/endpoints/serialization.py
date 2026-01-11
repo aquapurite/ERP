@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, get_current_user, Permissions
 from app.models.user import User
 from app.models.serialization import (
     SerialSequence,
@@ -575,17 +575,25 @@ async def serialization_dashboard(
 async def seed_serialization_codes(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    permissions: Permissions = None,
 ):
     """
     Reset and seed all model codes and supplier codes.
 
     WARNING: This deletes all existing codes and creates new ones.
+    Only accessible by SUPER_ADMIN users.
 
     Creates proper codes for:
     - Water Purifier category (FG)
     - Spare Parts category (SP)
     - Supplier codes for vendors
     """
+    # Only super admin can seed codes
+    if not permissions or not permissions.is_super_admin():
+        raise HTTPException(
+            status_code=403,
+            detail="Only Super Admin can seed serialization codes"
+        )
     import uuid
 
     # Delete existing codes
