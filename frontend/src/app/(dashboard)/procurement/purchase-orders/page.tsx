@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, FileText, Send, CheckCircle, X, Loader2, Trash2, Download, Printer, Package, Barcode, Lock } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, FileText, Send, CheckCircle, X, Loader2, Trash2, Download, Printer, Package, Barcode, Lock, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/providers/auth-provider';
 import { Button } from '@/components/ui/button';
@@ -135,6 +135,8 @@ export default function PurchaseOrdersPage() {
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isSubmitOpen, setIsSubmitOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
+  const [createdPO, setCreatedPO] = useState<PurchaseOrder | null>(null);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [urlPrId, setUrlPrId] = useState<string | null>(null);
 
@@ -279,9 +281,11 @@ export default function PurchaseOrdersPage() {
   // Mutations
   const createMutation = useMutation({
     mutationFn: purchaseOrdersApi.create,
-    onSuccess: () => {
+    onSuccess: (data: PurchaseOrder) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       toast.success('Purchase order created successfully');
+      setCreatedPO(data);
+      setIsSuccessDialogOpen(true);
       resetForm();
     },
     onError: (error: Error) => toast.error(error.message || 'Failed to create PO'),
@@ -349,6 +353,74 @@ export default function PurchaseOrdersPage() {
       }
     } catch {
       toast.error('Failed to print PO');
+    }
+  };
+
+  const handleDownloadBarcodesCSV = async (po: PurchaseOrder) => {
+    try {
+      // Try to get actual serials first (if already generated)
+      const serials = await serializationApi.getByPO(po.id);
+
+      if (serials.serials && serials.serials.length > 0) {
+        // Export actual generated serials
+        const csv = await serializationApi.exportPOSerials(po.id, 'csv');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `barcodes_${po.po_number}.csv`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+        toast.success('Barcodes CSV downloaded');
+      } else {
+        // Generate preview barcodes based on PO items
+        const vendor = vendors.find((v: Vendor) => v.id === po.vendor_id);
+        const supplierCode = vendor ? getSupplierCodeForVendor(vendor.id) : undefined;
+
+        if (!supplierCode) {
+          toast.error('Supplier code not mapped. Please configure in Serialization settings.');
+          return;
+        }
+
+        // Generate preview barcodes
+        const getYearCode = (year: number) => 'ZABCDEFGHIJ'[(year - 2025) % 11] || 'Z';
+        const getMonthCode = (month: number) => 'ABCDEFGHIJKL'[(month - 1) % 12] || 'A';
+        const now = new Date();
+        const yearCode = getYearCode(now.getFullYear());
+        const monthCode = getMonthCode(now.getMonth() + 1);
+
+        const csvRows = ['Barcode,Product,SKU,Model Code,Serial Number'];
+        let globalSerial = 1;
+
+        po.items?.forEach(item => {
+          const modelCode = getModelCodeForProduct(item.product_id, item.sku);
+          if (modelCode) {
+            const prefix = `AP${supplierCode.code}${yearCode}${monthCode}${modelCode.model_code}`;
+            for (let i = 0; i < (item.quantity || item.quantity_ordered || 0); i++) {
+              const serial = String(globalSerial).padStart(6, '0');
+              csvRows.push(`${prefix}${serial},${item.product_name || ''},${item.sku || ''},${modelCode.model_code},${globalSerial}`);
+              globalSerial++;
+            }
+          }
+        });
+
+        if (csvRows.length === 1) {
+          toast.error('No model codes mapped for products. Please configure in Serialization settings.');
+          return;
+        }
+
+        const csv = csvRows.join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `barcodes_preview_${po.po_number}.csv`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+        toast.success('Barcodes preview CSV downloaded (final serials will be assigned on approval)');
+      }
+    } catch {
+      toast.error('Failed to download barcodes CSV');
     }
   };
 
@@ -1706,14 +1778,18 @@ export default function PurchaseOrdersPage() {
               )}
 
               {/* Action Buttons in Details View */}
-              <div className="flex gap-2 pt-4 border-t">
+              <div className="flex flex-wrap gap-2 pt-4 border-t">
                 <Button variant="outline" onClick={() => handleDownload(selectedPO)}>
                   <Download className="mr-2 h-4 w-4" />
-                  Download
+                  Download PDF
                 </Button>
                 <Button variant="outline" onClick={() => handlePrint(selectedPO)}>
                   <Printer className="mr-2 h-4 w-4" />
                   Print
+                </Button>
+                <Button variant="outline" onClick={() => handleDownloadBarcodesCSV(selectedPO)}>
+                  <FileSpreadsheet className="mr-2 h-4 w-4" />
+                  Download Barcodes CSV
                 </Button>
               </div>
             </div>
@@ -1744,6 +1820,79 @@ export default function PurchaseOrdersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* PO Created Success Dialog */}
+      <Dialog open={isSuccessDialogOpen} onOpenChange={setIsSuccessDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-600">
+              <CheckCircle className="h-5 w-5" />
+              Purchase Order Created
+            </DialogTitle>
+            <DialogDescription>
+              PO <strong>{createdPO?.po_number}</strong> has been created successfully.
+              What would you like to do next?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 py-4">
+            <Button
+              variant="outline"
+              className="justify-start"
+              onClick={() => {
+                if (createdPO) handleDownload(createdPO);
+              }}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Download PDF
+            </Button>
+            <Button
+              variant="outline"
+              className="justify-start"
+              onClick={() => {
+                if (createdPO) handlePrint(createdPO);
+              }}
+            >
+              <Printer className="mr-2 h-4 w-4" />
+              Print PO
+            </Button>
+            <Button
+              variant="outline"
+              className="justify-start"
+              onClick={() => {
+                if (createdPO) handleDownloadBarcodesCSV(createdPO);
+              }}
+            >
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Download Barcodes CSV
+              <span className="ml-auto text-xs text-muted-foreground">For manufacturer</span>
+            </Button>
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button
+              variant="default"
+              onClick={() => {
+                setIsSuccessDialogOpen(false);
+                if (createdPO) {
+                  setSelectedPO(createdPO);
+                  setIsViewOpen(true);
+                }
+              }}
+            >
+              <Eye className="mr-2 h-4 w-4" />
+              View PO Details
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setIsSuccessDialogOpen(false);
+                setCreatedPO(null);
+              }}
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
