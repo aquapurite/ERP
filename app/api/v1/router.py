@@ -61,6 +61,8 @@ from app.api.v1.endpoints import (
     approvals,
     # Payments (Razorpay)
     payments,
+    # Public Storefront APIs
+    storefront,
 )
 
 
@@ -300,4 +302,11 @@ api_router.include_router(
     payments.router,
     prefix="/payments",
     tags=["Payments"]
+)
+
+# ==================== Public Storefront APIs (No Auth) ====================
+api_router.include_router(
+    storefront.router,
+    prefix="/storefront",
+    tags=["Storefront (Public)"]
 )

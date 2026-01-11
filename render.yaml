@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: consumer-durable-api
+    name: aquapurite-api
     runtime: python
     region: singapore
     plan: free
@@ -8,7 +8,7 @@ services:
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: DATABASE_URL
-        sync: false
+        sync: false  # Set this manually in Render dashboard with Supabase URL
       - key: SECRET_KEY
         generateValue: true
       - key: ALGORITHM
@@ -20,5 +20,7 @@ services:
       - key: DEBUG
         value: false
       - key: CORS_ORIGINS
-        value: '["https://erp-five-phi.vercel.app","http://localhost:3000"]'
+        sync: false  # Set manually: ["https://yourdomain.com","https://www.yourdomain.com"]
+      - key: FRONTEND_URL
+        sync: false  # Set manually: https://yourdomain.com
     healthCheckPath: /health
