@@ -334,6 +334,73 @@ class FGCodeGenerateResponse(BaseModel):
     next_available_number: int
 
 
+# ==================== Create Product with Codes ====================
+
+class CreateProductWithCodeRequest(BaseModel):
+    """
+    Create a new product with auto-generated codes from Serialization section.
+    This is the master product creation flow where codes are generated first.
+    """
+    # Item Type
+    item_type: ItemType = Field(..., description="FG=Finished Goods, SP=Spare Parts")
+
+    # Code Components for FG Code generation
+    category_code: str = Field(..., min_length=2, max_length=2, description="Category code (e.g., WP=Water Purifier, SP=Spare Parts)")
+    subcategory_code: str = Field(..., min_length=1, max_length=2, description="Subcategory code (e.g., R=RO, SD=Sediment)")
+    brand_code: str = Field(..., min_length=1, max_length=1, description="Brand code (e.g., A=Aquapurite)")
+    model_code: str = Field(..., min_length=3, max_length=3, description="3-char model code for barcode (e.g., IEL)")
+
+    # Product Details
+    name: str = Field(..., min_length=2, max_length=255, description="Product name")
+    description: Optional[str] = Field(None, description="Product description")
+
+    # Category and Brand (existing IDs from database)
+    category_id: str = Field(..., description="Category ID from categories table")
+    brand_id: str = Field(..., description="Brand ID from brands table")
+
+    # Pricing
+    mrp: float = Field(..., gt=0, description="Maximum Retail Price")
+    selling_price: Optional[float] = Field(None, description="Selling price (defaults to MRP)")
+    cost_price: Optional[float] = Field(None, description="Cost price")
+
+    # Tax
+    hsn_code: Optional[str] = Field(None, description="HSN code for GST")
+    gst_rate: float = Field(default=18.0, description="GST rate percentage")
+
+    # Warranty
+    warranty_months: int = Field(default=12, description="Warranty period in months")
+
+    @field_validator('category_code', 'subcategory_code', 'brand_code', 'model_code')
+    @classmethod
+    def validate_codes(cls, v):
+        if not v.isalpha():
+            raise ValueError('Code must contain only letters')
+        return v.upper()
+
+
+class CreateProductWithCodeResponse(BaseModel):
+    """Response after creating product with auto-generated codes"""
+    success: bool
+    message: str
+
+    # Generated Codes
+    fg_code: str  # Full FG/Item code: WPRAIEL001 or SPSDFSD001
+    model_code: str  # 3-char code: IEL or SDF
+    product_sku: str  # Same as fg_code
+
+    # Product Details
+    product_id: str
+    product_name: str
+    item_type: ItemType
+
+    # Model Code Reference
+    model_code_reference_id: str
+
+    # Barcode Preview
+    barcode_format: str  # Shows what barcode will look like
+    barcode_example: str  # Example: APFSAAIEL00000001
+
+
 # Forward references
 GenerateSerialsRequest.model_rebuild()
 GenerateSerialsResponse.model_rebuild()

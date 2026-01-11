@@ -57,7 +57,11 @@ from app.schemas.serialization import (
     # FG Code
     FGCodeGenerateRequest,
     FGCodeGenerateResponse,
+    # Create Product with Code
+    CreateProductWithCodeRequest,
+    CreateProductWithCodeResponse,
 )
+from app.models.product import Product, ProductItemType, ProductStatus
 from app.services.serialization import SerializationService
 
 router = APIRouter()
@@ -197,6 +201,162 @@ async def generate_fg_code(
         model_name=data.model_name,
     )
     return result
+
+
+# ==================== Create Product with Code ====================
+
+@router.post("/create-product", response_model=CreateProductWithCodeResponse)
+async def create_product_with_code(
+    data: CreateProductWithCodeRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Create a new product with auto-generated codes.
+
+    This is the master product creation flow from the Serialization section.
+    The system will:
+    1. Generate FG Code / Item Code based on category, subcategory, brand, model
+    2. Create the Product in the products table
+    3. Create the ModelCodeReference linking the codes
+    4. Return all generated codes and product details
+
+    FG Code Format:
+    - Finished Goods: WPRAIEL001 (WP=Category, R=Subcategory, A=Brand, IEL=Model, 001=Seq)
+    - Spare Parts: SPSDFSD001 (SP=Category, SD=Subcategory, F=Brand, SDF=Model, 001=Seq)
+    """
+    import uuid
+    import re
+
+    # Map item type from schema to product model enum
+    product_item_type = (
+        ProductItemType.FINISHED_GOODS if data.item_type.value == "FG"
+        else ProductItemType.SPARE_PART
+    )
+
+    # Generate FG Code / Item Code
+    # Format: {category_code}{subcategory_code}{brand_code}{model_code}{sequence}
+    base_code = f"{data.category_code}{data.subcategory_code}{data.brand_code}{data.model_code}"
+
+    # Find next available sequence number for this base code
+    existing_codes = await db.execute(
+        select(ModelCodeReference.fg_code)
+        .where(ModelCodeReference.fg_code.like(f"{base_code}%"))
+        .order_by(ModelCodeReference.fg_code.desc())
+    )
+    existing_list = [row[0] for row in existing_codes.fetchall()]
+
+    # Determine next sequence number
+    next_seq = 1
+    if existing_list:
+        # Extract sequence numbers from existing codes
+        for code in existing_list:
+            match = re.search(r'(\d+)$', code)
+            if match:
+                seq_num = int(match.group(1))
+                if seq_num >= next_seq:
+                    next_seq = seq_num + 1
+
+    # Generate the full FG Code with sequence
+    fg_code = f"{base_code}{next_seq:03d}"
+
+    # Check if FG code already exists
+    existing_fg = await db.execute(
+        select(Product).where(Product.fg_code == fg_code)
+    )
+    if existing_fg.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail=f"FG Code {fg_code} already exists"
+        )
+
+    # Check if model code reference already exists
+    existing_model_ref = await db.execute(
+        select(ModelCodeReference).where(ModelCodeReference.fg_code == fg_code)
+    )
+    if existing_model_ref.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Model code reference for {fg_code} already exists"
+        )
+
+    # Generate slug from name
+    slug = re.sub(r'[^a-z0-9]+', '-', data.name.lower()).strip('-')
+    # Ensure unique slug
+    existing_slug = await db.execute(
+        select(Product).where(Product.slug.like(f"{slug}%"))
+    )
+    slug_count = len(existing_slug.fetchall())
+    if slug_count > 0:
+        slug = f"{slug}-{slug_count + 1}"
+
+    # Create the Product
+    product_id = str(uuid.uuid4())
+    product = Product(
+        id=product_id,
+        name=data.name,
+        slug=slug,
+        sku=fg_code,  # SKU = FG Code
+        fg_code=fg_code,
+        model_code=data.model_code,
+        model_number=data.model_code,
+        item_type=product_item_type,
+        description=data.description,
+        short_description=data.description[:500] if data.description and len(data.description) > 500 else data.description,
+        category_id=data.category_id,
+        brand_id=data.brand_id,
+        mrp=data.mrp,
+        selling_price=data.selling_price or data.mrp,
+        cost_price=data.cost_price,
+        hsn_code=data.hsn_code,
+        gst_rate=data.gst_rate,
+        warranty_months=data.warranty_months,
+        status=ProductStatus.ACTIVE,
+        is_active=True,
+    )
+    db.add(product)
+
+    # Create the ModelCodeReference
+    model_ref_id = str(uuid.uuid4()).replace("-", "")
+    model_ref = ModelCodeReference(
+        id=model_ref_id,
+        product_id=product_id,
+        product_sku=fg_code,
+        fg_code=fg_code,
+        model_code=data.model_code,
+        item_type=ItemType.FINISHED_GOODS if data.item_type.value == "FG" else ItemType.SPARE_PART,
+        description=data.name,
+        is_active=True,
+    )
+    db.add(model_ref)
+
+    await db.commit()
+
+    # Generate barcode format and example
+    service = SerializationService(db)
+    year_code = service.get_year_code()
+    month_code = service.get_month_code()
+
+    if data.item_type.value == "FG":
+        barcode_format = f"AP + Year(2) + Month(1) + {data.model_code}(3) + Serial(8)"
+        barcode_example = f"AP{year_code}{month_code}{data.model_code}00000001"
+    else:
+        barcode_format = f"AP + Supplier(2) + Year(1) + Month(1) + Channel(2) + Serial(8)"
+        barcode_example = f"APFS{year_code[1]}{month_code}EC00000001"
+
+    return CreateProductWithCodeResponse(
+        success=True,
+        message=f"Product created successfully with FG Code: {fg_code}",
+        fg_code=fg_code,
+        model_code=data.model_code,
+        product_sku=fg_code,
+        product_id=product_id,
+        product_name=data.name,
+        item_type=data.item_type,
+        model_code_reference_id=model_ref_id,
+        barcode_format=barcode_format,
+        barcode_example=barcode_example,
+    )
 
 
 # ==================== Barcode Generation ====================

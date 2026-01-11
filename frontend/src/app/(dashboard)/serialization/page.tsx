@@ -70,6 +70,37 @@ interface Vendor {
   code: string;
 }
 
+interface Category {
+  id: string;
+  name: string;
+  slug: string;
+  parent_id?: string;
+}
+
+interface Brand {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+interface CreateProductFormData {
+  item_type: 'FG' | 'SP';
+  category_code: string;
+  subcategory_code: string;
+  brand_code: string;
+  model_code: string;
+  name: string;
+  description: string;
+  category_id: string;
+  brand_id: string;
+  mrp: string;
+  selling_price: string;
+  cost_price: string;
+  hsn_code: string;
+  gst_rate: string;
+  warranty_months: string;
+}
+
 const localSerializationApi = {
   list: async (params?: { page?: number; size?: number; status?: string; product_id?: string }) => {
     try {
@@ -333,6 +364,26 @@ export default function SerializationPage() {
     description: '',
   });
 
+  // Create Product Dialog State
+  const [isCreateProductDialogOpen, setIsCreateProductDialogOpen] = useState(false);
+  const [newProduct, setNewProduct] = useState<CreateProductFormData>({
+    item_type: 'FG',
+    category_code: 'WP',
+    subcategory_code: 'R',
+    brand_code: 'A',
+    model_code: '',
+    name: '',
+    description: '',
+    category_id: '',
+    brand_id: '',
+    mrp: '',
+    selling_price: '',
+    cost_price: '',
+    hsn_code: '',
+    gst_rate: '18',
+    warranty_months: '12',
+  });
+
   // Queries
   const { data: serialData, isLoading: serialsLoading } = useQuery({
     queryKey: ['serial-items', page, pageSize],
@@ -366,6 +417,30 @@ export default function SerializationPage() {
     queryFn: async () => {
       try {
         const { data } = await apiClient.get('/vendors', { params: { limit: 500 } });
+        return data.items || data || [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  const { data: categories = [] } = useQuery({
+    queryKey: ['categories-for-products'],
+    queryFn: async () => {
+      try {
+        const { data } = await apiClient.get('/categories', { params: { limit: 500 } });
+        return data.items || data || [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  const { data: brands = [] } = useQuery({
+    queryKey: ['brands-for-products'],
+    queryFn: async () => {
+      try {
+        const { data } = await apiClient.get('/brands', { params: { limit: 500 } });
         return data.items || data || [];
       } catch {
         return [];
@@ -409,6 +484,43 @@ export default function SerializationPage() {
     onError: (error: Error) => toast.error(error.message || 'Failed to seed codes'),
   });
 
+  const createProductMutation = useMutation({
+    mutationFn: async (productData: CreateProductFormData) => {
+      const { data } = await apiClient.post('/serialization/create-product', {
+        item_type: productData.item_type,
+        category_code: productData.category_code,
+        subcategory_code: productData.subcategory_code,
+        brand_code: productData.brand_code,
+        model_code: productData.model_code,
+        name: productData.name,
+        description: productData.description || null,
+        category_id: productData.category_id,
+        brand_id: productData.brand_id,
+        mrp: parseFloat(productData.mrp),
+        selling_price: productData.selling_price ? parseFloat(productData.selling_price) : null,
+        cost_price: productData.cost_price ? parseFloat(productData.cost_price) : null,
+        hsn_code: productData.hsn_code || null,
+        gst_rate: parseFloat(productData.gst_rate || '18'),
+        warranty_months: parseInt(productData.warranty_months || '12'),
+      });
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['model-codes'] });
+      queryClient.invalidateQueries({ queryKey: ['products-for-model-codes'] });
+      toast.success(
+        <div>
+          <p className="font-medium">Product created successfully!</p>
+          <p className="text-sm text-muted-foreground">FG Code: {data.fg_code}</p>
+          <p className="text-sm text-muted-foreground">Barcode: {data.barcode_example}</p>
+        </div>
+      );
+      setIsCreateProductDialogOpen(false);
+      resetCreateProductForm();
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to create product'),
+  });
+
   const handleValidate = async () => {
     if (!validateBarcode.trim()) return;
     try {
@@ -446,6 +558,54 @@ export default function SerializationPage() {
     createSupplierCodeMutation.mutate(newSupplierCode);
   };
 
+  const resetCreateProductForm = () => {
+    setNewProduct({
+      item_type: 'FG',
+      category_code: 'WP',
+      subcategory_code: 'R',
+      brand_code: 'A',
+      model_code: '',
+      name: '',
+      description: '',
+      category_id: '',
+      brand_id: '',
+      mrp: '',
+      selling_price: '',
+      cost_price: '',
+      hsn_code: '',
+      gst_rate: '18',
+      warranty_months: '12',
+    });
+  };
+
+  const handleCreateProduct = () => {
+    // Validation
+    if (!newProduct.model_code || newProduct.model_code.length !== 3) {
+      toast.error('Model code must be exactly 3 characters');
+      return;
+    }
+    if (!newProduct.name.trim()) {
+      toast.error('Please enter product name');
+      return;
+    }
+    if (!newProduct.category_id) {
+      toast.error('Please select a category');
+      return;
+    }
+    if (!newProduct.brand_id) {
+      toast.error('Please select a brand');
+      return;
+    }
+    if (!newProduct.mrp || parseFloat(newProduct.mrp) <= 0) {
+      toast.error('Please enter a valid MRP');
+      return;
+    }
+    createProductMutation.mutate(newProduct);
+  };
+
+  // Generate preview FG Code
+  const previewFGCode = `${newProduct.category_code}${newProduct.subcategory_code}${newProduct.brand_code}${newProduct.model_code}001`;
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -474,6 +634,16 @@ export default function SerializationPage() {
                 Spare Parts
               </Button>
             </div>
+            <Button
+              size="sm"
+              onClick={() => {
+                setNewProduct({ ...newProduct, item_type: itemTypeFilter });
+                setIsCreateProductDialogOpen(true);
+              }}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Create New Product
+            </Button>
             {isSuperAdmin && (
               <Button
                 variant="outline"
@@ -864,6 +1034,302 @@ export default function SerializationPage() {
             <Button onClick={handleCreateSupplierCode} disabled={createSupplierCodeMutation.isPending}>
               {createSupplierCodeMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Product with Code Dialog */}
+      <Dialog open={isCreateProductDialogOpen} onOpenChange={setIsCreateProductDialogOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {newProduct.item_type === 'FG' ? (
+                <Package className="h-5 w-5" />
+              ) : (
+                <Settings className="h-5 w-5" />
+              )}
+              Create New {newProduct.item_type === 'FG' ? 'Finished Good' : 'Spare Part'}
+            </DialogTitle>
+            <DialogDescription>
+              Create a new product with auto-generated FG Code / Item Code. The product will be added to both the Serialization codes and Products catalog.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Item Type Selection */}
+            <div className="space-y-2">
+              <Label>Product Type *</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={newProduct.item_type === 'FG' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => setNewProduct({
+                    ...newProduct,
+                    item_type: 'FG',
+                    category_code: 'WP',
+                    subcategory_code: 'R',
+                  })}
+                >
+                  <Package className="mr-2 h-4 w-4" />
+                  Finished Goods
+                </Button>
+                <Button
+                  type="button"
+                  variant={newProduct.item_type === 'SP' ? 'default' : 'outline'}
+                  className="flex-1"
+                  onClick={() => setNewProduct({
+                    ...newProduct,
+                    item_type: 'SP',
+                    category_code: 'SP',
+                    subcategory_code: 'SD',
+                  })}
+                >
+                  <Settings className="mr-2 h-4 w-4" />
+                  Spare Parts
+                </Button>
+              </div>
+            </div>
+
+            {/* Code Components */}
+            <div className="space-y-2">
+              <Label>Code Components *</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                These codes combine to create the FG Code / Item Code
+              </p>
+              <div className="grid grid-cols-4 gap-2">
+                <div>
+                  <Label className="text-xs">Category (2)</Label>
+                  <Input
+                    placeholder="WP"
+                    maxLength={2}
+                    className="font-mono uppercase"
+                    value={newProduct.category_code}
+                    onChange={(e) => setNewProduct({ ...newProduct, category_code: e.target.value.toUpperCase() })}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {newProduct.item_type === 'FG' ? 'WP=Water Purifier' : 'SP=Spare Part'}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-xs">Subcategory (1-2)</Label>
+                  <Input
+                    placeholder="R"
+                    maxLength={2}
+                    className="font-mono uppercase"
+                    value={newProduct.subcategory_code}
+                    onChange={(e) => setNewProduct({ ...newProduct, subcategory_code: e.target.value.toUpperCase() })}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {newProduct.item_type === 'FG' ? 'R=RO, U=UV' : 'SD=Sediment, CB=Carbon'}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-xs">Brand (1)</Label>
+                  <Input
+                    placeholder="A"
+                    maxLength={1}
+                    className="font-mono uppercase"
+                    value={newProduct.brand_code}
+                    onChange={(e) => setNewProduct({ ...newProduct, brand_code: e.target.value.toUpperCase() })}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">A=Aquapurite</p>
+                </div>
+                <div>
+                  <Label className="text-xs">Model (3) *</Label>
+                  <Input
+                    placeholder="IEL"
+                    maxLength={3}
+                    className="font-mono uppercase"
+                    value={newProduct.model_code}
+                    onChange={(e) => setNewProduct({ ...newProduct, model_code: e.target.value.toUpperCase() })}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">For barcode</p>
+                </div>
+              </div>
+            </div>
+
+            {/* FG Code Preview */}
+            {newProduct.model_code.length === 3 && (
+              <div className={`p-4 rounded-lg border ${newProduct.item_type === 'FG' ? 'bg-blue-50 border-blue-200' : 'bg-orange-50 border-orange-200'}`}>
+                <p className={`text-sm font-medium ${newProduct.item_type === 'FG' ? 'text-blue-800' : 'text-orange-800'}`}>
+                  Generated Codes Preview:
+                </p>
+                <div className="mt-2 space-y-1">
+                  <p className={`font-mono text-lg ${newProduct.item_type === 'FG' ? 'text-blue-900' : 'text-orange-900'}`}>
+                    {newProduct.item_type === 'FG' ? 'FG Code' : 'Item Code'}: <strong>{previewFGCode}</strong>
+                  </p>
+                  <p className={`font-mono text-sm ${newProduct.item_type === 'FG' ? 'text-blue-700' : 'text-orange-700'}`}>
+                    Product SKU: <strong>{previewFGCode}</strong>
+                  </p>
+                  <p className={`font-mono text-sm ${newProduct.item_type === 'FG' ? 'text-blue-700' : 'text-orange-700'}`}>
+                    Model Code: <strong>{newProduct.model_code}</strong> (used in barcode)
+                  </p>
+                  <p className={`font-mono text-xs ${newProduct.item_type === 'FG' ? 'text-blue-600' : 'text-orange-600'} mt-2`}>
+                    Barcode Example: APFSAA{newProduct.model_code}00000001
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Product Details */}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Product Name *</Label>
+                <Input
+                  placeholder="e.g., IELITZ RO Water Purifier"
+                  value={newProduct.name}
+                  onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Description</Label>
+                <Input
+                  placeholder="Optional product description"
+                  value={newProduct.description}
+                  onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Category *</Label>
+                  <Select
+                    value={newProduct.category_id || 'select'}
+                    onValueChange={(value) => {
+                      if (value !== 'select') {
+                        setNewProduct({ ...newProduct, category_id: value });
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="select" disabled>Select category</SelectItem>
+                      {categories.map((c: Category) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Brand *</Label>
+                  <Select
+                    value={newProduct.brand_id || 'select'}
+                    onValueChange={(value) => {
+                      if (value !== 'select') {
+                        setNewProduct({ ...newProduct, brand_id: value });
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select brand" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="select" disabled>Select brand</SelectItem>
+                      {brands.map((b: Brand) => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Pricing */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>MRP (₹) *</Label>
+                  <Input
+                    type="number"
+                    placeholder="0.00"
+                    value={newProduct.mrp}
+                    onChange={(e) => setNewProduct({ ...newProduct, mrp: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Selling Price (₹)</Label>
+                  <Input
+                    type="number"
+                    placeholder="Same as MRP"
+                    value={newProduct.selling_price}
+                    onChange={(e) => setNewProduct({ ...newProduct, selling_price: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Cost Price (₹)</Label>
+                  <Input
+                    type="number"
+                    placeholder="0.00"
+                    value={newProduct.cost_price}
+                    onChange={(e) => setNewProduct({ ...newProduct, cost_price: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {/* Tax & Warranty */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>HSN Code</Label>
+                  <Input
+                    placeholder="e.g., 8421"
+                    value={newProduct.hsn_code}
+                    onChange={(e) => setNewProduct({ ...newProduct, hsn_code: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>GST Rate (%)</Label>
+                  <Select
+                    value={newProduct.gst_rate}
+                    onValueChange={(value) => setNewProduct({ ...newProduct, gst_rate: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">0%</SelectItem>
+                      <SelectItem value="5">5%</SelectItem>
+                      <SelectItem value="12">12%</SelectItem>
+                      <SelectItem value="18">18%</SelectItem>
+                      <SelectItem value="28">28%</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Warranty (months)</Label>
+                  <Input
+                    type="number"
+                    placeholder="12"
+                    value={newProduct.warranty_months}
+                    onChange={(e) => setNewProduct({ ...newProduct, warranty_months: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsCreateProductDialogOpen(false);
+                resetCreateProductForm();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateProduct}
+              disabled={createProductMutation.isPending}
+            >
+              {createProductMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Create Product
             </Button>
           </DialogFooter>
         </DialogContent>
