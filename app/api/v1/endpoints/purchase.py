@@ -1130,7 +1130,7 @@ async def create_purchase_order(
     if month_totals:
         from datetime import timedelta
         from calendar import monthrange
-        from sqlalchemy import func
+        # Note: func is already imported at module level from sqlalchemy
 
         # Get the last serial number from all previous delivery schedules
         # Serial numbers are global across all POs and continue from the last used
