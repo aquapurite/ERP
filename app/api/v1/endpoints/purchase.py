@@ -136,7 +136,21 @@ async def debug_create_po(
         po.grand_total = gross_amount * (1 + item_data.gst_rate / 100)
 
         await db.commit()
-        return {"success": True, "po_number": po_number, "po_id": str(po.id)}
+
+        # Test load relationships like the real endpoint
+        try:
+            result = await db.execute(
+                select(PurchaseOrder)
+                .options(
+                    selectinload(PurchaseOrder.items),
+                    selectinload(PurchaseOrder.delivery_schedules)
+                )
+                .where(PurchaseOrder.id == po.id)
+            )
+            po_loaded = result.scalar_one()
+            return {"success": True, "po_number": po_loaded.po_number, "po_id": str(po_loaded.id), "items_count": len(po_loaded.items)}
+        except Exception as e2:
+            return {"error": "Failed at selectinload", "detail": str(e2), "traceback": traceback.format_exc()}
 
     except Exception as e:
         await db.rollback()
