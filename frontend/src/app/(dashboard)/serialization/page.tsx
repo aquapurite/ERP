@@ -174,7 +174,8 @@ const serialColumns: ColumnDef<SerialItem>[] = [
   },
 ];
 
-const modelCodeColumns: ColumnDef<ModelCodeReference>[] = [
+// Columns for Finished Goods (Water Purifiers)
+const fgModelCodeColumns: ColumnDef<ModelCodeReference>[] = [
   {
     accessorKey: 'model_code',
     header: 'Model Code',
@@ -199,10 +200,46 @@ const modelCodeColumns: ColumnDef<ModelCodeReference>[] = [
     ),
   },
   {
-    accessorKey: 'item_type',
-    header: 'Item Type',
+    accessorKey: 'description',
+    header: 'Description',
     cell: ({ row }) => (
-      <Badge variant="outline">{row.original.item_type || 'FG'}</Badge>
+      <span className="text-sm text-muted-foreground">{row.original.description || '-'}</span>
+    ),
+  },
+  {
+    accessorKey: 'is_active',
+    header: 'Status',
+    cell: ({ row }) => (
+      <Badge variant={row.original.is_active ? 'default' : 'secondary'}>
+        {row.original.is_active ? 'Active' : 'Inactive'}
+      </Badge>
+    ),
+  },
+];
+
+// Columns for Spare Parts
+const spModelCodeColumns: ColumnDef<ModelCodeReference>[] = [
+  {
+    accessorKey: 'model_code',
+    header: 'Model Code',
+    cell: ({ row }) => (
+      <Badge variant="secondary" className="font-mono text-base">
+        {row.original.model_code}
+      </Badge>
+    ),
+  },
+  {
+    accessorKey: 'fg_code',
+    header: 'Item Code',
+    cell: ({ row }) => (
+      <span className="font-mono text-sm">{row.original.fg_code}</span>
+    ),
+  },
+  {
+    accessorKey: 'product_sku',
+    header: 'Product SKU',
+    cell: ({ row }) => (
+      <span className="font-mono text-sm">{row.original.product_sku || '-'}</span>
     ),
   },
   {
@@ -597,7 +634,7 @@ export default function SerializationPage() {
           </Card>
 
           <DataTable
-            columns={modelCodeColumns}
+            columns={itemTypeFilter === 'FG' ? fgModelCodeColumns : spModelCodeColumns}
             data={modelCodes.filter((code: ModelCodeReference) => code.item_type === itemTypeFilter)}
             searchKey="product_sku"
             searchPlaceholder={itemTypeFilter === 'FG' ? 'Search Water Purifiers...' : 'Search Spare Parts...'}
