@@ -1225,96 +1225,132 @@ export default function PurchaseOrdersPage() {
                     </div>
                   )}
 
-                  {/* Serial Numbers Preview Section */}
-                  {formData.items.length > 0 && (
+                  {/* Barcode Range Preview Section */}
+                  {formData.items.length > 0 && formData.vendor_id && (
                     <div className="space-y-2 p-4 border rounded-lg bg-purple-50/50">
                       <Label className="text-base font-semibold flex items-center gap-2">
                         <Barcode className="h-4 w-4" />
-                        Serial Numbers Preview
+                        Barcode Range Preview
                       </Label>
                       <p className="text-xs text-muted-foreground mb-2">
-                        <strong>System Generated:</strong> Serial numbers will be auto-assigned when PO is created
+                        <strong>System Generated:</strong> Barcodes will be auto-assigned when PO is created and sent to vendor for printing
                       </p>
-                      <div className="border rounded-md bg-background">
-                        <table className="w-full text-sm">
-                          <thead className="bg-muted">
-                            <tr>
-                              <th className="px-3 py-2 text-left">Lot</th>
-                              <th className="px-3 py-2 text-right">Qty</th>
-                              <th className="px-3 py-2 text-center">Serial Range (Preview)</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(() => {
-                              // For multi-delivery: calculate quantities per month
-                              // For single delivery: use total quantity
-                              if (isMultiDelivery && deliveryMonths.length > 0) {
-                                const monthQtys: Record<string, number> = {};
-                                formData.items.forEach(item => {
-                                  if (item.monthly_quantities) {
-                                    Object.entries(item.monthly_quantities).forEach(([month, qty]) => {
-                                      monthQtys[month] = (monthQtys[month] || 0) + (qty || 0);
-                                    });
+                      {(() => {
+                        // Get supplier code for vendor
+                        const selectedVendor = vendors.find((v: Vendor) => v.id === formData.vendor_id);
+                        const supplierCode = selectedVendor ? getSupplierCodeForVendor(selectedVendor.id) : undefined;
+
+                        // Year and month codes for barcode
+                        const getYearCode = (year: number) => {
+                          const codes = 'ZABCDEFGHIJ'; // Z=2025, A=2026, B=2027, etc.
+                          return codes[(year - 2025) % 11] || 'Z';
+                        };
+                        const getMonthCode = (month: number) => {
+                          const codes = 'ABCDEFGHIJKL'; // A=Jan, B=Feb, etc.
+                          return codes[(month - 1) % 12] || 'A';
+                        };
+
+                        if (!supplierCode) {
+                          return (
+                            <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
+                              <p className="text-sm text-amber-700">
+                                <strong>Note:</strong> Supplier code not mapped for {selectedVendor?.name || 'selected vendor'}.
+                                Please setup in <strong>Serialization → Supplier Codes</strong> to generate barcodes.
+                              </p>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="border rounded-md bg-background">
+                            <table className="w-full text-sm">
+                              <thead className="bg-muted">
+                                <tr>
+                                  <th className="px-3 py-2 text-left">Product</th>
+                                  <th className="px-3 py-2 text-center">Model Code</th>
+                                  <th className="px-3 py-2 text-right">Qty</th>
+                                  <th className="px-3 py-2 text-left">Barcode Range (Preview)</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {formData.items.map((item, idx) => {
+                                  const modelCode = getModelCodeForProduct(item.product_id, item.sku);
+                                  const qty = item.quantity || 0;
+
+                                  // Generate preview barcode format
+                                  // Format: AP{supplier}{year}{month}{model}{serial}
+                                  const now = new Date();
+                                  const yearCode = getYearCode(now.getFullYear());
+                                  const monthCode = getMonthCode(now.getMonth() + 1);
+
+                                  if (!modelCode) {
+                                    return (
+                                      <tr key={idx} className="border-t">
+                                        <td className="px-3 py-2">
+                                          <div className="font-medium text-xs">{item.product_name}</div>
+                                          <div className="text-xs text-muted-foreground">{item.sku}</div>
+                                        </td>
+                                        <td className="px-3 py-2 text-center">
+                                          <span className="text-xs text-amber-600">Not mapped</span>
+                                        </td>
+                                        <td className="px-3 py-2 text-right">{qty}</td>
+                                        <td className="px-3 py-2">
+                                          <span className="text-xs text-amber-600">Setup model code first</span>
+                                        </td>
+                                      </tr>
+                                    );
                                   }
-                                });
 
-                                const sortedMonths = Object.keys(monthQtys).sort();
-                                let runningSerial = 1;
-                                const totalQty = Object.values(monthQtys).reduce((sum, q) => sum + q, 0);
+                                  const barcodePrefix = `AP${supplierCode.code}${yearCode}${monthCode}${modelCode.model_code}`;
 
-                                return (
-                                  <>
-                                    {sortedMonths.map((month, idx) => {
-                                      const qty = monthQtys[month];
-                                      const startSerial = runningSerial;
-                                      const endSerial = runningSerial + qty - 1;
-                                      runningSerial = endSerial + 1;
-                                      const monthName = availableMonths.find(m => m.code === month)?.name || month;
-
-                                      return (
-                                        <tr key={month} className="border-t">
-                                          <td className="px-3 py-2 font-medium">LOT {idx + 1} ({monthName})</td>
-                                          <td className="px-3 py-2 text-right">{qty.toLocaleString()}</td>
-                                          <td className="px-3 py-2 text-center">
-                                            <Badge variant="outline" className="font-mono text-xs">
-                                              {startSerial.toLocaleString()} - {endSerial.toLocaleString()}
-                                            </Badge>
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                    <tr className="border-t bg-muted/50 font-medium">
-                                      <td className="px-3 py-2">TOTAL</td>
-                                      <td className="px-3 py-2 text-right">{totalQty.toLocaleString()}</td>
+                                  return (
+                                    <tr key={idx} className="border-t">
+                                      <td className="px-3 py-2">
+                                        <div className="font-medium text-xs">{item.product_name}</div>
+                                        <div className="text-xs text-muted-foreground">{item.sku}</div>
+                                      </td>
                                       <td className="px-3 py-2 text-center">
                                         <Badge variant="secondary" className="font-mono text-xs">
-                                          1 - {totalQty.toLocaleString()}
+                                          {modelCode.model_code}
                                         </Badge>
                                       </td>
+                                      <td className="px-3 py-2 text-right font-medium">{qty}</td>
+                                      <td className="px-3 py-2">
+                                        <div className="font-mono text-xs space-y-1">
+                                          <div className="text-green-700">
+                                            {barcodePrefix}<span className="text-muted-foreground">000001</span>
+                                          </div>
+                                          <div className="text-muted-foreground">to</div>
+                                          <div className="text-green-700">
+                                            {barcodePrefix}<span className="text-muted-foreground">{String(qty).padStart(6, '0')}</span>
+                                          </div>
+                                        </div>
+                                      </td>
                                     </tr>
-                                  </>
-                                );
-                              } else {
-                                // Single delivery - one lot with total quantity
-                                const totalQty = formData.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
-                                return (
-                                  <tr className="border-t">
-                                    <td className="px-3 py-2 font-medium">LOT 1 (Single Delivery)</td>
-                                    <td className="px-3 py-2 text-right">{totalQty.toLocaleString()}</td>
-                                    <td className="px-3 py-2 text-center">
-                                      <Badge variant="outline" className="font-mono text-xs">
-                                        1 - {totalQty.toLocaleString()}
-                                      </Badge>
-                                    </td>
-                                  </tr>
-                                );
-                              }
-                            })()}
-                          </tbody>
-                        </table>
-                      </div>
+                                  );
+                                })}
+                              </tbody>
+                              <tfoot className="bg-muted/50">
+                                <tr className="border-t font-medium">
+                                  <td className="px-3 py-2">Total Units</td>
+                                  <td className="px-3 py-2"></td>
+                                  <td className="px-3 py-2 text-right">
+                                    {formData.items.reduce((sum, item) => sum + (item.quantity || 0), 0)}
+                                  </td>
+                                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                                    Barcodes will be allocated from last used serial
+                                  </td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                        );
+                      })()}
                       <p className="text-xs text-muted-foreground italic">
-                        Note: Actual serial numbers will continue from last PO's ending serial. Preview shows relative range.
+                        Barcode Format: AP + Supplier({(() => {
+                          const sc = getSupplierCodeForVendor(formData.vendor_id);
+                          return sc?.code || 'XX';
+                        })()}) + Year + Month + Model + Serial(6 digits)
                       </p>
                     </div>
                   )}
