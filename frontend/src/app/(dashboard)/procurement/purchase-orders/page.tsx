@@ -1225,12 +1225,12 @@ export default function PurchaseOrdersPage() {
                     </div>
                   )}
 
-                  {/* Serial Numbers Preview Section - Lot-wise */}
-                  {formData.items.length > 0 && isMultiDelivery && deliveryMonths.length > 0 && (
+                  {/* Serial Numbers Preview Section */}
+                  {formData.items.length > 0 && (
                     <div className="space-y-2 p-4 border rounded-lg bg-purple-50/50">
                       <Label className="text-base font-semibold flex items-center gap-2">
                         <Barcode className="h-4 w-4" />
-                        Serial Numbers Preview (Lot-wise)
+                        Serial Numbers Preview
                       </Label>
                       <p className="text-xs text-muted-foreground mb-2">
                         <strong>System Generated:</strong> Serial numbers will be auto-assigned when PO is created
@@ -1239,63 +1239,76 @@ export default function PurchaseOrdersPage() {
                         <table className="w-full text-sm">
                           <thead className="bg-muted">
                             <tr>
-                              <th className="px-3 py-2 text-left">Lot (Month)</th>
+                              <th className="px-3 py-2 text-left">Lot</th>
                               <th className="px-3 py-2 text-right">Qty</th>
                               <th className="px-3 py-2 text-center">Serial Range (Preview)</th>
                             </tr>
                           </thead>
                           <tbody>
                             {(() => {
-                              // Calculate quantities per month
-                              const monthQtys: Record<string, number> = {};
-                              formData.items.forEach(item => {
-                                if (item.monthly_quantities) {
-                                  Object.entries(item.monthly_quantities).forEach(([month, qty]) => {
-                                    monthQtys[month] = (monthQtys[month] || 0) + (qty || 0);
-                                  });
-                                }
-                              });
+                              // For multi-delivery: calculate quantities per month
+                              // For single delivery: use total quantity
+                              if (isMultiDelivery && deliveryMonths.length > 0) {
+                                const monthQtys: Record<string, number> = {};
+                                formData.items.forEach(item => {
+                                  if (item.monthly_quantities) {
+                                    Object.entries(item.monthly_quantities).forEach(([month, qty]) => {
+                                      monthQtys[month] = (monthQtys[month] || 0) + (qty || 0);
+                                    });
+                                  }
+                                });
 
-                              // Sort months and calculate serial ranges
-                              const sortedMonths = Object.keys(monthQtys).sort();
-                              let runningSerial = 1; // Preview starts from 1 (actual will continue from last)
-                              const totalQty = Object.values(monthQtys).reduce((sum, q) => sum + q, 0);
+                                const sortedMonths = Object.keys(monthQtys).sort();
+                                let runningSerial = 1;
+                                const totalQty = Object.values(monthQtys).reduce((sum, q) => sum + q, 0);
 
-                              return (
-                                <>
-                                  {sortedMonths.map((month, idx) => {
-                                    const qty = monthQtys[month];
-                                    const startSerial = runningSerial;
-                                    const endSerial = runningSerial + qty - 1;
-                                    runningSerial = endSerial + 1;
+                                return (
+                                  <>
+                                    {sortedMonths.map((month, idx) => {
+                                      const qty = monthQtys[month];
+                                      const startSerial = runningSerial;
+                                      const endSerial = runningSerial + qty - 1;
+                                      runningSerial = endSerial + 1;
+                                      const monthName = availableMonths.find(m => m.code === month)?.name || month;
 
-                                    const monthName = availableMonths.find(m => m.code === month)?.name || month;
-
-                                    return (
-                                      <tr key={month} className="border-t">
-                                        <td className="px-3 py-2 font-medium">
-                                          LOT {idx + 1} ({monthName})
-                                        </td>
-                                        <td className="px-3 py-2 text-right">{qty.toLocaleString()}</td>
-                                        <td className="px-3 py-2 text-center">
-                                          <Badge variant="outline" className="font-mono text-xs">
-                                            {startSerial.toLocaleString()} - {endSerial.toLocaleString()}
-                                          </Badge>
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                  <tr className="border-t bg-muted/50 font-medium">
-                                    <td className="px-3 py-2">TOTAL</td>
+                                      return (
+                                        <tr key={month} className="border-t">
+                                          <td className="px-3 py-2 font-medium">LOT {idx + 1} ({monthName})</td>
+                                          <td className="px-3 py-2 text-right">{qty.toLocaleString()}</td>
+                                          <td className="px-3 py-2 text-center">
+                                            <Badge variant="outline" className="font-mono text-xs">
+                                              {startSerial.toLocaleString()} - {endSerial.toLocaleString()}
+                                            </Badge>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                    <tr className="border-t bg-muted/50 font-medium">
+                                      <td className="px-3 py-2">TOTAL</td>
+                                      <td className="px-3 py-2 text-right">{totalQty.toLocaleString()}</td>
+                                      <td className="px-3 py-2 text-center">
+                                        <Badge variant="secondary" className="font-mono text-xs">
+                                          1 - {totalQty.toLocaleString()}
+                                        </Badge>
+                                      </td>
+                                    </tr>
+                                  </>
+                                );
+                              } else {
+                                // Single delivery - one lot with total quantity
+                                const totalQty = formData.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+                                return (
+                                  <tr className="border-t">
+                                    <td className="px-3 py-2 font-medium">LOT 1 (Single Delivery)</td>
                                     <td className="px-3 py-2 text-right">{totalQty.toLocaleString()}</td>
                                     <td className="px-3 py-2 text-center">
-                                      <Badge variant="secondary" className="font-mono text-xs">
+                                      <Badge variant="outline" className="font-mono text-xs">
                                         1 - {totalQty.toLocaleString()}
                                       </Badge>
                                     </td>
                                   </tr>
-                                </>
-                              );
+                                );
+                              }
                             })()}
                           </tbody>
                         </table>
