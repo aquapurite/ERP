@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS product_serial_sequences (
     id VARCHAR(36) PRIMARY KEY,
 
     -- Product identification - unique per (model_code + item_type) combination
-    product_id VARCHAR(36) REFERENCES products(id),
+    -- Note: product_id stored as string for compatibility with existing models
+    product_id VARCHAR(36),
     model_code VARCHAR(10) NOT NULL,
     item_type VARCHAR(20) NOT NULL DEFAULT 'FG',  -- 'FG' for Finished Goods, 'SP' for Spare Parts
 
@@ -51,7 +52,7 @@ SELECT
         0
     ),
     COALESCE(
-        (SELECT COUNT(*) FROM po_serials
+        (SELECT COUNT(*)::INTEGER FROM po_serials
          WHERE model_code = mcr.model_code
          AND item_type::text = COALESCE(mcr.item_type::text, 'FG')),
         0
