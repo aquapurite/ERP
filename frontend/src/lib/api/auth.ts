@@ -29,11 +29,14 @@ export const authApi = {
       total_permissions?: number;
     }>('/access-control/access/user-access-summary');
     // Transform API response to expected format
+    // Combine module + action to create full permission codes like "ORDERS_VIEW"
     const permissions: Record<string, boolean> = {};
     if (data.permissions_by_module) {
-      Object.values(data.permissions_by_module).forEach((perms) => {
-        perms.forEach((perm) => {
-          permissions[perm] = true;
+      Object.entries(data.permissions_by_module).forEach(([module, perms]) => {
+        perms.forEach((action) => {
+          // Create full permission code: MODULE_ACTION (e.g., ORDERS_VIEW)
+          const fullCode = `${module.toUpperCase()}_${action.toUpperCase()}`;
+          permissions[fullCode] = true;
         });
       });
     }
