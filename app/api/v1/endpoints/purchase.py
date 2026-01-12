@@ -2672,9 +2672,16 @@ async def download_purchase_order(
         total_advance = Decimal("0")
         total_balance = Decimal("0")
 
-        # Get advance percentage from first delivery schedule or default to PO's advance_required
-        lot_advance_percentage = delivery_schedules[0].advance_percentage if delivery_schedules else (po.advance_required or Decimal("25"))
-        lot_balance_percentage = 100 - lot_advance_percentage
+        # Get advance percentage from first delivery schedule
+        # Note: po.advance_required is an AMOUNT, not percentage, so calculate percentage if needed
+        if delivery_schedules and delivery_schedules[0].advance_percentage:
+            lot_advance_percentage = Decimal(str(delivery_schedules[0].advance_percentage))
+        elif po.advance_required and grand_total > 0:
+            # Calculate percentage from advance amount
+            lot_advance_percentage = (Decimal(str(po.advance_required)) / grand_total * Decimal("100")).quantize(Decimal("0.01"))
+        else:
+            lot_advance_percentage = Decimal("25")  # Default 25%
+        lot_balance_percentage = (Decimal("100") - lot_advance_percentage).quantize(Decimal("0.01"))
 
         # Track total serial range
         first_serial = None
