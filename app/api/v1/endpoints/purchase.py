@@ -1003,17 +1003,22 @@ async def create_purchase_order(
 
     for item_data in po_in.items:
         if item_data.monthly_quantities:
-            item_unit_price = item_data.unit_price * (1 - item_data.discount_percentage / 100)
-            gst_multiplier = 1 + (item_data.gst_rate / 100)
+            # Ensure proper Decimal arithmetic to avoid precision overflow
+            unit_price = Decimal(str(item_data.unit_price))
+            discount_pct = Decimal(str(item_data.discount_percentage))
+            gst_rate = Decimal(str(item_data.gst_rate))
+
+            item_unit_price = unit_price * (Decimal("1") - discount_pct / Decimal("100"))
 
             for month_code, qty in item_data.monthly_quantities.items():
                 if month_code not in month_totals:
                     month_totals[month_code] = {"qty": 0, "value": Decimal("0"), "tax": Decimal("0")}
 
-                item_value = qty * item_unit_price
-                item_tax = item_value * (item_data.gst_rate / 100)
+                qty_decimal = Decimal(str(qty))
+                item_value = (qty_decimal * item_unit_price).quantize(Decimal("0.01"))
+                item_tax = (item_value * gst_rate / Decimal("100")).quantize(Decimal("0.01"))
 
-                month_totals[month_code]["qty"] += qty
+                month_totals[month_code]["qty"] += int(qty)
                 month_totals[month_code]["value"] += item_value
                 month_totals[month_code]["tax"] += item_tax
 
@@ -1049,12 +1054,12 @@ async def create_purchase_order(
 
             lot_value = month_data["value"]
             lot_tax = month_data["tax"]
-            lot_total = lot_value + lot_tax
+            lot_total = (lot_value + lot_tax).quantize(Decimal("0.01"))
 
-            # Calculate advance (default 25%) and balance
-            advance_percentage = po_in.advance_required if po_in.advance_required > 0 else Decimal("25")
-            advance_amount = lot_total * (advance_percentage / 100)
-            balance_amount = lot_total - advance_amount
+            # Calculate advance (default 25%) and balance with proper Decimal precision
+            advance_percentage = Decimal(str(po_in.advance_required)) if po_in.advance_required > 0 else Decimal("25")
+            advance_amount = (lot_total * advance_percentage / Decimal("100")).quantize(Decimal("0.01"))
+            balance_amount = (lot_total - advance_amount).quantize(Decimal("0.01"))
 
             # Balance due 45 days after delivery
             balance_due_date = expected_date + timedelta(days=po_in.credit_days)
