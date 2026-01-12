@@ -104,15 +104,30 @@ async def get_user_access_summary(
         permission_codes = list(await rbac_service.get_user_permission_codes(current_user.id))
 
     # Group permissions by module
+    # Handle both formats: "module:action" (legacy) and "MODULE_ACTION" (current)
     permissions_by_module = {}
     for code in permission_codes:
-        parts = code.split(":")
-        if len(parts) == 2:
-            module = parts[0]
-            action = parts[1]
-            if module not in permissions_by_module:
-                permissions_by_module[module] = []
-            permissions_by_module[module].append(action)
+        if ":" in code:
+            # Legacy format: "module:action"
+            parts = code.split(":")
+            if len(parts) == 2:
+                module = parts[0]
+                action = parts[1]
+        elif "_" in code:
+            # Current format: "MODULE_ACTION" (e.g., ORDERS_VIEW)
+            # Split from the last underscore to handle codes like "ROLE_MGMT_VIEW"
+            last_underscore = code.rfind("_")
+            if last_underscore > 0:
+                module = code[:last_underscore]
+                action = code[last_underscore + 1:].lower()
+            else:
+                continue
+        else:
+            continue
+
+        if module not in permissions_by_module:
+            permissions_by_module[module] = []
+        permissions_by_module[module].append(action)
 
     return {
         "user": {
