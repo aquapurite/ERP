@@ -919,28 +919,32 @@ async def create_purchase_order(
     for item_data in po_in.items:
         line_number += 1
 
-        # Calculate item amounts
-        gross_amount = item_data.quantity_ordered * item_data.unit_price
-        discount_amount = gross_amount * (item_data.discount_percentage / 100)
-        item_taxable = gross_amount - discount_amount
+        # Calculate item amounts with proper Decimal precision
+        qty = Decimal(str(item_data.quantity_ordered))
+        unit_price = Decimal(str(item_data.unit_price))
+        discount_pct = Decimal(str(item_data.discount_percentage))
 
-        # GST calculation
-        gst_rate = item_data.gst_rate
+        gross_amount = (qty * unit_price).quantize(Decimal("0.01"))
+        discount_amount = (gross_amount * discount_pct / Decimal("100")).quantize(Decimal("0.01"))
+        item_taxable = (gross_amount - discount_amount).quantize(Decimal("0.01"))
+
+        # GST calculation with proper Decimal
+        gst_rate = Decimal(str(item_data.gst_rate))
         if is_inter_state:
             igst_rate = gst_rate
             cgst_rate = Decimal("0")
             sgst_rate = Decimal("0")
         else:
             igst_rate = Decimal("0")
-            cgst_rate = gst_rate / 2
-            sgst_rate = gst_rate / 2
+            cgst_rate = (gst_rate / Decimal("2")).quantize(Decimal("0.01"))
+            sgst_rate = (gst_rate / Decimal("2")).quantize(Decimal("0.01"))
 
-        cgst_amount = item_taxable * (cgst_rate / 100)
-        sgst_amount = item_taxable * (sgst_rate / 100)
-        igst_amount = item_taxable * (igst_rate / 100)
+        cgst_amount = (item_taxable * cgst_rate / Decimal("100")).quantize(Decimal("0.01"))
+        sgst_amount = (item_taxable * sgst_rate / Decimal("100")).quantize(Decimal("0.01"))
+        igst_amount = (item_taxable * igst_rate / Decimal("100")).quantize(Decimal("0.01"))
         cess_amount = Decimal("0")  # Can be added if needed
 
-        item_total = item_taxable + cgst_amount + sgst_amount + igst_amount + cess_amount
+        item_total = (item_taxable + cgst_amount + sgst_amount + igst_amount + cess_amount).quantize(Decimal("0.01"))
 
         item = PurchaseOrderItem(
             purchase_order_id=po.id,
@@ -980,20 +984,20 @@ async def create_purchase_order(
         igst_total += igst_amount
         cess_total += cess_amount
 
-    # Update PO totals
-    total_tax = cgst_total + sgst_total + igst_total + cess_total
-    grand_total = (
-        taxable_amount + total_tax +
-        po_in.freight_charges + po_in.packing_charges + po_in.other_charges
-    )
+    # Update PO totals with proper Decimal precision
+    total_tax = (cgst_total + sgst_total + igst_total + cess_total).quantize(Decimal("0.01"))
+    freight = Decimal(str(po_in.freight_charges or 0))
+    packing = Decimal(str(po_in.packing_charges or 0))
+    other = Decimal(str(po_in.other_charges or 0))
+    grand_total = (taxable_amount + total_tax + freight + packing + other).quantize(Decimal("0.01"))
 
-    po.subtotal = subtotal
-    po.discount_amount = total_discount
-    po.taxable_amount = taxable_amount
-    po.cgst_amount = cgst_total
-    po.sgst_amount = sgst_total
-    po.igst_amount = igst_total
-    po.cess_amount = cess_total
+    po.subtotal = subtotal.quantize(Decimal("0.01"))
+    po.discount_amount = total_discount.quantize(Decimal("0.01"))
+    po.taxable_amount = taxable_amount.quantize(Decimal("0.01"))
+    po.cgst_amount = cgst_total.quantize(Decimal("0.01"))
+    po.sgst_amount = sgst_total.quantize(Decimal("0.01"))
+    po.igst_amount = igst_total.quantize(Decimal("0.01"))
+    po.cess_amount = cess_total.quantize(Decimal("0.01"))
     po.total_tax = total_tax
     po.grand_total = grand_total
 
