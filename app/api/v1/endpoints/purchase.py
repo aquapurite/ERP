@@ -1066,9 +1066,19 @@ async def create_purchase_order(
             lot_tax = month_data["tax"].quantize(Decimal("0.01"))
             lot_total = (lot_value + lot_tax).quantize(Decimal("0.01"))
 
-            # Calculate advance (default 25%) and balance with proper Decimal precision
-            advance_percentage = (Decimal(str(po_in.advance_required)) if po_in.advance_required > 0 else Decimal("25")).quantize(Decimal("0.01"))
-            advance_amount = (lot_total * advance_percentage / Decimal("100")).quantize(Decimal("0.01"))
+            # Calculate advance and balance with proper Decimal precision
+            # advance_required from frontend is an AMOUNT, not percentage
+            # Calculate percentage based on lot's proportion of total PO value
+            po_advance_amount = Decimal(str(po_in.advance_required or 0)).quantize(Decimal("0.01"))
+            if po_advance_amount > 0 and grand_total > 0:
+                # Calculate this lot's share of advance based on its proportion of total
+                lot_proportion = lot_total / grand_total
+                advance_amount = (po_advance_amount * lot_proportion).quantize(Decimal("0.01"))
+                advance_percentage = (advance_amount / lot_total * Decimal("100")).quantize(Decimal("0.01")) if lot_total > 0 else Decimal("0")
+            else:
+                # Default 25% advance if no advance specified
+                advance_percentage = Decimal("25")
+                advance_amount = (lot_total * advance_percentage / Decimal("100")).quantize(Decimal("0.01"))
             balance_amount = (lot_total - advance_amount).quantize(Decimal("0.01"))
 
             # Balance due 45 days after delivery
