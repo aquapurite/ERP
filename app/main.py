@@ -148,10 +148,23 @@ async def global_exception_handler(request: Request, exc: Exception):
         "method": request.method,
         "traceback": traceback.format_exc()
     }
-    return JSONResponse(
+    # Get origin from request
+    origin = request.headers.get("origin", "")
+
+    # Build response with CORS headers for error responses
+    response = JSONResponse(
         status_code=500,
         content=error_detail
     )
+
+    # Add CORS headers if origin is allowed
+    if origin in settings.CORS_ORIGINS or "*" in settings.CORS_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+
+    return response
 
 
 # Health check endpoint
