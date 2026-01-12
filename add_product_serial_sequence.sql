@@ -35,31 +35,41 @@ CREATE INDEX IF NOT EXISTS idx_product_serial_sequences_item_type ON product_ser
 CREATE INDEX IF NOT EXISTS idx_product_serial_sequences_product_id ON product_serial_sequences(product_id);
 
 -- Migrate existing data from model_code_references to product_serial_sequences
--- This initializes sequences for existing products with their model codes
--- Handles both FG and SP separately
+-- Use DISTINCT ON to handle duplicate model_code + item_type combinations
 INSERT INTO product_serial_sequences (id, product_id, model_code, item_type, product_name, product_sku, last_serial, total_generated, max_serial)
 SELECT
     REPLACE(gen_random_uuid()::text, '-', ''),
-    mcr.product_id,
-    mcr.model_code,
-    COALESCE(mcr.item_type::text, 'FG'),
-    (SELECT name FROM products WHERE id::text = mcr.product_id LIMIT 1),
-    mcr.product_sku,
-    COALESCE(
-        (SELECT MAX(serial_number) FROM po_serials
-         WHERE model_code = mcr.model_code
-         AND item_type::text = COALESCE(mcr.item_type::text, 'FG')),
-        0
-    ),
-    COALESCE(
-        (SELECT COUNT(*)::INTEGER FROM po_serials
-         WHERE model_code = mcr.model_code
-         AND item_type::text = COALESCE(mcr.item_type::text, 'FG')),
-        0
-    ),
+    agg.product_id,
+    agg.model_code,
+    agg.item_type,
+    agg.product_name,
+    agg.product_sku,
+    agg.last_serial,
+    agg.total_generated,
     99999999
-FROM model_code_references mcr
-WHERE mcr.is_active = true
+FROM (
+    SELECT DISTINCT ON (mcr.model_code, COALESCE(mcr.item_type::text, 'FG'))
+        mcr.product_id,
+        mcr.model_code,
+        COALESCE(mcr.item_type::text, 'FG') as item_type,
+        (SELECT name FROM products WHERE id::text = mcr.product_id LIMIT 1) as product_name,
+        mcr.product_sku,
+        COALESCE(
+            (SELECT MAX(serial_number) FROM po_serials
+             WHERE model_code = mcr.model_code
+             AND item_type::text = COALESCE(mcr.item_type::text, 'FG')),
+            0
+        ) as last_serial,
+        COALESCE(
+            (SELECT COUNT(*)::INTEGER FROM po_serials
+             WHERE model_code = mcr.model_code
+             AND item_type::text = COALESCE(mcr.item_type::text, 'FG')),
+            0
+        ) as total_generated
+    FROM model_code_references mcr
+    WHERE mcr.is_active = true
+    ORDER BY mcr.model_code, COALESCE(mcr.item_type::text, 'FG'), mcr.created_at DESC
+) agg
 ON CONFLICT (model_code, item_type) DO UPDATE SET
     last_serial = GREATEST(product_serial_sequences.last_serial, EXCLUDED.last_serial),
     total_generated = GREATEST(product_serial_sequences.total_generated, EXCLUDED.total_generated),
