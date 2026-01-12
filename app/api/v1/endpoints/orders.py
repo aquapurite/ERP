@@ -238,6 +238,20 @@ async def get_order_stats(
 
 
 @router.get(
+    "/recent-activity",
+    dependencies=[Depends(require_permissions("orders:view"))]
+)
+async def get_recent_activity(
+    db: DB,
+    limit: int = Query(10, ge=1, le=50),
+):
+    """Get recent activity for dashboard."""
+    service = OrderService(db)
+    activities = await service.get_recent_activity(limit=limit)
+    return {"items": activities}
+
+
+@router.get(
     "/{order_id}",
     response_model=OrderDetailResponse,
     dependencies=[Depends(require_permissions("orders:view"))]

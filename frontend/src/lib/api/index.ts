@@ -893,6 +893,24 @@ export const dashboardApi = {
     const { data } = await apiClient.get('/orders/stats');
     return data;
   },
+  getRecentActivity: async (limit: number = 10) => {
+    try {
+      const { data } = await apiClient.get(`/orders/recent-activity?limit=${limit}`);
+      return data.items || [];
+    } catch (error) {
+      console.warn('Recent activity endpoint not available:', error);
+      return [];
+    }
+  },
+  getTopSellingProducts: async (limit: number = 5) => {
+    try {
+      const { data } = await apiClient.get(`/products/top-selling?limit=${limit}`);
+      return data.items || [];
+    } catch (error) {
+      console.warn('Top selling products endpoint not available:', error);
+      return [];
+    }
+  },
 };
 
 // Approvals API

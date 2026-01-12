@@ -616,3 +616,36 @@ class OrderService:
             "total_revenue": float(total_revenue),
             "average_order_value": float(avg_order_value),
         }
+
+    async def get_recent_activity(self, limit: int = 10) -> List[dict]:
+        """Get recent activity across orders, service requests, and POs."""
+        activities = []
+
+        # Recent orders
+        orders_stmt = (
+            select(Order)
+            .options(selectinload(Order.customer))
+            .order_by(Order.created_at.desc())
+            .limit(limit)
+        )
+        orders_result = await self.db.execute(orders_stmt)
+        orders = orders_result.scalars().all()
+
+        for order in orders:
+            activities.append({
+                "type": "order",
+                "color": "green",
+                "title": f"New order {order.order_number}",
+                "description": order.customer.first_name if order.customer else "Guest",
+                "timestamp": order.created_at.isoformat(),
+                "created_at": order.created_at,
+            })
+
+        # Sort by timestamp
+        activities.sort(key=lambda x: x["created_at"], reverse=True)
+
+        # Remove created_at from output (used only for sorting)
+        for activity in activities:
+            del activity["created_at"]
+
+        return activities[:limit]

@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { formatDistanceToNow } from 'date-fns';
 import {
   ShoppingCart,
   Package,
@@ -14,6 +15,21 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { dashboardApi } from '@/lib/api';
+
+interface ActivityItem {
+  type: string;
+  color: string;
+  title: string;
+  description: string;
+  timestamp: string;
+}
+
+interface TopProduct {
+  id: string;
+  name: string;
+  sku: string;
+  sales: number;
+}
 
 interface StatCardProps {
   title: string;
@@ -69,6 +85,16 @@ export default function DashboardPage() {
   const { data: stats, isLoading } = useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: dashboardApi.getStats,
+  });
+
+  const { data: recentActivity, isLoading: activityLoading } = useQuery({
+    queryKey: ['recent-activity'],
+    queryFn: () => dashboardApi.getRecentActivity(5),
+  });
+
+  const { data: topProducts, isLoading: productsLoading } = useQuery({
+    queryKey: ['top-selling-products'],
+    queryFn: () => dashboardApi.getTopSellingProducts(4),
   });
 
   const defaultStats = {
@@ -196,34 +222,33 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="flex items-center gap-4">
-                <div className="h-2 w-2 rounded-full bg-green-500" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">New order #ORD-2024001</p>
-                  <p className="text-xs text-muted-foreground">2 minutes ago</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="h-2 w-2 rounded-full bg-blue-500" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Service request assigned</p>
-                  <p className="text-xs text-muted-foreground">15 minutes ago</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="h-2 w-2 rounded-full bg-orange-500" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">PO-2024005 pending approval</p>
-                  <p className="text-xs text-muted-foreground">1 hour ago</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="h-2 w-2 rounded-full bg-purple-500" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Stock transfer completed</p>
-                  <p className="text-xs text-muted-foreground">2 hours ago</p>
-                </div>
-              </div>
+              {activityLoading ? (
+                <>
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="flex items-center gap-4">
+                      <Skeleton className="h-2 w-2 rounded-full" />
+                      <div className="flex-1">
+                        <Skeleton className="h-4 w-48 mb-1" />
+                        <Skeleton className="h-3 w-24" />
+                      </div>
+                    </div>
+                  ))}
+                </>
+              ) : recentActivity && recentActivity.length > 0 ? (
+                recentActivity.map((activity: ActivityItem, i: number) => (
+                  <div key={i} className="flex items-center gap-4">
+                    <div className={`h-2 w-2 rounded-full bg-${activity.color}-500`} />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">{activity.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">No recent activity</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -234,22 +259,33 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {[
-                { name: 'AquaPure UV Compact', sales: 156 },
-                { name: 'PureFlow RO System', sales: 134 },
-                { name: 'HydroMax Filter', sales: 98 },
-                { name: 'AquaSafe Premium', sales: 87 },
-              ].map((product, i) => (
-                <div key={i} className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                      {i + 1}
-                    </span>
-                    <span className="text-sm font-medium">{product.name}</span>
+              {productsLoading ? (
+                <>
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Skeleton className="h-6 w-6 rounded-full" />
+                        <Skeleton className="h-4 w-32" />
+                      </div>
+                      <Skeleton className="h-4 w-16" />
+                    </div>
+                  ))}
+                </>
+              ) : topProducts && topProducts.length > 0 ? (
+                topProducts.map((product: TopProduct, i: number) => (
+                  <div key={product.id} className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                        {i + 1}
+                      </span>
+                      <span className="text-sm font-medium">{product.name}</span>
+                    </div>
+                    <span className="text-sm text-muted-foreground">{product.sales} units</span>
                   </div>
-                  <span className="text-sm text-muted-foreground">{product.sales} units</span>
-                </div>
-              ))}
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">No sales data yet</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -263,7 +299,7 @@ export default function DashboardPage() {
               {[
                 { label: 'New Order', href: '/dashboard/orders/new' },
                 { label: 'Add Product', href: '/dashboard/catalog/new' },
-                { label: 'Create PO', href: '/dashboard/procurement/purchase-orders/new' },
+                { label: 'Create PO', href: '/dashboard/procurement/purchase-orders?create=true' },
                 { label: 'Service Request', href: '/dashboard/service/requests/new' },
               ].map((action, i) => (
                 <a

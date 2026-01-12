@@ -521,3 +521,35 @@ class ProductService:
             "featured": featured,
             "by_status": status_counts,
         }
+
+    async def get_top_selling_products(self, limit: int = 5) -> List[dict]:
+        """Get top selling products based on order item quantities."""
+        from app.models.order import OrderItem
+
+        # Query products with sum of order quantities
+        stmt = (
+            select(
+                Product.id,
+                Product.name,
+                Product.sku,
+                func.coalesce(func.sum(OrderItem.quantity), 0).label("total_sales")
+            )
+            .outerjoin(OrderItem, OrderItem.product_id == Product.id)
+            .where(Product.is_active == True)
+            .group_by(Product.id, Product.name, Product.sku)
+            .order_by(func.coalesce(func.sum(OrderItem.quantity), 0).desc())
+            .limit(limit)
+        )
+
+        result = await self.db.execute(stmt)
+        rows = result.all()
+
+        return [
+            {
+                "id": str(row.id),
+                "name": row.name,
+                "sku": row.sku,
+                "sales": int(row.total_sales),
+            }
+            for row in rows
+        ]

@@ -256,16 +256,18 @@ export default function PurchaseOrdersPage() {
   const [poSerials, setPOSerials] = useState<POSerialsResponse | null>(null);
   const [loadingSerials, setLoadingSerials] = useState(false);
 
-  // Handle URL parameters for Convert to PO navigation
+  // Handle URL parameters for Convert to PO navigation or direct create
   useEffect(() => {
     const createParam = searchParams.get('create');
     const prIdParam = searchParams.get('pr_id');
 
-    if (createParam === 'true' && prIdParam) {
-      setUrlPrId(prIdParam);
+    if (createParam === 'true') {
+      if (prIdParam) {
+        setUrlPrId(prIdParam);
+      }
       setIsCreateOpen(true);
       // Clear URL params after handling
-      router.replace('/procurement/purchase-orders', { scroll: false });
+      router.replace('/dashboard/procurement/purchase-orders', { scroll: false });
     }
   }, [searchParams, router]);
 

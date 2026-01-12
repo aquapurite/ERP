@@ -141,6 +141,20 @@ async def get_product_stats(db: DB):
     return await service.get_product_stats()
 
 
+@router.get("/top-selling", dependencies=[Depends(require_permissions("products:view"))])
+async def get_top_selling_products(
+    db: DB,
+    limit: int = Query(5, ge=1, le=20),
+):
+    """
+    Get top selling products for dashboard.
+    Requires: products:view permission
+    """
+    service = ProductService(db)
+    products = await service.get_top_selling_products(limit=limit)
+    return {"items": products}
+
+
 @router.get("/{product_id}", response_model=ProductDetailResponse)
 async def get_product(
     product_id: uuid.UUID,
