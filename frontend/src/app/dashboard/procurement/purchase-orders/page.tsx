@@ -613,8 +613,13 @@ export default function PurchaseOrdersPage() {
       return;
     }
 
-    // Get delivery_warehouse_id from ship_to if it's a warehouse
-    const deliveryWarehouseId = formData.ship_to?.warehouse_id || formData.bill_to?.warehouse_id || '';
+    // Get delivery_warehouse_id from ship_to if it's a warehouse, otherwise use bill_to warehouse
+    const deliveryWarehouseId = formData.ship_to?.warehouse_id || formData.bill_to?.warehouse_id;
+
+    if (!deliveryWarehouseId) {
+      toast.error('Please select a valid warehouse for Bill To or Ship To address');
+      return;
+    }
 
     createMutation.mutate({
       requisition_id: formData.requisition_id,  // Link PO to PR

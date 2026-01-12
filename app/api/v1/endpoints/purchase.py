@@ -2640,6 +2640,10 @@ async def download_purchase_order(
         total_advance = Decimal("0")
         total_balance = Decimal("0")
 
+        # Get advance percentage from first delivery schedule or default to PO's advance_required
+        lot_advance_percentage = delivery_schedules[0].advance_percentage if delivery_schedules else (po.advance_required or Decimal("25"))
+        lot_balance_percentage = 100 - lot_advance_percentage
+
         # Track total serial range
         first_serial = None
         last_serial = None
@@ -2684,9 +2688,9 @@ async def download_purchase_order(
                         <th style="width: 12%">DELIVERY DATE</th>
                         <th style="width: 8%">QTY</th>
                         <th style="width: 14%">LOT VALUE (incl. GST)</th>
-                        <th style="width: 12%">ADVANCE (25%)</th>
+                        <th style="width: 12%">ADVANCE ({float(lot_advance_percentage):.0f}%)</th>
                         <th style="width: 12%">ADVANCE DUE</th>
-                        <th style="width: 12%">BALANCE (75%)</th>
+                        <th style="width: 12%">BALANCE ({float(lot_balance_percentage):.0f}%)</th>
                         <th style="width: 12%">BALANCE DUE</th>
                     </tr>
                 </thead>
@@ -2705,7 +2709,7 @@ async def download_purchase_order(
                 </tbody>
             </table>
             <p style="padding: 8px; font-size: 9px; color: #666; background: #fff3cd;">
-                <strong>Note:</strong> Advance for each lot must be paid before delivery. Balance is due 45 days after each lot's delivery.
+                <strong>Note:</strong> Advance ({float(lot_advance_percentage):.0f}%) for each lot must be paid before delivery. Balance ({float(lot_balance_percentage):.0f}%) is due {po.credit_days or 45} days after each lot's delivery.
             </p>
         </div>
         """
