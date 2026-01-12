@@ -327,8 +327,21 @@ class PurchaseOrderResponse(PurchaseOrderBase):
     closed_at: Optional[datetime] = None
 
 
+class POVendorBrief(BaseModel):
+    """Brief vendor info for PO list."""
+    id: Optional[UUID] = None
+    name: Optional[str] = None
+    code: Optional[str] = None
+
+
+class POWarehouseBrief(BaseModel):
+    """Brief warehouse info for PO list."""
+    id: Optional[UUID] = None
+    name: Optional[str] = None
+
+
 class POBrief(BaseModel):
-    """Brief PO for dropdowns."""
+    """Brief PO for list display."""
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -338,6 +351,11 @@ class POBrief(BaseModel):
     status: POStatus
     grand_total: Decimal
     total_received_value: Decimal
+    expected_delivery_date: Optional[date] = None
+    gst_amount: Optional[Decimal] = None
+    # Nested objects for frontend compatibility
+    vendor: Optional[POVendorBrief] = None
+    warehouse: Optional[POWarehouseBrief] = None
 
 
 class POListResponse(BaseModel):

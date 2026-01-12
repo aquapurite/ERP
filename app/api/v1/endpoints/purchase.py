@@ -1158,7 +1158,9 @@ async def list_purchase_orders(
     search: Optional[str] = None,
     current_user: User = Depends(get_current_user),
 ):
-    """List purchase orders."""
+    """List purchase orders with vendor and warehouse details."""
+    from app.schemas.purchase import POVendorBrief, POWarehouseBrief
+
     query = select(PurchaseOrder)
     count_query = select(func.count(PurchaseOrder.id))
     total_value_query = select(func.coalesce(func.sum(PurchaseOrder.grand_total), 0))
@@ -1192,13 +1194,59 @@ async def list_purchase_orders(
     value_result = await db.execute(total_value_query)
     total_value = value_result.scalar() or Decimal("0")
 
-    # Get paginated results
+    # Get paginated results with relationships
     query = query.order_by(PurchaseOrder.created_at.desc()).offset(skip).limit(limit)
     result = await db.execute(query)
     pos = result.scalars().all()
 
+    # Load vendor and warehouse data for display
+    vendor_ids = [po.vendor_id for po in pos if po.vendor_id]
+    warehouse_ids = [po.delivery_warehouse_id for po in pos if po.delivery_warehouse_id]
+
+    vendors_map = {}
+    if vendor_ids:
+        vendors_result = await db.execute(select(Vendor).where(Vendor.id.in_(vendor_ids)))
+        for v in vendors_result.scalars().all():
+            vendors_map[v.id] = v
+
+    warehouses_map = {}
+    if warehouse_ids:
+        warehouses_result = await db.execute(select(Warehouse).where(Warehouse.id.in_(warehouse_ids)))
+        for w in warehouses_result.scalars().all():
+            warehouses_map[w.id] = w
+
+    # Build response with nested vendor/warehouse objects
+    items = []
+    for po in pos:
+        vendor = vendors_map.get(po.vendor_id) if po.vendor_id else None
+        warehouse = warehouses_map.get(po.delivery_warehouse_id) if po.delivery_warehouse_id else None
+
+        # Calculate GST amount
+        gst_amount = (po.cgst_amount or Decimal("0")) + (po.sgst_amount or Decimal("0")) + (po.igst_amount or Decimal("0"))
+
+        items.append(POBrief(
+            id=po.id,
+            po_number=po.po_number,
+            po_date=po.po_date,
+            vendor_name=po.vendor_name or (vendor.name if vendor else "N/A"),
+            status=po.status,
+            grand_total=po.grand_total,
+            total_received_value=po.total_received_value or Decimal("0"),
+            expected_delivery_date=po.expected_delivery_date,
+            gst_amount=gst_amount,
+            vendor=POVendorBrief(
+                id=vendor.id if vendor else None,
+                name=vendor.name if vendor else po.vendor_name,
+                code=vendor.vendor_code if vendor else None
+            ) if vendor or po.vendor_name else None,
+            warehouse=POWarehouseBrief(
+                id=warehouse.id if warehouse else None,
+                name=warehouse.name if warehouse else None
+            ) if warehouse else None
+        ))
+
     return POListResponse(
-        items=[POBrief.model_validate(po) for po in pos],
+        items=items,
         total=total,
         total_value=total_value,
         skip=skip,
