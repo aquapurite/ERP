@@ -84,7 +84,7 @@ interface VendorProforma {
   id: string;
   proforma_number: string;
   vendor_id: string;
-  vendor?: { name: string; code: string };
+  vendor?: { name: string; code?: string; vendor_code?: string };
   proforma_date: string;
   due_date: string;
   items: ProformaItem[];
@@ -100,7 +100,8 @@ interface VendorProforma {
 interface Vendor {
   id: string;
   name: string;
-  code: string;
+  code?: string;
+  vendor_code?: string;
 }
 
 interface Product {

@@ -87,7 +87,7 @@ interface PurchaseOrder {
   id: string;
   po_number: string;
   vendor_id: string;
-  vendor?: { id: string; name: string; code: string };
+  vendor?: { id: string; name: string; code?: string; vendor_code?: string };
   delivery_warehouse_id?: string;
   warehouse_id?: string;
   warehouse?: { id: string; name: string };
@@ -106,7 +106,8 @@ interface PurchaseOrder {
 interface Vendor {
   id: string;
   name: string;
-  code: string;
+  code?: string;
+  vendor_code?: string;
 }
 
 interface Warehouse {
@@ -379,7 +380,7 @@ export default function PurchaseOrdersPage() {
 
       // Refresh the selected PO to update delivery schedules
       if (selectedPO) {
-        const updatedPO = await purchaseOrdersApi.get(selectedPO.id);
+        const updatedPO = await purchaseOrdersApi.getById(selectedPO.id);
         setSelectedPO(updatedPO);
       }
     } catch (error: any) {

@@ -149,11 +149,14 @@ function getColumns(
     {
       accessorKey: 'tier',
       header: 'Tier',
-      cell: ({ row }) => (
-        <span className={`px-2 py-1 rounded-full text-xs font-medium ${tierColors[row.original.tier] || 'bg-gray-100'}`}>
-          {row.original.tier}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const tier = row.original.tier || row.original.grade || 'N/A';
+        return (
+          <span className={`px-2 py-1 rounded-full text-xs font-medium ${tierColors[tier] || 'bg-gray-100'}`}>
+            {tier}
+          </span>
+        );
+      },
     },
     {
       accessorKey: 'status',
@@ -320,7 +323,7 @@ export default function VendorsPage() {
     setEditingVendor(vendor);
     setEditFormData({
       name: vendor.name,
-      code: vendor.code,
+      code: vendor.code || vendor.vendor_code || '',
       email: vendor.email || '',
       phone: vendor.phone || '',
       gst_number: vendor.gst_number || '',

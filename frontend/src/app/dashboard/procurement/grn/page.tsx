@@ -79,8 +79,8 @@ interface GRN {
   total_rejected: number;
   notes?: string;
   created_at: string;
-  warehouse?: { name: string; code: string };
-  vendor?: { name: string; code: string };
+  warehouse?: { name: string; code?: string };
+  vendor?: { name: string; code?: string; vendor_code?: string };
   purchase_order?: {
     po_number: string;
     vendor?: { name: string };
@@ -119,7 +119,7 @@ interface PurchaseOrder {
   id: string;
   po_number: string;
   status: string;
-  vendor?: { name: string; code: string };
+  vendor?: { name: string; code?: string; vendor_code?: string };
   delivery_warehouse_id?: string;
   warehouse_id?: string;
   warehouse?: { name: string };

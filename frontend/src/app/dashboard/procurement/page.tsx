@@ -128,7 +128,7 @@ const vendorColumns: ColumnDef<Vendor>[] = [
   {
     accessorKey: 'tier',
     header: 'Tier',
-    cell: ({ row }) => <StatusBadge status={row.original.tier} />,
+    cell: ({ row }) => <StatusBadge status={row.original.tier || row.original.grade || 'N/A'} />,
   },
   {
     accessorKey: 'status',
