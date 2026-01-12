@@ -2788,8 +2788,34 @@ async def download_purchase_order(
     bank_ifsc = vendor.bank_ifsc if vendor else "N/A"
     beneficiary_name = vendor.beneficiary_name if vendor else vendor_name
 
-    # Tax type determination
-    is_intra_state = company_state_code == vendor_state_code
+    # Bill To info (from PO or company)
+    bill_to_data = po.bill_to or {}
+    bill_to_name = bill_to_data.get('name') or company_name
+    bill_to_address = ", ".join(filter(None, [
+        bill_to_data.get('address_line1'),
+        bill_to_data.get('address_line2'),
+        bill_to_data.get('city'),
+        bill_to_data.get('state'),
+        str(bill_to_data.get('pincode', ''))
+    ])) or company_address
+    bill_to_gstin = bill_to_data.get('gstin') or company_gstin
+    bill_to_state_code = bill_to_data.get('state_code') or company_state_code
+
+    # Ship To info (from PO or warehouse)
+    ship_to_data = po.ship_to or {}
+    ship_to_name = ship_to_data.get('name') or warehouse_name
+    ship_to_address = ", ".join(filter(None, [
+        ship_to_data.get('address_line1'),
+        ship_to_data.get('address_line2'),
+        ship_to_data.get('city'),
+        ship_to_data.get('state'),
+        str(ship_to_data.get('pincode', ''))
+    ])) or warehouse_full_address
+    ship_to_gstin = ship_to_data.get('gstin') or company_gstin
+    ship_to_state_code = ship_to_data.get('state_code') or (warehouse.state_code if warehouse and hasattr(warehouse, 'state_code') else company_state_code)
+
+    # Tax type determination - compare SHIP TO state with VENDOR state (Place of Supply rule)
+    is_intra_state = ship_to_state_code == vendor_state_code
     tax_type = "CGST + SGST (Intra-State)" if is_intra_state else "IGST (Inter-State)"
 
     # PO details
@@ -2999,12 +3025,12 @@ async def download_purchase_order(
                 <value>{po_date_str}</value>
             </div>
             <div class="info-box">
-                <label>PI Reference</label>
-                <value>{getattr(po, 'pi_reference', None) or 'N/A'}</value>
+                <label>PI/Quotation Ref</label>
+                <value>{po.quotation_reference or 'N/A'}</value>
             </div>
             <div class="info-box">
-                <label>PI Date</label>
-                <value>{getattr(po, 'pi_date', None).strftime('%d.%m.%Y') if getattr(po, 'pi_date', None) else 'N/A'}</value>
+                <label>PI/Quotation Date</label>
+                <value>{po.quotation_date.strftime('%d.%m.%Y') if po.quotation_date else 'N/A'}</value>
             </div>
         </div>
 
@@ -3027,10 +3053,10 @@ async def download_purchase_order(
             </div>
         </div>
 
-        <!-- Vendor & Delivery Details -->
+        <!-- Vendor, Bill To & Ship To Details -->
         <div class="party-section">
             <div class="party-box">
-                <div class="party-header">SUPPLIER / VENDOR DETAILS</div>
+                <div class="party-header">SUPPLIER / VENDOR</div>
                 <p class="company-name">{vendor_name}</p>
                 <p>{vendor_full_address}</p>
                 <p><strong>GSTIN:</strong> {vendor_gstin}</p>
@@ -3040,14 +3066,19 @@ async def download_purchase_order(
                 <p><strong>Vendor Code:</strong> {vendor_code}</p>
             </div>
             <div class="party-box">
-                <div class="party-header">SHIP TO / DELIVERY ADDRESS</div>
-                <p class="company-name">{company_name}</p>
-                <p>{warehouse_full_address}</p>
+                <div class="party-header">BILL TO</div>
+                <p class="company-name">{bill_to_name}</p>
+                <p>{bill_to_address}</p>
+                <p><strong>GSTIN:</strong> {bill_to_gstin}</p>
+                <p><strong>State Code:</strong> {bill_to_state_code}</p>
+            </div>
+            <div class="party-box">
+                <div class="party-header">SHIP TO</div>
+                <p class="company-name">{ship_to_name}</p>
+                <p>{ship_to_address}</p>
+                <p><strong>GSTIN:</strong> {ship_to_gstin}</p>
+                <p><strong>State Code:</strong> {ship_to_state_code}</p>
                 <p><strong>Warehouse:</strong> {warehouse_name}</p>
-                <p><strong>GSTIN:</strong> {company_gstin}</p>
-                <p><strong>State Code:</strong> {company_state_code}</p>
-                <p><strong>Contact:</strong> Store Manager</p>
-                <p><strong>Phone:</strong> {company_phone}</p>
             </div>
         </div>
 
