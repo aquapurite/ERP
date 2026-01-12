@@ -2659,24 +2659,17 @@ async def download_purchase_order(
             adv_due_text = "With PO" if sched.lot_number == 1 else f"{sched.expected_delivery_date.strftime('%d %b %Y') if sched.expected_delivery_date else 'TBD'}"
             balance_due_text = sched.balance_due_date.strftime('%d %b %Y') if sched.balance_due_date else "TBD"
 
-            # Serial number range display
-            serial_range_text = f"{sched.serial_number_start} - {sched.serial_number_end}" if sched.serial_number_start and sched.serial_number_end else "-"
-
             schedule_rows += f"""
                 <tr>
                     <td class="text-center"><strong>LOT {sched.lot_number} ({sched.lot_name})</strong></td>
                     <td class="text-center">{sched.expected_delivery_date.strftime('%d %b %Y') if sched.expected_delivery_date else 'TBD'}</td>
                     <td class="text-center">{sched.total_quantity:,}</td>
-                    <td class="text-center" style="font-family: monospace; font-size: 9px;">{serial_range_text}</td>
                     <td class="text-right">Rs. {float(sched.lot_total):,.2f}</td>
                     <td class="text-right">Rs. {float(sched.advance_amount):,.2f}</td>
                     <td class="text-center">{adv_due_text}</td>
                     <td class="text-right">Rs. {float(sched.balance_amount):,.2f}</td>
                     <td class="text-center">{balance_due_text}</td>
                 </tr>"""
-
-        # Total serial range display
-        total_serial_range = f"{first_serial} - {last_serial}" if first_serial and last_serial else "-"
 
         delivery_schedule_html = f"""
         <!-- Delivery Schedule Section -->
@@ -2687,15 +2680,14 @@ async def download_purchase_order(
             <table style="font-size: 10px;">
                 <thead>
                     <tr style="background: #e0e0e0;">
-                        <th style="width: 12%">LOT</th>
-                        <th style="width: 10%">DELIVERY DATE</th>
-                        <th style="width: 6%">QTY</th>
-                        <th style="width: 12%">SERIAL NO. RANGE</th>
-                        <th style="width: 12%">LOT VALUE (incl. GST)</th>
-                        <th style="width: 10%">ADVANCE (25%)</th>
-                        <th style="width: 10%">ADVANCE DUE</th>
-                        <th style="width: 10%">BALANCE (75%)</th>
-                        <th style="width: 10%">BALANCE DUE</th>
+                        <th style="width: 14%">LOT</th>
+                        <th style="width: 12%">DELIVERY DATE</th>
+                        <th style="width: 8%">QTY</th>
+                        <th style="width: 14%">LOT VALUE (incl. GST)</th>
+                        <th style="width: 12%">ADVANCE (25%)</th>
+                        <th style="width: 12%">ADVANCE DUE</th>
+                        <th style="width: 12%">BALANCE (75%)</th>
+                        <th style="width: 12%">BALANCE DUE</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -2704,7 +2696,6 @@ async def download_purchase_order(
                         <td class="text-center">TOTAL</td>
                         <td class="text-center"></td>
                         <td class="text-center">{total_qty_sched:,}</td>
-                        <td class="text-center" style="font-family: monospace; font-size: 9px;">{total_serial_range}</td>
                         <td class="text-right">Rs. {float(total_lot_value):,.2f}</td>
                         <td class="text-right">Rs. {float(total_advance):,.2f}</td>
                         <td class="text-center"></td>
@@ -2714,7 +2705,7 @@ async def download_purchase_order(
                 </tbody>
             </table>
             <p style="padding: 8px; font-size: 9px; color: #666; background: #fff3cd;">
-                <strong>Note:</strong> Serial numbers indicate the range to be supplied by vendor. Advance for each lot must be paid before delivery. Balance is due 45 days after each lot's delivery.
+                <strong>Note:</strong> Advance for each lot must be paid before delivery. Balance is due 45 days after each lot's delivery.
             </p>
         </div>
         """
@@ -2838,45 +2829,55 @@ async def download_purchase_order(
         serial_rows = ""
         for sg in serial_groups:
             item_type = sg.item_type.value if hasattr(sg.item_type, 'value') else str(sg.item_type)
+            item_type_label = "Finished Goods" if item_type == "FG" else "Spare Part" if item_type == "SP" else item_type
+
+            # Get product name for this model code from PO items
+            product_name = "-"
+            for item in po.items:
+                # Check if this item's SKU or product matches the model code
+                if item.sku and sg.model_code.upper() in item.sku.upper():
+                    product_name = item.product_name or item.sku
+                    break
+
             serial_rows += f"""
                     <tr>
+                        <td>{product_name}</td>
                         <td class="text-center"><span class="fg-code">{sg.model_code}</span></td>
-                        <td class="text-center">{item_type}</td>
-                        <td class="text-center"><strong>{sg.quantity}</strong></td>
-                        <td class="text-center">{sg.start_serial:08d} - {sg.end_serial:08d}</td>
-                        <td style="font-family: 'Courier New', monospace; font-size: 9px;">{sg.start_barcode}</td>
-                        <td style="font-family: 'Courier New', monospace; font-size: 9px;">{sg.end_barcode}</td>
+                        <td class="text-center">{item_type_label}</td>
+                        <td class="text-center"><strong>{sg.quantity:,}</strong></td>
+                        <td style="font-family: 'Courier New', monospace; font-size: 9px; background: #f0f8ff;">
+                            <strong>{sg.start_barcode}</strong><br>to<br><strong>{sg.end_barcode}</strong>
+                        </td>
                     </tr>"""
 
         serials_html = f"""
-        <!-- Serial Numbers Section (Footer) -->
-        <div style="margin-top: 15px; page-break-inside: avoid; border: 1px solid #000;">
-            <div style="background: #1a5f7a; color: white; padding: 8px; font-weight: bold; font-size: 11px;">
-                PRE-ALLOCATED SERIAL NUMBERS / BARCODES
+        <!-- Barcode Allocation Section -->
+        <div style="margin-top: 15px; page-break-inside: avoid; border: 2px solid #1a5f7a;">
+            <div style="background: #1a5f7a; color: white; padding: 10px; font-weight: bold; font-size: 12px;">
+                BARCODE ALLOCATION BY ITEM
             </div>
             <div style="padding: 10px;">
                 <p style="font-size: 9px; color: #666; margin-bottom: 8px;">
-                    The following serial numbers have been pre-allocated for this Purchase Order.
+                    The following barcodes have been pre-allocated for this Purchase Order.
                     Please ensure barcodes are printed and affixed to each unit before dispatch.
                 </p>
-                <table style="font-size: 9px;">
+                <table style="font-size: 10px;">
                     <thead>
                         <tr style="background: #e0e0e0;">
+                            <th style="width: 30%;">Item Description</th>
                             <th style="width: 12%;">Model Code</th>
-                            <th style="width: 10%;">Type</th>
+                            <th style="width: 12%;">Type</th>
                             <th style="width: 10%;">Qty</th>
-                            <th style="width: 20%;">Serial Range</th>
-                            <th style="width: 24%;">Start Barcode</th>
-                            <th style="width: 24%;">End Barcode</th>
+                            <th style="width: 36%;">Barcode Range</th>
                         </tr>
                     </thead>
                     <tbody>
                         {serial_rows}
                     </tbody>
                 </table>
-                <p style="font-size: 9px; color: #666; margin-top: 5px;">
-                    Total Serial Numbers: <strong>{total_serials}</strong> |
-                    <a href="/api/v1/serialization/po/{str(po.id)}/export?format=csv" class="no-print" style="color: #1a5f7a;">Download CSV</a>
+                <p style="font-size: 9px; color: #666; margin-top: 8px; padding: 5px; background: #fff3cd;">
+                    <strong>Total Barcodes:</strong> {total_serials:,} |
+                    <a href="/api/v1/serialization/po/{str(po.id)}/export?format=csv" class="no-print" style="color: #1a5f7a;">Download Barcode List (CSV)</a>
                 </p>
             </div>
         </div>
