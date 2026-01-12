@@ -644,24 +644,26 @@ async def convert_requisition_to_po(
         line_number += 1
         gst_rate = Decimal("18")  # Default GST
 
-        # Calculate amounts
-        gross_amount = pr_item.quantity_requested * pr_item.estimated_unit_price
+        # Calculate amounts with proper Decimal precision
+        qty = Decimal(str(pr_item.quantity_requested))
+        unit_price = Decimal(str(pr_item.estimated_unit_price)).quantize(Decimal("0.01"))
+        gross_amount = (qty * unit_price).quantize(Decimal("0.01"))
         item_taxable = gross_amount  # No discount from PR
 
-        # GST calculation
+        # GST calculation with proper precision
         if is_inter_state:
             igst_rate = gst_rate
             cgst_rate = Decimal("0")
             sgst_rate = Decimal("0")
         else:
             igst_rate = Decimal("0")
-            cgst_rate = gst_rate / 2
-            sgst_rate = gst_rate / 2
+            cgst_rate = (gst_rate / Decimal("2")).quantize(Decimal("0.01"))
+            sgst_rate = (gst_rate / Decimal("2")).quantize(Decimal("0.01"))
 
-        cgst_amount = item_taxable * (cgst_rate / 100)
-        sgst_amount = item_taxable * (sgst_rate / 100)
-        igst_amount = item_taxable * (igst_rate / 100)
-        item_total = item_taxable + cgst_amount + sgst_amount + igst_amount
+        cgst_amount = (item_taxable * cgst_rate / Decimal("100")).quantize(Decimal("0.01"))
+        sgst_amount = (item_taxable * sgst_rate / Decimal("100")).quantize(Decimal("0.01"))
+        igst_amount = (item_taxable * igst_rate / Decimal("100")).quantize(Decimal("0.01"))
+        item_total = (item_taxable + cgst_amount + sgst_amount + igst_amount).quantize(Decimal("0.01"))
 
         po_item = PurchaseOrderItem(
             purchase_order_id=po.id,
@@ -672,12 +674,12 @@ async def convert_requisition_to_po(
             sku=pr_item.sku,
             quantity_ordered=pr_item.quantity_requested,
             uom=pr_item.uom,
-            unit_price=pr_item.estimated_unit_price,
+            unit_price=unit_price,  # Use quantized Decimal
             taxable_amount=item_taxable,
-            gst_rate=gst_rate,
+            gst_rate=gst_rate.quantize(Decimal("0.01")),
             cgst_rate=cgst_rate,
             sgst_rate=sgst_rate,
-            igst_rate=igst_rate,
+            igst_rate=igst_rate.quantize(Decimal("0.01")),
             cgst_amount=cgst_amount,
             sgst_amount=sgst_amount,
             igst_amount=igst_amount,
@@ -695,24 +697,25 @@ async def convert_requisition_to_po(
 
         # Collect month totals for delivery schedules
         if pr_item.monthly_quantities:
-            for month_code, qty in pr_item.monthly_quantities.items():
+            for month_code, month_qty in pr_item.monthly_quantities.items():
                 if month_code not in month_totals:
                     month_totals[month_code] = {"qty": 0, "value": Decimal("0"), "tax": Decimal("0")}
-                item_value = qty * pr_item.estimated_unit_price
-                item_tax = item_value * (gst_rate / 100)
-                month_totals[month_code]["qty"] += qty
+                month_qty_decimal = Decimal(str(month_qty))
+                item_value = (month_qty_decimal * unit_price).quantize(Decimal("0.01"))
+                item_tax = (item_value * gst_rate / Decimal("100")).quantize(Decimal("0.01"))
+                month_totals[month_code]["qty"] += int(month_qty)
                 month_totals[month_code]["value"] += item_value
                 month_totals[month_code]["tax"] += item_tax
 
-    # Update PO totals
-    total_tax = cgst_total + sgst_total + igst_total
-    grand_total = taxable_amount + total_tax
+    # Update PO totals with proper Decimal precision
+    total_tax = (cgst_total + sgst_total + igst_total).quantize(Decimal("0.01"))
+    grand_total = (taxable_amount + total_tax).quantize(Decimal("0.01"))
 
-    po.subtotal = subtotal
-    po.taxable_amount = taxable_amount
-    po.cgst_amount = cgst_total
-    po.sgst_amount = sgst_total
-    po.igst_amount = igst_total
+    po.subtotal = subtotal.quantize(Decimal("0.01"))
+    po.taxable_amount = taxable_amount.quantize(Decimal("0.01"))
+    po.cgst_amount = cgst_total.quantize(Decimal("0.01"))
+    po.sgst_amount = sgst_total.quantize(Decimal("0.01"))
+    po.igst_amount = igst_total.quantize(Decimal("0.01"))
     po.total_tax = total_tax
     po.grand_total = grand_total
 
@@ -740,9 +743,10 @@ async def convert_requisition_to_po(
             last_day = monthrange(year, month)[1]
             window_end = date(year, month, min(20, last_day))
 
-            lot_value = month_data["value"]
-            lot_tax = month_data["tax"]
-            lot_total = lot_value + lot_tax
+            # Quantize accumulated values to ensure they fit in Numeric columns
+            lot_value = month_data["value"].quantize(Decimal("0.01"))
+            lot_tax = month_data["tax"].quantize(Decimal("0.01"))
+            lot_total = (lot_value + lot_tax).quantize(Decimal("0.01"))
 
             month_names = ["", "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
                           "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
@@ -873,6 +877,7 @@ async def create_purchase_order(
         }
 
     # Create PO with initial zero values for NOT NULL fields
+    # Quantize all numeric inputs to ensure they fit in Numeric(X, 2) columns
     po = PurchaseOrder(
         po_number=po_number,
         po_date=today,
@@ -887,12 +892,12 @@ async def create_purchase_order(
         ship_to=ship_to,
         payment_terms=po_in.payment_terms,
         credit_days=po_in.credit_days,
-        advance_required=po_in.advance_required,
+        advance_required=Decimal(str(po_in.advance_required or 0)).quantize(Decimal("0.01")),
         quotation_reference=po_in.quotation_reference,
         quotation_date=po_in.quotation_date,
-        freight_charges=po_in.freight_charges,
-        packing_charges=po_in.packing_charges,
-        other_charges=po_in.other_charges,
+        freight_charges=Decimal(str(po_in.freight_charges or 0)).quantize(Decimal("0.01")),
+        packing_charges=Decimal(str(po_in.packing_charges or 0)).quantize(Decimal("0.01")),
+        other_charges=Decimal(str(po_in.other_charges or 0)).quantize(Decimal("0.01")),
         terms_and_conditions=po_in.terms_and_conditions,
         special_instructions=po_in.special_instructions,
         internal_notes=po_in.internal_notes,
@@ -921,15 +926,15 @@ async def create_purchase_order(
 
         # Calculate item amounts with proper Decimal precision
         qty = Decimal(str(item_data.quantity_ordered))
-        unit_price = Decimal(str(item_data.unit_price))
-        discount_pct = Decimal(str(item_data.discount_percentage))
+        unit_price = Decimal(str(item_data.unit_price)).quantize(Decimal("0.01"))
+        discount_pct = Decimal(str(item_data.discount_percentage)).quantize(Decimal("0.01"))
 
         gross_amount = (qty * unit_price).quantize(Decimal("0.01"))
         discount_amount = (gross_amount * discount_pct / Decimal("100")).quantize(Decimal("0.01"))
         item_taxable = (gross_amount - discount_amount).quantize(Decimal("0.01"))
 
         # GST calculation with proper Decimal
-        gst_rate = Decimal(str(item_data.gst_rate))
+        gst_rate = Decimal(str(item_data.gst_rate)).quantize(Decimal("0.01"))
         if is_inter_state:
             igst_rate = gst_rate
             cgst_rate = Decimal("0")
@@ -956,14 +961,14 @@ async def create_purchase_order(
             hsn_code=item_data.hsn_code,
             quantity_ordered=item_data.quantity_ordered,
             uom=item_data.uom,
-            unit_price=item_data.unit_price,
-            discount_percentage=item_data.discount_percentage,
+            unit_price=unit_price,  # Use quantized Decimal
+            discount_percentage=discount_pct.quantize(Decimal("0.01")),
             discount_amount=discount_amount,
             taxable_amount=item_taxable,
-            gst_rate=gst_rate,
+            gst_rate=gst_rate.quantize(Decimal("0.01")),
             cgst_rate=cgst_rate,
             sgst_rate=sgst_rate,
-            igst_rate=igst_rate,
+            igst_rate=igst_rate.quantize(Decimal("0.01")),
             cgst_amount=cgst_amount,
             sgst_amount=sgst_amount,
             igst_amount=igst_amount,
@@ -986,9 +991,9 @@ async def create_purchase_order(
 
     # Update PO totals with proper Decimal precision
     total_tax = (cgst_total + sgst_total + igst_total + cess_total).quantize(Decimal("0.01"))
-    freight = Decimal(str(po_in.freight_charges or 0))
-    packing = Decimal(str(po_in.packing_charges or 0))
-    other = Decimal(str(po_in.other_charges or 0))
+    freight = Decimal(str(po_in.freight_charges or 0)).quantize(Decimal("0.01"))
+    packing = Decimal(str(po_in.packing_charges or 0)).quantize(Decimal("0.01"))
+    other = Decimal(str(po_in.other_charges or 0)).quantize(Decimal("0.01"))
     grand_total = (taxable_amount + total_tax + freight + packing + other).quantize(Decimal("0.01"))
 
     po.subtotal = subtotal.quantize(Decimal("0.01"))
@@ -1008,11 +1013,11 @@ async def create_purchase_order(
     for item_data in po_in.items:
         if item_data.monthly_quantities:
             # Ensure proper Decimal arithmetic to avoid precision overflow
-            unit_price = Decimal(str(item_data.unit_price))
-            discount_pct = Decimal(str(item_data.discount_percentage))
-            gst_rate = Decimal(str(item_data.gst_rate))
+            unit_price = Decimal(str(item_data.unit_price)).quantize(Decimal("0.01"))
+            discount_pct = Decimal(str(item_data.discount_percentage)).quantize(Decimal("0.01"))
+            gst_rate = Decimal(str(item_data.gst_rate)).quantize(Decimal("0.01"))
 
-            item_unit_price = unit_price * (Decimal("1") - discount_pct / Decimal("100"))
+            item_unit_price = (unit_price * (Decimal("1") - discount_pct / Decimal("100"))).quantize(Decimal("0.01"))
 
             for month_code, qty in item_data.monthly_quantities.items():
                 if month_code not in month_totals:
@@ -1056,12 +1061,13 @@ async def create_purchase_order(
             last_day = monthrange(year, month)[1]
             window_end = date(year, month, min(20, last_day))
 
-            lot_value = month_data["value"]
-            lot_tax = month_data["tax"]
+            # Quantize accumulated values to ensure they fit in Numeric(14,2) and Numeric(12,2) columns
+            lot_value = month_data["value"].quantize(Decimal("0.01"))
+            lot_tax = month_data["tax"].quantize(Decimal("0.01"))
             lot_total = (lot_value + lot_tax).quantize(Decimal("0.01"))
 
             # Calculate advance (default 25%) and balance with proper Decimal precision
-            advance_percentage = Decimal(str(po_in.advance_required)) if po_in.advance_required > 0 else Decimal("25")
+            advance_percentage = (Decimal(str(po_in.advance_required)) if po_in.advance_required > 0 else Decimal("25")).quantize(Decimal("0.01"))
             advance_amount = (lot_total * advance_percentage / Decimal("100")).quantize(Decimal("0.01"))
             balance_amount = (lot_total - advance_amount).quantize(Decimal("0.01"))
 
@@ -1679,8 +1685,9 @@ async def create_grn(
                        f"Pending: {pending_qty} units"
             )
 
-        unit_price = po_item.unit_price
-        accepted_value = item_data.quantity_accepted * unit_price
+        unit_price = Decimal(str(po_item.unit_price))
+        qty_accepted = Decimal(str(item_data.quantity_accepted))
+        accepted_value = (qty_accepted * unit_price).quantize(Decimal("0.01"))
 
         grn_item = GRNItem(
             grn_id=grn.id,
@@ -1721,12 +1728,12 @@ async def create_grn(
         if po_item.quantity_pending <= 0:
             po_item.is_closed = True
 
-    # Update GRN totals
+    # Update GRN totals with proper precision
     grn.total_items = len(grn_in.items)
     grn.total_quantity_received = total_received
     grn.total_quantity_accepted = total_accepted
     grn.total_quantity_rejected = total_rejected
-    grn.total_value = total_value
+    grn.total_value = total_value.quantize(Decimal("0.01"))
 
     # Update PO status
     all_closed = all(item.is_closed for item in po.items)
@@ -1735,7 +1742,7 @@ async def create_grn(
     else:
         po.status = POStatus.PARTIAL
 
-    po.total_received_value += total_value
+    po.total_received_value = (Decimal(str(po.total_received_value or 0)) + total_value).quantize(Decimal("0.01"))
 
     # Skip QC if not required
     if not grn_in.qc_required:
@@ -2110,19 +2117,25 @@ async def create_vendor_invoice(
     count = count_result.scalar() or 0
     our_reference = f"VINV-{date.today().strftime('%Y%m')}-{str(count + 1).zfill(5)}"
 
-    # Calculate amounts
-    taxable_amount = invoice_in.subtotal - invoice_in.discount_amount
+    # Calculate amounts with proper Decimal precision
+    subtotal = Decimal(str(invoice_in.subtotal))
+    discount_amt = Decimal(str(invoice_in.discount_amount or 0))
+    taxable_amount = (subtotal - discount_amt).quantize(Decimal("0.01"))
     total_tax = (
-        invoice_in.cgst_amount + invoice_in.sgst_amount +
-        invoice_in.igst_amount + invoice_in.cess_amount
-    )
+        Decimal(str(invoice_in.cgst_amount or 0)) +
+        Decimal(str(invoice_in.sgst_amount or 0)) +
+        Decimal(str(invoice_in.igst_amount or 0)) +
+        Decimal(str(invoice_in.cess_amount or 0))
+    ).quantize(Decimal("0.01"))
 
     # TDS calculation
     tds_amount = Decimal("0")
     if invoice_in.tds_applicable and invoice_in.tds_rate > 0:
-        tds_amount = taxable_amount * (invoice_in.tds_rate / 100)
+        tds_rate = Decimal(str(invoice_in.tds_rate))
+        tds_amount = (taxable_amount * tds_rate / Decimal("100")).quantize(Decimal("0.01"))
 
-    net_payable = invoice_in.grand_total - tds_amount
+    grand_total = Decimal(str(invoice_in.grand_total))
+    net_payable = (grand_total - tds_amount).quantize(Decimal("0.01"))
 
     invoice = VendorInvoice(
         **invoice_in.model_dump(),
@@ -2596,7 +2609,7 @@ async def download_purchase_order(
 
     for idx, item in enumerate(po.items, 1):
         unit_price = Decimal(str(item.unit_price)) if item.unit_price else Decimal("0")
-        amount = Decimal(str(item.quantity_ordered)) * unit_price
+        amount = (Decimal(str(item.quantity_ordered)) * unit_price).quantize(Decimal("0.01"))
         subtotal += amount
         total_qty += item.quantity_ordered
         # Use SKU as item code (e.g., SP-SDF001)
@@ -3934,17 +3947,22 @@ async def create_vendor_proforma(
 
     items_to_create = []
     for item_data in proforma_in.items:
-        base_amount = Decimal(str(item_data.quantity)) * item_data.unit_price
-        discount_amount = base_amount * (item_data.discount_percent / 100)
-        taxable_amount = base_amount - discount_amount
+        qty = Decimal(str(item_data.quantity))
+        unit_price = Decimal(str(item_data.unit_price))
+        discount_pct = Decimal(str(item_data.discount_percent or 0))
+        gst_rate = Decimal(str(item_data.gst_rate or 18))
+
+        base_amount = (qty * unit_price).quantize(Decimal("0.01"))
+        discount_amount = (base_amount * discount_pct / Decimal("100")).quantize(Decimal("0.01"))
+        taxable_amount = (base_amount - discount_amount).quantize(Decimal("0.01"))
 
         # Calculate GST (assuming intra-state - CGST+SGST)
-        gst_amount = taxable_amount * (item_data.gst_rate / 100)
-        cgst_amount = gst_amount / 2
-        sgst_amount = gst_amount / 2
+        gst_amount = (taxable_amount * gst_rate / Decimal("100")).quantize(Decimal("0.01"))
+        cgst_amount = (gst_amount / Decimal("2")).quantize(Decimal("0.01"))
+        sgst_amount = (gst_amount / Decimal("2")).quantize(Decimal("0.01"))
         igst_amount = Decimal("0")
 
-        total_amount = taxable_amount + gst_amount
+        total_amount = (taxable_amount + gst_amount).quantize(Decimal("0.01"))
 
         subtotal += base_amount
         total_discount += discount_amount
@@ -3961,9 +3979,13 @@ async def create_vendor_proforma(
             "total_amount": total_amount,
         })
 
-    taxable_amount = subtotal - total_discount
-    total_tax = total_cgst + total_sgst + total_igst
-    grand_total = taxable_amount + total_tax + proforma_in.freight_charges + proforma_in.packing_charges + proforma_in.other_charges + proforma_in.round_off
+    taxable_amount = (subtotal - total_discount).quantize(Decimal("0.01"))
+    total_tax = (total_cgst + total_sgst + total_igst).quantize(Decimal("0.01"))
+    freight = Decimal(str(proforma_in.freight_charges or 0))
+    packing = Decimal(str(proforma_in.packing_charges or 0))
+    other = Decimal(str(proforma_in.other_charges or 0))
+    round_off = Decimal(str(proforma_in.round_off or 0))
+    grand_total = (taxable_amount + total_tax + freight + packing + other + round_off).quantize(Decimal("0.01"))
 
     # Create proforma
     # Use vendor_pi_number or proforma_number for the vendor's document number
@@ -3982,18 +4004,18 @@ async def create_vendor_proforma(
         delivery_terms=proforma_in.delivery_terms,
         payment_terms=proforma_in.payment_terms,
         credit_days=proforma_in.credit_days,
-        subtotal=subtotal,
-        discount_amount=total_discount,
-        discount_percent=(total_discount / subtotal * 100) if subtotal else Decimal("0"),
+        subtotal=subtotal.quantize(Decimal("0.01")),
+        discount_amount=total_discount.quantize(Decimal("0.01")),
+        discount_percent=(total_discount / subtotal * Decimal("100")).quantize(Decimal("0.01")) if subtotal else Decimal("0"),
         taxable_amount=taxable_amount,
-        cgst_amount=total_cgst,
-        sgst_amount=total_sgst,
-        igst_amount=total_igst,
+        cgst_amount=total_cgst.quantize(Decimal("0.01")),
+        sgst_amount=total_sgst.quantize(Decimal("0.01")),
+        igst_amount=total_igst.quantize(Decimal("0.01")),
         total_tax=total_tax,
-        freight_charges=proforma_in.freight_charges,
-        packing_charges=proforma_in.packing_charges,
-        other_charges=proforma_in.other_charges,
-        round_off=proforma_in.round_off,
+        freight_charges=freight.quantize(Decimal("0.01")),
+        packing_charges=packing.quantize(Decimal("0.01")),
+        other_charges=other.quantize(Decimal("0.01")),
+        round_off=round_off.quantize(Decimal("0.01")),
         grand_total=grand_total,
         proforma_pdf_url=proforma_in.proforma_pdf_url,
         vendor_remarks=proforma_in.vendor_remarks,
