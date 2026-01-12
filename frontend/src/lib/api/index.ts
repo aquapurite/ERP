@@ -727,8 +727,19 @@ export const purchaseOrdersApi = {
     return data;
   },
   create: async (po: Partial<PurchaseOrder>) => {
-    const { data } = await apiClient.post<PurchaseOrder>('/purchase/orders', po);
-    return data;
+    try {
+      const { data } = await apiClient.post<PurchaseOrder>('/purchase/orders', po);
+      return data;
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { detail?: string }; status?: number }; message?: string };
+      const errorMessage = axiosError.response?.data?.detail || axiosError.message || 'Failed to create purchase order';
+      console.error('PO Creation Error:', {
+        status: axiosError.response?.status,
+        detail: axiosError.response?.data,
+        message: axiosError.message,
+      });
+      throw new Error(errorMessage);
+    }
   },
   update: async (id: string, po: Partial<PurchaseOrder>) => {
     const { data } = await apiClient.put<PurchaseOrder>(`/purchase/orders/${id}`, po);

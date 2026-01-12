@@ -621,7 +621,7 @@ export default function PurchaseOrdersPage() {
       return;
     }
 
-    createMutation.mutate({
+    const poPayload = {
       requisition_id: formData.requisition_id,  // Link PO to PR
       vendor_id: formData.vendor_id,
       delivery_warehouse_id: deliveryWarehouseId,
@@ -632,15 +632,19 @@ export default function PurchaseOrdersPage() {
       ship_to: formData.ship_to || undefined,  // Ship To address
       terms_and_conditions: formData.terms_and_conditions || undefined,  // Terms & Conditions
       items: formData.items.map(item => ({
-        product_id: item.product_id,
-        product_name: item.product_name,
-        sku: item.sku,
-        quantity_ordered: item.quantity ?? 0,
-        unit_price: item.unit_price,
-        gst_rate: item.gst_rate ?? 0,
+        product_id: item.product_id || undefined,
+        product_name: item.product_name || 'Unknown Product',
+        sku: item.sku || 'N/A',
+        quantity_ordered: item.quantity || 1,
+        unit_price: item.unit_price || 0,
+        discount_percentage: 0,
+        gst_rate: item.gst_rate ?? 18,
         monthly_quantities: item.monthly_quantities || undefined,
       })),
-    } as any);
+    };
+
+    console.log('Creating PO with payload:', JSON.stringify(poPayload, null, 2));
+    createMutation.mutate(poPayload as any);
   };
 
   const handleViewDetails = async (po: PurchaseOrder) => {
