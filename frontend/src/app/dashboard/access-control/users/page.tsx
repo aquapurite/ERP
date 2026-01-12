@@ -192,7 +192,7 @@ export default function UsersPage() {
         description="Manage user accounts and their roles"
         actions={
           <Button asChild>
-            <Link href="/dashboard/dashboard/access-control/users/new">
+            <Link href="/dashboard/access-control/users/new">
               <Plus className="mr-2 h-4 w-4" />
               Add User
             </Link>

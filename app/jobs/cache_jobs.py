@@ -77,7 +77,7 @@ async def refresh_serviceability_cache():
         from sqlalchemy import text
 
         async with get_db_session() as session:
-            # Fetch all serviceable areas
+            # Fetch all serviceable areas from warehouse_serviceability table
             result = await session.execute(
                 text("""
                     SELECT
@@ -85,10 +85,10 @@ async def refresh_serviceability_cache():
                         city,
                         state,
                         is_serviceable,
-                        delivery_days,
+                        estimated_days,
                         cod_available,
-                        express_delivery_available
-                    FROM serviceability
+                        shipping_cost
+                    FROM warehouse_serviceability
                     WHERE is_active = true
                 """)
             )
@@ -102,9 +102,9 @@ async def refresh_serviceability_cache():
                     "city": row.city,
                     "state": row.state,
                     "is_serviceable": row.is_serviceable,
-                    "delivery_days": row.delivery_days,
+                    "delivery_days": row.estimated_days,
                     "cod_available": row.cod_available,
-                    "express_delivery": row.express_delivery_available,
+                    "shipping_cost": row.shipping_cost,
                     "cached_at": datetime.now().isoformat()
                 }
 
@@ -169,10 +169,10 @@ async def warm_popular_pincodes():
                         city,
                         state,
                         is_serviceable,
-                        delivery_days,
+                        estimated_days,
                         cod_available,
-                        express_delivery_available
-                    FROM serviceability
+                        shipping_cost
+                    FROM warehouse_serviceability
                     WHERE pincode IN ({placeholders})
                     AND is_active = true
                 """),
@@ -188,9 +188,9 @@ async def warm_popular_pincodes():
                     "city": row.city,
                     "state": row.state,
                     "is_serviceable": row.is_serviceable,
-                    "delivery_days": row.delivery_days,
+                    "delivery_days": row.estimated_days,
                     "cod_available": row.cod_available,
-                    "express_delivery": row.express_delivery_available,
+                    "shipping_cost": row.shipping_cost,
                     "cached_at": datetime.now().isoformat(),
                     "priority": "high"
                 }

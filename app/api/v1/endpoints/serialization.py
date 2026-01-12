@@ -123,6 +123,7 @@ async def get_supplier_code(
 async def list_model_codes(
     active_only: bool = Query(True, description="Only show active model codes"),
     item_type: Optional[ItemType] = Query(None, description="Filter by item type"),
+    linked_only: bool = Query(False, description="Only show model codes linked to products"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -132,6 +133,8 @@ async def list_model_codes(
         query = query.where(ModelCodeReference.is_active == True)
     if item_type:
         query = query.where(ModelCodeReference.item_type == item_type)
+    if linked_only:
+        query = query.where(ModelCodeReference.product_id.isnot(None))
     query = query.order_by(ModelCodeReference.fg_code)
 
     result = await db.execute(query)

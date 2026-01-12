@@ -12,7 +12,7 @@ Barcode Structure: APFSZAIEL000001 (15 characters)
 
 import enum
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, ForeignKey, Text, Enum, JSON
+from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, ForeignKey, Text, Enum, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -39,10 +39,9 @@ class ItemType(str, enum.Enum):
 
 class SerialSequence(Base):
     """
-    Tracks the last used serial number for each unique combination of:
-    - Model Code + Supplier Code + Year + Month
-
-    This ensures serial numbers continue across POs.
+    LEGACY: Tracks serial number by model + supplier + year + month.
+    Kept for backward compatibility with existing data.
+    New POs should use ProductSerialSequence instead.
     """
     __tablename__ = "serial_sequences"
 
@@ -71,6 +70,69 @@ class SerialSequence(Base):
 
     def __repr__(self):
         return f"<SerialSequence {self.supplier_code}{self.year_code}{self.month_code}{self.model_code}: {self.last_serial}>"
+
+
+class ProductSerialSequence(Base):
+    """
+    Tracks serial numbers at PRODUCT/MODEL level.
+    Each product model (Aura, Elige, etc.) has its own independent serial sequence.
+
+    Serial numbers are continuous and do NOT reset by year/month.
+    Each model can have serials from 1 to 99,999,999.
+
+    Separate sequences for FG and SP:
+    - FG Aura (IEL): 00000001 to 99999999
+    - SP Aura (IEL): 00000001 to 99999999 (separate sequence)
+
+    Example:
+    - FG: Aura (IEL): 00000001 to 99999999
+    - FG: Elige (ELG): 00000001 to 99999999
+    - SP: Motor Assembly (MTR): 00000001 to 99999999
+    """
+    __tablename__ = "product_serial_sequences"
+
+    id = Column(String(36), primary_key=True)
+
+    # Product identification - unique per (model_code + item_type) combination
+    product_id = Column(String(36), ForeignKey("products.id"), nullable=True)
+    model_code = Column(String(10), nullable=False, index=True)  # IEL, ELG, AUR, MTR, etc.
+    item_type = Column(Enum(ItemType), nullable=False, default=ItemType.FINISHED_GOODS)
+
+    # Unique constraint on model_code + item_type (FG and SP can have same model_code)
+    __table_args__ = (
+        UniqueConstraint('model_code', 'item_type', name='uq_model_code_item_type'),
+    )
+
+    # Product info (denormalized for quick access)
+    product_name = Column(String(255), nullable=True)
+    product_sku = Column(String(50), nullable=True)
+
+    # Sequence tracking - continuous across all time
+    last_serial = Column(Integer, default=0, nullable=False)
+    total_generated = Column(Integer, default=0)
+    max_serial = Column(Integer, default=99999999)  # Default 1 lakh = 100000, can be extended
+
+    # Metadata
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    product = relationship("Product", backref="product_serial_sequence")
+
+    @property
+    def available_serials(self):
+        """How many serial numbers are still available"""
+        return self.max_serial - self.last_serial
+
+    @property
+    def utilization_percentage(self):
+        """Percentage of serial numbers used"""
+        if self.max_serial > 0:
+            return (self.last_serial / self.max_serial) * 100
+        return 0
+
+    def __repr__(self):
+        return f"<ProductSerialSequence {self.model_code}: {self.last_serial}/{self.max_serial}>"
 
 
 class POSerial(Base):

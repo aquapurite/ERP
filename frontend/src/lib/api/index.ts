@@ -1802,8 +1802,8 @@ export const serializationApi = {
   },
 
   // Model codes management
-  getModelCodes: async (activeOnly: boolean = true, itemType?: string): Promise<ModelCodeReference[]> => {
-    const { data } = await apiClient.get<ModelCodeReference[]>('/serialization/model-codes', { params: { active_only: activeOnly, item_type: itemType } });
+  getModelCodes: async (activeOnly: boolean = true, itemType?: string, linkedOnly: boolean = false): Promise<ModelCodeReference[]> => {
+    const { data } = await apiClient.get<ModelCodeReference[]>('/serialization/model-codes', { params: { active_only: activeOnly, item_type: itemType, linked_only: linkedOnly } });
     return data;
   },
   createModelCode: async (modelCode: { fg_code: string; model_code: string; item_type?: string; product_id?: string; product_sku?: string; description?: string }) => {

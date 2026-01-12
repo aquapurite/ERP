@@ -145,6 +145,15 @@ export default function PurchaseOrdersPage() {
   const [nextPONumber, setNextPONumber] = useState<string>('');
   const [isLoadingPONumber, setIsLoadingPONumber] = useState(false);
 
+  // Multi-lot payment dialog state
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [paymentLot, setPaymentLot] = useState<any>(null);
+  const [paymentType, setPaymentType] = useState<'ADVANCE' | 'BALANCE'>('ADVANCE');
+  const [paymentAmount, setPaymentAmount] = useState<number>(0);
+  const [paymentReference, setPaymentReference] = useState<string>('');
+  const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [isRecordingPayment, setIsRecordingPayment] = useState(false);
+
   const [formData, setFormData] = useState({
     requisition_id: '',  // Required - PO must be linked to an approved PR
     vendor_id: '',
@@ -225,10 +234,10 @@ export default function PurchaseOrdersPage() {
     queryFn: () => purchaseRequisitionsApi.getOpenForPO(),
   });
 
-  // Serialization queries
+  // Serialization queries - only fetch linked model codes for barcode generation
   const { data: modelCodesData } = useQuery({
-    queryKey: ['model-codes'],
-    queryFn: () => serializationApi.getModelCodes(true),
+    queryKey: ['model-codes-linked'],
+    queryFn: () => serializationApi.getModelCodes(true, undefined, true), // activeOnly=true, itemType=undefined, linkedOnly=true
   });
 
   const { data: supplierCodesData } = useQuery({
@@ -331,6 +340,54 @@ export default function PurchaseOrdersPage() {
     },
     onError: (error: Error) => toast.error(error.message || 'Failed to delete PO'),
   });
+
+  // Handle lot payment recording
+  const handleRecordPayment = async () => {
+    if (!selectedPO || !paymentLot) return;
+
+    setIsRecordingPayment(true);
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/purchase/orders/${selectedPO.id}/delivery-schedules/${paymentLot.id}/payment`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          },
+          body: JSON.stringify({
+            payment_type: paymentType,
+            amount: paymentAmount,
+            payment_date: paymentDate,
+            payment_reference: paymentReference,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to record payment');
+      }
+
+      toast.success(`${paymentType === 'ADVANCE' ? 'Advance' : 'Balance'} payment recorded successfully`);
+      setIsPaymentDialogOpen(false);
+      setPaymentLot(null);
+      setPaymentReference('');
+
+      // Refresh PO details
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+
+      // Refresh the selected PO to update delivery schedules
+      if (selectedPO) {
+        const updatedPO = await purchaseOrdersApi.get(selectedPO.id);
+        setSelectedPO(updatedPO);
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to record payment');
+    } finally {
+      setIsRecordingPayment(false);
+    }
+  };
 
   const handleDownload = async (po: PurchaseOrder) => {
     try {
@@ -615,9 +672,13 @@ export default function PurchaseOrdersPage() {
   const supplierCodes = supplierCodesData ?? [];
   const totals = calculateTotals();
 
-  // Helper to get model code for a product
+  // Helper to get model code for a product - prioritize product_id match over SKU match
   const getModelCodeForProduct = (productId: string, productSku?: string): ModelCodeReference | undefined => {
-    return modelCodes.find(mc => mc.product_id === productId || mc.product_sku === productSku);
+    // First try exact product_id match (most reliable)
+    const byProductId = modelCodes.find(mc => mc.product_id === productId);
+    if (byProductId) return byProductId;
+    // Fall back to SKU match
+    return modelCodes.find(mc => mc.product_sku === productSku);
   };
 
   // Helper to get supplier code for a vendor
@@ -1695,35 +1756,98 @@ export default function PurchaseOrdersPage() {
                           <tr>
                             <th className="px-3 py-2 text-left">Lot</th>
                             <th className="px-3 py-2 text-right">Qty</th>
-                            <th className="px-3 py-2 text-center">Serial No. Range</th>
+                            <th className="px-3 py-2 text-center">Serial Range</th>
                             <th className="px-3 py-2 text-right">Value</th>
-                            <th className="px-3 py-2 text-center">Delivery Date</th>
+                            <th className="px-3 py-2 text-right">Advance</th>
+                            <th className="px-3 py-2 text-right">Balance</th>
+                            <th className="px-3 py-2 text-center">Delivery</th>
                             <th className="px-3 py-2 text-center">Status</th>
+                            <th className="px-3 py-2 text-center">Action</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {(selectedPO as any).delivery_schedules.map((schedule: any) => (
-                            <tr key={schedule.id} className="border-t">
-                              <td className="px-3 py-2 font-medium">{schedule.lot_name}</td>
-                              <td className="px-3 py-2 text-right">{schedule.total_quantity}</td>
-                              <td className="px-3 py-2 text-center font-mono">
-                                {schedule.serial_number_start && schedule.serial_number_end ? (
-                                  <Badge variant="outline" className="font-mono text-xs">
-                                    {schedule.serial_number_start} - {schedule.serial_number_end}
-                                  </Badge>
-                                ) : (
-                                  <span className="text-muted-foreground text-xs">-</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-2 text-right">{formatCurrency(schedule.lot_total)}</td>
-                              <td className="px-3 py-2 text-center text-xs">
-                                {formatDate(schedule.expected_delivery_date)}
-                              </td>
-                              <td className="px-3 py-2 text-center">
-                                <StatusBadge status={schedule.status} />
-                              </td>
-                            </tr>
-                          ))}
+                          {(selectedPO as any).delivery_schedules.map((schedule: any) => {
+                            const advancePaid = parseFloat(schedule.advance_paid || 0);
+                            const advanceAmount = parseFloat(schedule.advance_amount || 0);
+                            const balancePaid = parseFloat(schedule.balance_paid || 0);
+                            const balanceAmount = parseFloat(schedule.balance_amount || 0);
+                            const isAdvancePending = advancePaid < advanceAmount && ['pending', 'advance_pending'].includes(schedule.status);
+                            const isBalancePending = balancePaid < balanceAmount && ['delivered', 'payment_pending'].includes(schedule.status);
+
+                            return (
+                              <tr key={schedule.id} className="border-t">
+                                <td className="px-3 py-2 font-medium">{schedule.lot_name}</td>
+                                <td className="px-3 py-2 text-right">{schedule.total_quantity}</td>
+                                <td className="px-3 py-2 text-center font-mono">
+                                  {schedule.serial_number_start && schedule.serial_number_end ? (
+                                    <Badge variant="outline" className="font-mono text-xs">
+                                      {schedule.serial_number_start} - {schedule.serial_number_end}
+                                    </Badge>
+                                  ) : (
+                                    <span className="text-muted-foreground text-xs">-</span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 text-right">{formatCurrency(schedule.lot_total)}</td>
+                                <td className="px-3 py-2 text-right">
+                                  <div className="space-y-0.5">
+                                    <div className="text-xs">{formatCurrency(advanceAmount)}</div>
+                                    {advancePaid > 0 && (
+                                      <div className="text-xs text-green-600">Paid: {formatCurrency(advancePaid)}</div>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2 text-right">
+                                  <div className="space-y-0.5">
+                                    <div className="text-xs">{formatCurrency(balanceAmount)}</div>
+                                    {balancePaid > 0 && (
+                                      <div className="text-xs text-green-600">Paid: {formatCurrency(balancePaid)}</div>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2 text-center text-xs">
+                                  {formatDate(schedule.expected_delivery_date)}
+                                </td>
+                                <td className="px-3 py-2 text-center">
+                                  <StatusBadge status={schedule.status} />
+                                </td>
+                                <td className="px-3 py-2 text-center">
+                                  {isAdvancePending && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs bg-green-50 border-green-300 text-green-700 hover:bg-green-100"
+                                      onClick={() => {
+                                        setPaymentLot(schedule);
+                                        setPaymentType('ADVANCE');
+                                        setPaymentAmount(advanceAmount - advancePaid);
+                                        setIsPaymentDialogOpen(true);
+                                      }}
+                                    >
+                                      Pay Advance
+                                    </Button>
+                                  )}
+                                  {isBalancePending && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100"
+                                      onClick={() => {
+                                        setPaymentLot(schedule);
+                                        setPaymentType('BALANCE');
+                                        setPaymentAmount(balanceAmount - balancePaid);
+                                        setIsPaymentDialogOpen(true);
+                                      }}
+                                    >
+                                      Pay Balance
+                                    </Button>
+                                  )}
+                                  {schedule.status === 'completed' && (
+                                    <span className="text-xs text-green-600">✓ Paid</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                         <tfoot className="bg-muted/50">
                           <tr className="border-t font-medium">
@@ -1742,7 +1866,13 @@ export default function PurchaseOrdersPage() {
                             <td className="px-3 py-2 text-right">
                               {formatCurrency((selectedPO as any).delivery_schedules.reduce((sum: number, s: any) => sum + parseFloat(s.lot_total || 0), 0))}
                             </td>
-                            <td colSpan={2}></td>
+                            <td className="px-3 py-2 text-right text-xs">
+                              {formatCurrency((selectedPO as any).delivery_schedules.reduce((sum: number, s: any) => sum + parseFloat(s.advance_amount || 0), 0))}
+                            </td>
+                            <td className="px-3 py-2 text-right text-xs">
+                              {formatCurrency((selectedPO as any).delivery_schedules.reduce((sum: number, s: any) => sum + parseFloat(s.balance_amount || 0), 0))}
+                            </td>
+                            <td colSpan={3}></td>
                           </tr>
                         </tfoot>
                       </table>
@@ -2002,6 +2132,108 @@ export default function PurchaseOrdersPage() {
               }}
             >
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Multi-Lot Payment Recording Dialog */}
+      <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {paymentType === 'ADVANCE' ? (
+                <span className="text-green-600">Record Advance Payment</span>
+              ) : (
+                <span className="text-blue-600">Record Balance Payment</span>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {paymentLot && (
+                <span>
+                  Recording {paymentType.toLowerCase()} payment for <strong>{paymentLot.lot_name}</strong>
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Lot Details Summary */}
+            {paymentLot && (
+              <div className="bg-muted p-3 rounded-md space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Lot Value:</span>
+                  <span className="font-medium">{formatCurrency(paymentLot.lot_total)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">
+                    {paymentType === 'ADVANCE' ? 'Advance Amount:' : 'Balance Amount:'}
+                  </span>
+                  <span className="font-medium">
+                    {formatCurrency(paymentType === 'ADVANCE' ? paymentLot.advance_amount : paymentLot.balance_amount)}
+                  </span>
+                </div>
+                {paymentType === 'ADVANCE' && parseFloat(paymentLot.advance_paid || 0) > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span>Already Paid:</span>
+                    <span className="font-medium">{formatCurrency(paymentLot.advance_paid)}</span>
+                  </div>
+                )}
+                {paymentType === 'BALANCE' && parseFloat(paymentLot.balance_paid || 0) > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span>Already Paid:</span>
+                    <span className="font-medium">{formatCurrency(paymentLot.balance_paid)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Payment Amount */}
+            <div className="space-y-2">
+              <Label htmlFor="payment-amount">Payment Amount (Rs.)</Label>
+              <Input
+                id="payment-amount"
+                type="number"
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
+                placeholder="Enter amount"
+              />
+            </div>
+
+            {/* Payment Date */}
+            <div className="space-y-2">
+              <Label htmlFor="payment-date">Payment Date</Label>
+              <Input
+                id="payment-date"
+                type="date"
+                value={paymentDate}
+                onChange={(e) => setPaymentDate(e.target.value)}
+              />
+            </div>
+
+            {/* Payment Reference */}
+            <div className="space-y-2">
+              <Label htmlFor="payment-reference">Transaction Reference (UTR/NEFT/RTGS)</Label>
+              <Input
+                id="payment-reference"
+                value={paymentReference}
+                onChange={(e) => setPaymentReference(e.target.value)}
+                placeholder="e.g., UTR123456789"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRecordPayment}
+              disabled={isRecordingPayment || !paymentAmount || !paymentReference}
+              className={paymentType === 'ADVANCE' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}
+            >
+              {isRecordingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Record Payment
             </Button>
           </DialogFooter>
         </DialogContent>

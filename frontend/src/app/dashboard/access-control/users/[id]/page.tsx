@@ -188,7 +188,7 @@ export default function EditUserPage() {
               </Button>
             )}
             <Button variant="outline" asChild>
-              <Link href="/dashboard/dashboard/access-control/users">
+              <Link href="/dashboard/access-control/users">
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to Users
               </Link>

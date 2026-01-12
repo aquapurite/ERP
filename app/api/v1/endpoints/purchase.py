@@ -2725,8 +2725,16 @@ async def download_purchase_order(
     cgst_amount = Decimal(str(po.cgst_amount or 0))
     sgst_amount = Decimal(str(po.sgst_amount or 0))
     grand_total = Decimal(str(po.grand_total or 0))
+
+    # Advance payment - show both required and paid
+    advance_required = Decimal(str(getattr(po, 'advance_required', 0) or 0))
     advance_paid = Decimal(str(getattr(po, 'advance_paid', 0) or 0))
-    balance_due = grand_total - advance_paid
+
+    # Calculate advance percentage for display
+    advance_percentage = (advance_required / grand_total * 100) if grand_total > 0 and advance_required > 0 else Decimal("0")
+
+    # Balance is calculated from what's required, not what's paid
+    balance_due = grand_total - advance_required
 
     # Company info
     company_name = company.legal_name if company else "AQUAPURITE INDIA PRIVATE LIMITED"
@@ -3113,6 +3121,10 @@ async def download_purchase_order(
                     <span class="totals-value">Rs. {float(grand_total):,.2f}</span>
                 </div>
                 <div class="totals-row advance-paid">
+                    <span class="totals-label">Advance Required ({float(advance_percentage):.1f}%):</span>
+                    <span class="totals-value">Rs. {float(advance_required):,.2f}</span>
+                </div>
+                <div class="totals-row" style="background: #17a2b8; color: white;">
                     <span class="totals-label">Advance Paid:</span>
                     <span class="totals-value">Rs. {float(advance_paid):,.2f}</span>
                 </div>
@@ -3126,7 +3138,8 @@ async def download_purchase_order(
         <!-- Amount in Words -->
         <div class="amount-words">
             <strong>Grand Total in Words:</strong> {_number_to_words(float(grand_total))}<br>
-            <strong>Advance Paid in Words:</strong> {_number_to_words(float(advance_paid))}
+            <strong>Advance Required in Words:</strong> {_number_to_words(float(advance_required))}<br>
+            <strong>Balance Due in Words:</strong> {_number_to_words(float(balance_due))}
         </div>
 
         {delivery_schedule_html}
@@ -3135,16 +3148,20 @@ async def download_purchase_order(
         <div class="payment-section">
             <h4>ADVANCE PAYMENT DETAILS</h4>
             <div class="payment-detail">
+                <label>Advance Required:</label>
+                <span><strong>Rs. {float(advance_required):,.2f}</strong> ({float(advance_percentage):.1f}% of Total)</span>
+            </div>
+            <div class="payment-detail">
+                <label>Advance Paid:</label>
+                <span><strong>Rs. {float(advance_paid):,.2f}</strong> {' ✓ Paid' if advance_paid >= advance_required and advance_required > 0 else ''}</span>
+            </div>
+            <div class="payment-detail">
                 <label>Payment Date:</label>
-                <span>{getattr(po, 'advance_date', None).strftime('%d.%m.%Y') if getattr(po, 'advance_date', None) else 'N/A'}</span>
+                <span>{getattr(po, 'advance_date', None).strftime('%d.%m.%Y') if getattr(po, 'advance_date', None) else 'TBD'}</span>
             </div>
             <div class="payment-detail">
                 <label>Transaction Reference:</label>
                 <span>{getattr(po, 'advance_reference', None) or 'RTGS/NEFT Transfer'}</span>
-            </div>
-            <div class="payment-detail">
-                <label>Amount Transferred:</label>
-                <span><strong>Rs. {float(advance_paid):,.2f}</strong></span>
             </div>
             <div class="payment-detail">
                 <label>Balance Payment:</label>

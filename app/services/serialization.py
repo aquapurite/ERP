@@ -43,6 +43,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.serialization import (
     SerialSequence,
+    ProductSerialSequence,
     POSerial,
     ModelCodeReference,
     SupplierCode,
@@ -322,7 +323,7 @@ class SerializationService:
         product_id: str = None,
         item_type: ItemType = ItemType.FINISHED_GOODS
     ) -> SerialSequence:
-        """Get existing sequence or create new one"""
+        """LEGACY: Get existing sequence or create new one (by model+supplier+year+month)"""
 
         if year_code is None:
             year_code = self.get_year_code()
@@ -362,13 +363,140 @@ class SerializationService:
 
         return sequence
 
+    # ==================== Product-Level Sequence Management (NEW) ====================
+
+    async def get_or_create_product_sequence(
+        self,
+        model_code: str,
+        product_id: str = None,
+        product_name: str = None,
+        product_sku: str = None,
+        item_type: ItemType = ItemType.FINISHED_GOODS,
+        max_serial: int = 99999999
+    ) -> ProductSerialSequence:
+        """
+        Get or create a product-level serial sequence.
+
+        Each product/model + item_type combination has ONE sequence that is continuous across all time.
+        Serial numbers do NOT reset by year/month.
+
+        FG and SP can have the same model_code but will have SEPARATE sequences.
+        Example:
+        - FG IEL: sequence 1-99999999
+        - SP IEL: sequence 1-99999999 (separate)
+        """
+        # Try to find existing sequence by model_code AND item_type
+        result = await self.db.execute(
+            select(ProductSerialSequence).where(
+                and_(
+                    ProductSerialSequence.model_code == model_code.upper(),
+                    ProductSerialSequence.item_type == item_type
+                )
+            )
+        )
+        sequence = result.scalar_one_or_none()
+
+        if sequence:
+            return sequence
+
+        # Create new product sequence
+        sequence = ProductSerialSequence(
+            id=str(uuid.uuid4()).replace("-", ""),
+            model_code=model_code.upper(),
+            product_id=product_id,
+            product_name=product_name,
+            product_sku=product_sku,
+            item_type=item_type,
+            last_serial=0,
+            total_generated=0,
+            max_serial=max_serial,
+        )
+        self.db.add(sequence)
+        await self.db.flush()
+
+        return sequence
+
+    async def get_next_product_serial_range(
+        self,
+        sequence: ProductSerialSequence,
+        quantity: int
+    ) -> Tuple[int, int]:
+        """
+        Reserve a range of serial numbers from product sequence.
+
+        Returns (start_serial, end_serial)
+        """
+        start_serial = sequence.last_serial + 1
+        end_serial = start_serial + quantity - 1
+
+        if end_serial > sequence.max_serial:
+            raise ValueError(
+                f"Serial number overflow for {sequence.model_code}! "
+                f"Max is {sequence.max_serial}, requested end: {end_serial}. "
+                f"Current last serial: {sequence.last_serial}"
+            )
+
+        # Update sequence
+        sequence.last_serial = end_serial
+        sequence.total_generated += quantity
+        sequence.updated_at = datetime.utcnow()
+
+        return start_serial, end_serial
+
+    async def get_product_sequence_status(
+        self,
+        model_code: str,
+        item_type: ItemType = None
+    ) -> Optional[ProductSerialSequence]:
+        """
+        Get the product sequence status for a model code.
+
+        If item_type is provided, returns the specific sequence for that type.
+        Otherwise, returns the first matching sequence (for backward compatibility).
+        """
+        if item_type:
+            result = await self.db.execute(
+                select(ProductSerialSequence).where(
+                    and_(
+                        ProductSerialSequence.model_code == model_code.upper(),
+                        ProductSerialSequence.item_type == item_type
+                    )
+                )
+            )
+        else:
+            result = await self.db.execute(
+                select(ProductSerialSequence).where(
+                    ProductSerialSequence.model_code == model_code.upper()
+                )
+            )
+        return result.scalar_one_or_none()
+
+    async def get_product_sequences_by_type(
+        self,
+        item_type: ItemType
+    ) -> List[ProductSerialSequence]:
+        """Get all product sequences for a specific item type (FG or SP)."""
+        result = await self.db.execute(
+            select(ProductSerialSequence)
+            .where(ProductSerialSequence.item_type == item_type)
+            .order_by(ProductSerialSequence.model_code)
+        )
+        return result.scalars().all()
+
+    async def get_all_product_sequences(self) -> List[ProductSerialSequence]:
+        """Get all product serial sequences."""
+        result = await self.db.execute(
+            select(ProductSerialSequence).order_by(ProductSerialSequence.model_code)
+        )
+        return result.scalars().all()
+
     async def get_next_serial_range(
         self,
         sequence: SerialSequence,
         quantity: int
     ) -> Tuple[int, int]:
         """
-        Reserve a range of serial numbers.
+        LEGACY: Reserve a range of serial numbers.
 
         Returns (start_serial, end_serial)
         """
@@ -397,8 +525,14 @@ class SerializationService:
         """
         Generate serial numbers for a Purchase Order.
 
+        Uses PRODUCT-LEVEL sequencing:
+        - Each model (Aura, Elige, etc.) has its own continuous serial number range
+        - Serial numbers do NOT reset by year/month
+        - Year/month codes are still included in barcode for traceability
+
         This is called when a PO is sent to the vendor.
         """
+        # Year/month codes for barcode (traceability only, not for sequence lookup)
         year_code = self.get_year_code()
         month_code = self.get_month_code()
 
@@ -406,19 +540,18 @@ class SerializationService:
         item_summaries = []
 
         for item in request.items:
-            # Get or create sequence for this model
-            sequence = await self.get_or_create_sequence(
+            # NEW: Use product-level sequencing (continuous per model)
+            product_sequence = await self.get_or_create_product_sequence(
                 model_code=item.model_code,
-                supplier_code=request.supplier_code,
-                year_code=year_code,
-                month_code=month_code,
                 product_id=item.product_id,
+                product_name=item.product_name if hasattr(item, 'product_name') else None,
+                product_sku=item.product_sku,
                 item_type=item.item_type,
             )
 
-            # Reserve serial range
-            start_serial, end_serial = await self.get_next_serial_range(
-                sequence, item.quantity
+            # Reserve serial range from product sequence
+            start_serial, end_serial = await self.get_next_product_serial_range(
+                product_sequence, item.quantity
             )
 
             # Generate individual serial records

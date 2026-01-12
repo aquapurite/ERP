@@ -43,6 +43,18 @@ CHENNAI_PINCODES = [str(p) for p in range(600001, 600100)]
 # Kolkata Pincodes (700001-700099)
 KOLKATA_PINCODES = [str(p) for p in range(700001, 700100)]
 
+# Hyderabad Pincodes (500001-500099)
+HYDERABAD_PINCODES = [str(p) for p in range(500001, 500100)]
+
+# Pune Pincodes (411001-411099)
+PUNE_PINCODES = [str(p) for p in range(411001, 411100)]
+
+# Gurgaon/Gurugram Pincodes (122001-122099)
+GURGAON_PINCODES = [str(p) for p in range(122001, 122100)]
+
+# Noida Pincodes (201301-201399)
+NOIDA_PINCODES = [str(p) for p in range(201301, 201400)]
+
 
 ALLOCATION_RULES = [
     {
@@ -119,6 +131,11 @@ async def seed_warehouse_serviceability(db):
         "Bengaluru": {"pincodes": BANGALORE_PINCODES, "state": "Karnataka", "zone": "METRO"},
         "Chennai": {"pincodes": CHENNAI_PINCODES, "state": "Tamil Nadu", "zone": "METRO"},
         "Kolkata": {"pincodes": KOLKATA_PINCODES, "state": "West Bengal", "zone": "METRO"},
+        "Hyderabad": {"pincodes": HYDERABAD_PINCODES, "state": "Telangana", "zone": "METRO"},
+        "Pune": {"pincodes": PUNE_PINCODES, "state": "Maharashtra", "zone": "METRO"},
+        "Gurgaon": {"pincodes": GURGAON_PINCODES, "state": "Haryana", "zone": "METRO"},
+        "Gurugram": {"pincodes": GURGAON_PINCODES, "state": "Haryana", "zone": "METRO"},
+        "Noida": {"pincodes": NOIDA_PINCODES, "state": "Uttar Pradesh", "zone": "METRO"},
     }
 
     total_created = 0
@@ -217,7 +234,11 @@ async def seed_transporter_serviceability(db):
         DELHI_PINCODES[:50] +
         BANGALORE_PINCODES[:50] +
         CHENNAI_PINCODES[:50] +
-        KOLKATA_PINCODES[:50]
+        KOLKATA_PINCODES[:50] +
+        HYDERABAD_PINCODES[:50] +
+        PUNE_PINCODES[:50] +
+        GURGAON_PINCODES[:50] +
+        NOIDA_PINCODES[:50]
     )
 
     total_created = 0
