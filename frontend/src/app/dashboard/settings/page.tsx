@@ -61,12 +61,21 @@ const settingsApi = {
   get: async (): Promise<SystemSettings> => {
     try {
       const { data } = await apiClient.get('/company/primary');
+      // Map backend field names to frontend
+      const fullAddress = [
+        data.address_line1,
+        data.address_line2,
+        data.city,
+        data.state,
+        data.pincode
+      ].filter(Boolean).join(', ');
+
       return {
-        company_name: data.name || defaultSettings.company_name,
-        company_address: data.address || defaultSettings.company_address,
-        gst_number: data.gst_number || defaultSettings.gst_number,
-        currency: data.currency || defaultSettings.currency,
-        timezone: data.timezone || defaultSettings.timezone,
+        company_name: data.trade_name || data.legal_name || defaultSettings.company_name,
+        company_address: fullAddress || defaultSettings.company_address,
+        gst_number: data.gstin || defaultSettings.gst_number,
+        currency: data.currency_code || defaultSettings.currency,
+        timezone: defaultSettings.timezone, // Not stored in backend
         date_format: defaultSettings.date_format,
         email_notifications: defaultSettings.email_notifications,
         sms_notifications: defaultSettings.sms_notifications,
@@ -79,20 +88,26 @@ const settingsApi = {
     }
   },
   update: async (settings: Partial<SystemSettings>) => {
-    // Company update endpoint
-    try {
-      const { data } = await apiClient.put('/company/primary', {
-        name: settings.company_name,
-        address: settings.company_address,
-        gst_number: settings.gst_number,
-        currency: settings.currency,
-        timezone: settings.timezone,
-      });
-      return data;
-    } catch {
-      // Silently handle - settings are stored locally
+    // Map frontend field names to backend schema
+    const payload: Record<string, unknown> = {};
+
+    if (settings.company_name) {
+      payload.trade_name = settings.company_name;
+    }
+    if (settings.gst_number) {
+      payload.gstin = settings.gst_number;
+    }
+    if (settings.currency) {
+      payload.currency_code = settings.currency;
+    }
+
+    // Only send if we have data to update
+    if (Object.keys(payload).length === 0) {
       return settings;
     }
+
+    const { data } = await apiClient.put('/company/primary', payload);
+    return data;
   },
 };
 

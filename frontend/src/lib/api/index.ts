@@ -487,21 +487,48 @@ export const inventoryApi = {
 
 // Vendors API
 // Helper to transform vendor response from backend to frontend format
-const transformVendorResponse = (vendor: Record<string, unknown>): Vendor => ({
-  id: vendor.id as string,
-  name: vendor.name as string,
-  code: (vendor.vendor_code || vendor.code || '') as string,
-  email: vendor.email as string | undefined,
-  phone: vendor.phone as string | undefined,
-  gst_number: (vendor.gstin || vendor.gst_number) as string | undefined,
-  pan_number: (vendor.pan || vendor.pan_number) as string | undefined,
-  status: (vendor.status || 'ACTIVE') as Vendor['status'],
-  tier: (vendor.grade || vendor.tier || 'SILVER') as Vendor['tier'],
-  created_at: vendor.created_at as string,
-  contact_person: vendor.contact_person as string | undefined,
-  city: vendor.city as string | undefined,
-  state: vendor.state as string | undefined,
-});
+// Maps backend field names to frontend expected names with aliases
+const transformVendorResponse = (vendor: Record<string, unknown>): Vendor => {
+  const vendorCode = (vendor.vendor_code || vendor.code || '') as string;
+  const gstin = (vendor.gstin || vendor.gst_number) as string | undefined;
+  const pan = (vendor.pan || vendor.pan_number) as string | undefined;
+  const grade = (vendor.grade || vendor.tier) as Vendor['grade'];
+
+  return {
+    id: vendor.id as string,
+    name: vendor.name as string,
+    // Backend field + alias
+    vendor_code: vendorCode,
+    code: vendorCode,
+    // Legal/trade names
+    legal_name: vendor.legal_name as string | undefined,
+    trade_name: vendor.trade_name as string | undefined,
+    // Vendor type
+    vendor_type: vendor.vendor_type as Vendor['vendor_type'],
+    // Contact
+    email: vendor.email as string | undefined,
+    phone: vendor.phone as string | undefined,
+    contact_person: vendor.contact_person as string | undefined,
+    // Tax IDs with aliases
+    gstin: gstin,
+    gst_number: gstin,
+    pan: pan,
+    pan_number: pan,
+    // Status and grade with alias
+    status: (vendor.status || 'ACTIVE') as Vendor['status'],
+    grade: grade,
+    tier: grade,
+    // Address
+    address_line1: vendor.address_line1 as string | undefined,
+    address_line2: vendor.address_line2 as string | undefined,
+    city: vendor.city as string | undefined,
+    state: vendor.state as string | undefined,
+    pincode: vendor.pincode as string | undefined,
+    country: vendor.country as string | undefined,
+    // Timestamps
+    created_at: vendor.created_at as string,
+  };
+};
 
 export const vendorsApi = {
   list: async (params?: { page?: number; size?: number; status?: string; search?: string }) => {
@@ -524,38 +551,68 @@ export const vendorsApi = {
   create: async (vendor: {
     name: string;
     code?: string;
+    vendor_code?: string;
     email?: string;
     phone?: string;
     gst_number?: string;
+    gstin?: string;
     pan_number?: string;
+    pan?: string;
     tier?: string;
+    grade?: string;
     vendor_type?: string;
     contact_person?: string;
     address_line1: string;
+    address_line2?: string;
     city: string;
     state: string;
     pincode: string;
+    country?: string;
   }) => {
     // Transform frontend fields to backend required fields
+    // Handle field name aliases (frontend -> backend)
     const payload = {
       name: vendor.name,
       legal_name: vendor.name, // Use name as legal_name
       vendor_type: vendor.vendor_type || 'MANUFACTURER',
       address_line1: vendor.address_line1,
+      address_line2: vendor.address_line2 || undefined,
       city: vendor.city,
       state: vendor.state,
       pincode: vendor.pincode,
+      country: vendor.country || 'India',
       contact_person: vendor.contact_person || undefined,
       email: vendor.email || undefined,
       phone: vendor.phone || undefined,
-      gstin: vendor.gst_number || undefined,
-      pan: vendor.pan_number || undefined,
+      // Map frontend aliases to backend field names
+      gstin: vendor.gstin || vendor.gst_number || undefined,
+      pan: vendor.pan || vendor.pan_number || undefined,
+      grade: vendor.grade || vendor.tier || undefined,
     };
     const { data } = await apiClient.post<Record<string, unknown>>('/vendors', payload);
     return transformVendorResponse(data);
   },
   update: async (id: string, vendor: Partial<Vendor>) => {
-    const { data } = await apiClient.put<Record<string, unknown>>(`/vendors/${id}`, vendor);
+    // Transform frontend field names to backend field names
+    const payload: Record<string, unknown> = { ...vendor };
+    // Handle field name aliases (frontend -> backend)
+    if (vendor.gst_number && !vendor.gstin) {
+      payload.gstin = vendor.gst_number;
+      delete payload.gst_number;
+    }
+    if (vendor.pan_number && !vendor.pan) {
+      payload.pan = vendor.pan_number;
+      delete payload.pan_number;
+    }
+    if (vendor.tier && !vendor.grade) {
+      payload.grade = vendor.tier;
+      delete payload.tier;
+    }
+    if (vendor.code && !vendor.vendor_code) {
+      payload.vendor_code = vendor.code;
+      delete payload.code;
+    }
+    const { data } = await apiClient.put<Record<string, unknown>>(`/vendors/${id}`, payload);
     return transformVendorResponse(data);
   },
   delete: async (id: string) => {

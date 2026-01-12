@@ -175,6 +175,76 @@ async def get_primary_company(
     return company
 
 
+@router.put("/primary", response_model=CompanyResponse)
+async def update_primary_company(
+    company_in: CompanyUpdate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Update the primary company details.
+
+    This is a convenience endpoint that automatically finds and updates
+    the primary company without needing to know its ID.
+    """
+    # Find the primary company
+    query = select(Company).where(Company.is_primary == True)
+    result = await db.execute(query)
+    company = result.scalar_one_or_none()
+
+    if not company:
+        # If no primary, get first active company
+        query = select(Company).where(Company.is_active == True).order_by(Company.created_at.asc())
+        result = await db.execute(query)
+        company = result.scalar_one_or_none()
+
+    if not company:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No company configured. Please create a company first."
+        )
+
+    # Check for duplicate GSTIN if changing
+    if company_in.gstin and company_in.gstin != company.gstin:
+        existing = await db.execute(
+            select(Company).where(
+                and_(Company.gstin == company_in.gstin, Company.id != company.id)
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Another company with GSTIN '{company_in.gstin}' already exists"
+            )
+
+    # Update fields
+    update_data = company_in.model_dump(exclude_unset=True, exclude={"einvoice_password", "ewb_password"})
+
+    # Handle password updates
+    if company_in.einvoice_password:
+        update_data["einvoice_password_encrypted"] = company_in.einvoice_password
+    if company_in.ewb_password:
+        update_data["ewb_password_encrypted"] = company_in.ewb_password
+
+    for field, value in update_data.items():
+        setattr(company, field, value)
+
+    await db.commit()
+    await db.refresh(company)
+
+    # Audit log
+    audit_service = AuditService(db)
+    await audit_service.log(
+        action="UPDATE",
+        entity_type="Company",
+        entity_id=company.id,
+        user_id=current_user.id,
+        new_values=update_data
+    )
+
+    return company
+
+
 @router.get("/{company_id}", response_model=CompanyFullResponse)
 async def get_company(
     company_id: UUID,

@@ -1,7 +1,7 @@
 """Stock Transfer model for warehouse-to-warehouse movements."""
 from enum import Enum
 from datetime import datetime
-from sqlalchemy import Column, String, Text, ForeignKey, Integer, DateTime, Float
+from sqlalchemy import Column, String, Text, ForeignKey, Integer, DateTime, Float, Numeric
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -12,23 +12,23 @@ from app.database import Base, TimestampMixin
 
 class TransferStatus(str, Enum):
     """Transfer status enum."""
-    DRAFT = "draft"  # Being created
-    PENDING_APPROVAL = "pending_approval"  # Awaiting approval
-    APPROVED = "approved"  # Approved, ready to dispatch
-    REJECTED = "rejected"  # Rejected
-    IN_TRANSIT = "in_transit"  # Goods dispatched
-    PARTIALLY_RECEIVED = "partially_received"
-    RECEIVED = "received"  # Fully received
-    CANCELLED = "cancelled"
+    DRAFT = "DRAFT"  # Being created
+    PENDING_APPROVAL = "PENDING_APPROVAL"  # Awaiting approval
+    APPROVED = "APPROVED"  # Approved, ready to dispatch
+    REJECTED = "REJECTED"  # Rejected
+    IN_TRANSIT = "IN_TRANSIT"  # Goods dispatched
+    PARTIALLY_RECEIVED = "PARTIALLY_RECEIVED"
+    RECEIVED = "RECEIVED"  # Fully received
+    CANCELLED = "CANCELLED"
 
 
 class TransferType(str, Enum):
     """Transfer type enum."""
-    STOCK_TRANSFER = "stock_transfer"  # Regular transfer
-    REPLENISHMENT = "replenishment"  # Auto-replenishment
-    RETURN_TO_MAIN = "return_to_main"  # Return to central warehouse
-    INTER_REGION = "inter_region"  # Between regions
-    DEALER_SUPPLY = "dealer_supply"  # To dealer
+    STOCK_TRANSFER = "STOCK_TRANSFER"  # Regular transfer
+    REPLENISHMENT = "REPLENISHMENT"  # Auto-replenishment
+    RETURN_TO_MAIN = "RETURN_TO_MAIN"  # Return to central warehouse
+    INTER_REGION = "INTER_REGION"  # Between regions
+    DEALER_SUPPLY = "DEALER_SUPPLY"  # To dealer
 
 
 class StockTransfer(Base, TimestampMixin):
@@ -66,7 +66,7 @@ class StockTransfer(Base, TimestampMixin):
     # Totals
     total_items = Column(Integer, default=0)
     total_quantity = Column(Integer, default=0)
-    total_value = Column(Float, default=0)
+    total_value = Column(Numeric(14, 2), default=0)
     received_quantity = Column(Integer, default=0)
 
     # Logistics
@@ -125,8 +125,8 @@ class StockTransferItem(Base, TimestampMixin):
     damaged_quantity = Column(Integer, default=0)
 
     # Unit cost for valuation
-    unit_cost = Column(Float, default=0)
-    total_cost = Column(Float, default=0)
+    unit_cost = Column(Numeric(12, 2), default=0)
+    total_cost = Column(Numeric(14, 2), default=0)
 
     notes = Column(Text)
 

@@ -1,7 +1,7 @@
 """Stock Adjustment model for inventory corrections."""
 from enum import Enum
 from datetime import datetime
-from sqlalchemy import Column, String, Text, ForeignKey, Integer, DateTime, Float
+from sqlalchemy import Column, String, Text, ForeignKey, Integer, DateTime, Float, Numeric
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -12,26 +12,26 @@ from app.database import Base, TimestampMixin
 
 class AdjustmentType(str, Enum):
     """Adjustment type enum."""
-    CYCLE_COUNT = "cycle_count"  # Physical count variance
-    DAMAGE = "damage"  # Damaged goods
-    THEFT = "theft"  # Theft/pilferage
-    EXPIRY = "expiry"  # Expired goods
-    QUALITY_ISSUE = "quality_issue"  # Quality defects
-    CORRECTION = "correction"  # Data correction
-    WRITE_OFF = "write_off"  # Complete write-off
-    FOUND = "found"  # Found stock (positive)
-    OPENING_STOCK = "opening_stock"  # Initial stock entry
-    OTHER = "other"
+    CYCLE_COUNT = "CYCLE_COUNT"  # Physical count variance
+    DAMAGE = "DAMAGE"  # Damaged goods
+    THEFT = "THEFT"  # Theft/pilferage
+    EXPIRY = "EXPIRY"  # Expired goods
+    QUALITY_ISSUE = "QUALITY_ISSUE"  # Quality defects
+    CORRECTION = "CORRECTION"  # Data correction
+    WRITE_OFF = "WRITE_OFF"  # Complete write-off
+    FOUND = "FOUND"  # Found stock (positive)
+    OPENING_STOCK = "OPENING_STOCK"  # Initial stock entry
+    OTHER = "OTHER"
 
 
 class AdjustmentStatus(str, Enum):
     """Adjustment status enum."""
-    DRAFT = "draft"
-    PENDING_APPROVAL = "pending_approval"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
+    DRAFT = "DRAFT"
+    PENDING_APPROVAL = "PENDING_APPROVAL"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
 
 
 class StockAdjustment(Base, TimestampMixin):
@@ -65,7 +65,7 @@ class StockAdjustment(Base, TimestampMixin):
     # Totals
     total_items = Column(Integer, default=0)
     total_quantity_adjusted = Column(Integer, default=0)
-    total_value_impact = Column(Float, default=0)  # Can be negative
+    total_value_impact = Column(Numeric(14, 2), default=0)  # Can be negative
 
     # Reason
     reason = Column(Text, nullable=False)
@@ -103,8 +103,8 @@ class StockAdjustmentItem(Base, TimestampMixin):
     adjustment_quantity = Column(Integer, default=0)  # Difference (can be negative)
 
     # Cost impact
-    unit_cost = Column(Float, default=0)
-    value_impact = Column(Float, default=0)
+    unit_cost = Column(Numeric(12, 2), default=0)
+    value_impact = Column(Numeric(14, 2), default=0)
 
     # Serial number if applicable
     serial_number = Column(String(100))
@@ -151,7 +151,7 @@ class InventoryAudit(Base, TimestampMixin):
     # Results
     total_items_counted = Column(Integer, default=0)
     variance_items = Column(Integer, default=0)
-    total_variance_value = Column(Float, default=0)
+    total_variance_value = Column(Numeric(14, 2), default=0)
 
     # Linked adjustment
     adjustment_id = Column(UUID(as_uuid=True), ForeignKey("stock_adjustments.id"))

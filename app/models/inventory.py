@@ -1,7 +1,7 @@
 """Inventory models for stock management."""
 from enum import Enum
 from datetime import datetime, date
-from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float
+from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float, Numeric
 from sqlalchemy import Enum as SQLEnum, UniqueConstraint, CheckConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -12,19 +12,19 @@ from app.database import Base, TimestampMixin
 
 class StockItemStatus(str, Enum):
     """Stock item status enum."""
-    AVAILABLE = "available"  # Ready for sale/allocation
-    RESERVED = "reserved"  # Reserved for an order
-    ALLOCATED = "allocated"  # Allocated to an order
-    PICKED = "picked"  # Picked from bin
-    PACKED = "packed"  # Packed and ready to ship
-    IN_TRANSIT = "in_transit"  # Being transferred
-    SHIPPED = "shipped"  # Shipped to customer
-    DAMAGED = "damaged"  # Damaged, needs inspection
-    DEFECTIVE = "defective"  # Defective, needs return
-    SOLD = "sold"  # Sold to customer (delivered)
-    RETURNED = "returned"  # Returned by customer
-    QUARANTINE = "quarantine"  # In quality hold
-    SCRAPPED = "scrapped"  # Written off
+    AVAILABLE = "AVAILABLE"  # Ready for sale/allocation
+    RESERVED = "RESERVED"  # Reserved for an order
+    ALLOCATED = "ALLOCATED"  # Allocated to an order
+    PICKED = "PICKED"  # Picked from bin
+    PACKED = "PACKED"  # Packed and ready to ship
+    IN_TRANSIT = "IN_TRANSIT"  # Being transferred
+    SHIPPED = "SHIPPED"  # Shipped to customer
+    DAMAGED = "DAMAGED"  # Damaged, needs inspection
+    DEFECTIVE = "DEFECTIVE"  # Defective, needs return
+    SOLD = "SOLD"  # Sold to customer (delivered)
+    RETURNED = "RETURNED"  # Returned by customer
+    QUARANTINE = "QUARANTINE"  # In quality hold
+    SCRAPPED = "SCRAPPED"  # Written off
 
 
 class StockItem(Base, TimestampMixin):
@@ -58,8 +58,8 @@ class StockItem(Base, TimestampMixin):
     vendor_id = Column(UUID(as_uuid=True))  # Supplier reference
 
     # Cost tracking
-    purchase_price = Column(Float, default=0)
-    landed_cost = Column(Float, default=0)  # Including freight, duties etc.
+    purchase_price = Column(Numeric(12, 2), default=0)
+    landed_cost = Column(Numeric(12, 2), default=0)  # Including freight, duties etc.
 
     # Dates
     manufacturing_date = Column(Date)
@@ -158,17 +158,17 @@ class InventorySummary(Base, TimestampMixin):
 
 class StockMovementType(str, Enum):
     """Stock movement type enum."""
-    RECEIPT = "receipt"  # GRN - Goods received
-    ISSUE = "issue"  # Goods issued (sale, transfer out)
-    TRANSFER_IN = "transfer_in"
-    TRANSFER_OUT = "transfer_out"
-    RETURN_IN = "return_in"  # Customer return
-    RETURN_OUT = "return_out"  # Return to vendor
-    ADJUSTMENT_PLUS = "adjustment_plus"
-    ADJUSTMENT_MINUS = "adjustment_minus"
-    DAMAGE = "damage"
-    SCRAP = "scrap"
-    CYCLE_COUNT = "cycle_count"
+    RECEIPT = "RECEIPT"  # GRN - Goods received
+    ISSUE = "ISSUE"  # Goods issued (sale, transfer out)
+    TRANSFER_IN = "TRANSFER_IN"
+    TRANSFER_OUT = "TRANSFER_OUT"
+    RETURN_IN = "RETURN_IN"  # Customer return
+    RETURN_OUT = "RETURN_OUT"  # Return to vendor
+    ADJUSTMENT_PLUS = "ADJUSTMENT_PLUS"
+    ADJUSTMENT_MINUS = "ADJUSTMENT_MINUS"
+    DAMAGE = "DAMAGE"
+    SCRAP = "SCRAP"
+    CYCLE_COUNT = "CYCLE_COUNT"
 
 
 class StockMovement(Base, TimestampMixin):

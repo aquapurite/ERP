@@ -26,10 +26,19 @@ interface WarehouseOption {
 }
 
 const statusColors: Record<string, string> = {
-  IN_STOCK: 'bg-green-100 text-green-800',
-  LOW_STOCK: 'bg-yellow-100 text-yellow-800',
-  OUT_OF_STOCK: 'bg-red-100 text-red-800',
+  AVAILABLE: 'bg-green-100 text-green-800',
   RESERVED: 'bg-blue-100 text-blue-800',
+  ALLOCATED: 'bg-indigo-100 text-indigo-800',
+  PICKED: 'bg-cyan-100 text-cyan-800',
+  PACKED: 'bg-teal-100 text-teal-800',
+  IN_TRANSIT: 'bg-yellow-100 text-yellow-800',
+  SHIPPED: 'bg-purple-100 text-purple-800',
+  DAMAGED: 'bg-red-100 text-red-800',
+  DEFECTIVE: 'bg-orange-100 text-orange-800',
+  SOLD: 'bg-emerald-100 text-emerald-800',
+  RETURNED: 'bg-pink-100 text-pink-800',
+  QUARANTINE: 'bg-amber-100 text-amber-800',
+  SCRAPPED: 'bg-gray-100 text-gray-800',
 };
 
 export default function StockItemsPage() {
@@ -236,10 +245,19 @@ export default function StockItemsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="IN_STOCK">In Stock</SelectItem>
-            <SelectItem value="LOW_STOCK">Low Stock</SelectItem>
-            <SelectItem value="OUT_OF_STOCK">Out of Stock</SelectItem>
+            <SelectItem value="AVAILABLE">Available</SelectItem>
             <SelectItem value="RESERVED">Reserved</SelectItem>
+            <SelectItem value="ALLOCATED">Allocated</SelectItem>
+            <SelectItem value="PICKED">Picked</SelectItem>
+            <SelectItem value="PACKED">Packed</SelectItem>
+            <SelectItem value="IN_TRANSIT">In Transit</SelectItem>
+            <SelectItem value="SHIPPED">Shipped</SelectItem>
+            <SelectItem value="DAMAGED">Damaged</SelectItem>
+            <SelectItem value="DEFECTIVE">Defective</SelectItem>
+            <SelectItem value="SOLD">Sold</SelectItem>
+            <SelectItem value="RETURNED">Returned</SelectItem>
+            <SelectItem value="QUARANTINE">Quarantine</SelectItem>
+            <SelectItem value="SCRAPPED">Scrapped</SelectItem>
           </SelectContent>
         </Select>
       </div>

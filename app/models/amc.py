@@ -1,7 +1,7 @@
 """AMC (Annual Maintenance Contract) model."""
 from enum import Enum
 from datetime import datetime, date
-from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float, JSON
+from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float, JSON, Numeric
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -12,20 +12,20 @@ from app.database import Base, TimestampMixin
 
 class AMCType(str, Enum):
     """AMC type enum."""
-    STANDARD = "standard"  # Basic AMC
-    COMPREHENSIVE = "comprehensive"  # Parts + Labor included
-    EXTENDED_WARRANTY = "extended_warranty"
-    PLATINUM = "platinum"  # Premium service
+    STANDARD = "STANDARD"  # Basic AMC
+    COMPREHENSIVE = "COMPREHENSIVE"  # Parts + Labor included
+    EXTENDED_WARRANTY = "EXTENDED_WARRANTY"
+    PLATINUM = "PLATINUM"  # Premium service
 
 
 class AMCStatus(str, Enum):
     """AMC status enum."""
-    DRAFT = "draft"
-    PENDING_PAYMENT = "pending_payment"
-    ACTIVE = "active"
-    EXPIRED = "expired"
-    CANCELLED = "cancelled"
-    RENEWED = "renewed"
+    DRAFT = "DRAFT"
+    PENDING_PAYMENT = "PENDING_PAYMENT"
+    ACTIVE = "ACTIVE"
+    EXPIRED = "EXPIRED"
+    CANCELLED = "CANCELLED"
+    RENEWED = "RENEWED"
 
 
 class AMCContract(Base, TimestampMixin):
@@ -60,10 +60,10 @@ class AMCContract(Base, TimestampMixin):
     services_remaining = Column(Integer, default=2)
 
     # Pricing
-    base_price = Column(Float, default=0)
-    tax_amount = Column(Float, default=0)
-    discount_amount = Column(Float, default=0)
-    total_amount = Column(Float, default=0)
+    base_price = Column(Numeric(12, 2), default=0)
+    tax_amount = Column(Numeric(12, 2), default=0)
+    discount_amount = Column(Numeric(12, 2), default=0)
+    total_amount = Column(Numeric(12, 2), default=0)
 
     # Payment
     payment_status = Column(String(50), default="pending")
@@ -76,7 +76,7 @@ class AMCContract(Base, TimestampMixin):
     labor_covered = Column(Boolean, default=True)
     emergency_support = Column(Boolean, default=False)
     priority_service = Column(Boolean, default=False)
-    discount_on_parts = Column(Float, default=0)  # Percentage
+    discount_on_parts = Column(Numeric(5, 2), default=0)  # Percentage
     terms_and_conditions = Column(Text)
 
     # Renewal
@@ -143,8 +143,8 @@ class AMCPlan(Base, TimestampMixin):
     duration_months = Column(Integer, default=12)
 
     # Pricing
-    base_price = Column(Float, default=0)
-    tax_rate = Column(Float, default=18)
+    base_price = Column(Numeric(12, 2), default=0)
+    tax_rate = Column(Numeric(5, 2), default=18)
 
     # Services
     services_included = Column(Integer, default=2)
@@ -154,7 +154,7 @@ class AMCPlan(Base, TimestampMixin):
     labor_covered = Column(Boolean, default=True)
     emergency_support = Column(Boolean, default=False)
     priority_service = Column(Boolean, default=False)
-    discount_on_parts = Column(Float, default=0)
+    discount_on_parts = Column(Numeric(5, 2), default=0)
 
     # Terms
     terms_and_conditions = Column(Text)

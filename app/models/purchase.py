@@ -711,13 +711,13 @@ class PurchaseOrderItem(Base):
 
 class DeliveryLotStatus(str, Enum):
     """Status of a delivery lot."""
-    PENDING = "pending"                 # Not yet due
-    ADVANCE_PENDING = "advance_pending" # Advance payment pending
-    ADVANCE_PAID = "advance_paid"       # Advance paid, awaiting delivery
-    DELIVERED = "delivered"             # Goods delivered
-    PAYMENT_PENDING = "payment_pending" # Balance payment pending
-    COMPLETED = "completed"             # Fully paid and delivered
-    CANCELLED = "cancelled"
+    PENDING = "PENDING"                 # Not yet due
+    ADVANCE_PENDING = "ADVANCE_PENDING" # Advance payment pending
+    ADVANCE_PAID = "ADVANCE_PAID"       # Advance paid, awaiting delivery
+    DELIVERED = "DELIVERED"             # Goods delivered
+    PAYMENT_PENDING = "PAYMENT_PENDING" # Balance payment pending
+    COMPLETED = "COMPLETED"             # Fully paid and delivered
+    CANCELLED = "CANCELLED"
 
 
 class PODeliverySchedule(Base):

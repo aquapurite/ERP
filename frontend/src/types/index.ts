@@ -309,7 +309,7 @@ export interface StockItem {
   warehouse_id: string;
   serial_number?: string;
   batch_number?: string;
-  status: 'AVAILABLE' | 'RESERVED' | 'ALLOCATED' | 'IN_TRANSIT' | 'SHIPPED' | 'SOLD' | 'RETURNED' | 'DAMAGED' | 'DEFECTIVE' | 'QUARANTINE' | 'SCRAPPED' | 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
+  status: 'AVAILABLE' | 'RESERVED' | 'ALLOCATED' | 'PICKED' | 'PACKED' | 'IN_TRANSIT' | 'SHIPPED' | 'DAMAGED' | 'DEFECTIVE' | 'SOLD' | 'RETURNED' | 'QUARANTINE' | 'SCRAPPED';
   quantity: number;
   reserved_quantity?: number;
   available_quantity?: number;
@@ -320,20 +320,52 @@ export interface StockItem {
 }
 
 // Vendor Types
+export type VendorType =
+  | 'MANUFACTURER'
+  | 'IMPORTER'
+  | 'DISTRIBUTOR'
+  | 'TRADER'
+  | 'SERVICE_PROVIDER'
+  | 'RAW_MATERIAL'
+  | 'SPARE_PARTS'
+  | 'CONSUMABLES'
+  | 'TRANSPORTER'
+  | 'CONTRACTOR';
+
+export type VendorStatus = 'ACTIVE' | 'INACTIVE' | 'PENDING_APPROVAL' | 'SUSPENDED' | 'BLACKLISTED';
+
+export type VendorGrade = 'A+' | 'A' | 'B' | 'C' | 'D';
+
 export interface Vendor {
   id: string;
   name: string;
-  code: string;
+  // Backend uses vendor_code, frontend can use code as alias
+  vendor_code: string;
+  code?: string; // Alias for vendor_code
+  // Backend uses legal_name (required), trade_name (optional)
+  legal_name?: string;
+  trade_name?: string;
+  // Vendor type
+  vendor_type?: VendorType;
   email?: string;
   phone?: string;
-  gst_number?: string;
-  pan_number?: string;
-  status: 'ACTIVE' | 'INACTIVE' | 'PENDING' | 'BLOCKED' | 'PENDING_APPROVAL' | 'SUSPENDED' | 'BLACKLISTED';
-  tier: 'PLATINUM' | 'GOLD' | 'SILVER' | 'BRONZE' | 'A+' | 'A' | 'B' | 'C' | 'D';
+  // Backend uses gstin/pan, frontend uses gst_number/pan_number as aliases
+  gstin?: string;
+  gst_number?: string; // Alias for gstin
+  pan?: string;
+  pan_number?: string; // Alias for pan
+  status: VendorStatus;
+  // Backend uses grade, frontend can use tier as alias
+  grade?: VendorGrade;
+  tier?: VendorGrade; // Alias for grade
   created_at: string;
   contact_person?: string;
+  address_line1?: string;
+  address_line2?: string;
   city?: string;
   state?: string;
+  pincode?: string;
+  country?: string;
 }
 
 // Purchase Order Types
@@ -399,16 +431,16 @@ export type ServiceRequestStatus =
   | 'REOPENED';
 
 export type ServiceRequestType =
+  | 'INSTALLATION'
   | 'WARRANTY_REPAIR'
   | 'PAID_REPAIR'
   | 'AMC_SERVICE'
-  | 'INSTALLATION'
-  | 'UNINSTALLATION'
   | 'DEMO'
+  | 'PREVENTIVE_MAINTENANCE'
   | 'COMPLAINT'
-  | 'INQUIRY'
-  | 'FEEDBACK'
-  | 'OTHER';
+  | 'FILTER_CHANGE'
+  | 'INSPECTION'
+  | 'UNINSTALLATION';
 
 export interface ServiceRequest {
   id: string;
@@ -417,7 +449,7 @@ export interface ServiceRequest {
   product_id?: string;
   type: ServiceRequestType;
   status: ServiceRequestStatus;
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT' | 'CRITICAL';
   description?: string;
   scheduled_date?: string;
   technician_id?: string;

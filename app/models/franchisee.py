@@ -20,6 +20,7 @@ from sqlalchemy import (
     String, Text, Boolean, Integer, DateTime, Date,
     ForeignKey, Enum, Numeric, JSON, Index, Float,
 )
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -174,7 +175,7 @@ class Franchisee(Base):
     __tablename__ = "franchisees"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
 
     # Identification
@@ -220,10 +221,10 @@ class Franchisee(Base):
 
     # Hierarchy
     parent_franchisee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        String(36), ForeignKey("franchisees.id"), nullable=True
+        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), nullable=True
     )
     region_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        String(36), ForeignKey("regions.id"), nullable=True
+        PGUUID(as_uuid=True), ForeignKey("regions.id"), nullable=True
     )
 
     # Commercial Terms
@@ -254,13 +255,13 @@ class Franchisee(Base):
 
     # Tracking
     created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     approved_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     account_manager_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -288,10 +289,10 @@ class FranchiseeContract(Base):
     __tablename__ = "franchisee_contracts"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     franchisee_id: Mapped[uuid.UUID] = mapped_column(
-        String(36), ForeignKey("franchisees.id"), index=True
+        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
     )
 
     # Contract Details
@@ -324,20 +325,20 @@ class FranchiseeContract(Base):
 
     # Approval
     approved_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
     # Termination
     terminated_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     termination_reason: Mapped[Optional[str]] = mapped_column(Text)
     terminated_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
     notes: Mapped[Optional[str]] = mapped_column(Text)
     created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -353,10 +354,10 @@ class FranchiseeTerritory(Base):
     __tablename__ = "franchisee_territories"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     franchisee_id: Mapped[uuid.UUID] = mapped_column(
-        String(36), ForeignKey("franchisees.id"), index=True
+        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
     )
 
     # Territory Definition
@@ -385,7 +386,7 @@ class FranchiseeTerritory(Base):
 
     notes: Mapped[Optional[str]] = mapped_column(Text)
     created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -409,13 +410,13 @@ class FranchiseeServiceability(Base):
     __tablename__ = "franchisee_serviceability"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     franchisee_id: Mapped[uuid.UUID] = mapped_column(
-        String(36), ForeignKey("franchisees.id"), index=True
+        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
     )
     territory_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        String(36), ForeignKey("franchisee_territories.id"), nullable=True
+        PGUUID(as_uuid=True), ForeignKey("franchisee_territories.id"), nullable=True
     )
 
     # Pincode mapping (indexed for fast lookups)
@@ -468,10 +469,10 @@ class FranchiseePerformance(Base):
     __tablename__ = "franchisee_performance"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     franchisee_id: Mapped[uuid.UUID] = mapped_column(
-        String(36), ForeignKey("franchisees.id"), index=True
+        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
     )
 
     # Period
@@ -537,10 +538,10 @@ class FranchiseeTraining(Base):
     __tablename__ = "franchisee_trainings"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     franchisee_id: Mapped[uuid.UUID] = mapped_column(
-        String(36), ForeignKey("franchisees.id"), index=True
+        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
     )
 
     # Training Details
@@ -593,7 +594,7 @@ class FranchiseeTraining(Base):
     # Trainer
     trainer_name: Mapped[Optional[str]] = mapped_column(String(200))
     trainer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
 
     notes: Mapped[Optional[str]] = mapped_column(Text)
@@ -611,10 +612,10 @@ class FranchiseeSupport(Base):
     __tablename__ = "franchisee_support_tickets"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     franchisee_id: Mapped[uuid.UUID] = mapped_column(
-        String(36), ForeignKey("franchisees.id"), index=True
+        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
     )
 
     # Ticket Details
@@ -640,7 +641,7 @@ class FranchiseeSupport(Base):
 
     # Assignment
     assigned_to_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
@@ -651,7 +652,7 @@ class FranchiseeSupport(Base):
     # Resolution
     resolution: Mapped[Optional[str]] = mapped_column(Text)
     resolved_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     resolution_time_hours: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2))
@@ -663,7 +664,7 @@ class FranchiseeSupport(Base):
     # Escalation
     is_escalated: Mapped[bool] = mapped_column(Boolean, default=False)
     escalated_to_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     escalated_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     escalation_reason: Mapped[Optional[str]] = mapped_column(Text)
@@ -695,10 +696,10 @@ class FranchiseeSupportComment(Base):
     __tablename__ = "franchisee_support_comments"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     ticket_id: Mapped[uuid.UUID] = mapped_column(
-        String(36), ForeignKey("franchisee_support_tickets.id"), index=True
+        PGUUID(as_uuid=True), ForeignKey("franchisee_support_tickets.id"), index=True
     )
 
     comment: Mapped[str] = mapped_column(Text)
@@ -706,7 +707,7 @@ class FranchiseeSupportComment(Base):
 
     # Author
     author_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     author_type: Mapped[str] = mapped_column(String(20))  # STAFF, FRANCHISEE
     author_name: Mapped[str] = mapped_column(String(200))
@@ -724,10 +725,10 @@ class FranchiseeAudit(Base):
     __tablename__ = "franchisee_audits"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     franchisee_id: Mapped[uuid.UUID] = mapped_column(
-        String(36), ForeignKey("franchisees.id"), index=True
+        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
     )
 
     # Audit Details
@@ -743,7 +744,7 @@ class FranchiseeAudit(Base):
 
     # Auditor
     auditor_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     auditor_name: Mapped[str] = mapped_column(String(200))
 

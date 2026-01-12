@@ -12,27 +12,27 @@ from app.database import Base, TimestampMixin
 
 class TechnicianStatus(str, Enum):
     """Technician status enum."""
-    ACTIVE = "active"
-    INACTIVE = "inactive"
-    ON_LEAVE = "on_leave"
-    TRAINING = "training"
-    RESIGNED = "resigned"
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    ON_LEAVE = "ON_LEAVE"
+    TRAINING = "TRAINING"
+    RESIGNED = "RESIGNED"
 
 
 class TechnicianType(str, Enum):
     """Technician type enum."""
-    INTERNAL = "internal"  # Company employee
-    EXTERNAL = "external"  # Outsourced/Contract
-    FREELANCE = "freelance"
+    INTERNAL = "INTERNAL"  # Company employee
+    EXTERNAL = "EXTERNAL"  # Outsourced/Contract
+    FREELANCE = "FREELANCE"
 
 
 class SkillLevel(str, Enum):
     """Skill level enum."""
-    TRAINEE = "trainee"
-    JUNIOR = "junior"
-    SENIOR = "senior"
-    EXPERT = "expert"
-    MASTER = "master"
+    TRAINEE = "TRAINEE"
+    JUNIOR = "JUNIOR"
+    SENIOR = "SENIOR"
+    EXPERT = "EXPERT"
+    MASTER = "MASTER"
 
 
 class Technician(Base, TimestampMixin):

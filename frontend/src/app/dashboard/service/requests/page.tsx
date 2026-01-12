@@ -22,9 +22,10 @@ import { formatDate } from '@/lib/utils';
 
 const priorityColors: Record<string, string> = {
   LOW: 'bg-gray-100 text-gray-800',
-  MEDIUM: 'bg-blue-100 text-blue-800',
+  NORMAL: 'bg-blue-100 text-blue-800',
   HIGH: 'bg-orange-100 text-orange-800',
   URGENT: 'bg-red-100 text-red-800',
+  CRITICAL: 'bg-purple-100 text-purple-800',
 };
 
 const getColumns = (router: ReturnType<typeof useRouter>): ColumnDef<ServiceRequest>[] => [

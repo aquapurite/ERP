@@ -34,18 +34,23 @@ interface ServiceRequestForm {
 
 const serviceTypes = [
   { value: 'INSTALLATION', label: 'Installation' },
-  { value: 'REPAIR', label: 'Repair' },
-  { value: 'MAINTENANCE', label: 'Maintenance' },
+  { value: 'WARRANTY_REPAIR', label: 'Warranty Repair' },
+  { value: 'PAID_REPAIR', label: 'Paid Repair' },
   { value: 'AMC_SERVICE', label: 'AMC Service' },
+  { value: 'DEMO', label: 'Demo' },
+  { value: 'PREVENTIVE_MAINTENANCE', label: 'Preventive Maintenance' },
   { value: 'COMPLAINT', label: 'Complaint' },
-  { value: 'ENQUIRY', label: 'Enquiry' },
+  { value: 'FILTER_CHANGE', label: 'Filter Change' },
+  { value: 'INSPECTION', label: 'Inspection' },
+  { value: 'UNINSTALLATION', label: 'Uninstallation' },
 ];
 
 const priorities = [
   { value: 'LOW', label: 'Low' },
-  { value: 'MEDIUM', label: 'Medium' },
+  { value: 'NORMAL', label: 'Normal' },
   { value: 'HIGH', label: 'High' },
   { value: 'URGENT', label: 'Urgent' },
+  { value: 'CRITICAL', label: 'Critical' },
 ];
 
 const serviceRequestsApi = {
@@ -69,7 +74,7 @@ export default function NewServiceRequestPage() {
     customer_id: '',
     customer_phone: '',
     type: '',
-    priority: 'MEDIUM',
+    priority: 'NORMAL',
     subject: '',
     description: '',
     product_id: '',

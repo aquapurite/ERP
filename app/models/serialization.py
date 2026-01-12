@@ -11,23 +11,25 @@ Barcode Structure: APFSZAIEL000001 (15 characters)
 """
 
 import enum
+import uuid
 from datetime import datetime
 from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, ForeignKey, Text, Enum, JSON, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.database import Base
 
 
 class SerialStatus(str, enum.Enum):
     """Status of a serial/barcode"""
-    GENERATED = "generated"      # Serial generated, not yet printed
-    PRINTED = "printed"          # Barcode printed/exported
-    SENT_TO_VENDOR = "sent_to_vendor"  # Sent to vendor for application
-    RECEIVED = "received"        # Received in GRN, scanned
-    ASSIGNED = "assigned"        # Assigned to stock item
-    SOLD = "sold"               # Item sold to customer
-    RETURNED = "returned"        # Item returned
-    DAMAGED = "damaged"          # Item damaged/scrapped
-    CANCELLED = "cancelled"      # Serial cancelled
+    GENERATED = "GENERATED"      # Serial generated, not yet printed
+    PRINTED = "PRINTED"          # Barcode printed/exported
+    SENT_TO_VENDOR = "SENT_TO_VENDOR"  # Sent to vendor for application
+    RECEIVED = "RECEIVED"        # Received in GRN, scanned
+    ASSIGNED = "ASSIGNED"        # Assigned to stock item
+    SOLD = "SOLD"               # Item sold to customer
+    RETURNED = "RETURNED"        # Item returned
+    DAMAGED = "DAMAGED"          # Item damaged/scrapped
+    CANCELLED = "CANCELLED"      # Serial cancelled
 
 
 class ItemType(str, enum.Enum):
@@ -45,10 +47,10 @@ class SerialSequence(Base):
     """
     __tablename__ = "serial_sequences"
 
-    id = Column(String(36), primary_key=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # Product identification
-    product_id = Column(String(36), ForeignKey("products.id"), nullable=True)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=True)
     model_code = Column(String(10), nullable=False, index=True)  # IEL, IPR, PRG, etc.
     item_type = Column(Enum(ItemType), default=ItemType.FINISHED_GOODS)
 
@@ -91,10 +93,10 @@ class ProductSerialSequence(Base):
     """
     __tablename__ = "product_serial_sequences"
 
-    id = Column(String(36), primary_key=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # Product identification - unique per (model_code + item_type) combination
-    product_id = Column(String(36), ForeignKey("products.id"), nullable=True)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=True)
     model_code = Column(String(10), nullable=False, index=True)  # IEL, ELG, AUR, MTR, etc.
     item_type = Column(Enum(ItemType), nullable=False, default=ItemType.FINISHED_GOODS)
 
@@ -142,14 +144,14 @@ class POSerial(Base):
     """
     __tablename__ = "po_serials"
 
-    id = Column(String(36), primary_key=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # PO linkage
-    po_id = Column(String(36), ForeignKey("purchase_orders.id"), nullable=False, index=True)
-    po_item_id = Column(String(36), ForeignKey("purchase_order_items.id"), nullable=True)
+    po_id = Column(UUID(as_uuid=True), ForeignKey("purchase_orders.id"), nullable=False, index=True)
+    po_item_id = Column(UUID(as_uuid=True), ForeignKey("purchase_order_items.id"), nullable=True)
 
     # Product identification
-    product_id = Column(String(36), ForeignKey("products.id"), nullable=True)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=True)
     product_sku = Column(String(50), nullable=True)
     model_code = Column(String(10), nullable=False)
     item_type = Column(Enum(ItemType), default=ItemType.FINISHED_GOODS)
@@ -168,20 +170,20 @@ class POSerial(Base):
     status = Column(Enum(SerialStatus), default=SerialStatus.GENERATED)
 
     # GRN linkage (when received)
-    grn_id = Column(String(36), ForeignKey("goods_receipt_notes.id"), nullable=True)
-    grn_item_id = Column(String(36), nullable=True)
+    grn_id = Column(UUID(as_uuid=True), ForeignKey("goods_receipt_notes.id"), nullable=True)
+    grn_item_id = Column(UUID(as_uuid=True), nullable=True)
     received_at = Column(DateTime, nullable=True)
-    received_by = Column(String(36), nullable=True)
+    received_by = Column(UUID(as_uuid=True), nullable=True)
 
     # Stock item linkage (when assigned to inventory)
-    stock_item_id = Column(String(36), ForeignKey("stock_items.id"), nullable=True)
+    stock_item_id = Column(UUID(as_uuid=True), ForeignKey("stock_items.id"), nullable=True)
     assigned_at = Column(DateTime, nullable=True)
 
     # Sale linkage (when sold)
-    order_id = Column(String(36), nullable=True)
-    order_item_id = Column(String(36), nullable=True)
+    order_id = Column(UUID(as_uuid=True), nullable=True)
+    order_item_id = Column(UUID(as_uuid=True), nullable=True)
     sold_at = Column(DateTime, nullable=True)
-    customer_id = Column(String(36), nullable=True)
+    customer_id = Column(UUID(as_uuid=True), nullable=True)
 
     # Warranty tracking
     warranty_start_date = Column(DateTime, nullable=True)
@@ -209,10 +211,10 @@ class ModelCodeReference(Base):
     """
     __tablename__ = "model_code_references"
 
-    id = Column(String(36), primary_key=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # Product linkage
-    product_id = Column(String(36), ForeignKey("products.id"), nullable=True, unique=True)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=True, unique=True)
     product_sku = Column(String(50), nullable=True, index=True)
 
     # FG/Item Code (full code like WPRAIEL001)
@@ -248,10 +250,10 @@ class SupplierCode(Base):
     """
     __tablename__ = "supplier_codes"
 
-    id = Column(String(36), primary_key=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # Vendor linkage
-    vendor_id = Column(String(36), ForeignKey("vendors.id"), nullable=True, unique=True)
+    vendor_id = Column(UUID(as_uuid=True), ForeignKey("vendors.id"), nullable=True, unique=True)
 
     # 2-letter supplier code
     code = Column(String(2), unique=True, nullable=False, index=True)

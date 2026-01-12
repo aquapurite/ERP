@@ -11,11 +11,11 @@ from app.database import Base, TimestampMixin
 
 class WarehouseType(str, Enum):
     """Warehouse type enum."""
-    MAIN = "main"  # Central warehouse
-    REGIONAL = "regional"  # Regional distribution center
-    SERVICE_CENTER = "service_center"  # Service center warehouse
-    DEALER = "dealer"  # Dealer warehouse
-    VIRTUAL = "virtual"  # Virtual/Transit warehouse
+    MAIN = "MAIN"  # Central warehouse
+    REGIONAL = "REGIONAL"  # Regional distribution center
+    SERVICE_CENTER = "SERVICE_CENTER"  # Service center warehouse
+    DEALER = "DEALER"  # Dealer warehouse
+    VIRTUAL = "VIRTUAL"  # Virtual/Transit warehouse
 
 
 class Warehouse(Base, TimestampMixin):

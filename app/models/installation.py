@@ -1,7 +1,7 @@
 """Installation and Warranty model."""
 from enum import Enum
 from datetime import datetime, date
-from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float, JSON
+from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float, JSON, Numeric
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -12,12 +12,12 @@ from app.database import Base, TimestampMixin
 
 class InstallationStatus(str, Enum):
     """Installation status enum."""
-    PENDING = "pending"
-    SCHEDULED = "scheduled"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
-    FAILED = "failed"
+    PENDING = "PENDING"
+    SCHEDULED = "SCHEDULED"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+    FAILED = "FAILED"
 
 
 class Installation(Base, TimestampMixin):
@@ -177,12 +177,12 @@ class WarrantyClaim(Base, TimestampMixin):
     resolution_type = Column(String(50))  # repaired, replaced, refunded
     resolution_notes = Column(Text)
     replacement_serial = Column(String(100))  # If replaced
-    refund_amount = Column(Float)  # If refunded
+    refund_amount = Column(Numeric(12, 2))  # If refunded
 
     # Costs (internal tracking)
-    parts_cost = Column(Float, default=0)
-    labor_cost = Column(Float, default=0)
-    total_cost = Column(Float, default=0)
+    parts_cost = Column(Numeric(12, 2), default=0)
+    labor_cost = Column(Numeric(12, 2), default=0)
+    total_cost = Column(Numeric(12, 2), default=0)
 
     # Dates
     claim_date = Column(Date)
