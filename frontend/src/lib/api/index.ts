@@ -602,7 +602,7 @@ export const purchaseRequisitionsApi = {
   },
   list: async (params?: { page?: number; size?: number; status?: string; warehouse_id?: string }) => {
     const queryParams: Record<string, unknown> = {};
-    if (params?.page !== undefined) queryParams.skip = (params.page) * (params.size || 50);
+    if (params?.page !== undefined) queryParams.skip = (params.page - 1) * (params.size || 50);
     if (params?.size) queryParams.limit = params.size;
     if (params?.status) queryParams.status = params.status;
     if (params?.warehouse_id) queryParams.warehouse_id = params.warehouse_id;
