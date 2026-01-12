@@ -233,38 +233,62 @@ export default function AMCPage() {
 
   // Mutations
   const createContractMutation = useMutation({
-    mutationFn: async (data: typeof contractForm) => data,
+    mutationFn: async (data: typeof contractForm) => {
+      // TODO: Implement actual API call - amcApi.createContract(data)
+      return data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['amc-contracts'] });
       toast.success('AMC contract created');
       setIsCreateContractOpen(false);
       setContractForm({ customer_phone: '', serial_number: '', plan_id: '', auto_renew: true });
     },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to create AMC contract');
+    },
   });
 
   const createPlanMutation = useMutation({
-    mutationFn: async (data: typeof planForm) => data,
+    mutationFn: async (data: typeof planForm) => {
+      // TODO: Implement actual API call - amcApi.createPlan(data)
+      return data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['amc-plans'] });
       toast.success('AMC plan created');
       setIsCreatePlanOpen(false);
     },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to create AMC plan');
+    },
   });
 
   const activateContractMutation = useMutation({
-    mutationFn: async (contractId: string) => contractId,
+    mutationFn: async (contractId: string) => {
+      // TODO: Implement actual API call - amcApi.activateContract(contractId)
+      return contractId;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['amc-contracts'] });
       toast.success('Contract activated');
     },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to activate contract');
+    },
   });
 
   const renewContractMutation = useMutation({
-    mutationFn: async (data: { contractId: string; planId: string }) => data,
+    mutationFn: async (data: { contractId: string; planId: string }) => {
+      // TODO: Implement actual API call - amcApi.renewContract(data)
+      return data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['amc-contracts'] });
       toast.success('Contract renewed successfully');
       setIsRenewOpen(false);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to renew contract');
     },
   });
 

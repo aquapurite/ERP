@@ -339,6 +339,8 @@ export default function FranchiseeDetailPage({ params }: { params: Promise<{ id:
   // Mutations
   const createTicketMutation = useMutation({
     mutationFn: async (data: typeof ticketForm) => {
+      // TODO: Implement actual API call when endpoint is available
+      // const { data: result } = await apiClient.post(`/franchisees/${id}/tickets`, data);
       return data;
     },
     onSuccess: () => {
@@ -347,10 +349,15 @@ export default function FranchiseeDetailPage({ params }: { params: Promise<{ id:
       setIsNewTicketOpen(false);
       setTicketForm({ subject: '', category: 'OPERATIONAL', priority: 'MEDIUM', description: '' });
     },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to create support ticket');
+    },
   });
 
   const scheduleAuditMutation = useMutation({
     mutationFn: async (data: typeof auditForm) => {
+      // TODO: Implement actual API call when endpoint is available
+      // const { data: result } = await apiClient.post(`/franchisees/${id}/audits`, data);
       return data;
     },
     onSuccess: () => {
@@ -358,6 +365,9 @@ export default function FranchiseeDetailPage({ params }: { params: Promise<{ id:
       toast.success('Audit scheduled');
       setIsScheduleAuditOpen(false);
       setAuditForm({ type: 'OPERATIONAL', scheduled_date: '', auditor_name: '' });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to schedule audit');
     },
   });
 

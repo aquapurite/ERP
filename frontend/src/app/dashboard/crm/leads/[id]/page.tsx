@@ -287,6 +287,7 @@ export default function LeadDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['lead', id] });
       toast.success('Temperature updated');
     },
+    onError: () => toast.error('Failed to update temperature'),
   });
 
   const qualifyMutation = useMutation({
@@ -344,6 +345,7 @@ export default function LeadDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['lead', id] });
       toast.success('Score recalculated');
     },
+    onError: () => toast.error('Failed to recalculate score'),
   });
 
   const scheduleFollowupMutation = useMutation({

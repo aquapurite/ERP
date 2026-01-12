@@ -160,6 +160,9 @@ export default function VendorInvoicesPage() {
       queryClient.invalidateQueries({ queryKey: ['vendor-invoices'] });
       toast.success('Invoice approved');
     },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to approve invoice');
+    },
   });
 
   const matchMutation = useMutation({
@@ -167,6 +170,9 @@ export default function VendorInvoicesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vendor-invoices'] });
       toast.success('3-Way match initiated');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to initiate 3-way match');
     },
   });
 

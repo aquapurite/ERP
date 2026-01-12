@@ -288,7 +288,8 @@ export default function DealerDetailPage({ params }: { params: Promise<{ id: str
   // Mutations
   const addTerritoryMutation = useMutation({
     mutationFn: async (data: { pincode: string; is_exclusive: boolean }) => {
-      // API call
+      // TODO: Implement actual API call when endpoint is available
+      // const { data: result } = await apiClient.post(`/dealers/${id}/territories`, data);
       return data;
     },
     onSuccess: () => {
@@ -297,10 +298,15 @@ export default function DealerDetailPage({ params }: { params: Promise<{ id: str
       setIsAddTerritoryOpen(false);
       setTerritoryForm({ pincode: '', is_exclusive: false });
     },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to add territory');
+    },
   });
 
   const addCreditMutation = useMutation({
     mutationFn: async (data: { type: string; amount: number; description: string }) => {
+      // TODO: Implement actual API call when endpoint is available
+      // const { data: result } = await apiClient.post(`/dealers/${id}/credit-adjustments`, data);
       return data;
     },
     onSuccess: () => {
@@ -309,10 +315,15 @@ export default function DealerDetailPage({ params }: { params: Promise<{ id: str
       setIsAddCreditOpen(false);
       setCreditForm({ type: 'CREDIT', amount: '', description: '' });
     },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to record credit adjustment');
+    },
   });
 
   const addTargetMutation = useMutation({
     mutationFn: async (data: { period: string; period_type: string; target_amount: number; target_quantity: number }) => {
+      // TODO: Implement actual API call when endpoint is available
+      // const { data: result } = await apiClient.post(`/dealers/${id}/targets`, data);
       return data;
     },
     onSuccess: () => {
@@ -321,15 +332,23 @@ export default function DealerDetailPage({ params }: { params: Promise<{ id: str
       setIsAddTargetOpen(false);
       setTargetForm({ period: '', period_type: 'MONTHLY', target_amount: '', target_quantity: '' });
     },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to assign target');
+    },
   });
 
   const removeTerritoryMutation = useMutation({
     mutationFn: async (territoryId: string) => {
+      // TODO: Implement actual API call when endpoint is available
+      // await apiClient.delete(`/dealers/${id}/territories/${territoryId}`);
       return territoryId;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dealer', id] });
       toast.success('Territory removed');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to remove territory');
     },
   });
 

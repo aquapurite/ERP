@@ -356,8 +356,13 @@ export const customersApi = {
     try {
       const { data } = await apiClient.get<Customer>(`/customers/phone/${encodeURIComponent(phone)}`);
       return data;
-    } catch {
-      return null;
+    } catch (error) {
+      // Only return null for 404 (not found), throw for other errors
+      if ((error as { response?: { status?: number } })?.response?.status === 404) {
+        return null;
+      }
+      console.error('Failed to fetch customer by phone:', error);
+      throw error;
     }
   },
 };
@@ -387,7 +392,7 @@ export const warehousesApi = {
     const payload = {
       name: warehouse.name,
       code: warehouse.code,
-      warehouse_type: warehouse.type?.toLowerCase() || 'main',
+      warehouse_type: (warehouse.type || 'MAIN').toUpperCase(),
       address_line1: warehouse.address || '',
       city: warehouse.city,
       state: warehouse.state,
@@ -413,7 +418,7 @@ export const warehousesApi = {
     const payload: Record<string, unknown> = {};
     if (warehouse.name !== undefined) payload.name = warehouse.name;
     if (warehouse.code !== undefined) payload.code = warehouse.code;
-    if (warehouse.type !== undefined) payload.warehouse_type = warehouse.type.toLowerCase();
+    if (warehouse.type !== undefined) payload.warehouse_type = warehouse.type.toUpperCase();
     if (warehouse.address !== undefined) payload.address_line1 = warehouse.address;
     if (warehouse.city !== undefined) payload.city = warehouse.city;
     if (warehouse.state !== undefined) payload.state = warehouse.state;
@@ -841,48 +846,44 @@ export const dealersApi = {
 export const dashboardApi = {
   getStats: async () => {
     // Aggregate stats from multiple real endpoints
-    try {
-      const [ordersRes, productsRes, inventoryRes, serviceRes] = await Promise.allSettled([
-        apiClient.get('/orders/stats'),
-        apiClient.get('/products/stats'),
-        apiClient.get('/inventory/stats'),
-        apiClient.get('/service-requests/stats'),
-      ]);
+    const [ordersRes, productsRes, inventoryRes, serviceRes] = await Promise.allSettled([
+      apiClient.get('/orders/stats'),
+      apiClient.get('/products/stats'),
+      apiClient.get('/inventory/stats'),
+      apiClient.get('/service-requests/stats'),
+    ]);
 
-      const ordersData = ordersRes.status === 'fulfilled' ? ordersRes.value.data : {};
-      const productsData = productsRes.status === 'fulfilled' ? productsRes.value.data : {};
-      const inventoryData = inventoryRes.status === 'fulfilled' ? inventoryRes.value.data : {};
-      const serviceData = serviceRes.status === 'fulfilled' ? serviceRes.value.data : {};
+    // Log any failed requests for debugging
+    if (ordersRes.status === 'rejected') console.warn('Orders stats failed:', ordersRes.reason);
+    if (productsRes.status === 'rejected') console.warn('Products stats failed:', productsRes.reason);
+    if (inventoryRes.status === 'rejected') console.warn('Inventory stats failed:', inventoryRes.reason);
+    if (serviceRes.status === 'rejected') console.warn('Service stats failed:', serviceRes.reason);
 
-      return {
-        total_orders: ordersData.total || 0,
-        total_revenue: ordersData.total_revenue || 0,
-        pending_orders: ordersData.pending || 0,
-        total_products: productsData.total || 0,
-        total_customers: ordersData.total_customers || 0,
-        low_stock_items: inventoryData.low_stock_count || 0,
-        pending_service_requests: serviceData.pending || 0,
-        shipments_in_transit: ordersData.in_transit || 0,
-        orders_change: ordersData.change_percent || 0,
-        revenue_change: ordersData.revenue_change_percent || 0,
-        customers_change: ordersData.customers_change_percent || 0,
-      };
-    } catch {
-      // Return defaults if APIs fail
-      return {
-        total_orders: 0,
-        total_revenue: 0,
-        pending_orders: 0,
-        total_products: 0,
-        total_customers: 0,
-        low_stock_items: 0,
-        pending_service_requests: 0,
-        shipments_in_transit: 0,
-        orders_change: 0,
-        revenue_change: 0,
-        customers_change: 0,
-      };
-    }
+    const ordersData = ordersRes.status === 'fulfilled' ? ordersRes.value.data : {};
+    const productsData = productsRes.status === 'fulfilled' ? productsRes.value.data : {};
+    const inventoryData = inventoryRes.status === 'fulfilled' ? inventoryRes.value.data : {};
+    const serviceData = serviceRes.status === 'fulfilled' ? serviceRes.value.data : {};
+
+    return {
+      total_orders: ordersData.total || 0,
+      total_revenue: ordersData.total_revenue || 0,
+      pending_orders: ordersData.pending || 0,
+      total_products: productsData.total || 0,
+      total_customers: ordersData.total_customers || 0,
+      low_stock_items: inventoryData.low_stock_count || 0,
+      pending_service_requests: serviceData.pending || 0,
+      shipments_in_transit: ordersData.in_transit || 0,
+      orders_change: ordersData.change_percent || 0,
+      revenue_change: ordersData.revenue_change_percent || 0,
+      customers_change: ordersData.customers_change_percent || 0,
+      // Include error flags so UI can show warnings
+      _errors: {
+        orders: ordersRes.status === 'rejected',
+        products: productsRes.status === 'rejected',
+        inventory: inventoryRes.status === 'rejected',
+        service: serviceRes.status === 'rejected',
+      },
+    };
   },
   getOrderStats: async () => {
     const { data } = await apiClient.get('/orders/stats');
@@ -900,16 +901,28 @@ export const approvalsApi = {
     try {
       const { data } = await apiClient.get('/approvals/pending');
       return data;
-    } catch {
-      return { items: [], total: 0 };
+    } catch (error) {
+      // Return empty with error flag for 404 (endpoint may not exist yet)
+      if ((error as { response?: { status?: number } })?.response?.status === 404) {
+        console.warn('Approvals pending endpoint not available');
+        return { items: [], total: 0, _notAvailable: true };
+      }
+      console.error('Failed to fetch pending approvals:', error);
+      throw error;
     }
   },
   getDashboard: async () => {
     try {
       const { data } = await apiClient.get('/approvals/dashboard');
       return data;
-    } catch {
-      return { pending: 0, approved: 0, rejected: 0 };
+    } catch (error) {
+      // Return defaults with error flag for 404
+      if ((error as { response?: { status?: number } })?.response?.status === 404) {
+        console.warn('Approvals dashboard endpoint not available');
+        return { pending: 0, approved: 0, rejected: 0, _notAvailable: true };
+      }
+      console.error('Failed to fetch approvals dashboard:', error);
+      throw error;
     }
   },
   approve: async (id: string) => {
@@ -922,15 +935,26 @@ export const approvalsApi = {
   },
 };
 
-// Audit Logs API - Note: No dedicated audit-logs endpoint in backend
+// Audit Logs API
 export const auditLogsApi = {
   list: async (params?: { page?: number; size?: number; entity_type?: string; user_id?: string; action?: string }) => {
     try {
-      // Try to get from access-control activity logs
-      const { data } = await apiClient.get('/access-control/access/user-access-summary', { params });
-      return { items: data.activity || [], total: 0, pages: 0 };
-    } catch {
-      return { items: [], total: 0, pages: 0 };
+      // Try the dedicated audit logs endpoint first
+      const { data } = await apiClient.get('/audit-logs', { params });
+      return data;
+    } catch (error) {
+      // Fallback to access-control activity logs if audit-logs doesn't exist
+      if ((error as { response?: { status?: number } })?.response?.status === 404) {
+        try {
+          const { data } = await apiClient.get('/access-control/access/user-access-summary', { params });
+          return { items: data.activity || [], total: data.activity?.length || 0, pages: 1 };
+        } catch (fallbackError) {
+          console.warn('Audit logs endpoints not available:', fallbackError);
+          return { items: [], total: 0, pages: 0, _notAvailable: true };
+        }
+      }
+      console.error('Failed to fetch audit logs:', error);
+      throw error;
     }
   },
 };
