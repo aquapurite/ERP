@@ -2446,6 +2446,123 @@ export interface SalaryRegisterResponse {
   employees: SalaryRegisterEmployee[];
 }
 
+// Performance Management Types
+export interface PerformanceDashboardStats {
+  active_cycles: number;
+  pending_self_reviews: number;
+  pending_manager_reviews: number;
+  pending_hr_reviews: number;
+  total_goals: number;
+  completed_goals: number;
+  in_progress_goals: number;
+  overdue_goals: number;
+  rating_distribution: Array<{ band: string; count: number }>;
+  recent_feedback_count: number;
+}
+
+export interface AppraisalCycle {
+  id: string;
+  name: string;
+  description: string | null;
+  financial_year: string;
+  start_date: string;
+  end_date: string;
+  review_start_date: string | null;
+  review_end_date: string | null;
+  status: 'DRAFT' | 'ACTIVE' | 'CLOSED';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KPI {
+  id: string;
+  name: string;
+  description: string | null;
+  category: string;
+  unit_of_measure: string;
+  target_value: number | null;
+  weightage: number;
+  department_id: string | null;
+  department_name: string | null;
+  designation: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface Goal {
+  id: string;
+  employee_id: string;
+  cycle_id: string;
+  title: string;
+  description: string | null;
+  category: string;
+  kpi_id: string | null;
+  kpi_name: string | null;
+  target_value: number | null;
+  achieved_value: number | null;
+  unit_of_measure: string | null;
+  weightage: number;
+  start_date: string;
+  due_date: string;
+  completed_date: string | null;
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  completion_percentage: number;
+  employee_name: string | null;
+  employee_code: string | null;
+  cycle_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Appraisal {
+  id: string;
+  employee_id: string;
+  cycle_id: string;
+  status: 'NOT_STARTED' | 'SELF_REVIEW' | 'MANAGER_REVIEW' | 'HR_REVIEW' | 'COMPLETED';
+  self_rating: number | null;
+  self_comments: string | null;
+  self_review_date: string | null;
+  manager_id: string | null;
+  manager_rating: number | null;
+  manager_comments: string | null;
+  manager_review_date: string | null;
+  final_rating: number | null;
+  performance_band: string | null;
+  goals_achieved: number;
+  goals_total: number;
+  overall_goal_score: number | null;
+  strengths: string | null;
+  areas_of_improvement: string | null;
+  development_plan: string | null;
+  recommended_for_promotion: boolean;
+  recommended_increment_percentage: number | null;
+  hr_reviewed_by: string | null;
+  hr_review_date: string | null;
+  hr_comments: string | null;
+  employee_name: string | null;
+  employee_code: string | null;
+  manager_name: string | null;
+  cycle_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PerformanceFeedback {
+  id: string;
+  employee_id: string;
+  given_by: string;
+  feedback_type: 'APPRECIATION' | 'IMPROVEMENT' | 'SUGGESTION';
+  title: string;
+  content: string;
+  is_private: boolean;
+  goal_id: string | null;
+  employee_name: string | null;
+  employee_code: string | null;
+  given_by_name: string | null;
+  goal_title: string | null;
+  created_at: string;
+}
+
 // HR API
 export const hrApi = {
   // Dashboard
@@ -2631,6 +2748,111 @@ export const hrApi = {
     getSalaryRegister: async (params: { payroll_month: string; department_id?: string }) => {
       const { data } = await apiClient.get<SalaryRegisterResponse>('/hr/reports/salary-register', { params });
       return data;
+    },
+  },
+
+  // Performance Management
+  performance: {
+    // Dashboard
+    getDashboard: async () => {
+      const { data } = await apiClient.get<PerformanceDashboardStats>('/hr/performance/dashboard');
+      return data;
+    },
+
+    // Appraisal Cycles
+    cycles: {
+      list: async (params?: { page?: number; size?: number; status?: string; financial_year?: string }) => {
+        const { data } = await apiClient.get<{ items: AppraisalCycle[]; total: number; page: number; size: number; pages: number }>('/hr/performance/cycles', { params });
+        return data;
+      },
+      getById: async (id: string) => {
+        const { data } = await apiClient.get<AppraisalCycle>(`/hr/performance/cycles/${id}`);
+        return data;
+      },
+      create: async (cycle: { name: string; description?: string; financial_year: string; start_date: string; end_date: string; review_start_date?: string; review_end_date?: string }) => {
+        const { data } = await apiClient.post<AppraisalCycle>('/hr/performance/cycles', cycle);
+        return data;
+      },
+      update: async (id: string, cycle: Partial<{ name: string; description: string; start_date: string; end_date: string; review_start_date: string; review_end_date: string; status: string }>) => {
+        const { data } = await apiClient.put<AppraisalCycle>(`/hr/performance/cycles/${id}`, cycle);
+        return data;
+      },
+    },
+
+    // KPIs
+    kpis: {
+      list: async (params?: { page?: number; size?: number; category?: string; department_id?: string; is_active?: boolean }) => {
+        const { data } = await apiClient.get<{ items: KPI[]; total: number; page: number; size: number; pages: number }>('/hr/performance/kpis', { params });
+        return data;
+      },
+      create: async (kpi: { name: string; description?: string; category: string; unit_of_measure: string; target_value?: number; weightage?: number; department_id?: string; designation?: string }) => {
+        const { data } = await apiClient.post<KPI>('/hr/performance/kpis', kpi);
+        return data;
+      },
+      update: async (id: string, kpi: Partial<{ name: string; description: string; category: string; unit_of_measure: string; target_value: number; weightage: number; department_id: string; designation: string; is_active: boolean }>) => {
+        const { data } = await apiClient.put<KPI>(`/hr/performance/kpis/${id}`, kpi);
+        return data;
+      },
+    },
+
+    // Goals
+    goals: {
+      list: async (params?: { page?: number; size?: number; employee_id?: string; cycle_id?: string; status?: string; category?: string }) => {
+        const { data } = await apiClient.get<{ items: Goal[]; total: number; page: number; size: number; pages: number }>('/hr/performance/goals', { params });
+        return data;
+      },
+      getById: async (id: string) => {
+        const { data } = await apiClient.get<Goal>(`/hr/performance/goals/${id}`);
+        return data;
+      },
+      create: async (goal: { employee_id: string; cycle_id: string; title: string; description?: string; category: string; kpi_id?: string; target_value?: number; unit_of_measure?: string; weightage?: number; start_date: string; due_date: string }) => {
+        const { data } = await apiClient.post<Goal>('/hr/performance/goals', goal);
+        return data;
+      },
+      update: async (id: string, goal: Partial<{ title: string; description: string; category: string; target_value: number; achieved_value: number; unit_of_measure: string; weightage: number; start_date: string; due_date: string; completed_date: string; status: string; completion_percentage: number }>) => {
+        const { data } = await apiClient.put<Goal>(`/hr/performance/goals/${id}`, goal);
+        return data;
+      },
+    },
+
+    // Appraisals
+    appraisals: {
+      list: async (params?: { page?: number; size?: number; employee_id?: string; cycle_id?: string; status?: string; manager_id?: string }) => {
+        const { data } = await apiClient.get<{ items: Appraisal[]; total: number; page: number; size: number; pages: number }>('/hr/performance/appraisals', { params });
+        return data;
+      },
+      getById: async (id: string) => {
+        const { data } = await apiClient.get<Appraisal>(`/hr/performance/appraisals/${id}`);
+        return data;
+      },
+      create: async (appraisal: { employee_id: string; cycle_id: string; manager_id?: string }) => {
+        const { data } = await apiClient.post<Appraisal>('/hr/performance/appraisals', appraisal);
+        return data;
+      },
+      submitSelfReview: async (id: string, review: { self_rating: number; self_comments?: string }) => {
+        const { data } = await apiClient.put<Appraisal>(`/hr/performance/appraisals/${id}/self-review`, review);
+        return data;
+      },
+      submitManagerReview: async (id: string, review: { manager_rating: number; manager_comments?: string; strengths?: string; areas_of_improvement?: string; development_plan?: string; recommended_for_promotion?: boolean; recommended_increment_percentage?: number }) => {
+        const { data } = await apiClient.put<Appraisal>(`/hr/performance/appraisals/${id}/manager-review`, review);
+        return data;
+      },
+      submitHRReview: async (id: string, review: { final_rating: number; performance_band: string; hr_comments?: string }) => {
+        const { data } = await apiClient.put<Appraisal>(`/hr/performance/appraisals/${id}/hr-review`, review);
+        return data;
+      },
+    },
+
+    // Feedback
+    feedback: {
+      list: async (params?: { page?: number; size?: number; employee_id?: string; feedback_type?: string }) => {
+        const { data } = await apiClient.get<{ items: PerformanceFeedback[]; total: number; page: number; size: number; pages: number }>('/hr/performance/feedback', { params });
+        return data;
+      },
+      create: async (feedback: { employee_id: string; feedback_type: string; title: string; content: string; is_private?: boolean; goal_id?: string }) => {
+        const { data } = await apiClient.post<PerformanceFeedback>('/hr/performance/feedback', feedback);
+        return data;
+      },
     },
   },
 };

@@ -196,6 +196,7 @@ export const navigation: NavItem[] = [
       { title: 'Attendance', href: '/dashboard/hr/attendance', icon: Calendar, permissions: ['ATTENDANCE_VIEW'] },
       { title: 'Leave Management', href: '/dashboard/hr/leaves', icon: Clock, permissions: ['LEAVE_VIEW'] },
       { title: 'Payroll', href: '/dashboard/hr/payroll', icon: CreditCard, permissions: ['PAYROLL_VIEW'] },
+      { title: 'Performance', href: '/dashboard/hr/performance', icon: TrendingUp, permissions: ['HR_VIEW'] },
     ],
   },
   {

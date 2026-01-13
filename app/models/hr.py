@@ -901,3 +901,418 @@ class Payslip(Base):
 
     def __repr__(self) -> str:
         return f"<Payslip(number='{self.payslip_number}', net={self.net_salary})>"
+
+
+# ==================== Performance Management ====================
+
+class AppraisalCycleStatus(str, Enum):
+    """Appraisal cycle status."""
+    DRAFT = "DRAFT"
+    ACTIVE = "ACTIVE"
+    CLOSED = "CLOSED"
+
+
+class GoalStatus(str, Enum):
+    """Goal status."""
+    PENDING = "PENDING"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+
+
+class AppraisalStatus(str, Enum):
+    """Appraisal status."""
+    NOT_STARTED = "NOT_STARTED"
+    SELF_REVIEW = "SELF_REVIEW"
+    MANAGER_REVIEW = "MANAGER_REVIEW"
+    HR_REVIEW = "HR_REVIEW"
+    COMPLETED = "COMPLETED"
+
+
+class AppraisalCycle(Base):
+    """
+    Appraisal cycle/period for performance reviews.
+    Typically annual or semi-annual.
+    """
+    __tablename__ = "appraisal_cycles"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Cycle Details
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    financial_year: Mapped[str] = mapped_column(String(10), nullable=False)
+
+    # Dates
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    review_start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    review_end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+
+    # Status
+    status: Mapped[AppraisalCycleStatus] = mapped_column(
+        SQLEnum(AppraisalCycleStatus),
+        default=AppraisalCycleStatus.DRAFT,
+        nullable=False
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    appraisals: Mapped[List["Appraisal"]] = relationship("Appraisal", back_populates="cycle")
+
+    def __repr__(self) -> str:
+        return f"<AppraisalCycle(name='{self.name}', year='{self.financial_year}')>"
+
+
+class KPI(Base):
+    """
+    Key Performance Indicator templates.
+    Used for goal setting and performance measurement.
+    """
+    __tablename__ = "kpis"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # KPI Details
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    category: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="SALES, QUALITY, PRODUCTIVITY, CUSTOMER, LEARNING"
+    )
+
+    # Measurement
+    unit_of_measure: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="PERCENTAGE, NUMBER, CURRENCY, RATING"
+    )
+    target_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    weightage: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2),
+        default=Decimal("0"),
+        comment="Weightage in overall performance"
+    )
+
+    # Applicability
+    department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("departments.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Department-specific KPI"
+    )
+    designation: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="Role-specific KPI"
+    )
+
+    # Status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<KPI(name='{self.name}', category='{self.category}')>"
+
+
+class Goal(Base):
+    """
+    Individual employee goals for a performance period.
+    """
+    __tablename__ = "goals"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Employee & Cycle
+    employee_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("employees.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    cycle_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("appraisal_cycles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Goal Details
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    category: Mapped[str] = mapped_column(String(50), nullable=False)
+
+    # Linked KPI (optional)
+    kpi_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("kpis.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Target
+    target_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    achieved_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    unit_of_measure: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    weightage: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2),
+        default=Decimal("0"),
+        comment="Weightage in overall performance"
+    )
+
+    # Timeline
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    due_date: Mapped[date] = mapped_column(Date, nullable=False)
+    completed_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+
+    # Status
+    status: Mapped[GoalStatus] = mapped_column(
+        SQLEnum(GoalStatus),
+        default=GoalStatus.PENDING,
+        nullable=False
+    )
+    completion_percentage: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    employee: Mapped["Employee"] = relationship("Employee", back_populates="goals")
+    kpi: Mapped[Optional["KPI"]] = relationship("KPI")
+
+    def __repr__(self) -> str:
+        return f"<Goal(title='{self.title}', status='{self.status}')>"
+
+
+class Appraisal(Base):
+    """
+    Performance appraisal record for an employee in a cycle.
+    """
+    __tablename__ = "appraisals"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Employee & Cycle
+    employee_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("employees.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    cycle_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("appraisal_cycles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Status
+    status: Mapped[AppraisalStatus] = mapped_column(
+        SQLEnum(AppraisalStatus),
+        default=AppraisalStatus.NOT_STARTED,
+        nullable=False
+    )
+
+    # Self Review
+    self_rating: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(3, 1),
+        nullable=True,
+        comment="Self rating 1-5"
+    )
+    self_comments: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    self_review_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Manager Review
+    manager_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("employees.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    manager_rating: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(3, 1),
+        nullable=True,
+        comment="Manager rating 1-5"
+    )
+    manager_comments: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    manager_review_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Final Rating
+    final_rating: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(3, 1),
+        nullable=True,
+        comment="Final rating 1-5"
+    )
+    performance_band: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="OUTSTANDING, EXCEEDS, MEETS, NEEDS_IMPROVEMENT, UNSATISFACTORY"
+    )
+
+    # Goals Achievement
+    goals_achieved: Mapped[int] = mapped_column(Integer, default=0)
+    goals_total: Mapped[int] = mapped_column(Integer, default=0)
+    overall_goal_score: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
+
+    # Development Areas
+    strengths: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    areas_of_improvement: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    development_plan: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Promotion/Increment Recommendation
+    recommended_for_promotion: Mapped[bool] = mapped_column(Boolean, default=False)
+    recommended_increment_percentage: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(5, 2),
+        nullable=True
+    )
+
+    # HR Review
+    hr_reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    hr_review_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    hr_comments: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    employee: Mapped["Employee"] = relationship(
+        "Employee",
+        foreign_keys=[employee_id],
+        back_populates="appraisals"
+    )
+    manager: Mapped[Optional["Employee"]] = relationship(
+        "Employee",
+        foreign_keys=[manager_id]
+    )
+    cycle: Mapped["AppraisalCycle"] = relationship("AppraisalCycle", back_populates="appraisals")
+
+    __table_args__ = (
+        UniqueConstraint('employee_id', 'cycle_id', name='uq_appraisal_employee_cycle'),
+    )
+
+    def __repr__(self) -> str:
+        return f"<Appraisal(employee={self.employee_id}, status='{self.status}')>"
+
+
+class PerformanceFeedback(Base):
+    """
+    Continuous feedback for employees.
+    Can be given anytime, not just during appraisal.
+    """
+    __tablename__ = "performance_feedback"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Employee receiving feedback
+    employee_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("employees.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Feedback giver
+    given_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False
+    )
+
+    # Feedback Type
+    feedback_type: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        comment="APPRECIATION, IMPROVEMENT, SUGGESTION"
+    )
+
+    # Content
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Visibility
+    is_private: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        comment="Only visible to employee and HR"
+    )
+
+    # Related Goal (optional)
+    goal_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("goals.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    employee: Mapped["Employee"] = relationship("Employee")
+
+    def __repr__(self) -> str:
+        return f"<PerformanceFeedback(employee={self.employee_id}, type='{self.feedback_type}')>"

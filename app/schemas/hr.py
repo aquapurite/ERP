@@ -7,7 +7,8 @@ from pydantic import BaseModel, Field, ConfigDict, EmailStr
 
 from app.models.hr import (
     EmploymentType, EmployeeStatus, LeaveType, LeaveStatus,
-    AttendanceStatus, PayrollStatus, Gender, MaritalStatus
+    AttendanceStatus, PayrollStatus, Gender, MaritalStatus,
+    AppraisalCycleStatus, GoalStatus, AppraisalStatus
 )
 
 
@@ -718,6 +719,329 @@ class ESICReportResponse(BaseModel):
     total_contribution: Decimal
 
     days_worked: int
+
+
+# ==================== Performance Management Schemas ====================
+
+# Appraisal Cycle
+class AppraisalCycleBase(BaseModel):
+    """Base schema for Appraisal Cycle."""
+    name: str = Field(..., max_length=100)
+    description: Optional[str] = None
+    financial_year: str = Field(..., max_length=10)
+    start_date: date
+    end_date: date
+    review_start_date: Optional[date] = None
+    review_end_date: Optional[date] = None
+
+
+class AppraisalCycleCreate(AppraisalCycleBase):
+    """Schema for creating Appraisal Cycle."""
+    pass
+
+
+class AppraisalCycleUpdate(BaseModel):
+    """Schema for updating Appraisal Cycle."""
+    name: Optional[str] = Field(None, max_length=100)
+    description: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    review_start_date: Optional[date] = None
+    review_end_date: Optional[date] = None
+    status: Optional[AppraisalCycleStatus] = None
+
+
+class AppraisalCycleResponse(AppraisalCycleBase):
+    """Response schema for Appraisal Cycle."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    status: AppraisalCycleStatus
+    created_at: datetime
+    updated_at: datetime
+
+
+class AppraisalCycleListResponse(BaseModel):
+    """Response for listing Appraisal Cycles."""
+    items: List[AppraisalCycleResponse]
+    total: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
+
+
+# KPI
+class KPIBase(BaseModel):
+    """Base schema for KPI."""
+    name: str = Field(..., max_length=200)
+    description: Optional[str] = None
+    category: str = Field(..., max_length=50)
+    unit_of_measure: str = Field(..., max_length=50)
+    target_value: Optional[Decimal] = None
+    weightage: Decimal = Field(Decimal("0"), ge=0, le=100)
+    department_id: Optional[UUID] = None
+    designation: Optional[str] = Field(None, max_length=100)
+
+
+class KPICreate(KPIBase):
+    """Schema for creating KPI."""
+    pass
+
+
+class KPIUpdate(BaseModel):
+    """Schema for updating KPI."""
+    name: Optional[str] = Field(None, max_length=200)
+    description: Optional[str] = None
+    category: Optional[str] = Field(None, max_length=50)
+    unit_of_measure: Optional[str] = Field(None, max_length=50)
+    target_value: Optional[Decimal] = None
+    weightage: Optional[Decimal] = Field(None, ge=0, le=100)
+    department_id: Optional[UUID] = None
+    designation: Optional[str] = Field(None, max_length=100)
+    is_active: Optional[bool] = None
+
+
+class KPIResponse(KPIBase):
+    """Response schema for KPI."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    is_active: bool
+    department_name: Optional[str] = None
+    created_at: datetime
+
+
+class KPIListResponse(BaseModel):
+    """Response for listing KPIs."""
+    items: List[KPIResponse]
+    total: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
+
+
+# Goal
+class GoalBase(BaseModel):
+    """Base schema for Goal."""
+    title: str = Field(..., max_length=200)
+    description: Optional[str] = None
+    category: str = Field(..., max_length=50)
+    kpi_id: Optional[UUID] = None
+    target_value: Optional[Decimal] = None
+    unit_of_measure: Optional[str] = Field(None, max_length=50)
+    weightage: Decimal = Field(Decimal("0"), ge=0, le=100)
+    start_date: date
+    due_date: date
+
+
+class GoalCreate(GoalBase):
+    """Schema for creating Goal."""
+    employee_id: UUID
+    cycle_id: UUID
+
+
+class GoalUpdate(BaseModel):
+    """Schema for updating Goal."""
+    title: Optional[str] = Field(None, max_length=200)
+    description: Optional[str] = None
+    category: Optional[str] = Field(None, max_length=50)
+    target_value: Optional[Decimal] = None
+    achieved_value: Optional[Decimal] = None
+    unit_of_measure: Optional[str] = Field(None, max_length=50)
+    weightage: Optional[Decimal] = Field(None, ge=0, le=100)
+    start_date: Optional[date] = None
+    due_date: Optional[date] = None
+    completed_date: Optional[date] = None
+    status: Optional[GoalStatus] = None
+    completion_percentage: Optional[int] = Field(None, ge=0, le=100)
+
+
+class GoalResponse(GoalBase):
+    """Response schema for Goal."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    employee_id: UUID
+    cycle_id: UUID
+    achieved_value: Optional[Decimal] = None
+    status: GoalStatus
+    completion_percentage: int
+    completed_date: Optional[date] = None
+
+    # Related info
+    employee_name: Optional[str] = None
+    employee_code: Optional[str] = None
+    kpi_name: Optional[str] = None
+    cycle_name: Optional[str] = None
+
+    created_at: datetime
+    updated_at: datetime
+
+
+class GoalListResponse(BaseModel):
+    """Response for listing Goals."""
+    items: List[GoalResponse]
+    total: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
+
+
+# Appraisal
+class AppraisalCreate(BaseModel):
+    """Schema for creating Appraisal."""
+    employee_id: UUID
+    cycle_id: UUID
+    manager_id: Optional[UUID] = None
+
+
+class AppraisalSelfReview(BaseModel):
+    """Schema for self review submission."""
+    self_rating: Decimal = Field(..., ge=1, le=5)
+    self_comments: Optional[str] = None
+
+
+class AppraisalManagerReview(BaseModel):
+    """Schema for manager review submission."""
+    manager_rating: Decimal = Field(..., ge=1, le=5)
+    manager_comments: Optional[str] = None
+    strengths: Optional[str] = None
+    areas_of_improvement: Optional[str] = None
+    development_plan: Optional[str] = None
+    recommended_for_promotion: bool = False
+    recommended_increment_percentage: Optional[Decimal] = Field(None, ge=0, le=100)
+
+
+class AppraisalHRReview(BaseModel):
+    """Schema for HR review submission."""
+    final_rating: Decimal = Field(..., ge=1, le=5)
+    performance_band: str = Field(..., pattern="^(OUTSTANDING|EXCEEDS|MEETS|NEEDS_IMPROVEMENT|UNSATISFACTORY)$")
+    hr_comments: Optional[str] = None
+
+
+class AppraisalResponse(BaseModel):
+    """Response schema for Appraisal."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    employee_id: UUID
+    cycle_id: UUID
+    status: AppraisalStatus
+
+    # Self Review
+    self_rating: Optional[Decimal] = None
+    self_comments: Optional[str] = None
+    self_review_date: Optional[datetime] = None
+
+    # Manager Review
+    manager_id: Optional[UUID] = None
+    manager_rating: Optional[Decimal] = None
+    manager_comments: Optional[str] = None
+    manager_review_date: Optional[datetime] = None
+
+    # Final Rating
+    final_rating: Optional[Decimal] = None
+    performance_band: Optional[str] = None
+
+    # Goals
+    goals_achieved: int
+    goals_total: int
+    overall_goal_score: Optional[Decimal] = None
+
+    # Development
+    strengths: Optional[str] = None
+    areas_of_improvement: Optional[str] = None
+    development_plan: Optional[str] = None
+
+    # Recommendations
+    recommended_for_promotion: bool
+    recommended_increment_percentage: Optional[Decimal] = None
+
+    # HR Review
+    hr_reviewed_by: Optional[UUID] = None
+    hr_review_date: Optional[datetime] = None
+    hr_comments: Optional[str] = None
+
+    # Related info
+    employee_name: Optional[str] = None
+    employee_code: Optional[str] = None
+    manager_name: Optional[str] = None
+    cycle_name: Optional[str] = None
+
+    created_at: datetime
+    updated_at: datetime
+
+
+class AppraisalListResponse(BaseModel):
+    """Response for listing Appraisals."""
+    items: List[AppraisalResponse]
+    total: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
+
+
+# Performance Feedback
+class FeedbackCreate(BaseModel):
+    """Schema for creating feedback."""
+    employee_id: UUID
+    feedback_type: str = Field(..., pattern="^(APPRECIATION|IMPROVEMENT|SUGGESTION)$")
+    title: str = Field(..., max_length=200)
+    content: str
+    is_private: bool = False
+    goal_id: Optional[UUID] = None
+
+
+class FeedbackResponse(BaseModel):
+    """Response schema for Feedback."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    employee_id: UUID
+    given_by: UUID
+    feedback_type: str
+    title: str
+    content: str
+    is_private: bool
+    goal_id: Optional[UUID] = None
+
+    # Related info
+    employee_name: Optional[str] = None
+    employee_code: Optional[str] = None
+    given_by_name: Optional[str] = None
+    goal_title: Optional[str] = None
+
+    created_at: datetime
+
+
+class FeedbackListResponse(BaseModel):
+    """Response for listing Feedback."""
+    items: List[FeedbackResponse]
+    total: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
+
+
+# Performance Dashboard
+class PerformanceDashboardStats(BaseModel):
+    """Performance management dashboard statistics."""
+    active_cycles: int
+    pending_self_reviews: int
+    pending_manager_reviews: int
+    pending_hr_reviews: int
+
+    # Goals summary
+    total_goals: int
+    completed_goals: int
+    in_progress_goals: int
+    overdue_goals: int
+
+    # Rating distribution
+    rating_distribution: List[dict]  # [{band: "EXCEEDS", count: 10}]
+
+    # Recent feedback count
+    recent_feedback_count: int
 
 
 # Update forward references

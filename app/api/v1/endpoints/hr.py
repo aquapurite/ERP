@@ -12,8 +12,10 @@ from sqlalchemy.orm import selectinload
 from app.models.hr import (
     Department, Employee, SalaryStructure, Attendance, LeaveBalance,
     LeaveRequest, Payroll, Payslip,
+    AppraisalCycle, KPI, Goal, Appraisal, PerformanceFeedback,
     EmploymentType, EmployeeStatus, LeaveType, LeaveStatus,
-    AttendanceStatus, PayrollStatus, Gender, MaritalStatus
+    AttendanceStatus, PayrollStatus, Gender, MaritalStatus,
+    AppraisalCycleStatus, GoalStatus, AppraisalStatus
 )
 from app.models.user import User, UserRole
 from app.models.role import Role
@@ -36,6 +38,14 @@ from app.schemas.hr import (
     PayslipResponse, PayslipListResponse,
     # Dashboard & Reports
     HRDashboardStats, PFReportResponse, ESICReportResponse,
+    # Performance Management
+    AppraisalCycleCreate, AppraisalCycleUpdate, AppraisalCycleResponse, AppraisalCycleListResponse,
+    KPICreate, KPIUpdate, KPIResponse, KPIListResponse,
+    GoalCreate, GoalUpdate, GoalResponse, GoalListResponse,
+    AppraisalCreate, AppraisalSelfReview, AppraisalManagerReview, AppraisalHRReview,
+    AppraisalResponse, AppraisalListResponse,
+    FeedbackCreate, FeedbackResponse, FeedbackListResponse,
+    PerformanceDashboardStats,
 )
 from app.api.deps import DB, CurrentUser, get_current_user, require_permissions
 from passlib.context import CryptContext
@@ -1961,3 +1971,966 @@ async def get_salary_register(
         },
         "employees": register_data,
     }
+
+
+# ==================== Performance Management Endpoints ====================
+
+# ----- Appraisal Cycles -----
+
+@router.get("/performance/cycles", response_model=AppraisalCycleListResponse, dependencies=[Depends(require_permissions("hr:view"))])
+async def list_appraisal_cycles(
+    db: DB,
+    current_user: CurrentUser,
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=100),
+    status: Optional[AppraisalCycleStatus] = None,
+    financial_year: Optional[str] = None,
+):
+    """List appraisal cycles."""
+    query = select(AppraisalCycle)
+
+    if status:
+        query = query.where(AppraisalCycle.status == status)
+    if financial_year:
+        query = query.where(AppraisalCycle.financial_year == financial_year)
+
+    # Count
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Paginate
+    query = query.offset((page - 1) * size).limit(size)
+    query = query.order_by(AppraisalCycle.start_date.desc())
+
+    result = await db.execute(query)
+    cycles = result.scalars().all()
+
+    items = [AppraisalCycleResponse.model_validate(c) for c in cycles]
+
+    pages = (total + size - 1) // size
+    return AppraisalCycleListResponse(items=items, total=total, page=page, size=size, pages=pages)
+
+
+@router.post("/performance/cycles", response_model=AppraisalCycleResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permissions("hr:create"))])
+async def create_appraisal_cycle(
+    cycle_in: AppraisalCycleCreate,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Create a new appraisal cycle."""
+    cycle = AppraisalCycle(
+        name=cycle_in.name,
+        description=cycle_in.description,
+        financial_year=cycle_in.financial_year,
+        start_date=cycle_in.start_date,
+        end_date=cycle_in.end_date,
+        review_start_date=cycle_in.review_start_date,
+        review_end_date=cycle_in.review_end_date,
+        status=AppraisalCycleStatus.DRAFT,
+    )
+
+    db.add(cycle)
+    await db.commit()
+    await db.refresh(cycle)
+
+    return AppraisalCycleResponse.model_validate(cycle)
+
+
+@router.get("/performance/cycles/{cycle_id}", response_model=AppraisalCycleResponse, dependencies=[Depends(require_permissions("hr:view"))])
+async def get_appraisal_cycle(
+    cycle_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Get appraisal cycle by ID."""
+    result = await db.execute(
+        select(AppraisalCycle).where(AppraisalCycle.id == cycle_id)
+    )
+    cycle = result.scalar_one_or_none()
+
+    if not cycle:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Appraisal cycle not found"
+        )
+
+    return AppraisalCycleResponse.model_validate(cycle)
+
+
+@router.put("/performance/cycles/{cycle_id}", response_model=AppraisalCycleResponse, dependencies=[Depends(require_permissions("hr:update"))])
+async def update_appraisal_cycle(
+    cycle_id: UUID,
+    cycle_in: AppraisalCycleUpdate,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Update appraisal cycle."""
+    result = await db.execute(
+        select(AppraisalCycle).where(AppraisalCycle.id == cycle_id)
+    )
+    cycle = result.scalar_one_or_none()
+
+    if not cycle:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Appraisal cycle not found"
+        )
+
+    update_data = cycle_in.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(cycle, key, value)
+
+    await db.commit()
+    await db.refresh(cycle)
+
+    return AppraisalCycleResponse.model_validate(cycle)
+
+
+# ----- KPIs -----
+
+@router.get("/performance/kpis", response_model=KPIListResponse, dependencies=[Depends(require_permissions("hr:view"))])
+async def list_kpis(
+    db: DB,
+    current_user: CurrentUser,
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=100),
+    category: Optional[str] = None,
+    department_id: Optional[UUID] = None,
+    is_active: Optional[bool] = None,
+):
+    """List KPIs."""
+    query = select(KPI)
+
+    if category:
+        query = query.where(KPI.category == category)
+    if department_id:
+        query = query.where(KPI.department_id == department_id)
+    if is_active is not None:
+        query = query.where(KPI.is_active == is_active)
+
+    # Count
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Paginate
+    query = query.offset((page - 1) * size).limit(size)
+    query = query.order_by(KPI.category, KPI.name)
+
+    result = await db.execute(query)
+    kpis = result.scalars().all()
+
+    items = []
+    for kpi in kpis:
+        dept_name = None
+        if kpi.department_id:
+            dept_result = await db.execute(
+                select(Department.name).where(Department.id == kpi.department_id)
+            )
+            dept_name = dept_result.scalar_one_or_none()
+
+        items.append(KPIResponse(
+            id=kpi.id,
+            name=kpi.name,
+            description=kpi.description,
+            category=kpi.category,
+            unit_of_measure=kpi.unit_of_measure,
+            target_value=kpi.target_value,
+            weightage=kpi.weightage,
+            department_id=kpi.department_id,
+            department_name=dept_name,
+            designation=kpi.designation,
+            is_active=kpi.is_active,
+            created_at=kpi.created_at,
+        ))
+
+    pages = (total + size - 1) // size
+    return KPIListResponse(items=items, total=total, page=page, size=size, pages=pages)
+
+
+@router.post("/performance/kpis", response_model=KPIResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permissions("hr:create"))])
+async def create_kpi(
+    kpi_in: KPICreate,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Create a new KPI."""
+    kpi = KPI(
+        name=kpi_in.name,
+        description=kpi_in.description,
+        category=kpi_in.category,
+        unit_of_measure=kpi_in.unit_of_measure,
+        target_value=kpi_in.target_value,
+        weightage=kpi_in.weightage,
+        department_id=kpi_in.department_id,
+        designation=kpi_in.designation,
+        is_active=True,
+    )
+
+    db.add(kpi)
+    await db.commit()
+    await db.refresh(kpi)
+
+    dept_name = None
+    if kpi.department_id:
+        dept_result = await db.execute(
+            select(Department.name).where(Department.id == kpi.department_id)
+        )
+        dept_name = dept_result.scalar_one_or_none()
+
+    return KPIResponse(
+        id=kpi.id,
+        name=kpi.name,
+        description=kpi.description,
+        category=kpi.category,
+        unit_of_measure=kpi.unit_of_measure,
+        target_value=kpi.target_value,
+        weightage=kpi.weightage,
+        department_id=kpi.department_id,
+        department_name=dept_name,
+        designation=kpi.designation,
+        is_active=kpi.is_active,
+        created_at=kpi.created_at,
+    )
+
+
+@router.put("/performance/kpis/{kpi_id}", response_model=KPIResponse, dependencies=[Depends(require_permissions("hr:update"))])
+async def update_kpi(
+    kpi_id: UUID,
+    kpi_in: KPIUpdate,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Update KPI."""
+    result = await db.execute(
+        select(KPI).where(KPI.id == kpi_id)
+    )
+    kpi = result.scalar_one_or_none()
+
+    if not kpi:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="KPI not found"
+        )
+
+    update_data = kpi_in.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(kpi, key, value)
+
+    await db.commit()
+    await db.refresh(kpi)
+
+    dept_name = None
+    if kpi.department_id:
+        dept_result = await db.execute(
+            select(Department.name).where(Department.id == kpi.department_id)
+        )
+        dept_name = dept_result.scalar_one_or_none()
+
+    return KPIResponse(
+        id=kpi.id,
+        name=kpi.name,
+        description=kpi.description,
+        category=kpi.category,
+        unit_of_measure=kpi.unit_of_measure,
+        target_value=kpi.target_value,
+        weightage=kpi.weightage,
+        department_id=kpi.department_id,
+        department_name=dept_name,
+        designation=kpi.designation,
+        is_active=kpi.is_active,
+        created_at=kpi.created_at,
+    )
+
+
+# ----- Goals -----
+
+@router.get("/performance/goals", response_model=GoalListResponse, dependencies=[Depends(require_permissions("hr:view"))])
+async def list_goals(
+    db: DB,
+    current_user: CurrentUser,
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=100),
+    employee_id: Optional[UUID] = None,
+    cycle_id: Optional[UUID] = None,
+    status_filter: Optional[GoalStatus] = Query(None, alias="status"),
+    category: Optional[str] = None,
+):
+    """List goals."""
+    query = select(Goal)
+
+    if employee_id:
+        query = query.where(Goal.employee_id == employee_id)
+    if cycle_id:
+        query = query.where(Goal.cycle_id == cycle_id)
+    if status_filter:
+        query = query.where(Goal.status == status_filter)
+    if category:
+        query = query.where(Goal.category == category)
+
+    # Count
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Paginate
+    query = query.offset((page - 1) * size).limit(size)
+    query = query.order_by(Goal.due_date)
+
+    result = await db.execute(query)
+    goals = result.scalars().all()
+
+    items = []
+    for goal in goals:
+        items.append(await _format_goal_response(goal, db))
+
+    pages = (total + size - 1) // size
+    return GoalListResponse(items=items, total=total, page=page, size=size, pages=pages)
+
+
+async def _format_goal_response(goal: Goal, db: AsyncSession) -> GoalResponse:
+    """Format goal to response."""
+    emp_result = await db.execute(
+        select(Employee)
+        .options(selectinload(Employee.user))
+        .where(Employee.id == goal.employee_id)
+    )
+    emp = emp_result.scalar_one_or_none()
+
+    kpi_name = None
+    if goal.kpi_id:
+        kpi_result = await db.execute(
+            select(KPI.name).where(KPI.id == goal.kpi_id)
+        )
+        kpi_name = kpi_result.scalar_one_or_none()
+
+    cycle_name = None
+    cycle_result = await db.execute(
+        select(AppraisalCycle.name).where(AppraisalCycle.id == goal.cycle_id)
+    )
+    cycle_name = cycle_result.scalar_one_or_none()
+
+    return GoalResponse(
+        id=goal.id,
+        employee_id=goal.employee_id,
+        cycle_id=goal.cycle_id,
+        title=goal.title,
+        description=goal.description,
+        category=goal.category,
+        kpi_id=goal.kpi_id,
+        kpi_name=kpi_name,
+        target_value=goal.target_value,
+        achieved_value=goal.achieved_value,
+        unit_of_measure=goal.unit_of_measure,
+        weightage=goal.weightage,
+        start_date=goal.start_date,
+        due_date=goal.due_date,
+        completed_date=goal.completed_date,
+        status=goal.status,
+        completion_percentage=goal.completion_percentage,
+        employee_name=emp.user.full_name if emp and emp.user else None,
+        employee_code=emp.employee_code if emp else None,
+        cycle_name=cycle_name,
+        created_at=goal.created_at,
+        updated_at=goal.updated_at,
+    )
+
+
+@router.post("/performance/goals", response_model=GoalResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permissions("hr:create"))])
+async def create_goal(
+    goal_in: GoalCreate,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Create a new goal."""
+    # Verify employee and cycle exist
+    emp_result = await db.execute(
+        select(Employee).where(Employee.id == goal_in.employee_id)
+    )
+    if not emp_result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Employee not found"
+        )
+
+    cycle_result = await db.execute(
+        select(AppraisalCycle).where(AppraisalCycle.id == goal_in.cycle_id)
+    )
+    if not cycle_result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Appraisal cycle not found"
+        )
+
+    goal = Goal(
+        employee_id=goal_in.employee_id,
+        cycle_id=goal_in.cycle_id,
+        title=goal_in.title,
+        description=goal_in.description,
+        category=goal_in.category,
+        kpi_id=goal_in.kpi_id,
+        target_value=goal_in.target_value,
+        unit_of_measure=goal_in.unit_of_measure,
+        weightage=goal_in.weightage,
+        start_date=goal_in.start_date,
+        due_date=goal_in.due_date,
+        status=GoalStatus.PENDING,
+    )
+
+    db.add(goal)
+    await db.commit()
+    await db.refresh(goal)
+
+    return await _format_goal_response(goal, db)
+
+
+@router.get("/performance/goals/{goal_id}", response_model=GoalResponse, dependencies=[Depends(require_permissions("hr:view"))])
+async def get_goal(
+    goal_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Get goal by ID."""
+    result = await db.execute(
+        select(Goal).where(Goal.id == goal_id)
+    )
+    goal = result.scalar_one_or_none()
+
+    if not goal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Goal not found"
+        )
+
+    return await _format_goal_response(goal, db)
+
+
+@router.put("/performance/goals/{goal_id}", response_model=GoalResponse, dependencies=[Depends(require_permissions("hr:update"))])
+async def update_goal(
+    goal_id: UUID,
+    goal_in: GoalUpdate,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Update goal."""
+    result = await db.execute(
+        select(Goal).where(Goal.id == goal_id)
+    )
+    goal = result.scalar_one_or_none()
+
+    if not goal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Goal not found"
+        )
+
+    update_data = goal_in.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(goal, key, value)
+
+    await db.commit()
+    await db.refresh(goal)
+
+    return await _format_goal_response(goal, db)
+
+
+# ----- Appraisals -----
+
+@router.get("/performance/appraisals", response_model=AppraisalListResponse, dependencies=[Depends(require_permissions("hr:view"))])
+async def list_appraisals(
+    db: DB,
+    current_user: CurrentUser,
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=100),
+    employee_id: Optional[UUID] = None,
+    cycle_id: Optional[UUID] = None,
+    status_filter: Optional[AppraisalStatus] = Query(None, alias="status"),
+    manager_id: Optional[UUID] = None,
+):
+    """List appraisals."""
+    query = select(Appraisal)
+
+    if employee_id:
+        query = query.where(Appraisal.employee_id == employee_id)
+    if cycle_id:
+        query = query.where(Appraisal.cycle_id == cycle_id)
+    if status_filter:
+        query = query.where(Appraisal.status == status_filter)
+    if manager_id:
+        query = query.where(Appraisal.manager_id == manager_id)
+
+    # Count
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Paginate
+    query = query.offset((page - 1) * size).limit(size)
+    query = query.order_by(Appraisal.created_at.desc())
+
+    result = await db.execute(query)
+    appraisals = result.scalars().all()
+
+    items = []
+    for appraisal in appraisals:
+        items.append(await _format_appraisal_response(appraisal, db))
+
+    pages = (total + size - 1) // size
+    return AppraisalListResponse(items=items, total=total, page=page, size=size, pages=pages)
+
+
+async def _format_appraisal_response(appraisal: Appraisal, db: AsyncSession) -> AppraisalResponse:
+    """Format appraisal to response."""
+    emp_result = await db.execute(
+        select(Employee)
+        .options(selectinload(Employee.user))
+        .where(Employee.id == appraisal.employee_id)
+    )
+    emp = emp_result.scalar_one_or_none()
+
+    manager_name = None
+    if appraisal.manager_id:
+        mgr_result = await db.execute(
+            select(Employee)
+            .options(selectinload(Employee.user))
+            .where(Employee.id == appraisal.manager_id)
+        )
+        mgr = mgr_result.scalar_one_or_none()
+        if mgr and mgr.user:
+            manager_name = mgr.user.full_name
+
+    cycle_name = None
+    cycle_result = await db.execute(
+        select(AppraisalCycle.name).where(AppraisalCycle.id == appraisal.cycle_id)
+    )
+    cycle_name = cycle_result.scalar_one_or_none()
+
+    return AppraisalResponse(
+        id=appraisal.id,
+        employee_id=appraisal.employee_id,
+        cycle_id=appraisal.cycle_id,
+        status=appraisal.status,
+        self_rating=appraisal.self_rating,
+        self_comments=appraisal.self_comments,
+        self_review_date=appraisal.self_review_date,
+        manager_id=appraisal.manager_id,
+        manager_rating=appraisal.manager_rating,
+        manager_comments=appraisal.manager_comments,
+        manager_review_date=appraisal.manager_review_date,
+        final_rating=appraisal.final_rating,
+        performance_band=appraisal.performance_band,
+        goals_achieved=appraisal.goals_achieved,
+        goals_total=appraisal.goals_total,
+        overall_goal_score=appraisal.overall_goal_score,
+        strengths=appraisal.strengths,
+        areas_of_improvement=appraisal.areas_of_improvement,
+        development_plan=appraisal.development_plan,
+        recommended_for_promotion=appraisal.recommended_for_promotion,
+        recommended_increment_percentage=appraisal.recommended_increment_percentage,
+        hr_reviewed_by=appraisal.hr_reviewed_by,
+        hr_review_date=appraisal.hr_review_date,
+        hr_comments=appraisal.hr_comments,
+        employee_name=emp.user.full_name if emp and emp.user else None,
+        employee_code=emp.employee_code if emp else None,
+        manager_name=manager_name,
+        cycle_name=cycle_name,
+        created_at=appraisal.created_at,
+        updated_at=appraisal.updated_at,
+    )
+
+
+@router.post("/performance/appraisals", response_model=AppraisalResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permissions("hr:create"))])
+async def create_appraisal(
+    appraisal_in: AppraisalCreate,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Create a new appraisal for an employee in a cycle."""
+    # Check if already exists
+    existing = await db.execute(
+        select(Appraisal)
+        .where(Appraisal.employee_id == appraisal_in.employee_id)
+        .where(Appraisal.cycle_id == appraisal_in.cycle_id)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Appraisal already exists for this employee in this cycle"
+        )
+
+    # Get employee's manager if not provided
+    manager_id = appraisal_in.manager_id
+    if not manager_id:
+        emp_result = await db.execute(
+            select(Employee).where(Employee.id == appraisal_in.employee_id)
+        )
+        emp = emp_result.scalar_one_or_none()
+        if emp:
+            manager_id = emp.reporting_manager_id
+
+    # Count employee goals in this cycle
+    goals_result = await db.execute(
+        select(func.count(Goal.id))
+        .where(Goal.employee_id == appraisal_in.employee_id)
+        .where(Goal.cycle_id == appraisal_in.cycle_id)
+    )
+    goals_total = goals_result.scalar() or 0
+
+    appraisal = Appraisal(
+        employee_id=appraisal_in.employee_id,
+        cycle_id=appraisal_in.cycle_id,
+        manager_id=manager_id,
+        status=AppraisalStatus.NOT_STARTED,
+        goals_total=goals_total,
+    )
+
+    db.add(appraisal)
+    await db.commit()
+    await db.refresh(appraisal)
+
+    return await _format_appraisal_response(appraisal, db)
+
+
+@router.get("/performance/appraisals/{appraisal_id}", response_model=AppraisalResponse, dependencies=[Depends(require_permissions("hr:view"))])
+async def get_appraisal(
+    appraisal_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Get appraisal by ID."""
+    result = await db.execute(
+        select(Appraisal).where(Appraisal.id == appraisal_id)
+    )
+    appraisal = result.scalar_one_or_none()
+
+    if not appraisal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Appraisal not found"
+        )
+
+    return await _format_appraisal_response(appraisal, db)
+
+
+@router.put("/performance/appraisals/{appraisal_id}/self-review", response_model=AppraisalResponse)
+async def submit_self_review(
+    appraisal_id: UUID,
+    review_in: AppraisalSelfReview,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Submit self review for an appraisal."""
+    result = await db.execute(
+        select(Appraisal).where(Appraisal.id == appraisal_id)
+    )
+    appraisal = result.scalar_one_or_none()
+
+    if not appraisal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Appraisal not found"
+        )
+
+    if appraisal.status not in [AppraisalStatus.NOT_STARTED, AppraisalStatus.SELF_REVIEW]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot submit self review when status is {appraisal.status}"
+        )
+
+    appraisal.self_rating = review_in.self_rating
+    appraisal.self_comments = review_in.self_comments
+    appraisal.self_review_date = datetime.now()
+    appraisal.status = AppraisalStatus.MANAGER_REVIEW
+
+    await db.commit()
+    await db.refresh(appraisal)
+
+    return await _format_appraisal_response(appraisal, db)
+
+
+@router.put("/performance/appraisals/{appraisal_id}/manager-review", response_model=AppraisalResponse, dependencies=[Depends(require_permissions("hr:update"))])
+async def submit_manager_review(
+    appraisal_id: UUID,
+    review_in: AppraisalManagerReview,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Submit manager review for an appraisal."""
+    result = await db.execute(
+        select(Appraisal).where(Appraisal.id == appraisal_id)
+    )
+    appraisal = result.scalar_one_or_none()
+
+    if not appraisal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Appraisal not found"
+        )
+
+    if appraisal.status != AppraisalStatus.MANAGER_REVIEW:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot submit manager review when status is {appraisal.status}"
+        )
+
+    # Calculate goals achievement
+    goals_result = await db.execute(
+        select(Goal)
+        .where(Goal.employee_id == appraisal.employee_id)
+        .where(Goal.cycle_id == appraisal.cycle_id)
+    )
+    goals = goals_result.scalars().all()
+
+    goals_achieved = sum(1 for g in goals if g.status == GoalStatus.COMPLETED)
+    total_score = sum(g.completion_percentage * float(g.weightage) / 100 for g in goals if g.weightage > 0)
+    total_weightage = sum(float(g.weightage) for g in goals if g.weightage > 0)
+    overall_goal_score = Decimal(str(total_score / total_weightage * 100)) if total_weightage > 0 else None
+
+    appraisal.manager_rating = review_in.manager_rating
+    appraisal.manager_comments = review_in.manager_comments
+    appraisal.manager_review_date = datetime.now()
+    appraisal.strengths = review_in.strengths
+    appraisal.areas_of_improvement = review_in.areas_of_improvement
+    appraisal.development_plan = review_in.development_plan
+    appraisal.recommended_for_promotion = review_in.recommended_for_promotion
+    appraisal.recommended_increment_percentage = review_in.recommended_increment_percentage
+    appraisal.goals_achieved = goals_achieved
+    appraisal.overall_goal_score = overall_goal_score
+    appraisal.status = AppraisalStatus.HR_REVIEW
+
+    await db.commit()
+    await db.refresh(appraisal)
+
+    return await _format_appraisal_response(appraisal, db)
+
+
+@router.put("/performance/appraisals/{appraisal_id}/hr-review", response_model=AppraisalResponse, dependencies=[Depends(require_permissions("hr:update"))])
+async def submit_hr_review(
+    appraisal_id: UUID,
+    review_in: AppraisalHRReview,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Submit HR review and finalize appraisal."""
+    result = await db.execute(
+        select(Appraisal).where(Appraisal.id == appraisal_id)
+    )
+    appraisal = result.scalar_one_or_none()
+
+    if not appraisal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Appraisal not found"
+        )
+
+    if appraisal.status != AppraisalStatus.HR_REVIEW:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot submit HR review when status is {appraisal.status}"
+        )
+
+    appraisal.final_rating = review_in.final_rating
+    appraisal.performance_band = review_in.performance_band
+    appraisal.hr_comments = review_in.hr_comments
+    appraisal.hr_reviewed_by = current_user.id
+    appraisal.hr_review_date = datetime.now()
+    appraisal.status = AppraisalStatus.COMPLETED
+
+    await db.commit()
+    await db.refresh(appraisal)
+
+    return await _format_appraisal_response(appraisal, db)
+
+
+# ----- Performance Feedback -----
+
+@router.get("/performance/feedback", response_model=FeedbackListResponse, dependencies=[Depends(require_permissions("hr:view"))])
+async def list_feedback(
+    db: DB,
+    current_user: CurrentUser,
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=100),
+    employee_id: Optional[UUID] = None,
+    feedback_type: Optional[str] = None,
+):
+    """List performance feedback."""
+    query = select(PerformanceFeedback)
+
+    if employee_id:
+        query = query.where(PerformanceFeedback.employee_id == employee_id)
+    if feedback_type:
+        query = query.where(PerformanceFeedback.feedback_type == feedback_type)
+
+    # Count
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Paginate
+    query = query.offset((page - 1) * size).limit(size)
+    query = query.order_by(PerformanceFeedback.created_at.desc())
+
+    result = await db.execute(query)
+    feedbacks = result.scalars().all()
+
+    items = []
+    for fb in feedbacks:
+        items.append(await _format_feedback_response(fb, db))
+
+    pages = (total + size - 1) // size
+    return FeedbackListResponse(items=items, total=total, page=page, size=size, pages=pages)
+
+
+async def _format_feedback_response(feedback: PerformanceFeedback, db: AsyncSession) -> FeedbackResponse:
+    """Format feedback to response."""
+    emp_result = await db.execute(
+        select(Employee)
+        .options(selectinload(Employee.user))
+        .where(Employee.id == feedback.employee_id)
+    )
+    emp = emp_result.scalar_one_or_none()
+
+    giver_result = await db.execute(
+        select(User).where(User.id == feedback.given_by)
+    )
+    giver = giver_result.scalar_one_or_none()
+
+    goal_title = None
+    if feedback.goal_id:
+        goal_result = await db.execute(
+            select(Goal.title).where(Goal.id == feedback.goal_id)
+        )
+        goal_title = goal_result.scalar_one_or_none()
+
+    return FeedbackResponse(
+        id=feedback.id,
+        employee_id=feedback.employee_id,
+        given_by=feedback.given_by,
+        feedback_type=feedback.feedback_type,
+        title=feedback.title,
+        content=feedback.content,
+        is_private=feedback.is_private,
+        goal_id=feedback.goal_id,
+        employee_name=emp.user.full_name if emp and emp.user else None,
+        employee_code=emp.employee_code if emp else None,
+        given_by_name=giver.full_name if giver else None,
+        goal_title=goal_title,
+        created_at=feedback.created_at,
+    )
+
+
+@router.post("/performance/feedback", response_model=FeedbackResponse, status_code=status.HTTP_201_CREATED)
+async def create_feedback(
+    feedback_in: FeedbackCreate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Create performance feedback."""
+    feedback = PerformanceFeedback(
+        employee_id=feedback_in.employee_id,
+        given_by=current_user.id,
+        feedback_type=feedback_in.feedback_type,
+        title=feedback_in.title,
+        content=feedback_in.content,
+        is_private=feedback_in.is_private,
+        goal_id=feedback_in.goal_id,
+    )
+
+    db.add(feedback)
+    await db.commit()
+    await db.refresh(feedback)
+
+    return await _format_feedback_response(feedback, db)
+
+
+# ----- Performance Dashboard -----
+
+@router.get("/performance/dashboard", response_model=PerformanceDashboardStats, dependencies=[Depends(require_permissions("hr:view"))])
+async def get_performance_dashboard(
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Get performance management dashboard statistics."""
+    today = date.today()
+
+    # Active cycles
+    active_cycles_result = await db.execute(
+        select(func.count(AppraisalCycle.id))
+        .where(AppraisalCycle.status == AppraisalCycleStatus.ACTIVE)
+    )
+    active_cycles = active_cycles_result.scalar() or 0
+
+    # Pending reviews
+    self_review_result = await db.execute(
+        select(func.count(Appraisal.id))
+        .where(Appraisal.status == AppraisalStatus.SELF_REVIEW)
+    )
+    pending_self_reviews = self_review_result.scalar() or 0
+
+    manager_review_result = await db.execute(
+        select(func.count(Appraisal.id))
+        .where(Appraisal.status == AppraisalStatus.MANAGER_REVIEW)
+    )
+    pending_manager_reviews = manager_review_result.scalar() or 0
+
+    hr_review_result = await db.execute(
+        select(func.count(Appraisal.id))
+        .where(Appraisal.status == AppraisalStatus.HR_REVIEW)
+    )
+    pending_hr_reviews = hr_review_result.scalar() or 0
+
+    # Goals summary
+    total_goals_result = await db.execute(select(func.count(Goal.id)))
+    total_goals = total_goals_result.scalar() or 0
+
+    completed_goals_result = await db.execute(
+        select(func.count(Goal.id))
+        .where(Goal.status == GoalStatus.COMPLETED)
+    )
+    completed_goals = completed_goals_result.scalar() or 0
+
+    in_progress_goals_result = await db.execute(
+        select(func.count(Goal.id))
+        .where(Goal.status == GoalStatus.IN_PROGRESS)
+    )
+    in_progress_goals = in_progress_goals_result.scalar() or 0
+
+    overdue_goals_result = await db.execute(
+        select(func.count(Goal.id))
+        .where(Goal.due_date < today)
+        .where(Goal.status.in_([GoalStatus.PENDING, GoalStatus.IN_PROGRESS]))
+    )
+    overdue_goals = overdue_goals_result.scalar() or 0
+
+    # Rating distribution
+    rating_dist_result = await db.execute(
+        select(Appraisal.performance_band, func.count(Appraisal.id))
+        .where(Appraisal.performance_band.isnot(None))
+        .group_by(Appraisal.performance_band)
+    )
+    rating_distribution = [
+        {"band": band, "count": count}
+        for band, count in rating_dist_result.all()
+    ]
+
+    # Recent feedback (last 30 days)
+    thirty_days_ago = datetime.now() - timedelta(days=30)
+    recent_feedback_result = await db.execute(
+        select(func.count(PerformanceFeedback.id))
+        .where(PerformanceFeedback.created_at >= thirty_days_ago)
+    )
+    recent_feedback_count = recent_feedback_result.scalar() or 0
+
+    return PerformanceDashboardStats(
+        active_cycles=active_cycles,
+        pending_self_reviews=pending_self_reviews,
+        pending_manager_reviews=pending_manager_reviews,
+        pending_hr_reviews=pending_hr_reviews,
+        total_goals=total_goals,
+        completed_goals=completed_goals,
+        in_progress_goals=in_progress_goals,
+        overdue_goals=overdue_goals,
+        rating_distribution=rating_distribution,
+        recent_feedback_count=recent_feedback_count,
+    )
