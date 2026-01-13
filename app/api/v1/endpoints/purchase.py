@@ -1314,6 +1314,40 @@ async def delete_purchase_order(
     return None
 
 
+@router.post("/orders/{po_id}/submit", response_model=PurchaseOrderResponse)
+async def submit_purchase_order(
+    po_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Submit a purchase order for approval (DRAFT -> PENDING_APPROVAL)."""
+    result = await db.execute(
+        select(PurchaseOrder)
+        .options(
+            selectinload(PurchaseOrder.items),
+            selectinload(PurchaseOrder.delivery_schedules)
+        )
+        .where(PurchaseOrder.id == po_id)
+    )
+    po = result.scalar_one_or_none()
+
+    if not po:
+        raise HTTPException(status_code=404, detail="Purchase Order not found")
+
+    if po.status != POStatus.DRAFT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot submit PO in {po.status.value} status. Only DRAFT POs can be submitted."
+        )
+
+    po.status = POStatus.PENDING_APPROVAL
+
+    await db.commit()
+    await db.refresh(po)
+
+    return po
+
+
 @router.post("/orders/{po_id}/approve", response_model=PurchaseOrderResponse)
 async def approve_purchase_order(
     po_id: UUID,
@@ -1335,7 +1369,7 @@ async def approve_purchase_order(
     if not po:
         raise HTTPException(status_code=404, detail="Purchase Order not found")
 
-    if po.status != POStatus.DRAFT:
+    if po.status not in [POStatus.DRAFT, POStatus.PENDING_APPROVAL]:
         raise HTTPException(
             status_code=400,
             detail=f"Cannot {request.action.lower()} PO in {po.status.value} status"
