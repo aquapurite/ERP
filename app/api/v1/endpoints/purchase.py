@@ -893,6 +893,7 @@ async def create_purchase_order(
         payment_terms=po_in.payment_terms,
         credit_days=po_in.credit_days,
         advance_required=Decimal(str(po_in.advance_required or 0)).quantize(Decimal("0.01")),
+        advance_paid=Decimal(str(po_in.advance_paid or 0)).quantize(Decimal("0.01")),
         quotation_reference=po_in.quotation_reference,
         quotation_date=po_in.quotation_date,
         freight_charges=Decimal(str(po_in.freight_charges or 0)).quantize(Decimal("0.01")),

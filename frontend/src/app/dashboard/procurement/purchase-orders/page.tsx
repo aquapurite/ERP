@@ -160,7 +160,8 @@ export default function PurchaseOrdersPage() {
     vendor_id: '',
     expected_delivery_date: '',
     credit_days: 30,
-    advance_required: 0,  // Advance payment amount
+    advance_required: 0,  // Advance payment amount required
+    advance_paid: 0,  // Advance payment already paid
     bill_to: null as any,  // Bill To address (from warehouse)
     ship_to: null as any,  // Ship To address (warehouse or manual)
     terms_and_conditions: '',  // Terms & Conditions (previously notes)
@@ -501,6 +502,7 @@ export default function PurchaseOrdersPage() {
       expected_delivery_date: '',
       credit_days: 30,
       advance_required: 0,
+      advance_paid: 0,
       bill_to: null,
       ship_to: null,
       terms_and_conditions: '',
@@ -627,7 +629,8 @@ export default function PurchaseOrdersPage() {
       delivery_warehouse_id: deliveryWarehouseId,
       expected_delivery_date: formData.expected_delivery_date || undefined,
       credit_days: formData.credit_days,
-      advance_required: formData.advance_required || 0,  // Include advance payment
+      advance_required: formData.advance_required || 0,  // Advance payment required
+      advance_paid: formData.advance_paid || 0,  // Advance payment already paid
       bill_to: formData.bill_to || undefined,  // Bill To address
       ship_to: formData.ship_to || undefined,  // Ship To address
       terms_and_conditions: formData.terms_and_conditions || undefined,  // Terms & Conditions
@@ -1236,7 +1239,7 @@ export default function PurchaseOrdersPage() {
                     <Label className="text-base font-semibold">Advance Payment</Label>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="advance_required">Advance Amount (₹)</Label>
+                        <Label htmlFor="advance_required">Advance Required (₹)</Label>
                         <Input
                           id="advance_required"
                           type="number"
@@ -1249,18 +1252,6 @@ export default function PurchaseOrdersPage() {
                         <p className="text-xs text-muted-foreground">
                           Amount to be paid in advance before delivery
                         </p>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Advance Percentage</Label>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            type="text"
-                            readOnly
-                            value={totals.total > 0 ? `${((formData.advance_required / totals.total) * 100).toFixed(1)}%` : '0%'}
-                            className="bg-muted w-20"
-                          />
-                          <span className="text-sm text-muted-foreground">of total {formatCurrency(totals.total)}</span>
-                        </div>
                         {/* Quick percentage buttons */}
                         <div className="flex gap-1 mt-1">
                           {[10, 25, 50].map((pct) => (
@@ -1276,6 +1267,30 @@ export default function PurchaseOrdersPage() {
                             </Button>
                           ))}
                         </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="advance_paid">Advance Already Paid (₹)</Label>
+                        <Input
+                          id="advance_paid"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="Enter amount already paid"
+                          value={formData.advance_paid || ''}
+                          onChange={(e) => setFormData({ ...formData, advance_paid: parseFloat(e.target.value) || 0 })}
+                          className={formData.advance_paid > 0 ? "border-green-500 bg-green-50" : ""}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Amount already paid to vendor
+                        </p>
+                        {formData.advance_required > 0 && (
+                          <div className="text-xs">
+                            <span className="text-muted-foreground">Balance: </span>
+                            <span className={formData.advance_paid >= formData.advance_required ? "text-green-600 font-medium" : "text-orange-600 font-medium"}>
+                              {formatCurrency(Math.max(0, formData.advance_required - formData.advance_paid))}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

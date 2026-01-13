@@ -261,6 +261,7 @@ class PurchaseOrderBase(BaseModel):
     payment_terms: Optional[str] = None
     credit_days: int = 30
     advance_required: Decimal = Field(Decimal("0"), ge=0)
+    advance_paid: Decimal = Field(Decimal("0"), ge=0, description="Advance amount already paid")
     quotation_reference: Optional[str] = None
     quotation_date: Optional[date] = None
     freight_charges: Decimal = Field(Decimal("0"), ge=0)
