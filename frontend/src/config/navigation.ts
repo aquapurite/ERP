@@ -136,6 +136,7 @@ export const navigation: NavItem[] = [
       { title: 'Financial Periods', href: '/dashboard/finance/periods', icon: Clock, permissions: ['ACCOUNTING_VIEW'] },
       { title: 'Journal Entries', href: '/dashboard/finance/journal-entries', permissions: ['ACCOUNTING_VIEW'] },
       { title: 'General Ledger', href: '/dashboard/finance/general-ledger', permissions: ['ACCOUNTING_VIEW'] },
+      { title: 'Bank Reconciliation', href: '/dashboard/finance/bank-reconciliation', permissions: ['ACCOUNTING_VIEW'] },
       { title: 'Cost Centers', href: '/dashboard/finance/cost-centers', permissions: ['ACCOUNTING_VIEW'] },
     ],
   },

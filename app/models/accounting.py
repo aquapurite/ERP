@@ -809,3 +809,246 @@ class TaxConfiguration(Base):
 
     def __repr__(self) -> str:
         return f"<TaxConfiguration(hsn='{self.hsn_code}', rate={self.total_gst_rate}%)>"
+
+
+class BankReconciliationStatus(str, Enum):
+    """Bank reconciliation status."""
+    PENDING = "PENDING"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+
+
+class BankTransactionType(str, Enum):
+    """Bank transaction types."""
+    DEPOSIT = "DEPOSIT"
+    WITHDRAWAL = "WITHDRAWAL"
+    TRANSFER = "TRANSFER"
+    CHARGE = "CHARGE"
+    INTEREST = "INTEREST"
+    REVERSAL = "REVERSAL"
+
+
+class BankStatementLine(Base):
+    """
+    Bank statement line imported from bank.
+    Used for reconciliation with book entries.
+    """
+    __tablename__ = "bank_statement_lines"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Bank Account
+    bank_account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("chart_of_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        comment="Bank account from COA"
+    )
+
+    # Statement Details
+    statement_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    value_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    transaction_ref: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="Bank reference number"
+    )
+    cheque_number: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+
+    # Transaction
+    transaction_type: Mapped[BankTransactionType] = mapped_column(
+        SQLEnum(BankTransactionType),
+        nullable=False
+    )
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    debit_amount: Mapped[Decimal] = mapped_column(
+        Numeric(15, 2),
+        default=Decimal("0"),
+        comment="Withdrawal/payment"
+    )
+    credit_amount: Mapped[Decimal] = mapped_column(
+        Numeric(15, 2),
+        default=Decimal("0"),
+        comment="Deposit/receipt"
+    )
+    balance: Mapped[Decimal] = mapped_column(
+        Numeric(15, 2),
+        nullable=False,
+        comment="Balance as per bank"
+    )
+
+    # Reconciliation
+    is_reconciled: Mapped[bool] = mapped_column(Boolean, default=False)
+    reconciled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    reconciled_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Matched GL entry
+    matched_gl_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("general_ledger.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Matched General Ledger entry"
+    )
+
+    # Import tracking
+    import_batch_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    imported_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    bank_account: Mapped["ChartOfAccount"] = relationship("ChartOfAccount")
+    matched_gl: Mapped[Optional["GeneralLedger"]] = relationship("GeneralLedger")
+
+    def __repr__(self) -> str:
+        return f"<BankStatementLine(date={self.statement_date}, amount={self.debit_amount or self.credit_amount})>"
+
+
+class BankReconciliation(Base):
+    """
+    Bank reconciliation header.
+    Tracks monthly/periodic reconciliation status.
+    """
+    __tablename__ = "bank_reconciliations"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Bank Account
+    bank_account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("chart_of_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Period
+    reconciliation_date: Mapped[date] = mapped_column(
+        Date,
+        nullable=False,
+        comment="Reconciliation as of date"
+    )
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+
+    # Balances
+    opening_book_balance: Mapped[Decimal] = mapped_column(
+        Numeric(15, 2),
+        nullable=False,
+        comment="Opening balance as per books"
+    )
+    closing_book_balance: Mapped[Decimal] = mapped_column(
+        Numeric(15, 2),
+        nullable=False,
+        comment="Closing balance as per books"
+    )
+    bank_statement_balance: Mapped[Decimal] = mapped_column(
+        Numeric(15, 2),
+        nullable=False,
+        comment="Balance as per bank statement"
+    )
+
+    # Reconciliation Items
+    deposits_in_transit: Mapped[Decimal] = mapped_column(
+        Numeric(15, 2),
+        default=Decimal("0"),
+        comment="Deposits recorded in books but not in bank"
+    )
+    outstanding_cheques: Mapped[Decimal] = mapped_column(
+        Numeric(15, 2),
+        default=Decimal("0"),
+        comment="Cheques issued but not yet cleared"
+    )
+    bank_charges: Mapped[Decimal] = mapped_column(
+        Numeric(15, 2),
+        default=Decimal("0"),
+        comment="Bank charges not recorded in books"
+    )
+    interest_earned: Mapped[Decimal] = mapped_column(
+        Numeric(15, 2),
+        default=Decimal("0"),
+        comment="Interest credited by bank"
+    )
+    other_adjustments: Mapped[Decimal] = mapped_column(
+        Numeric(15, 2),
+        default=Decimal("0")
+    )
+    adjustment_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Calculated reconciled balance
+    reconciled_balance: Mapped[Decimal] = mapped_column(
+        Numeric(15, 2),
+        nullable=False,
+        comment="Adjusted book balance = closing_book + adjustments"
+    )
+    difference: Mapped[Decimal] = mapped_column(
+        Numeric(15, 2),
+        default=Decimal("0"),
+        comment="Difference between bank and reconciled"
+    )
+
+    # Status
+    status: Mapped[BankReconciliationStatus] = mapped_column(
+        SQLEnum(BankReconciliationStatus),
+        default=BankReconciliationStatus.PENDING,
+        nullable=False
+    )
+
+    # Workflow
+    prepared_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False
+    )
+    prepared_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+    reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    bank_account: Mapped["ChartOfAccount"] = relationship("ChartOfAccount")
+
+    @property
+    def is_balanced(self) -> bool:
+        """Check if reconciliation is balanced."""
+        return abs(self.difference) < Decimal("0.01")
+
+    def __repr__(self) -> str:
+        return f"<BankReconciliation(account={self.bank_account_id}, date={self.reconciliation_date})>"
