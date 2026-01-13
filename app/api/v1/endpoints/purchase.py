@@ -3061,7 +3061,13 @@ async def download_purchase_order(
         serial_rows = ""
         for sg in serial_groups:
             item_type = sg.item_type.value if hasattr(sg.item_type, 'value') else str(sg.item_type)
-            item_type_label = "Finished Goods" if item_type == "FG" else "Spare Part" if item_type == "SP" else item_type
+            # Handle both short codes (FG, SP) and full names (FINISHED_GOODS, SPARE_PART)
+            if item_type in ("FG", "FINISHED_GOODS"):
+                item_type_label = "Finished Goods"
+            elif item_type in ("SP", "SPARE_PART"):
+                item_type_label = "Spare Part"
+            else:
+                item_type_label = item_type
 
             # Get product name for this model code from PO items
             product_name = "-"
