@@ -108,10 +108,10 @@ async def generate_employee_code(db: AsyncSession) -> str:
 
 # ==================== Department Endpoints ====================
 
-@router.get("/departments", response_model=DepartmentListResponse)
+@router.get("/departments", response_model=DepartmentListResponse, dependencies=[Depends(require_permissions("hr:view"))])
 async def list_departments(
     db: DB,
-    current_user: User = Depends(require_permissions(["hr:view"])),
+    current_user: CurrentUser,
     is_active: Optional[bool] = None,
     search: Optional[str] = None,
 ):
@@ -179,7 +179,7 @@ async def list_departments(
             updated_at=dept.updated_at,
         ))
 
-    return DepartmentListResponse(items=items, total=len(items))
+    return DepartmentListResponse(items=items, total=len(items), page=1, size=len(items), pages=1)
 
 
 @router.get("/departments/dropdown", response_model=List[DepartmentDropdown])
@@ -198,11 +198,11 @@ async def get_departments_dropdown(
     return [DepartmentDropdown(id=d.id, code=d.code, name=d.name) for d in departments]
 
 
-@router.post("/departments", response_model=DepartmentResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/departments", response_model=DepartmentResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permissions("hr:create"))])
 async def create_department(
     dept_in: DepartmentCreate,
     db: DB,
-    current_user: User = Depends(require_permissions(["hr:create"])),
+    current_user: CurrentUser,
 ):
     """Create a new department."""
     # Check if code exists
@@ -242,11 +242,11 @@ async def create_department(
     )
 
 
-@router.get("/departments/{department_id}", response_model=DepartmentResponse)
+@router.get("/departments/{department_id}", response_model=DepartmentResponse, dependencies=[Depends(require_permissions("hr:view"))])
 async def get_department(
     department_id: UUID,
     db: DB,
-    current_user: User = Depends(require_permissions(["hr:view"])),
+    current_user: CurrentUser,
 ):
     """Get department by ID."""
     result = await db.execute(
@@ -298,12 +298,12 @@ async def get_department(
     )
 
 
-@router.put("/departments/{department_id}", response_model=DepartmentResponse)
+@router.put("/departments/{department_id}", response_model=DepartmentResponse, dependencies=[Depends(require_permissions("hr:update"))])
 async def update_department(
     department_id: UUID,
     dept_in: DepartmentUpdate,
     db: DB,
-    current_user: User = Depends(require_permissions(["hr:update"])),
+    current_user: CurrentUser,
 ):
     """Update department."""
     result = await db.execute(
@@ -329,10 +329,10 @@ async def update_department(
 
 # ==================== Employee Endpoints ====================
 
-@router.get("/employees", response_model=EmployeeListResponse)
+@router.get("/employees", response_model=EmployeeListResponse, dependencies=[Depends(require_permissions("hr:view"))])
 async def list_employees(
     db: DB,
-    current_user: User = Depends(require_permissions(["hr:view"])),
+    current_user: CurrentUser,
     page: int = Query(1, ge=1),
     size: int = Query(50, ge=1, le=100),
     status: Optional[EmployeeStatus] = None,
@@ -462,11 +462,11 @@ async def get_employees_dropdown(
     return items
 
 
-@router.post("/employees", response_model=EmployeeDetailResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/employees", response_model=EmployeeDetailResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permissions("hr:create"))])
 async def create_employee(
     emp_in: EmployeeCreateWithUser,
     db: DB,
-    current_user: User = Depends(require_permissions(["hr:create"])),
+    current_user: CurrentUser,
 ):
     """Create a new employee with linked User account."""
     # Check if email exists
@@ -567,11 +567,11 @@ async def create_employee(
     return await get_employee(employee.id, db, current_user)
 
 
-@router.get("/employees/{employee_id}", response_model=EmployeeDetailResponse)
+@router.get("/employees/{employee_id}", response_model=EmployeeDetailResponse, dependencies=[Depends(require_permissions("hr:view"))])
 async def get_employee(
     employee_id: UUID,
     db: DB,
-    current_user: User = Depends(require_permissions(["hr:view"])),
+    current_user: CurrentUser,
 ):
     """Get employee details by ID."""
     result = await db.execute(
@@ -654,12 +654,12 @@ async def get_employee(
     )
 
 
-@router.put("/employees/{employee_id}", response_model=EmployeeDetailResponse)
+@router.put("/employees/{employee_id}", response_model=EmployeeDetailResponse, dependencies=[Depends(require_permissions("hr:update"))])
 async def update_employee(
     employee_id: UUID,
     emp_in: EmployeeUpdate,
     db: DB,
-    current_user: User = Depends(require_permissions(["hr:update"])),
+    current_user: CurrentUser,
 ):
     """Update employee details."""
     result = await db.execute(
@@ -692,11 +692,11 @@ async def update_employee(
 
 # ==================== Salary Structure Endpoints ====================
 
-@router.get("/employees/{employee_id}/salary", response_model=SalaryStructureResponse)
+@router.get("/employees/{employee_id}/salary", response_model=SalaryStructureResponse, dependencies=[Depends(require_permissions("payroll:view"))])
 async def get_employee_salary(
     employee_id: UUID,
     db: DB,
-    current_user: User = Depends(require_permissions(["payroll:view"])),
+    current_user: CurrentUser,
 ):
     """Get employee's salary structure."""
     result = await db.execute(
@@ -715,12 +715,12 @@ async def get_employee_salary(
     return salary
 
 
-@router.put("/employees/{employee_id}/salary", response_model=SalaryStructureResponse)
+@router.put("/employees/{employee_id}/salary", response_model=SalaryStructureResponse, dependencies=[Depends(require_permissions("payroll:process"))])
 async def update_employee_salary(
     employee_id: UUID,
     salary_in: SalaryStructureCreate,
     db: DB,
-    current_user: User = Depends(require_permissions(["payroll:process"])),
+    current_user: CurrentUser,
 ):
     """Create or update employee's salary structure."""
     # Check employee exists
@@ -929,10 +929,10 @@ async def check_out(
     return await _format_attendance_response(attendance, db)
 
 
-@router.get("/attendance", response_model=AttendanceListResponse)
+@router.get("/attendance", response_model=AttendanceListResponse, dependencies=[Depends(require_permissions("attendance:view"))])
 async def list_attendance(
     db: DB,
-    current_user: User = Depends(require_permissions(["attendance:view"])),
+    current_user: CurrentUser,
     page: int = Query(1, ge=1),
     size: int = Query(50, ge=1, le=100),
     employee_id: Optional[UUID] = None,
@@ -1161,12 +1161,12 @@ async def list_leave_requests(
     return LeaveRequestListResponse(items=items, total=total, page=page, size=size, pages=pages)
 
 
-@router.put("/leave-requests/{request_id}/approve")
+@router.put("/leave-requests/{request_id}/approve", dependencies=[Depends(require_permissions("leave:approve"))])
 async def approve_leave_request(
     request_id: UUID,
     action_in: LeaveApproveRequest,
     db: DB,
-    current_user: User = Depends(require_permissions(["leave:approve"])),
+    current_user: CurrentUser,
 ):
     """Approve or reject leave request."""
     result = await db.execute(
@@ -1270,10 +1270,10 @@ async def _format_leave_response(leave_req: LeaveRequest, db: AsyncSession) -> L
 
 # ==================== Payroll Endpoints ====================
 
-@router.get("/payroll", response_model=PayrollListResponse)
+@router.get("/payroll", response_model=PayrollListResponse, dependencies=[Depends(require_permissions("payroll:view"))])
 async def list_payrolls(
     db: DB,
-    current_user: User = Depends(require_permissions(["payroll:view"])),
+    current_user: CurrentUser,
     page: int = Query(1, ge=1),
     size: int = Query(50, ge=1, le=100),
     financial_year: Optional[str] = None,
@@ -1338,11 +1338,11 @@ async def list_payrolls(
     return PayrollListResponse(items=items, total=total, page=page, size=size, pages=pages)
 
 
-@router.post("/payroll/process", response_model=PayrollResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/payroll/process", response_model=PayrollResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permissions("payroll:process"))])
 async def process_payroll(
     payroll_in: PayrollProcessRequest,
     db: DB,
-    current_user: User = Depends(require_permissions(["payroll:process"])),
+    current_user: CurrentUser,
 ):
     """Process monthly payroll."""
     # Check if already processed
@@ -1505,11 +1505,11 @@ async def process_payroll(
     )
 
 
-@router.put("/payroll/{payroll_id}/approve", response_model=PayrollResponse)
+@router.put("/payroll/{payroll_id}/approve", response_model=PayrollResponse, dependencies=[Depends(require_permissions("payroll:approve"))])
 async def approve_payroll(
     payroll_id: UUID,
     db: DB,
-    current_user: User = Depends(require_permissions(["payroll:approve"])),
+    current_user: CurrentUser,
 ):
     """Approve processed payroll."""
     result = await db.execute(
@@ -1632,10 +1632,10 @@ async def list_payslips(
 
 # ==================== Dashboard Endpoints ====================
 
-@router.get("/dashboard", response_model=HRDashboardStats)
+@router.get("/dashboard", response_model=HRDashboardStats, dependencies=[Depends(require_permissions("hr:view"))])
 async def get_hr_dashboard(
     db: DB,
-    current_user: User = Depends(require_permissions(["hr:view"])),
+    current_user: CurrentUser,
 ):
     """Get HR dashboard statistics."""
     today = date.today()

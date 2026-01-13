@@ -53,6 +53,9 @@ class DepartmentListResponse(BaseModel):
     """Response for listing Departments."""
     items: List[DepartmentResponse]
     total: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
 
 
 class DepartmentDropdown(BaseModel):
