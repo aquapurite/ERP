@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { hrApi, rolesApi } from '@/lib/api';
 
 const employmentTypes = [
@@ -71,7 +71,6 @@ const defaultAddress: AddressForm = {
 
 export default function NewEmployeePage() {
   const router = useRouter();
-  const { toast } = useToast();
 
   const [formData, setFormData] = useState({
     // User Account
@@ -138,11 +137,11 @@ export default function NewEmployeePage() {
   const createMutation = useMutation({
     mutationFn: hrApi.employees.create,
     onSuccess: (employee) => {
-      toast({ title: 'Employee created successfully' });
+      toast.success('Employee created successfully');
       router.push(`/dashboard/hr/employees/${employee.id}`);
     },
     onError: (error: Error) => {
-      toast({ title: 'Error creating employee', description: error.message, variant: 'destructive' });
+      toast.error(error.message || 'Error creating employee');
     },
   });
 
@@ -150,11 +149,7 @@ export default function NewEmployeePage() {
     e.preventDefault();
 
     if (!formData.email || !formData.password || !formData.first_name || !formData.joining_date) {
-      toast({
-        title: 'Validation Error',
-        description: 'Please fill in all required fields (Email, Password, First Name, Joining Date)',
-        variant: 'destructive',
-      });
+      toast.error('Please fill in all required fields (Email, Password, First Name, Joining Date)');
       return;
     }
 
@@ -162,8 +157,8 @@ export default function NewEmployeePage() {
 
     createMutation.mutate({
       ...formData,
-      current_address: currentAddress,
-      permanent_address: finalPermanentAddress,
+      current_address: currentAddress as unknown as Record<string, unknown>,
+      permanent_address: finalPermanentAddress as unknown as Record<string, unknown>,
     });
   };
 

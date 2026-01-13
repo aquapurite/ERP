@@ -46,7 +46,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { hrApi, LeaveRequest } from '@/lib/api';
 
 const leaveTypes = [
@@ -88,7 +88,6 @@ export default function LeavesPage() {
   const pageSize = 20;
 
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   const { data: leavesData, isLoading } = useQuery({
     queryKey: ['leave-requests', page, statusFilter],
@@ -109,10 +108,10 @@ export default function LeavesPage() {
       setSelectedLeave(null);
       setActionType(null);
       setRejectionReason('');
-      toast({ title: actionType === 'APPROVE' ? 'Leave approved' : 'Leave rejected' });
+      toast.success(actionType === 'APPROVE' ? 'Leave approved' : 'Leave rejected');
     },
     onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      toast.error(error.message || 'Error processing leave request');
     },
   });
 

@@ -45,7 +45,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { hrApi, Employee, SalaryStructure, AttendanceRecord, LeaveRequest, Payslip } from '@/lib/api';
 
 const employmentTypes = [
@@ -83,7 +83,6 @@ export default function EmployeeDetailPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   const employeeId = params.id as string;
   const isEditMode = searchParams.get('edit') === 'true';
@@ -142,10 +141,10 @@ export default function EmployeeDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
       setEditMode(false);
-      toast({ title: 'Employee updated successfully' });
+      toast.success('Employee updated successfully');
     },
     onError: (error: Error) => {
-      toast({ title: 'Error updating employee', description: error.message, variant: 'destructive' });
+      toast.error(error.message || 'Error updating employee');
     },
   });
 
@@ -155,10 +154,10 @@ export default function EmployeeDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employee-salary', employeeId] });
       setSalaryEditMode(false);
-      toast({ title: 'Salary updated successfully' });
+      toast.success('Salary updated successfully');
     },
     onError: (error: Error) => {
-      toast({ title: 'Error updating salary', description: error.message, variant: 'destructive' });
+      toast.error(error.message || 'Error updating salary');
     },
   });
 

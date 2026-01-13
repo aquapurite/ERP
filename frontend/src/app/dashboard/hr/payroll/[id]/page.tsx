@@ -34,7 +34,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { hrApi, PayrollRun, Payslip } from '@/lib/api';
 
 const payrollStatuses = [
@@ -62,7 +62,6 @@ export default function PayrollDetailPage() {
   const params = useParams();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   const payrollId = params.id as string;
   const [selectedPayslip, setSelectedPayslip] = useState<Payslip | null>(null);
@@ -79,10 +78,10 @@ export default function PayrollDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payrolls'] });
       queryClient.invalidateQueries({ queryKey: ['payroll-payslips', payrollId] });
-      toast({ title: 'Payroll approved successfully' });
+      toast.success('Payroll approved successfully');
     },
     onError: (error: Error) => {
-      toast({ title: 'Error approving payroll', description: error.message, variant: 'destructive' });
+      toast.error(error.message || 'Error approving payroll');
     },
   });
 

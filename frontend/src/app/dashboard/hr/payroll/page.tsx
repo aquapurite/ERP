@@ -43,7 +43,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { hrApi, PayrollRun } from '@/lib/api';
 
 const payrollStatuses = [
@@ -88,7 +88,6 @@ export default function PayrollPage() {
   const pageSize = 20;
 
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   const { data: payrollData, isLoading } = useQuery({
     queryKey: ['payrolls', page, fyFilter],
@@ -107,10 +106,10 @@ export default function PayrollPage() {
       queryClient.invalidateQueries({ queryKey: ['payrolls'] });
       queryClient.invalidateQueries({ queryKey: ['hr-dashboard'] });
       setIsProcessOpen(false);
-      toast({ title: 'Payroll processed successfully' });
+      toast.success('Payroll processed successfully');
     },
     onError: (error: Error) => {
-      toast({ title: 'Error processing payroll', description: error.message, variant: 'destructive' });
+      toast.error(error.message || 'Error processing payroll');
     },
   });
 
@@ -119,10 +118,10 @@ export default function PayrollPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payrolls'] });
       queryClient.invalidateQueries({ queryKey: ['hr-dashboard'] });
-      toast({ title: 'Payroll approved successfully' });
+      toast.success('Payroll approved successfully');
     },
     onError: (error: Error) => {
-      toast({ title: 'Error approving payroll', description: error.message, variant: 'destructive' });
+      toast.error(error.message || 'Error approving payroll');
     },
   });
 

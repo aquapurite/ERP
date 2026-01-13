@@ -42,7 +42,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { hrApi, Department } from '@/lib/api';
 
 export default function DepartmentsPage() {
@@ -57,7 +57,6 @@ export default function DepartmentsPage() {
   });
 
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   const { data: departments, isLoading } = useQuery({
     queryKey: ['departments', search],
@@ -70,10 +69,10 @@ export default function DepartmentsPage() {
       queryClient.invalidateQueries({ queryKey: ['departments'] });
       setIsCreateOpen(false);
       resetForm();
-      toast({ title: 'Department created successfully' });
+      toast.success('Department created successfully');
     },
     onError: (error: Error) => {
-      toast({ title: 'Error creating department', description: error.message, variant: 'destructive' });
+      toast.error(error.message || 'Error creating department');
     },
   });
 
@@ -84,10 +83,10 @@ export default function DepartmentsPage() {
       queryClient.invalidateQueries({ queryKey: ['departments'] });
       setEditDept(null);
       resetForm();
-      toast({ title: 'Department updated successfully' });
+      toast.success('Department updated successfully');
     },
     onError: (error: Error) => {
-      toast({ title: 'Error updating department', description: error.message, variant: 'destructive' });
+      toast.error(error.message || 'Error updating department');
     },
   });
 
