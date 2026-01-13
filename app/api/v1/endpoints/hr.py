@@ -1732,3 +1732,232 @@ async def get_hr_dashboard(
         pending_payroll_approval=pending_payroll,
         department_wise=dept_distribution,
     )
+
+
+# ==================== Reports Endpoints ====================
+
+@router.get("/reports/pf-ecr", response_model=List[PFReportResponse], dependencies=[Depends(require_permissions("hr:reports"))])
+async def get_pf_ecr_report(
+    db: DB,
+    current_user: CurrentUser,
+    payroll_month: date = Query(..., description="Payroll month (first day of month)"),
+    department_id: Optional[UUID] = None,
+):
+    """Generate PF ECR (Electronic Challan cum Return) report for a month."""
+    # Get payslips for the month
+    query = (
+        select(Payslip, Employee, SalaryStructure)
+        .join(Employee, Payslip.employee_id == Employee.id)
+        .outerjoin(SalaryStructure, and_(
+            SalaryStructure.employee_id == Employee.id,
+            SalaryStructure.is_active == True
+        ))
+        .join(Payroll, Payslip.payroll_id == Payroll.id)
+        .where(Payroll.payroll_month == payroll_month)
+    )
+
+    if department_id:
+        query = query.where(Employee.department_id == department_id)
+
+    result = await db.execute(query)
+    records = result.all()
+
+    pf_data = []
+    for payslip, employee, salary in records:
+        if not salary or not salary.pf_applicable:
+            continue
+
+        # PF wages capped at 15000
+        basic = payslip.basic_earned
+        epf_wages = min(basic, Decimal("15000"))
+
+        # EPF contribution breakdown
+        epf_employee = payslip.employee_pf  # 12% from employee
+        epf_employer_share = round(epf_wages * Decimal("0.0367"), 2)  # 3.67% EPF from employer
+        eps_contribution = round(epf_wages * Decimal("0.0833"), 2)  # 8.33% EPS from employer
+        edli_contribution = round(epf_wages * Decimal("0.005"), 2)  # 0.5% EDLI
+        admin_charges = round(epf_wages * Decimal("0.005"), 2)  # 0.5% admin
+
+        # Non-contributing days
+        ncp_days = int(payslip.days_absent + payslip.leaves_taken)
+
+        pf_data.append(PFReportResponse(
+            employee_id=employee.id,
+            employee_code=employee.employee_code,
+            employee_name=f"{employee.user.first_name} {employee.user.last_name or ''}".strip() if employee.user else employee.employee_code,
+            uan_number=employee.uan_number,
+            gross_wages=payslip.gross_earnings,
+            epf_wages=epf_wages,
+            eps_wages=epf_wages,
+            edli_wages=epf_wages,
+            epf_contribution_employee=epf_employee,
+            epf_contribution_employer=epf_employer_share,
+            eps_contribution=eps_contribution,
+            edli_contribution=edli_contribution,
+            admin_charges=admin_charges,
+            ncp_days=ncp_days,
+        ))
+
+    return pf_data
+
+
+@router.get("/reports/esic", response_model=List[ESICReportResponse], dependencies=[Depends(require_permissions("hr:reports"))])
+async def get_esic_report(
+    db: DB,
+    current_user: CurrentUser,
+    payroll_month: date = Query(..., description="Payroll month (first day of month)"),
+    department_id: Optional[UUID] = None,
+):
+    """Generate ESIC (Employee State Insurance Corporation) report for a month."""
+    query = (
+        select(Payslip, Employee, SalaryStructure)
+        .join(Employee, Payslip.employee_id == Employee.id)
+        .outerjoin(SalaryStructure, and_(
+            SalaryStructure.employee_id == Employee.id,
+            SalaryStructure.is_active == True
+        ))
+        .join(Payroll, Payslip.payroll_id == Payroll.id)
+        .where(Payroll.payroll_month == payroll_month)
+    )
+
+    if department_id:
+        query = query.where(Employee.department_id == department_id)
+
+    result = await db.execute(query)
+    records = result.all()
+
+    esic_data = []
+    for payslip, employee, salary in records:
+        if not salary or not salary.esic_applicable:
+            continue
+
+        # ESIC only applicable if gross <= 21000
+        if payslip.gross_earnings > Decimal("21000"):
+            continue
+
+        employee_contrib = payslip.employee_esic
+        employer_contrib = payslip.employer_esic
+        total_contrib = employee_contrib + employer_contrib
+
+        days_worked = int(payslip.days_present)
+
+        esic_data.append(ESICReportResponse(
+            employee_id=employee.id,
+            employee_code=employee.employee_code,
+            employee_name=f"{employee.user.first_name} {employee.user.last_name or ''}".strip() if employee.user else employee.employee_code,
+            esic_number=employee.esic_number,
+            gross_wages=payslip.gross_earnings,
+            employee_contribution=employee_contrib,
+            employer_contribution=employer_contrib,
+            total_contribution=total_contrib,
+            days_worked=days_worked,
+        ))
+
+    return esic_data
+
+
+@router.get("/reports/salary-register", dependencies=[Depends(require_permissions("hr:reports"))])
+async def get_salary_register(
+    db: DB,
+    current_user: CurrentUser,
+    payroll_month: date = Query(..., description="Payroll month (first day of month)"),
+    department_id: Optional[UUID] = None,
+):
+    """Generate salary register report for a month."""
+    query = (
+        select(Payslip, Employee)
+        .join(Employee, Payslip.employee_id == Employee.id)
+        .join(Payroll, Payslip.payroll_id == Payroll.id)
+        .where(Payroll.payroll_month == payroll_month)
+        .order_by(Employee.employee_code)
+    )
+
+    if department_id:
+        query = query.where(Employee.department_id == department_id)
+
+    result = await db.execute(query)
+    records = result.all()
+
+    register_data = []
+    for payslip, employee in records:
+        # Get user details
+        user_result = await db.execute(
+            select(User).where(User.id == employee.user_id)
+        )
+        user = user_result.scalar_one_or_none()
+
+        # Get department name
+        dept_name = None
+        if employee.department_id:
+            dept_result = await db.execute(
+                select(Department.name).where(Department.id == employee.department_id)
+            )
+            dept_name = dept_result.scalar_one_or_none()
+
+        register_data.append({
+            "employee_id": str(employee.id),
+            "employee_code": employee.employee_code,
+            "employee_name": f"{user.first_name} {user.last_name or ''}".strip() if user else employee.employee_code,
+            "department": dept_name,
+            "designation": employee.designation,
+            "bank_name": employee.bank_name,
+            "bank_account": employee.bank_account_number,
+            "ifsc_code": employee.bank_ifsc_code,
+            "pan_number": employee.pan_number,
+            "uan_number": employee.uan_number,
+
+            # Attendance
+            "working_days": payslip.working_days,
+            "days_present": float(payslip.days_present),
+            "days_absent": float(payslip.days_absent),
+            "leaves_taken": float(payslip.leaves_taken),
+
+            # Earnings
+            "basic": float(payslip.basic_earned),
+            "hra": float(payslip.hra_earned),
+            "conveyance": float(payslip.conveyance_earned),
+            "medical": float(payslip.medical_earned),
+            "special": float(payslip.special_earned),
+            "other_earnings": float(payslip.other_earned),
+            "overtime": float(payslip.overtime_amount),
+            "arrears": float(payslip.arrears),
+            "bonus": float(payslip.bonus),
+            "gross_earnings": float(payslip.gross_earnings),
+
+            # Deductions
+            "employee_pf": float(payslip.employee_pf),
+            "employee_esic": float(payslip.employee_esic),
+            "professional_tax": float(payslip.professional_tax),
+            "tds": float(payslip.tds),
+            "loan_deduction": float(payslip.loan_deduction),
+            "advance_deduction": float(payslip.advance_deduction),
+            "other_deductions": float(payslip.other_deductions),
+            "total_deductions": float(payslip.total_deductions),
+
+            # Net
+            "net_salary": float(payslip.net_salary),
+
+            # Employer contributions (for records)
+            "employer_pf": float(payslip.employer_pf),
+            "employer_esic": float(payslip.employer_esic),
+        })
+
+    # Summary
+    total_gross = sum(r["gross_earnings"] for r in register_data)
+    total_deductions = sum(r["total_deductions"] for r in register_data)
+    total_net = sum(r["net_salary"] for r in register_data)
+    total_pf = sum(r["employee_pf"] + r["employer_pf"] for r in register_data)
+    total_esic = sum(r["employee_esic"] + r["employer_esic"] for r in register_data)
+
+    return {
+        "payroll_month": payroll_month.isoformat(),
+        "total_employees": len(register_data),
+        "summary": {
+            "total_gross": total_gross,
+            "total_deductions": total_deductions,
+            "total_net": total_net,
+            "total_pf": total_pf,
+            "total_esic": total_esic,
+        },
+        "employees": register_data,
+    }

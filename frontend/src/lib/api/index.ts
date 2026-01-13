@@ -2365,6 +2365,87 @@ export interface HRDashboardStats {
   department_wise: Array<{ department: string; count: number }>;
 }
 
+// Report Types
+export interface PFReportItem {
+  employee_id: string;
+  employee_code: string;
+  employee_name: string;
+  uan_number?: string;
+  gross_wages: number;
+  epf_wages: number;
+  eps_wages: number;
+  edli_wages: number;
+  epf_contribution_employee: number;
+  epf_contribution_employer: number;
+  eps_contribution: number;
+  edli_contribution: number;
+  admin_charges: number;
+  ncp_days: number;
+}
+
+export interface ESICReportItem {
+  employee_id: string;
+  employee_code: string;
+  employee_name: string;
+  esic_number?: string;
+  gross_wages: number;
+  employee_contribution: number;
+  employer_contribution: number;
+  total_contribution: number;
+  days_worked: number;
+}
+
+export interface SalaryRegisterEmployee {
+  employee_id: string;
+  employee_code: string;
+  employee_name: string;
+  department?: string;
+  designation?: string;
+  bank_name?: string;
+  bank_account?: string;
+  ifsc_code?: string;
+  pan_number?: string;
+  uan_number?: string;
+  working_days: number;
+  days_present: number;
+  days_absent: number;
+  leaves_taken: number;
+  basic: number;
+  hra: number;
+  conveyance: number;
+  medical: number;
+  special: number;
+  other_earnings: number;
+  overtime: number;
+  arrears: number;
+  bonus: number;
+  gross_earnings: number;
+  employee_pf: number;
+  employee_esic: number;
+  professional_tax: number;
+  tds: number;
+  loan_deduction: number;
+  advance_deduction: number;
+  other_deductions: number;
+  total_deductions: number;
+  net_salary: number;
+  employer_pf: number;
+  employer_esic: number;
+}
+
+export interface SalaryRegisterResponse {
+  payroll_month: string;
+  total_employees: number;
+  summary: {
+    total_gross: number;
+    total_deductions: number;
+    total_net: number;
+    total_pf: number;
+    total_esic: number;
+  };
+  employees: SalaryRegisterEmployee[];
+}
+
 // HR API
 export const hrApi = {
   // Dashboard
@@ -2533,6 +2614,22 @@ export const hrApi = {
     },
     listPayslips: async (params?: { page?: number; size?: number; payroll_id?: string; employee_id?: string }) => {
       const { data } = await apiClient.get<{ items: Payslip[]; total: number; page: number; size: number; pages: number }>('/hr/payslips', { params });
+      return data;
+    },
+  },
+
+  // Reports
+  reports: {
+    getPFECR: async (params: { payroll_month: string; department_id?: string }) => {
+      const { data } = await apiClient.get<PFReportItem[]>('/hr/reports/pf-ecr', { params });
+      return data;
+    },
+    getESIC: async (params: { payroll_month: string; department_id?: string }) => {
+      const { data } = await apiClient.get<ESICReportItem[]>('/hr/reports/esic', { params });
+      return data;
+    },
+    getSalaryRegister: async (params: { payroll_month: string; department_id?: string }) => {
+      const { data } = await apiClient.get<SalaryRegisterResponse>('/hr/reports/salary-register', { params });
       return data;
     },
   },
