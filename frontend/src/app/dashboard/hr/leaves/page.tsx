@@ -212,8 +212,8 @@ export default function LeavesPage() {
                     <TableCell>
                       <Badge variant="outline">{getLeaveTypeLabel(leave.leave_type)}</Badge>
                     </TableCell>
-                    <TableCell>{format(new Date(leave.from_date), 'dd MMM yyyy')}</TableCell>
-                    <TableCell>{format(new Date(leave.to_date), 'dd MMM yyyy')}</TableCell>
+                    <TableCell>{leave.from_date ? format(new Date(leave.from_date), 'dd MMM yyyy') : '-'}</TableCell>
+                    <TableCell>{leave.to_date ? format(new Date(leave.to_date), 'dd MMM yyyy') : '-'}</TableCell>
                     <TableCell>
                       {leave.days} {leave.is_half_day && <span className="text-xs text-muted-foreground">(Half)</span>}
                     </TableCell>
@@ -303,7 +303,11 @@ export default function LeavesPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Duration:</span>
-                  <span>{format(new Date(selectedLeave.from_date), 'dd MMM')} - {format(new Date(selectedLeave.to_date), 'dd MMM yyyy')} ({selectedLeave.days} days)</span>
+                  <span>
+                    {selectedLeave.from_date && selectedLeave.to_date
+                      ? `${format(new Date(selectedLeave.from_date), 'dd MMM')} - ${format(new Date(selectedLeave.to_date), 'dd MMM yyyy')} (${selectedLeave.days} days)`
+                      : '-'}
+                  </span>
                 </div>
               </div>
               {actionType === 'REJECT' && (

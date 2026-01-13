@@ -531,7 +531,7 @@ export default function EmployeeDetailPage() {
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Joining Date</div>
-                    <div>{format(new Date(employee.joining_date), 'dd MMM yyyy')}</div>
+                    <div>{employee.joining_date ? format(new Date(employee.joining_date), 'dd MMM yyyy') : '-'}</div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Confirmation Date</div>
@@ -778,7 +778,7 @@ export default function EmployeeDetailPage() {
                   ) : (
                     attendance.map((record: AttendanceRecord) => (
                       <TableRow key={record.id}>
-                        <TableCell>{format(new Date(record.attendance_date), 'dd MMM yyyy')}</TableCell>
+                        <TableCell>{record.attendance_date ? format(new Date(record.attendance_date), 'dd MMM yyyy') : '-'}</TableCell>
                         <TableCell>
                           {record.check_in ? format(new Date(record.check_in), 'hh:mm a') : '-'}
                         </TableCell>
@@ -833,8 +833,8 @@ export default function EmployeeDetailPage() {
                         <TableCell>
                           <Badge variant="outline">{leave.leave_type}</Badge>
                         </TableCell>
-                        <TableCell>{format(new Date(leave.from_date), 'dd MMM yyyy')}</TableCell>
-                        <TableCell>{format(new Date(leave.to_date), 'dd MMM yyyy')}</TableCell>
+                        <TableCell>{leave.from_date ? format(new Date(leave.from_date), 'dd MMM yyyy') : '-'}</TableCell>
+                        <TableCell>{leave.to_date ? format(new Date(leave.to_date), 'dd MMM yyyy') : '-'}</TableCell>
                         <TableCell>{leave.days}</TableCell>
                         <TableCell className="max-w-[150px] truncate">{leave.reason || '-'}</TableCell>
                         <TableCell>
@@ -845,7 +845,7 @@ export default function EmployeeDetailPage() {
                             {leave.status}
                           </Badge>
                         </TableCell>
-                        <TableCell>{format(new Date(leave.applied_on), 'dd MMM yyyy')}</TableCell>
+                        <TableCell>{leave.applied_on ? format(new Date(leave.applied_on), 'dd MMM yyyy') : '-'}</TableCell>
                       </TableRow>
                     ))
                   )}
@@ -885,7 +885,7 @@ export default function EmployeeDetailPage() {
                     payslips.map((payslip: Payslip) => (
                       <TableRow key={payslip.id}>
                         <TableCell className="font-mono">{payslip.payslip_number}</TableCell>
-                        <TableCell>{format(new Date(payslip.created_at), 'MMM yyyy')}</TableCell>
+                        <TableCell>{payslip.created_at ? format(new Date(payslip.created_at), 'MMM yyyy') : '-'}</TableCell>
                         <TableCell>{payslip.days_present}/{payslip.working_days}</TableCell>
                         <TableCell>{formatCurrency(payslip.gross_earnings)}</TableCell>
                         <TableCell className="text-red-600">-{formatCurrency(payslip.total_deductions)}</TableCell>

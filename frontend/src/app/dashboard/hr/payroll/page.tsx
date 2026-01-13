@@ -244,7 +244,9 @@ export default function PayrollPage() {
                 payrolls.map((payroll: PayrollRun) => (
                   <TableRow key={payroll.id}>
                     <TableCell className="font-medium">
-                      {format(new Date(payroll.payroll_month), 'MMMM yyyy')}
+                      {payroll.payroll_month
+                        ? format(new Date(payroll.payroll_month), 'MMMM yyyy')
+                        : '-'}
                     </TableCell>
                     <TableCell>{payroll.financial_year}</TableCell>
                     <TableCell>

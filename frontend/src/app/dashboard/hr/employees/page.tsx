@@ -268,7 +268,9 @@ export default function EmployeesPage() {
                       {getStatusBadge(employee.status)}
                     </TableCell>
                     <TableCell>
-                      {format(new Date(employee.joining_date), 'dd MMM yyyy')}
+                      {employee.joining_date
+                        ? format(new Date(employee.joining_date), 'dd MMM yyyy')
+                        : <span className="text-muted-foreground">-</span>}
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>
