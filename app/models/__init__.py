@@ -364,6 +364,25 @@ from app.models.approval import (
     get_approval_level,
     get_approval_level_name,
 )
+# HR & Payroll
+from app.models.hr import (
+    Department,
+    Employee,
+    SalaryStructure,
+    Attendance,
+    LeaveBalance,
+    LeaveRequest,
+    Payroll,
+    Payslip,
+    EmploymentType,
+    EmployeeStatus,
+    LeaveType,
+    LeaveStatus,
+    AttendanceStatus,
+    PayrollStatus,
+    Gender,
+    MaritalStatus,
+)
 
 __all__ = [
     # Access Control
@@ -659,4 +678,21 @@ __all__ = [
     "ApprovalStatus",
     "get_approval_level",
     "get_approval_level_name",
+    # HR & Payroll
+    "Department",
+    "Employee",
+    "SalaryStructure",
+    "Attendance",
+    "LeaveBalance",
+    "LeaveRequest",
+    "Payroll",
+    "Payslip",
+    "EmploymentType",
+    "EmployeeStatus",
+    "LeaveType",
+    "LeaveStatus",
+    "AttendanceStatus",
+    "PayrollStatus",
+    "Gender",
+    "MaritalStatus",
 ]

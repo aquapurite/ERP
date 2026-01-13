@@ -7,6 +7,8 @@ from app.api.v1.endpoints import (
     permissions,
     users,
     access_control,
+    # HR & Payroll
+    hr,
     # Product Catalog
     categories,
     brands,
@@ -309,4 +311,11 @@ api_router.include_router(
     storefront.router,
     prefix="/storefront",
     tags=["Storefront (Public)"]
+)
+
+# ==================== HR & Payroll ====================
+api_router.include_router(
+    hr.router,
+    prefix="/hr",
+    tags=["HR & Payroll"]
 )

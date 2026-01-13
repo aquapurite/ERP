@@ -35,6 +35,9 @@ import {
   AlertTriangle,
   Gauge,
   Network,
+  Briefcase,
+  Calendar,
+  CreditCard,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -179,6 +182,19 @@ export const navigation: NavItem[] = [
       { title: 'Pricing Tiers', href: '/dashboard/distribution/pricing-tiers', permissions: ['DEALERS_VIEW'] },
       { title: 'Franchisees', href: '/dashboard/distribution/franchisees', permissions: ['DEALERS_VIEW'] },
       { title: 'Franchisee Serviceability', href: '/dashboard/distribution/franchisee-serviceability', icon: MapPin, permissions: ['DEALERS_VIEW'] },
+    ],
+  },
+  {
+    title: 'HR',
+    icon: Briefcase,
+    permissions: ['HR_VIEW'],
+    children: [
+      { title: 'Dashboard', href: '/dashboard/hr', permissions: ['HR_VIEW'] },
+      { title: 'Employees', href: '/dashboard/hr/employees', icon: Users, permissions: ['HR_VIEW'] },
+      { title: 'Departments', href: '/dashboard/hr/departments', icon: Building2, permissions: ['HR_VIEW'] },
+      { title: 'Attendance', href: '/dashboard/hr/attendance', icon: Calendar, permissions: ['ATTENDANCE_VIEW'] },
+      { title: 'Leave Management', href: '/dashboard/hr/leaves', icon: Clock, permissions: ['LEAVE_VIEW'] },
+      { title: 'Payroll', href: '/dashboard/hr/payroll', icon: CreditCard, permissions: ['PAYROLL_VIEW'] },
     ],
   },
   {

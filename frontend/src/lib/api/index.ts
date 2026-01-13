@@ -2141,4 +2141,401 @@ export const companyApi = {
   },
 };
 
+// ============================================
+// HR & PAYROLL API
+// ============================================
+
+// HR Types
+export interface Department {
+  id: string;
+  code: string;
+  name: string;
+  description?: string;
+  parent_id?: string;
+  parent_name?: string;
+  head_id?: string;
+  head_name?: string;
+  is_active: boolean;
+  employee_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Employee {
+  id: string;
+  employee_code: string;
+  user_id: string;
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  full_name?: string;
+  phone?: string;
+  avatar_url?: string;
+  department_id?: string;
+  department_name?: string;
+  designation?: string;
+  employment_type: string;
+  status: string;
+  joining_date: string;
+  reporting_manager_id?: string;
+  reporting_manager_name?: string;
+  date_of_birth?: string;
+  gender?: string;
+  blood_group?: string;
+  marital_status?: string;
+  nationality?: string;
+  personal_email?: string;
+  personal_phone?: string;
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
+  emergency_contact_relation?: string;
+  current_address?: Record<string, unknown>;
+  permanent_address?: Record<string, unknown>;
+  confirmation_date?: string;
+  resignation_date?: string;
+  last_working_date?: string;
+  pan_number?: string;
+  aadhaar_number?: string;
+  uan_number?: string;
+  esic_number?: string;
+  bank_name?: string;
+  bank_account_number?: string;
+  bank_ifsc_code?: string;
+  profile_photo_url?: string;
+  documents?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SalaryStructure {
+  id: string;
+  employee_id: string;
+  effective_from: string;
+  basic_salary: number;
+  hra: number;
+  conveyance: number;
+  medical_allowance: number;
+  special_allowance: number;
+  other_allowances: number;
+  gross_salary: number;
+  employer_pf: number;
+  employer_esic: number;
+  monthly_ctc: number;
+  annual_ctc: number;
+  pf_applicable: boolean;
+  esic_applicable: boolean;
+  pt_applicable: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  employee_id: string;
+  attendance_date: string;
+  status: string;
+  check_in?: string;
+  check_out?: string;
+  work_hours?: number;
+  is_late: boolean;
+  late_minutes: number;
+  is_early_out: boolean;
+  early_out_minutes: number;
+  location_in?: Record<string, unknown>;
+  location_out?: Record<string, unknown>;
+  remarks?: string;
+  approved_by?: string;
+  approved_by_name?: string;
+  employee_code?: string;
+  employee_name?: string;
+  department_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LeaveBalance {
+  id: string;
+  employee_id: string;
+  leave_type: string;
+  financial_year: string;
+  opening_balance: number;
+  accrued: number;
+  taken: number;
+  adjusted: number;
+  closing_balance: number;
+  carry_forward_limit: number;
+}
+
+export interface LeaveRequest {
+  id: string;
+  employee_id: string;
+  leave_type: string;
+  from_date: string;
+  to_date: string;
+  days: number;
+  is_half_day: boolean;
+  half_day_type?: string;
+  reason?: string;
+  status: string;
+  applied_on: string;
+  approved_by?: string;
+  approved_by_name?: string;
+  approved_on?: string;
+  rejection_reason?: string;
+  employee_code?: string;
+  employee_name?: string;
+  department_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PayrollRun {
+  id: string;
+  payroll_month: string;
+  financial_year: string;
+  status: string;
+  total_employees: number;
+  total_gross: number;
+  total_deductions: number;
+  total_net: number;
+  processed_by?: string;
+  processed_by_name?: string;
+  processed_at?: string;
+  approved_by?: string;
+  approved_by_name?: string;
+  approved_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Payslip {
+  id: string;
+  payroll_id: string;
+  employee_id: string;
+  payslip_number: string;
+  employee_code?: string;
+  employee_name?: string;
+  department_name?: string;
+  designation?: string;
+  working_days: number;
+  days_present: number;
+  days_absent: number;
+  leaves_taken: number;
+  basic_earned: number;
+  hra_earned: number;
+  conveyance_earned: number;
+  medical_earned: number;
+  special_earned: number;
+  other_earned: number;
+  overtime_amount: number;
+  arrears: number;
+  bonus: number;
+  gross_earnings: number;
+  employee_pf: number;
+  employer_pf: number;
+  employee_esic: number;
+  employer_esic: number;
+  professional_tax: number;
+  tds: number;
+  loan_deduction: number;
+  advance_deduction: number;
+  other_deductions: number;
+  total_deductions: number;
+  net_salary: number;
+  payment_mode?: string;
+  payment_date?: string;
+  payment_reference?: string;
+  payslip_pdf_url?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HRDashboardStats {
+  total_employees: number;
+  active_employees: number;
+  on_leave_today: number;
+  new_joinings_this_month: number;
+  exits_this_month: number;
+  present_today: number;
+  absent_today: number;
+  not_marked: number;
+  pending_leave_requests: number;
+  pending_payroll_approval: number;
+  department_wise: Array<{ department: string; count: number }>;
+}
+
+// HR API
+export const hrApi = {
+  // Dashboard
+  getDashboard: async (): Promise<HRDashboardStats> => {
+    const { data } = await apiClient.get<HRDashboardStats>('/hr/dashboard');
+    return data;
+  },
+
+  // Departments
+  departments: {
+    list: async (params?: { is_active?: boolean; search?: string }) => {
+      const { data } = await apiClient.get<{ items: Department[]; total: number }>('/hr/departments', { params });
+      return data;
+    },
+    dropdown: async () => {
+      const { data } = await apiClient.get<Array<{ id: string; code: string; name: string }>>('/hr/departments/dropdown');
+      return data;
+    },
+    getById: async (id: string) => {
+      const { data } = await apiClient.get<Department>(`/hr/departments/${id}`);
+      return data;
+    },
+    create: async (dept: { code: string; name: string; description?: string; parent_id?: string; head_id?: string; is_active?: boolean }) => {
+      const { data } = await apiClient.post<Department>('/hr/departments', dept);
+      return data;
+    },
+    update: async (id: string, dept: Partial<{ name: string; description: string; parent_id: string; head_id: string; is_active: boolean }>) => {
+      const { data } = await apiClient.put<Department>(`/hr/departments/${id}`, dept);
+      return data;
+    },
+  },
+
+  // Employees
+  employees: {
+    list: async (params?: { page?: number; size?: number; status?: string; department_id?: string; employment_type?: string; search?: string }) => {
+      const { data } = await apiClient.get<{ items: Employee[]; total: number; page: number; size: number; pages: number }>('/hr/employees', { params });
+      return data;
+    },
+    dropdown: async (departmentId?: string) => {
+      const { data } = await apiClient.get<Array<{ id: string; employee_code: string; full_name: string; designation?: string; department_name?: string }>>('/hr/employees/dropdown', { params: { department_id: departmentId } });
+      return data;
+    },
+    getById: async (id: string) => {
+      const { data } = await apiClient.get<Employee>(`/hr/employees/${id}`);
+      return data;
+    },
+    create: async (employee: {
+      email: string;
+      password: string;
+      first_name: string;
+      last_name?: string;
+      phone?: string;
+      date_of_birth?: string;
+      gender?: string;
+      blood_group?: string;
+      marital_status?: string;
+      nationality?: string;
+      personal_email?: string;
+      personal_phone?: string;
+      emergency_contact_name?: string;
+      emergency_contact_phone?: string;
+      emergency_contact_relation?: string;
+      current_address?: Record<string, unknown>;
+      permanent_address?: Record<string, unknown>;
+      department_id?: string;
+      designation?: string;
+      employment_type?: string;
+      joining_date: string;
+      confirmation_date?: string;
+      reporting_manager_id?: string;
+      pan_number?: string;
+      aadhaar_number?: string;
+      uan_number?: string;
+      esic_number?: string;
+      bank_name?: string;
+      bank_account_number?: string;
+      bank_ifsc_code?: string;
+      role_ids?: string[];
+    }) => {
+      const { data } = await apiClient.post<Employee>('/hr/employees', employee);
+      return data;
+    },
+    update: async (id: string, employee: Partial<Employee>) => {
+      const { data } = await apiClient.put<Employee>(`/hr/employees/${id}`, employee);
+      return data;
+    },
+    getSalary: async (id: string) => {
+      const { data } = await apiClient.get<SalaryStructure>(`/hr/employees/${id}/salary`);
+      return data;
+    },
+    updateSalary: async (id: string, salary: {
+      employee_id: string;
+      effective_from: string;
+      basic_salary: number;
+      hra?: number;
+      conveyance?: number;
+      medical_allowance?: number;
+      special_allowance?: number;
+      other_allowances?: number;
+      pf_applicable?: boolean;
+      esic_applicable?: boolean;
+      pt_applicable?: boolean;
+    }) => {
+      const { data } = await apiClient.put<SalaryStructure>(`/hr/employees/${id}/salary`, salary);
+      return data;
+    },
+  },
+
+  // Attendance
+  attendance: {
+    checkIn: async (employeeId?: string, location?: Record<string, unknown>, remarks?: string) => {
+      const { data } = await apiClient.post<AttendanceRecord>('/hr/attendance/check-in', { employee_id: employeeId, location, remarks });
+      return data;
+    },
+    checkOut: async (employeeId?: string, location?: Record<string, unknown>, remarks?: string) => {
+      const { data } = await apiClient.post<AttendanceRecord>('/hr/attendance/check-out', { employee_id: employeeId, location, remarks });
+      return data;
+    },
+    list: async (params?: { page?: number; size?: number; employee_id?: string; department_id?: string; from_date?: string; to_date?: string; status?: string }) => {
+      const { data } = await apiClient.get<{ items: AttendanceRecord[]; total: number; page: number; size: number; pages: number }>('/hr/attendance', { params });
+      return data;
+    },
+  },
+
+  // Leave
+  leave: {
+    getBalances: async (employeeId: string, financialYear?: string) => {
+      const { data } = await apiClient.get<{ employee_id: string; financial_year: string; balances: LeaveBalance[] }>(`/hr/leave-balances/${employeeId}`, { params: { financial_year: financialYear } });
+      return data;
+    },
+    listRequests: async (params?: { page?: number; size?: number; employee_id?: string; status?: string; from_date?: string; to_date?: string }) => {
+      const { data } = await apiClient.get<{ items: LeaveRequest[]; total: number; page: number; size: number; pages: number }>('/hr/leave-requests', { params });
+      return data;
+    },
+    apply: async (leave: {
+      employee_id?: string;
+      leave_type: string;
+      from_date: string;
+      to_date: string;
+      is_half_day?: boolean;
+      half_day_type?: string;
+      reason?: string;
+    }) => {
+      const { data } = await apiClient.post<LeaveRequest>('/hr/leave-requests', leave);
+      return data;
+    },
+    approve: async (id: string, action: 'APPROVE' | 'REJECT', rejectionReason?: string) => {
+      const { data } = await apiClient.put<LeaveRequest>(`/hr/leave-requests/${id}/approve`, { action, rejection_reason: rejectionReason });
+      return data;
+    },
+  },
+
+  // Payroll
+  payroll: {
+    list: async (params?: { page?: number; size?: number; financial_year?: string; status?: string }) => {
+      const { data } = await apiClient.get<{ items: PayrollRun[]; total: number; page: number; size: number; pages: number }>('/hr/payroll', { params });
+      return data;
+    },
+    process: async (request: { payroll_month: string; financial_year: string; employee_ids?: string[] }) => {
+      const { data } = await apiClient.post<PayrollRun>('/hr/payroll/process', request);
+      return data;
+    },
+    approve: async (id: string) => {
+      const { data } = await apiClient.put<PayrollRun>(`/hr/payroll/${id}/approve`);
+      return data;
+    },
+    listPayslips: async (params?: { page?: number; size?: number; payroll_id?: string; employee_id?: string }) => {
+      const { data } = await apiClient.get<{ items: Payslip[]; total: number; page: number; size: number; pages: number }>('/hr/payslips', { params });
+      return data;
+    },
+  },
+};
+
 export default apiClient;
