@@ -1382,6 +1382,84 @@ async def approve_purchase_order(
         # Update all delivery schedules to ADVANCE_PENDING status
         for schedule in po.delivery_schedules:
             schedule.status = DeliveryLotStatus.ADVANCE_PENDING
+
+        # Auto-generate serial numbers/barcodes on approval
+        from app.services.serialization import SerializationService
+        from app.schemas.serialization import GenerateSerialsRequest, GenerateSerialItem, ItemType
+        from app.models.serialization import POSerial, ModelCodeReference, SupplierCode
+
+        # Get vendor for supplier code
+        vendor_result = await db.execute(select(Vendor).where(Vendor.id == po.vendor_id))
+        vendor = vendor_result.scalar_one_or_none()
+
+        supplier_code = "AP"  # Default
+        if vendor:
+            supplier_code_result = await db.execute(
+                select(SupplierCode).where(SupplierCode.vendor_id == str(vendor.id))
+            )
+            supplier_code_obj = supplier_code_result.scalar_one_or_none()
+            if supplier_code_obj:
+                supplier_code = supplier_code_obj.code
+
+        # Check if serials already exist
+        existing_serials = await db.execute(
+            select(func.count(POSerial.id)).where(POSerial.po_id == str(po.id))
+        )
+        existing_count = existing_serials.scalar() or 0
+
+        # Generate serials if none exist
+        if existing_count == 0 and po.items:
+            serial_service = SerializationService(db)
+            serial_items = []
+
+            for item in po.items:
+                model_code = None
+                item_type = ItemType.FINISHED_GOODS
+
+                if item.product_id:
+                    ref_result = await db.execute(
+                        select(ModelCodeReference).where(ModelCodeReference.product_id == str(item.product_id))
+                    )
+                    ref = ref_result.scalar_one_or_none()
+                    if ref:
+                        model_code = ref.model_code
+                        item_type = ref.item_type
+
+                if not model_code and item.sku:
+                    ref_result = await db.execute(
+                        select(ModelCodeReference).where(ModelCodeReference.product_sku == item.sku)
+                    )
+                    ref = ref_result.scalar_one_or_none()
+                    if ref:
+                        model_code = ref.model_code
+                        item_type = ref.item_type
+
+                if not model_code:
+                    product_name = item.product_name or item.sku or "UNK"
+                    clean_name = ''.join(c for c in product_name if c.isalpha())
+                    model_code = clean_name[:3].upper() if len(clean_name) >= 3 else clean_name.upper().ljust(3, 'X')
+
+                serial_items.append(GenerateSerialItem(
+                    po_item_id=str(item.id),
+                    product_id=str(item.product_id) if item.product_id else None,
+                    product_sku=item.sku,
+                    model_code=model_code,
+                    item_type=item_type,
+                    quantity=item.quantity
+                ))
+
+            if serial_items:
+                try:
+                    gen_request = GenerateSerialsRequest(
+                        po_id=str(po.id),
+                        supplier_code=supplier_code,
+                        items=serial_items
+                    )
+                    await serial_service.generate_serials(gen_request)
+                except Exception as e:
+                    # Log but don't fail approval if serial generation fails
+                    print(f"Warning: Serial generation failed for PO {po.po_number}: {e}")
+
     else:
         po.status = POStatus.CANCELLED
         # Cancel all delivery schedules
