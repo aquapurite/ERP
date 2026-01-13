@@ -623,7 +623,13 @@ class SerializationService:
         offset: int = 0
     ) -> List[POSerial]:
         """Get all serials for a PO"""
-        query = select(POSerial).where(POSerial.po_id == po_id)
+        from sqlalchemy import text, cast, String
+
+        # Use text() to avoid UUID type casting issues between model and actual database column
+        # The database column is VARCHAR but model declares UUID
+        query = select(POSerial).where(
+            cast(POSerial.po_id, String) == str(po_id)
+        )
 
         if status:
             query = query.where(POSerial.status == status)
@@ -642,11 +648,13 @@ class SerializationService:
 
     async def get_serials_count_by_po(self, po_id: str) -> Dict[str, int]:
         """Get count of serials by status for a PO"""
+        from sqlalchemy import cast, String
+
         result = await self.db.execute(
             select(
                 POSerial.status,
                 func.count(POSerial.id).label("count")
-            ).where(POSerial.po_id == po_id)
+            ).where(cast(POSerial.po_id, String) == str(po_id))
             .group_by(POSerial.status)
         )
 

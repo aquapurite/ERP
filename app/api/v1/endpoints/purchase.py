@@ -2932,8 +2932,10 @@ async def download_purchase_order(
     # Tax calculations
     cgst_rate = Decimal("9")
     sgst_rate = Decimal("9")
+    igst_rate = Decimal("18")
     cgst_amount = Decimal(str(po.cgst_amount or 0))
     sgst_amount = Decimal(str(po.sgst_amount or 0))
+    igst_amount = Decimal(str(po.igst_amount or 0))
     grand_total = Decimal(str(po.grand_total or 0))
 
     # Advance payment - show both required and paid
@@ -3354,7 +3356,19 @@ async def download_purchase_order(
             <div class="totals-left">
                 <strong>HSN Summary ({tax_type}):</strong>
                 <table style="margin-top: 5px; font-size: 9px;">
-                    <tr style="background: #e0e0e0;">
+                    {"" if is_intra_state else f'''<tr style="background: #e0e0e0;">
+                        <th>HSN Code</th>
+                        <th>Taxable Value</th>
+                        <th>IGST @{igst_rate}%</th>
+                        <th>Total Tax</th>
+                    </tr>
+                    <tr>
+                        <td class="text-center">84212110</td>
+                        <td class="text-right">Rs. {float(subtotal):,.2f}</td>
+                        <td class="text-right">Rs. {float(igst_amount if igst_amount > 0 else cgst_amount + sgst_amount):,.2f}</td>
+                        <td class="text-right">Rs. {float(igst_amount if igst_amount > 0 else cgst_amount + sgst_amount):,.2f}</td>
+                    </tr>'''}
+                    {"" if not is_intra_state else f'''<tr style="background: #e0e0e0;">
                         <th>HSN Code</th>
                         <th>Taxable Value</th>
                         <th>CGST @{cgst_rate}%</th>
@@ -3367,7 +3381,7 @@ async def download_purchase_order(
                         <td class="text-right">Rs. {float(cgst_amount):,.2f}</td>
                         <td class="text-right">Rs. {float(sgst_amount):,.2f}</td>
                         <td class="text-right">Rs. {float(cgst_amount + sgst_amount):,.2f}</td>
-                    </tr>
+                    </tr>'''}
                 </table>
                 <p style="margin-top: 10px; font-size: 9px; color: #666;">
                     <strong>Note:</strong> {tax_type} applicable
@@ -3378,14 +3392,18 @@ async def download_purchase_order(
                     <span class="totals-label">Sub Total:</span>
                     <span class="totals-value">Rs. {float(subtotal):,.2f}</span>
                 </div>
-                <div class="totals-row">
+                {"" if is_intra_state else f'''<div class="totals-row">
+                    <span class="totals-label">IGST @ {igst_rate}%:</span>
+                    <span class="totals-value">Rs. {float(igst_amount if igst_amount > 0 else cgst_amount + sgst_amount):,.2f}</span>
+                </div>'''}
+                {"" if not is_intra_state else f'''<div class="totals-row">
                     <span class="totals-label">CGST @ {cgst_rate}%:</span>
                     <span class="totals-value">Rs. {float(cgst_amount):,.2f}</span>
                 </div>
                 <div class="totals-row">
                     <span class="totals-label">SGST @ {sgst_rate}%:</span>
                     <span class="totals-value">Rs. {float(sgst_amount):,.2f}</span>
-                </div>
+                </div>'''}
                 <div class="totals-row grand-total">
                     <span class="totals-label">GRAND TOTAL:</span>
                     <span class="totals-value">Rs. {float(grand_total):,.2f}</span>
