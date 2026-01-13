@@ -27,6 +27,10 @@ if TYPE_CHECKING:
     from app.models.vendor import Vendor
     from app.models.wms import WarehouseBin
     from app.models.approval import ApprovalRequest
+    from app.models.order import Order, OrderItem
+    from app.models.billing import TaxInvoice, InvoiceItem, CreditDebitNote
+    from app.models.customer import Customer
+    from app.models.transporter import Transporter
 
 
 # ==================== Enums ====================
@@ -88,6 +92,76 @@ class QualityCheckResult(str, Enum):
     FAILED = "FAILED"
     CONDITIONAL = "CONDITIONAL"  # Accepted with deviation
     PENDING = "PENDING"
+
+
+# ==================== Sales Return Note (SRN) Enums ====================
+
+class SRNStatus(str, Enum):
+    """Sales Return Note status - workflow states."""
+    DRAFT = "DRAFT"
+    PENDING_RECEIPT = "PENDING_RECEIPT"    # Awaiting goods arrival (pickup scheduled)
+    RECEIVED = "RECEIVED"                  # Goods physically received at warehouse
+    PENDING_QC = "PENDING_QC"              # Quality inspection pending
+    QC_PASSED = "QC_PASSED"
+    QC_FAILED = "QC_FAILED"
+    PARTIALLY_ACCEPTED = "PARTIALLY_ACCEPTED"
+    ACCEPTED = "ACCEPTED"
+    PUT_AWAY_PENDING = "PUT_AWAY_PENDING"
+    PUT_AWAY_COMPLETE = "PUT_AWAY_COMPLETE"
+    CREDITED = "CREDITED"                   # Credit note issued
+    REPLACED = "REPLACED"                   # Replacement order created
+    REFUNDED = "REFUNDED"                   # Refund processed
+    CANCELLED = "CANCELLED"
+
+
+class ReturnReason(str, Enum):
+    """Reason for customer return."""
+    DEFECTIVE = "DEFECTIVE"
+    DAMAGED_IN_TRANSIT = "DAMAGED_IN_TRANSIT"
+    WRONG_ITEM = "WRONG_ITEM"
+    NOT_AS_DESCRIBED = "NOT_AS_DESCRIBED"
+    CHANGE_OF_MIND = "CHANGE_OF_MIND"
+    WARRANTY_CLAIM = "WARRANTY_CLAIM"
+    SIZE_ISSUE = "SIZE_ISSUE"
+    QUALITY_ISSUE = "QUALITY_ISSUE"
+    OTHER = "OTHER"
+
+
+class ItemCondition(str, Enum):
+    """Condition of returned item after inspection."""
+    LIKE_NEW = "LIKE_NEW"              # Can restock as new
+    GOOD = "GOOD"                       # Minor wear, can resell
+    DAMAGED = "DAMAGED"                 # Needs repair/refurbish
+    DEFECTIVE = "DEFECTIVE"             # Manufacturing defect
+    UNSALVAGEABLE = "UNSALVAGEABLE"     # Scrap
+
+
+class RestockDecision(str, Enum):
+    """Decision on how to handle returned item."""
+    RESTOCK_AS_NEW = "RESTOCK_AS_NEW"
+    RESTOCK_AS_REFURB = "RESTOCK_AS_REFURB"
+    SEND_FOR_REPAIR = "SEND_FOR_REPAIR"
+    RETURN_TO_VENDOR = "RETURN_TO_VENDOR"
+    SCRAP = "SCRAP"
+
+
+class PickupStatus(str, Enum):
+    """Reverse logistics pickup status."""
+    NOT_REQUIRED = "NOT_REQUIRED"       # Customer bringing item directly
+    SCHEDULED = "SCHEDULED"             # Pickup scheduled with courier
+    PICKUP_FAILED = "PICKUP_FAILED"     # Pickup attempt failed
+    PICKED_UP = "PICKED_UP"             # Courier has picked up item
+    IN_TRANSIT = "IN_TRANSIT"           # In transit to warehouse
+    DELIVERED = "DELIVERED"             # Received at warehouse
+
+
+class ResolutionType(str, Enum):
+    """How the return is resolved."""
+    CREDIT_NOTE = "CREDIT_NOTE"
+    REPLACEMENT = "REPLACEMENT"
+    REFUND = "REFUND"
+    REPAIR = "REPAIR"
+    REJECT = "REJECT"
 
 
 # ==================== Purchase Requisition ====================
@@ -1655,3 +1729,341 @@ class VendorProformaItem(Base):
 
     def __repr__(self) -> str:
         return f"<VendorProformaItem(desc='{self.description[:30]}...', qty={self.quantity})>"
+
+
+# ==================== Sales Return Note (SRN) ====================
+
+class SalesReturnNote(Base):
+    """
+    Sales Return Note - tracks goods returned from customers.
+    Can be created against a Sales Order or Tax Invoice.
+    Supports full reverse logistics with pickup tracking.
+    """
+    __tablename__ = "sales_return_notes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Identification
+    srn_number: Mapped[str] = mapped_column(
+        String(50),
+        unique=True,
+        nullable=False,
+        index=True,
+        comment="SRN-YYYYMMDD-XXXX"
+    )
+    srn_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+
+    # Source References (either order or invoice - at least one required)
+    order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("orders.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+    invoice_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tax_invoices.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Customer
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("customers.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True
+    )
+
+    # Warehouse (Returns area)
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("warehouses.id", ondelete="RESTRICT"),
+        nullable=False
+    )
+
+    # Status & Workflow
+    status: Mapped[SRNStatus] = mapped_column(
+        SQLEnum(SRNStatus),
+        default=SRNStatus.DRAFT,
+        nullable=False,
+        index=True
+    )
+
+    # Return Details
+    return_reason: Mapped[ReturnReason] = mapped_column(
+        SQLEnum(ReturnReason),
+        nullable=False
+    )
+    return_reason_detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Resolution (manual choice per SRN)
+    resolution_type: Mapped[Optional[ResolutionType]] = mapped_column(
+        SQLEnum(ResolutionType),
+        nullable=True
+    )
+    credit_note_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("credit_debit_notes.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    replacement_order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("orders.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Pickup/Reverse Logistics (Full Tracking)
+    pickup_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    pickup_status: Mapped[Optional[PickupStatus]] = mapped_column(
+        SQLEnum(PickupStatus),
+        nullable=True
+    )
+    pickup_scheduled_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    pickup_scheduled_slot: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Time slot e.g., 10AM-12PM"
+    )
+    pickup_address: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    pickup_contact_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    pickup_contact_phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    courier_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("transporters.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    courier_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    courier_tracking_number: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="AWB Number"
+    )
+    pickup_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    pickup_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Quality Control
+    qc_required: Mapped[bool] = mapped_column(Boolean, default=True)
+    qc_status: Mapped[Optional[QualityCheckResult]] = mapped_column(
+        SQLEnum(QualityCheckResult),
+        nullable=True
+    )
+    qc_done_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    qc_done_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    qc_remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Quantities Summary
+    total_items: Mapped[int] = mapped_column(Integer, default=0)
+    total_quantity_returned: Mapped[int] = mapped_column(Integer, default=0)
+    total_quantity_accepted: Mapped[int] = mapped_column(Integer, default=0)
+    total_quantity_rejected: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Value
+    total_value: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        default=Decimal("0"),
+        comment="Value of accepted returns"
+    )
+
+    # Put-away
+    put_away_complete: Mapped[bool] = mapped_column(Boolean, default=False)
+    put_away_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Receiving
+    received_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    received_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    receiving_remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Documents
+    srn_pdf_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    photos_urls: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+
+    # Audit
+    created_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+
+    # Relationships
+    order: Mapped[Optional["Order"]] = relationship(
+        "Order",
+        foreign_keys=[order_id],
+        backref="sales_returns"
+    )
+    invoice: Mapped[Optional["TaxInvoice"]] = relationship("TaxInvoice")
+    customer: Mapped["Customer"] = relationship("Customer")
+    warehouse: Mapped["Warehouse"] = relationship("Warehouse")
+    courier: Mapped[Optional["Transporter"]] = relationship("Transporter")
+    credit_note: Mapped[Optional["CreditDebitNote"]] = relationship("CreditDebitNote")
+    replacement_order: Mapped[Optional["Order"]] = relationship(
+        "Order",
+        foreign_keys=[replacement_order_id]
+    )
+    qc_inspector: Mapped[Optional["User"]] = relationship(
+        "User",
+        foreign_keys=[qc_done_by]
+    )
+    receiver: Mapped[Optional["User"]] = relationship(
+        "User",
+        foreign_keys=[received_by]
+    )
+    creator: Mapped["User"] = relationship(
+        "User",
+        foreign_keys=[created_by]
+    )
+    items: Mapped[List["SRNItem"]] = relationship(
+        "SRNItem",
+        back_populates="srn",
+        cascade="all, delete-orphan"
+    )
+
+    # Indexes
+    __table_args__ = (
+        Index("idx_srn_customer_date", "customer_id", "srn_date"),
+        Index("idx_srn_pickup_status", "pickup_required", "pickup_status"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<SalesReturnNote(srn='{self.srn_number}', status='{self.status.value}')>"
+
+
+class SRNItem(Base):
+    """Line item for Sales Return Note."""
+    __tablename__ = "srn_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    srn_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sales_return_notes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Original Order/Invoice Reference
+    order_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("order_items.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    invoice_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("invoice_items.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Product
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="RESTRICT"),
+        nullable=False
+    )
+    variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("product_variants.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Product Snapshot (for historical record)
+    product_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    sku: Mapped[str] = mapped_column(String(50), nullable=False)
+    hsn_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+
+    # Serial Numbers Being Returned
+    serial_numbers: Mapped[Optional[list]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="List of serial numbers being returned"
+    )
+
+    # Quantities
+    quantity_sold: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        comment="Original sale quantity"
+    )
+    quantity_returned: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity_accepted: Mapped[int] = mapped_column(Integer, default=0)
+    quantity_rejected: Mapped[int] = mapped_column(Integer, default=0)
+    uom: Mapped[str] = mapped_column(String(20), default="PCS")
+
+    # Pricing (from original sale)
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    return_value: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        default=Decimal("0"),
+        comment="qty_accepted * unit_price"
+    )
+
+    # Condition Assessment (set during QC)
+    item_condition: Mapped[Optional[ItemCondition]] = mapped_column(
+        SQLEnum(ItemCondition),
+        nullable=True
+    )
+    restock_decision: Mapped[Optional[RestockDecision]] = mapped_column(
+        SQLEnum(RestockDecision),
+        nullable=True
+    )
+
+    # QC Result
+    qc_result: Mapped[Optional[QualityCheckResult]] = mapped_column(
+        SQLEnum(QualityCheckResult),
+        nullable=True
+    )
+    rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Put-away Location
+    bin_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("warehouse_bins.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    bin_location: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Human-readable bin location"
+    )
+
+    # Notes
+    remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Relationships
+    srn: Mapped["SalesReturnNote"] = relationship(
+        "SalesReturnNote",
+        back_populates="items"
+    )
+    product: Mapped["Product"] = relationship("Product")
+    variant: Mapped[Optional["ProductVariant"]] = relationship("ProductVariant")
+    order_item: Mapped[Optional["OrderItem"]] = relationship("OrderItem")
+    invoice_item: Mapped[Optional["InvoiceItem"]] = relationship("InvoiceItem")
+    bin: Mapped[Optional["WarehouseBin"]] = relationship("WarehouseBin")
+
+    def __repr__(self) -> str:
+        return f"<SRNItem(sku='{self.sku}', qty_returned={self.quantity_returned})>"

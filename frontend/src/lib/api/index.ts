@@ -1633,6 +1633,139 @@ export const grnApi = {
   },
 };
 
+// Sales Return Notes (SRN) API
+export const srnApi = {
+  getNextNumber: async () => {
+    const { data } = await apiClient.get('/purchase/srn/next-number');
+    return data;
+  },
+  list: async (params?: {
+    page?: number;
+    size?: number;
+    status?: string;
+    customer_id?: string;
+    order_id?: string;
+    warehouse_id?: string;
+    return_reason?: string;
+    pickup_status?: string;
+    date_from?: string;
+    date_to?: string;
+    search?: string;
+  }) => {
+    const { data } = await apiClient.get('/purchase/srn', { params });
+    return data;
+  },
+  listPendingPickups: async (params?: { page?: number; size?: number }) => {
+    const { data } = await apiClient.get('/purchase/srn/pending-pickups', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/purchase/srn/${id}`);
+    return data;
+  },
+  create: async (srn: {
+    srn_date: string;
+    order_id?: string;
+    invoice_id?: string;
+    customer_id: string;
+    warehouse_id: string;
+    return_reason: string;
+    return_reason_detail?: string;
+    resolution_type?: string;
+    pickup_required?: boolean;
+    pickup_scheduled_date?: string;
+    pickup_address?: Record<string, unknown>;
+    pickup_contact_name?: string;
+    pickup_contact_phone?: string;
+    qc_required?: boolean;
+    receiving_remarks?: string;
+    items: {
+      order_item_id?: string;
+      invoice_item_id?: string;
+      product_id: string;
+      variant_id?: string;
+      product_name: string;
+      sku: string;
+      hsn_code?: string;
+      serial_numbers?: string[];
+      quantity_sold: number;
+      quantity_returned: number;
+      unit_price: number;
+      uom?: string;
+      remarks?: string;
+    }[];
+  }) => {
+    const { data } = await apiClient.post('/purchase/srn', srn);
+    return data;
+  },
+  schedulePickup: async (id: string, request: {
+    pickup_date: string;
+    pickup_slot?: string;
+    pickup_address?: Record<string, unknown>;
+    pickup_contact_name?: string;
+    pickup_contact_phone?: string;
+    courier_id?: string;
+  }) => {
+    const { data } = await apiClient.post(`/purchase/srn/${id}/schedule-pickup`, request);
+    return data;
+  },
+  updatePickup: async (id: string, request: {
+    pickup_status?: string;
+    courier_id?: string;
+    courier_name?: string;
+    courier_tracking_number?: string;
+  }) => {
+    const { data } = await apiClient.post(`/purchase/srn/${id}/update-pickup`, request);
+    return data;
+  },
+  receive: async (id: string, request: {
+    receiving_remarks?: string;
+    photos_urls?: string[];
+  }) => {
+    const { data } = await apiClient.post(`/purchase/srn/${id}/receive`, request);
+    return data;
+  },
+  processQC: async (id: string, request: {
+    item_results: {
+      item_id: string;
+      qc_result?: string;
+      item_condition?: string;
+      restock_decision?: string;
+      quantity_accepted?: number;
+      quantity_rejected?: number;
+      rejection_reason?: string;
+    }[];
+    overall_remarks?: string;
+  }) => {
+    const { data } = await apiClient.post(`/purchase/srn/${id}/qc`, request);
+    return data;
+  },
+  processPutaway: async (id: string, request: {
+    item_locations: {
+      item_id: string;
+      bin_id?: string;
+      bin_location?: string;
+    }[];
+  }) => {
+    const { data } = await apiClient.post(`/purchase/srn/${id}/putaway`, request);
+    return data;
+  },
+  resolve: async (id: string, request: {
+    resolution_type: string;
+    notes?: string;
+  }) => {
+    const { data } = await apiClient.post(`/purchase/srn/${id}/resolve`, request);
+    return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/purchase/srn/${id}`);
+  },
+  download: async (id: string) => {
+    const { data } = await apiClient.get<string>(`/purchase/srn/${id}/download`);
+    return data;
+  },
+};
+
 // Vendor Proformas API
 export const vendorProformasApi = {
   list: async (params?: { page?: number; size?: number; status?: string; vendor_id?: string }) => {

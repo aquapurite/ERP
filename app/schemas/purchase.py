@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from app.models.purchase import (
     RequisitionStatus, POStatus, GRNStatus, VendorInvoiceStatus, QualityCheckResult, ProformaStatus,
-    DeliveryLotStatus
+    DeliveryLotStatus, SRNStatus, ReturnReason, ItemCondition, RestockDecision, PickupStatus, ResolutionType
 )
 
 
@@ -818,3 +818,237 @@ class VendorProformaConvertToPORequest(BaseModel):
     expected_delivery_date: Optional[date] = None
     delivery_warehouse_id: Optional[UUID] = None
     special_instructions: Optional[str] = None
+
+
+# ==================== Sales Return Note (SRN) Schemas ====================
+
+class SRNItemCreate(BaseModel):
+    """Schema for creating SRN item."""
+    order_item_id: Optional[UUID] = None
+    invoice_item_id: Optional[UUID] = None
+    product_id: UUID
+    variant_id: Optional[UUID] = None
+    product_name: str
+    sku: str
+    hsn_code: Optional[str] = None
+    serial_numbers: Optional[List[str]] = None
+    quantity_sold: int = Field(..., gt=0, description="Original sale quantity")
+    quantity_returned: int = Field(..., gt=0, description="Quantity being returned")
+    unit_price: Decimal = Field(..., ge=0)
+    uom: str = "PCS"
+    remarks: Optional[str] = None
+
+
+class SRNItemResponse(BaseModel):
+    """Response schema for SRN item."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    srn_id: UUID
+    order_item_id: Optional[UUID] = None
+    invoice_item_id: Optional[UUID] = None
+    product_id: UUID
+    variant_id: Optional[UUID] = None
+    product_name: str
+    sku: str
+    hsn_code: Optional[str] = None
+    serial_numbers: Optional[List[str]] = None
+    quantity_sold: int
+    quantity_returned: int
+    quantity_accepted: int = 0
+    quantity_rejected: int = 0
+    uom: str = "PCS"
+    unit_price: Decimal
+    return_value: Decimal = Decimal("0")
+    item_condition: Optional[str] = None
+    restock_decision: Optional[str] = None
+    qc_result: Optional[str] = None
+    rejection_reason: Optional[str] = None
+    bin_id: Optional[UUID] = None
+    bin_location: Optional[str] = None
+    remarks: Optional[str] = None
+
+
+class SRNItemQCResult(BaseModel):
+    """QC result for individual SRN item."""
+    item_id: UUID
+    qc_result: str = Field(..., description="PASSED, FAILED, CONDITIONAL")
+    item_condition: Optional[str] = Field(None, description="LIKE_NEW, GOOD, DAMAGED, DEFECTIVE, UNSALVAGEABLE")
+    restock_decision: Optional[str] = Field(None, description="RESTOCK_AS_NEW, RESTOCK_AS_REFURB, SEND_FOR_REPAIR, RETURN_TO_VENDOR, SCRAP")
+    quantity_accepted: Optional[int] = None
+    quantity_rejected: Optional[int] = None
+    rejection_reason: Optional[str] = None
+
+
+class SalesReturnCreate(BaseModel):
+    """Schema for creating Sales Return Note."""
+    srn_date: date
+    order_id: Optional[UUID] = Field(None, description="Reference to original order")
+    invoice_id: Optional[UUID] = Field(None, description="Reference to original invoice")
+    customer_id: UUID
+    warehouse_id: UUID
+    return_reason: str = Field(..., description="Reason for return")
+    return_reason_detail: Optional[str] = None
+    pickup_required: bool = False
+    pickup_scheduled_date: Optional[date] = None
+    pickup_scheduled_slot: Optional[str] = Field(None, description="Time slot e.g., 10AM-12PM")
+    pickup_address: Optional[dict] = None
+    pickup_contact_name: Optional[str] = None
+    pickup_contact_phone: Optional[str] = None
+    qc_required: bool = True
+    receiving_remarks: Optional[str] = None
+    items: List[SRNItemCreate]
+
+
+class SalesReturnResponse(BaseModel):
+    """Response schema for Sales Return Note."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    srn_number: str
+    srn_date: date
+    order_id: Optional[UUID] = None
+    invoice_id: Optional[UUID] = None
+    customer_id: UUID
+    warehouse_id: UUID
+    status: str
+    return_reason: str
+    return_reason_detail: Optional[str] = None
+    resolution_type: Optional[str] = None
+    credit_note_id: Optional[UUID] = None
+    replacement_order_id: Optional[UUID] = None
+
+    # Pickup/Reverse Logistics
+    pickup_required: bool = False
+    pickup_status: Optional[str] = None
+    pickup_scheduled_date: Optional[date] = None
+    pickup_scheduled_slot: Optional[str] = None
+    pickup_address: Optional[dict] = None
+    pickup_contact_name: Optional[str] = None
+    pickup_contact_phone: Optional[str] = None
+    courier_id: Optional[UUID] = None
+    courier_name: Optional[str] = None
+    courier_tracking_number: Optional[str] = None
+    pickup_requested_at: Optional[datetime] = None
+    pickup_completed_at: Optional[datetime] = None
+
+    # QC
+    qc_required: bool = True
+    qc_status: Optional[str] = None
+    qc_done_by: Optional[UUID] = None
+    qc_done_at: Optional[datetime] = None
+    qc_remarks: Optional[str] = None
+
+    # Quantities
+    total_items: int = 0
+    total_quantity_returned: int = 0
+    total_quantity_accepted: int = 0
+    total_quantity_rejected: int = 0
+    total_value: Decimal = Decimal("0")
+
+    # Put-away
+    put_away_complete: bool = False
+    put_away_at: Optional[datetime] = None
+
+    # Receiving
+    received_by: Optional[UUID] = None
+    received_at: Optional[datetime] = None
+    receiving_remarks: Optional[str] = None
+
+    # Documents
+    srn_pdf_url: Optional[str] = None
+    photos_urls: Optional[List[str]] = None
+
+    # Computed fields (populated from relationships)
+    customer_name: Optional[str] = None
+    warehouse_name: Optional[str] = None
+    order_number: Optional[str] = None
+    invoice_number: Optional[str] = None
+
+    # Items
+    items: List[SRNItemResponse] = []
+
+    # Audit
+    created_by: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class SRNBrief(BaseModel):
+    """Brief SRN for listing."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    srn_number: str
+    srn_date: date
+    customer_id: UUID
+    customer_name: Optional[str] = None
+    order_id: Optional[UUID] = None
+    order_number: Optional[str] = None
+    invoice_number: Optional[str] = None
+    warehouse_name: Optional[str] = None
+    status: str
+    return_reason: str
+    pickup_required: bool = False
+    pickup_status: Optional[str] = None
+    total_quantity_returned: int = 0
+    total_quantity_accepted: int = 0
+    total_value: Decimal = Decimal("0")
+    resolution_type: Optional[str] = None
+
+
+class SRNListResponse(BaseModel):
+    """Response for listing SRNs."""
+    items: List[SRNBrief]
+    total: int
+    total_value: Decimal = Decimal("0")
+    page: int = 1
+    size: int = 50
+    pages: int = 1
+
+
+class SRNQualityCheckRequest(BaseModel):
+    """Request to process QC for SRN."""
+    item_results: List[SRNItemQCResult]
+    overall_remarks: Optional[str] = None
+
+
+class SRNItemPutAway(BaseModel):
+    """Put-away location for SRN item."""
+    item_id: UUID
+    bin_id: Optional[UUID] = None
+    bin_location: Optional[str] = None
+
+
+class SRNPutAwayRequest(BaseModel):
+    """Request to process put-away for SRN."""
+    item_locations: List[SRNItemPutAway]
+
+
+class PickupScheduleRequest(BaseModel):
+    """Request to schedule pickup for SRN."""
+    pickup_date: date
+    pickup_slot: Optional[str] = Field(None, description="Time slot e.g., 10AM-12PM, 12PM-3PM, 3PM-6PM")
+    pickup_address: Optional[dict] = Field(None, description="Override pickup address (uses customer address if None)")
+    pickup_contact_name: Optional[str] = None
+    pickup_contact_phone: Optional[str] = None
+    courier_id: Optional[UUID] = None
+
+
+class PickupUpdateRequest(BaseModel):
+    """Request to update pickup status for SRN."""
+    pickup_status: Optional[str] = Field(None, description="SCHEDULED, PICKUP_FAILED, PICKED_UP, IN_TRANSIT, DELIVERED")
+    courier_id: Optional[UUID] = None
+    courier_name: Optional[str] = None
+    courier_tracking_number: Optional[str] = Field(None, description="AWB Number")
+
+
+class SRNReceiveRequest(BaseModel):
+    """Request to mark SRN as received."""
+    receiving_remarks: Optional[str] = None
+
+
+class SRNResolveRequest(BaseModel):
+    """Request to resolve SRN (issue credit note, replacement, or refund)."""
+    resolution_type: str = Field(..., description="CREDIT_NOTE, REPLACEMENT, REFUND, REPAIR, REJECT")
+    notes: Optional[str] = None

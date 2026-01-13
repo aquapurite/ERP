@@ -242,6 +242,15 @@ from app.models.purchase import (
     VendorProformaInvoice,
     VendorProformaItem,
     ProformaStatus,
+    # Sales Return Notes
+    SalesReturnNote,
+    SRNItem,
+    SRNStatus,
+    ReturnReason,
+    ItemCondition,
+    RestockDecision,
+    PickupStatus,
+    ResolutionType,
 )
 # Company/Business Entity
 from app.models.company import (

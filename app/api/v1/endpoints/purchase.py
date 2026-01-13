@@ -16,12 +16,19 @@ from app.models.purchase import (
     GoodsReceiptNote, GRNItem, GRNStatus, QualityCheckResult,
     VendorInvoice, VendorInvoiceStatus,
     VendorProformaInvoice, VendorProformaItem, ProformaStatus,
+    # SRN Models
+    SalesReturnNote, SRNItem, SRNStatus, ReturnReason, ItemCondition,
+    RestockDecision, PickupStatus, ResolutionType,
 )
 from app.models.vendor import Vendor, VendorLedger, VendorTransactionType
 from app.models.inventory import StockItem, StockItemStatus, InventorySummary, StockMovement, StockMovementType
 from app.models.product import Product
 from app.models.warehouse import Warehouse
 from app.models.user import User
+from app.models.order import Order, OrderItem
+from app.models.customer import Customer
+from app.models.billing import TaxInvoice, CreditDebitNote, DocumentType, NoteReason, InvoiceStatus
+from app.models.transporter import Transporter
 from app.schemas.purchase import (
     # PR Schemas
     PurchaseRequisitionCreate, PurchaseRequisitionUpdate, PurchaseRequisitionResponse,
@@ -44,6 +51,10 @@ from app.schemas.purchase import (
     VendorProformaApproveRequest, VendorProformaConvertToPORequest,
     # Report Schemas
     POSummaryRequest, POSummaryResponse, GRNSummaryResponse, PendingGRNResponse,
+    # SRN Schemas
+    SalesReturnCreate, SalesReturnResponse, SRNBrief, SRNListResponse,
+    SRNQualityCheckRequest, SRNPutAwayRequest, PickupScheduleRequest,
+    PickupUpdateRequest, SRNReceiveRequest, SRNResolveRequest,
 )
 from app.api.deps import DB, CurrentUser, get_current_user, require_permissions
 from app.services.audit_service import AuditService
@@ -4872,6 +4883,1153 @@ async def download_vendor_proforma(
             </div>
             <div class="signature-box">
                 <div class="signature-line">Approved By</div>
+            </div>
+        </div>
+
+        <p style="text-align: center; font-size: 10px; color: #999; margin-top: 40px;">
+            This is a computer-generated document. Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        </p>
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(content=html_content)
+
+
+# ==================== Sales Return Note (SRN) ====================
+
+@router.get("/srn/next-number")
+async def get_next_srn_number(
+    db: DB,
+):
+    """Get the next available Sales Return Note number."""
+    today = date.today()
+    fy_year = today.year if today.month >= 4 else today.year - 1
+    fy_suffix = f"{str(fy_year)[-2:]}-{str(fy_year + 1)[-2:]}"
+
+    # Find the highest SRN number for this financial year
+    result = await db.execute(
+        select(SalesReturnNote.srn_number)
+        .where(SalesReturnNote.srn_number.like(f"SRN/APL/{fy_suffix}/%"))
+        .order_by(SalesReturnNote.srn_number.desc())
+        .limit(1)
+    )
+    last_srn = result.scalar_one_or_none()
+
+    if last_srn:
+        try:
+            last_num = int(last_srn.split("/")[-1])
+            next_num = last_num + 1
+        except (IndexError, ValueError):
+            next_num = 1
+    else:
+        next_num = 1
+
+    next_srn = f"SRN/APL/{fy_suffix}/{str(next_num).zfill(4)}"
+    return {"next_number": next_srn, "prefix": f"SRN/APL/{fy_suffix}"}
+
+
+@router.post("/srn", response_model=SalesReturnResponse, status_code=status.HTTP_201_CREATED)
+async def create_srn(
+    srn_in: SalesReturnCreate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Create a new Sales Return Note."""
+    # Validate that at least one reference is provided (order_id or invoice_id)
+    if not srn_in.order_id and not srn_in.invoice_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Either order_id or invoice_id must be provided"
+        )
+
+    # Validate customer exists
+    customer_result = await db.execute(
+        select(Customer).where(Customer.id == srn_in.customer_id)
+    )
+    customer = customer_result.scalar_one_or_none()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    # Validate order if provided
+    order = None
+    if srn_in.order_id:
+        order_result = await db.execute(
+            select(Order)
+            .options(selectinload(Order.items))
+            .where(Order.id == srn_in.order_id)
+        )
+        order = order_result.scalar_one_or_none()
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+        # Verify customer matches
+        if order.customer_id != srn_in.customer_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Order does not belong to the specified customer"
+            )
+
+    # Validate invoice if provided
+    invoice = None
+    if srn_in.invoice_id:
+        invoice_result = await db.execute(
+            select(TaxInvoice).where(TaxInvoice.id == srn_in.invoice_id)
+        )
+        invoice = invoice_result.scalar_one_or_none()
+        if not invoice:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+
+    # Validate warehouse
+    wh_result = await db.execute(
+        select(Warehouse).where(Warehouse.id == srn_in.warehouse_id)
+    )
+    if not wh_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Warehouse not found")
+
+    # Generate SRN number
+    today = date.today()
+    fy_year = today.year if today.month >= 4 else today.year - 1
+    fy_suffix = f"{str(fy_year)[-2:]}-{str(fy_year + 1)[-2:]}"
+
+    count_result = await db.execute(
+        select(func.count(SalesReturnNote.id)).where(
+            SalesReturnNote.srn_number.like(f"SRN/APL/{fy_suffix}/%")
+        )
+    )
+    count = count_result.scalar() or 0
+    srn_number = f"SRN/APL/{fy_suffix}/{str(count + 1).zfill(4)}"
+
+    # Determine initial status based on pickup requirement
+    initial_status = SRNStatus.PENDING_RECEIPT if srn_in.pickup_required else SRNStatus.RECEIVED
+
+    # Create SRN
+    srn = SalesReturnNote(
+        srn_number=srn_number,
+        srn_date=srn_in.srn_date,
+        order_id=srn_in.order_id,
+        invoice_id=srn_in.invoice_id,
+        customer_id=srn_in.customer_id,
+        warehouse_id=srn_in.warehouse_id,
+        status=initial_status,
+        return_reason=ReturnReason(srn_in.return_reason),
+        return_reason_detail=srn_in.return_reason_detail,
+        resolution_type=ResolutionType(srn_in.resolution_type) if srn_in.resolution_type else None,
+        pickup_required=srn_in.pickup_required,
+        pickup_scheduled_date=srn_in.pickup_scheduled_date,
+        pickup_address=srn_in.pickup_address,
+        pickup_contact_name=srn_in.pickup_contact_name,
+        pickup_contact_phone=srn_in.pickup_contact_phone,
+        pickup_status=PickupStatus.SCHEDULED.value if srn_in.pickup_required and srn_in.pickup_scheduled_date else (PickupStatus.NOT_REQUIRED.value if not srn_in.pickup_required else None),
+        qc_required=srn_in.qc_required,
+        receiving_remarks=srn_in.receiving_remarks,
+        created_by=current_user.id,
+    )
+
+    db.add(srn)
+    await db.flush()
+
+    # Create SRN items
+    total_items = 0
+    total_qty_returned = 0
+    total_value = Decimal("0")
+
+    for item_data in srn_in.items:
+        unit_price = Decimal(str(item_data.unit_price))
+        qty_returned = item_data.quantity_returned
+        item_value = (unit_price * qty_returned).quantize(Decimal("0.01"))
+
+        srn_item = SRNItem(
+            srn_id=srn.id,
+            order_item_id=item_data.order_item_id,
+            invoice_item_id=item_data.invoice_item_id,
+            product_id=item_data.product_id,
+            variant_id=item_data.variant_id,
+            product_name=item_data.product_name,
+            sku=item_data.sku,
+            hsn_code=item_data.hsn_code,
+            serial_numbers=item_data.serial_numbers,
+            quantity_sold=item_data.quantity_sold,
+            quantity_returned=qty_returned,
+            uom=item_data.uom or "PCS",
+            unit_price=unit_price,
+            return_value=item_value,
+            remarks=item_data.remarks,
+        )
+        db.add(srn_item)
+
+        total_items += 1
+        total_qty_returned += qty_returned
+        total_value += item_value
+
+    # Update SRN totals
+    srn.total_items = total_items
+    srn.total_quantity_returned = total_qty_returned
+    srn.total_value = total_value
+
+    await db.commit()
+    await db.refresh(srn)
+
+    # Fetch with items for response
+    result = await db.execute(
+        select(SalesReturnNote)
+        .options(selectinload(SalesReturnNote.items))
+        .where(SalesReturnNote.id == srn.id)
+    )
+    srn = result.scalar_one()
+
+    return srn
+
+
+@router.get("/srn", response_model=SRNListResponse)
+async def list_srns(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    status: Optional[str] = Query(None, description="Filter by status"),
+    customer_id: Optional[UUID] = Query(None, description="Filter by customer"),
+    order_id: Optional[UUID] = Query(None, description="Filter by order"),
+    warehouse_id: Optional[UUID] = Query(None, description="Filter by warehouse"),
+    return_reason: Optional[str] = Query(None, description="Filter by return reason"),
+    pickup_status: Optional[str] = Query(None, description="Filter by pickup status"),
+    date_from: Optional[date] = Query(None, description="Filter from date"),
+    date_to: Optional[date] = Query(None, description="Filter to date"),
+    search: Optional[str] = Query(None, description="Search by SRN number or customer name"),
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=100),
+):
+    """List Sales Return Notes with filters."""
+    query = select(SalesReturnNote)
+    count_query = select(func.count(SalesReturnNote.id))
+    value_query = select(func.sum(SalesReturnNote.total_value))
+
+    # Apply filters
+    conditions = []
+
+    if status:
+        conditions.append(SalesReturnNote.status == SRNStatus(status))
+
+    if customer_id:
+        conditions.append(SalesReturnNote.customer_id == customer_id)
+
+    if order_id:
+        conditions.append(SalesReturnNote.order_id == order_id)
+
+    if warehouse_id:
+        conditions.append(SalesReturnNote.warehouse_id == warehouse_id)
+
+    if return_reason:
+        conditions.append(SalesReturnNote.return_reason == ReturnReason(return_reason))
+
+    if pickup_status:
+        conditions.append(SalesReturnNote.pickup_status == pickup_status)
+
+    if date_from:
+        conditions.append(SalesReturnNote.srn_date >= date_from)
+
+    if date_to:
+        conditions.append(SalesReturnNote.srn_date <= date_to)
+
+    if search:
+        search_term = f"%{search}%"
+        # Join with customer for name search
+        query = query.outerjoin(Customer, SalesReturnNote.customer_id == Customer.id)
+        count_query = count_query.outerjoin(Customer, SalesReturnNote.customer_id == Customer.id)
+        value_query = value_query.outerjoin(Customer, SalesReturnNote.customer_id == Customer.id)
+        conditions.append(
+            or_(
+                SalesReturnNote.srn_number.ilike(search_term),
+                Customer.first_name.ilike(search_term),
+                Customer.last_name.ilike(search_term),
+                Customer.phone.ilike(search_term),
+            )
+        )
+
+    if conditions:
+        query = query.where(and_(*conditions))
+        count_query = count_query.where(and_(*conditions))
+        value_query = value_query.where(and_(*conditions))
+
+    # Get total count and value
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    total_value_result = await db.execute(value_query)
+    total_value = total_value_result.scalar() or Decimal("0")
+
+    # Calculate pagination
+    skip = (page - 1) * size
+    pages = (total + size - 1) // size if total > 0 else 1
+
+    # Execute main query with pagination
+    query = query.order_by(SalesReturnNote.created_at.desc()).offset(skip).limit(size)
+    result = await db.execute(query)
+    srns = result.scalars().all()
+
+    # Build response items with customer and order names
+    items = []
+    for srn in srns:
+        # Fetch customer name
+        customer_name = None
+        if srn.customer_id:
+            cust_result = await db.execute(
+                select(Customer.first_name, Customer.last_name).where(Customer.id == srn.customer_id)
+            )
+            cust_row = cust_result.first()
+            if cust_row:
+                customer_name = f"{cust_row[0] or ''} {cust_row[1] or ''}".strip()
+
+        # Fetch order number
+        order_number = None
+        if srn.order_id:
+            order_result = await db.execute(
+                select(Order.order_number).where(Order.id == srn.order_id)
+            )
+            order_number = order_result.scalar_one_or_none()
+
+        items.append(SRNBrief(
+            id=srn.id,
+            srn_number=srn.srn_number,
+            srn_date=srn.srn_date,
+            customer_name=customer_name,
+            order_number=order_number,
+            status=srn.status.value if isinstance(srn.status, SRNStatus) else srn.status,
+            return_reason=srn.return_reason.value if isinstance(srn.return_reason, ReturnReason) else srn.return_reason,
+            total_quantity_returned=srn.total_quantity_returned,
+            total_value=srn.total_value or Decimal("0"),
+            pickup_status=srn.pickup_status,
+        ))
+
+    return SRNListResponse(
+        items=items,
+        total=total,
+        total_value=total_value,
+        page=page,
+        size=size,
+        pages=pages,
+    )
+
+
+@router.get("/srn/pending-pickups", response_model=SRNListResponse)
+async def list_pending_pickups(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=100),
+):
+    """List SRNs with pending pickup (reverse logistics tracking)."""
+    # Filter SRNs where pickup is required and not yet delivered
+    pending_statuses = [
+        PickupStatus.SCHEDULED.value,
+        PickupStatus.PICKED_UP.value,
+        PickupStatus.IN_TRANSIT.value,
+    ]
+
+    query = select(SalesReturnNote).where(
+        and_(
+            SalesReturnNote.pickup_required == True,
+            SalesReturnNote.pickup_status.in_(pending_statuses),
+        )
+    )
+    count_query = select(func.count(SalesReturnNote.id)).where(
+        and_(
+            SalesReturnNote.pickup_required == True,
+            SalesReturnNote.pickup_status.in_(pending_statuses),
+        )
+    )
+
+    # Get total count
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Calculate pagination
+    skip = (page - 1) * size
+    pages = (total + size - 1) // size if total > 0 else 1
+
+    # Execute main query
+    query = query.order_by(SalesReturnNote.pickup_scheduled_date.asc()).offset(skip).limit(size)
+    result = await db.execute(query)
+    srns = result.scalars().all()
+
+    # Build response items
+    items = []
+    total_value = Decimal("0")
+    for srn in srns:
+        # Fetch customer name
+        customer_name = None
+        if srn.customer_id:
+            cust_result = await db.execute(
+                select(Customer.first_name, Customer.last_name).where(Customer.id == srn.customer_id)
+            )
+            cust_row = cust_result.first()
+            if cust_row:
+                customer_name = f"{cust_row[0] or ''} {cust_row[1] or ''}".strip()
+
+        # Fetch order number
+        order_number = None
+        if srn.order_id:
+            order_result = await db.execute(
+                select(Order.order_number).where(Order.id == srn.order_id)
+            )
+            order_number = order_result.scalar_one_or_none()
+
+        items.append(SRNBrief(
+            id=srn.id,
+            srn_number=srn.srn_number,
+            srn_date=srn.srn_date,
+            customer_name=customer_name,
+            order_number=order_number,
+            status=srn.status.value if isinstance(srn.status, SRNStatus) else srn.status,
+            return_reason=srn.return_reason.value if isinstance(srn.return_reason, ReturnReason) else srn.return_reason,
+            total_quantity_returned=srn.total_quantity_returned,
+            total_value=srn.total_value or Decimal("0"),
+            pickup_status=srn.pickup_status,
+        ))
+        total_value += srn.total_value or Decimal("0")
+
+    return SRNListResponse(
+        items=items,
+        total=total,
+        total_value=total_value,
+        page=page,
+        size=size,
+        pages=pages,
+    )
+
+
+@router.get("/srn/{srn_id}", response_model=SalesReturnResponse)
+async def get_srn(
+    srn_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get SRN by ID with full details."""
+    result = await db.execute(
+        select(SalesReturnNote)
+        .options(selectinload(SalesReturnNote.items))
+        .where(SalesReturnNote.id == srn_id)
+    )
+    srn = result.scalar_one_or_none()
+
+    if not srn:
+        raise HTTPException(status_code=404, detail="SRN not found")
+
+    return srn
+
+
+@router.post("/srn/{srn_id}/schedule-pickup", response_model=SalesReturnResponse)
+async def schedule_srn_pickup(
+    srn_id: UUID,
+    request: PickupScheduleRequest,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Schedule reverse pickup for an SRN."""
+    result = await db.execute(
+        select(SalesReturnNote)
+        .options(selectinload(SalesReturnNote.items))
+        .where(SalesReturnNote.id == srn_id)
+    )
+    srn = result.scalar_one_or_none()
+
+    if not srn:
+        raise HTTPException(status_code=404, detail="SRN not found")
+
+    if srn.status not in [SRNStatus.DRAFT, SRNStatus.PENDING_RECEIPT]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot schedule pickup for SRN in status: {srn.status.value}"
+        )
+
+    # Validate courier if provided
+    if request.courier_id:
+        courier_result = await db.execute(
+            select(Transporter).where(Transporter.id == request.courier_id)
+        )
+        courier = courier_result.scalar_one_or_none()
+        if not courier:
+            raise HTTPException(status_code=404, detail="Courier/Transporter not found")
+        srn.courier_id = request.courier_id
+        srn.courier_name = courier.name
+
+    # Update pickup details
+    srn.pickup_required = True
+    srn.pickup_scheduled_date = request.pickup_date
+    srn.pickup_scheduled_slot = request.pickup_slot
+    srn.pickup_status = PickupStatus.SCHEDULED.value
+    srn.pickup_requested_at = datetime.utcnow()
+
+    if request.pickup_address:
+        srn.pickup_address = request.pickup_address
+    if request.pickup_contact_name:
+        srn.pickup_contact_name = request.pickup_contact_name
+    if request.pickup_contact_phone:
+        srn.pickup_contact_phone = request.pickup_contact_phone
+
+    # Update status to PENDING_RECEIPT if it was DRAFT
+    if srn.status == SRNStatus.DRAFT:
+        srn.status = SRNStatus.PENDING_RECEIPT
+
+    await db.commit()
+    await db.refresh(srn)
+
+    return srn
+
+
+@router.post("/srn/{srn_id}/update-pickup", response_model=SalesReturnResponse)
+async def update_srn_pickup(
+    srn_id: UUID,
+    request: PickupUpdateRequest,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Update pickup status and AWB for an SRN (reverse logistics tracking)."""
+    result = await db.execute(
+        select(SalesReturnNote)
+        .options(selectinload(SalesReturnNote.items))
+        .where(SalesReturnNote.id == srn_id)
+    )
+    srn = result.scalar_one_or_none()
+
+    if not srn:
+        raise HTTPException(status_code=404, detail="SRN not found")
+
+    if not srn.pickup_required:
+        raise HTTPException(
+            status_code=400,
+            detail="This SRN does not require pickup"
+        )
+
+    # Update courier details if provided
+    if request.courier_id:
+        courier_result = await db.execute(
+            select(Transporter).where(Transporter.id == request.courier_id)
+        )
+        courier = courier_result.scalar_one_or_none()
+        if courier:
+            srn.courier_id = request.courier_id
+            srn.courier_name = courier.name
+
+    if request.courier_name:
+        srn.courier_name = request.courier_name
+
+    if request.courier_tracking_number:
+        srn.courier_tracking_number = request.courier_tracking_number
+
+    # Update pickup status
+    if request.pickup_status:
+        srn.pickup_status = request.pickup_status
+
+        # If delivered, mark pickup as complete and update SRN status
+        if request.pickup_status == PickupStatus.DELIVERED.value:
+            srn.pickup_completed_at = datetime.utcnow()
+            srn.status = SRNStatus.RECEIVED
+            srn.received_at = datetime.utcnow()
+            srn.received_by = current_user.id
+
+    await db.commit()
+    await db.refresh(srn)
+
+    return srn
+
+
+@router.post("/srn/{srn_id}/receive", response_model=SalesReturnResponse)
+async def receive_srn(
+    srn_id: UUID,
+    request: SRNReceiveRequest,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Mark SRN goods as received (for walk-in returns or after pickup delivery)."""
+    result = await db.execute(
+        select(SalesReturnNote)
+        .options(selectinload(SalesReturnNote.items))
+        .where(SalesReturnNote.id == srn_id)
+    )
+    srn = result.scalar_one_or_none()
+
+    if not srn:
+        raise HTTPException(status_code=404, detail="SRN not found")
+
+    if srn.status not in [SRNStatus.DRAFT, SRNStatus.PENDING_RECEIPT]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot receive goods for SRN in status: {srn.status.value}"
+        )
+
+    # Update receiving details
+    srn.received_by = current_user.id
+    srn.received_at = datetime.utcnow()
+    srn.receiving_remarks = request.receiving_remarks
+
+    if request.photos_urls:
+        srn.photos_urls = request.photos_urls
+
+    # Update pickup status if this was a pickup
+    if srn.pickup_required and srn.pickup_status != PickupStatus.DELIVERED.value:
+        srn.pickup_status = PickupStatus.DELIVERED.value
+        srn.pickup_completed_at = datetime.utcnow()
+
+    # Determine next status based on QC requirement
+    if srn.qc_required:
+        srn.status = SRNStatus.PENDING_QC
+    else:
+        srn.status = SRNStatus.PUT_AWAY_PENDING
+        # If no QC required, accept all quantities
+        for item in srn.items:
+            item.quantity_accepted = item.quantity_returned
+            item.qc_result = QualityCheckResult.ACCEPTED
+        srn.total_quantity_accepted = srn.total_quantity_returned
+
+    await db.commit()
+    await db.refresh(srn)
+
+    return srn
+
+
+@router.post("/srn/{srn_id}/qc", response_model=SalesReturnResponse)
+async def process_srn_quality_check(
+    srn_id: UUID,
+    qc_request: SRNQualityCheckRequest,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Process quality check for SRN items with condition assessment."""
+    result = await db.execute(
+        select(SalesReturnNote)
+        .options(selectinload(SalesReturnNote.items))
+        .where(SalesReturnNote.id == srn_id)
+    )
+    srn = result.scalar_one_or_none()
+
+    if not srn:
+        raise HTTPException(status_code=404, detail="SRN not found")
+
+    if srn.status != SRNStatus.PENDING_QC:
+        raise HTTPException(
+            status_code=400,
+            detail=f"SRN is not pending QC. Current status: {srn.status.value}"
+        )
+
+    # Process each item's QC result
+    all_accepted = True
+    all_rejected = True
+    total_accepted = 0
+    total_rejected = 0
+
+    for item_result in qc_request.item_results:
+        item_id = item_result.item_id
+        qc_result_val = item_result.qc_result
+        item_condition = item_result.item_condition
+        restock_decision = item_result.restock_decision
+        qty_accepted = item_result.quantity_accepted
+        qty_rejected = item_result.quantity_rejected
+        rejection_reason = item_result.rejection_reason
+
+        # Find the SRN item
+        item_query = await db.execute(
+            select(SRNItem).where(SRNItem.id == item_id)
+        )
+        item = item_query.scalar_one_or_none()
+
+        if item:
+            item.qc_result = QualityCheckResult(qc_result_val) if qc_result_val else None
+            item.item_condition = ItemCondition(item_condition) if item_condition else None
+            item.restock_decision = RestockDecision(restock_decision) if restock_decision else None
+            item.quantity_accepted = qty_accepted if qty_accepted is not None else 0
+            item.quantity_rejected = qty_rejected if qty_rejected is not None else 0
+
+            if rejection_reason:
+                item.rejection_reason = rejection_reason
+
+            # Recalculate return value based on accepted quantity
+            item.return_value = (item.unit_price * item.quantity_accepted).quantize(Decimal("0.01"))
+
+            # Track totals
+            total_accepted += item.quantity_accepted
+            total_rejected += item.quantity_rejected
+
+            if item.qc_result == QualityCheckResult.ACCEPTED:
+                all_rejected = False
+            elif item.qc_result == QualityCheckResult.REJECTED:
+                all_accepted = False
+            else:
+                all_accepted = False
+                all_rejected = False
+
+    # Set overall QC status
+    if all_accepted:
+        srn.qc_status = QualityCheckResult.ACCEPTED
+    elif all_rejected:
+        srn.qc_status = QualityCheckResult.REJECTED
+    else:
+        srn.qc_status = QualityCheckResult.PARTIAL
+
+    # Update SRN totals
+    srn.total_quantity_accepted = total_accepted
+    srn.total_quantity_rejected = total_rejected
+
+    # Recalculate total value based on accepted items
+    new_total_value = sum(item.return_value for item in srn.items)
+    srn.total_value = new_total_value
+
+    srn.qc_done_by = current_user.id
+    srn.qc_done_at = datetime.utcnow()
+    srn.qc_remarks = qc_request.overall_remarks
+    srn.status = SRNStatus.PUT_AWAY_PENDING
+
+    await db.commit()
+    await db.refresh(srn)
+
+    return srn
+
+
+@router.post("/srn/{srn_id}/putaway", response_model=SalesReturnResponse)
+async def process_srn_putaway(
+    srn_id: UUID,
+    putaway_request: SRNPutAwayRequest,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Process put-away for SRN items (add returned goods to inventory)."""
+    result = await db.execute(
+        select(SalesReturnNote)
+        .options(selectinload(SalesReturnNote.items))
+        .where(SalesReturnNote.id == srn_id)
+    )
+    srn = result.scalar_one_or_none()
+
+    if not srn:
+        raise HTTPException(status_code=404, detail="SRN not found")
+
+    if srn.status != SRNStatus.PUT_AWAY_PENDING:
+        raise HTTPException(
+            status_code=400,
+            detail=f"SRN is not pending put-away. Current status: {srn.status.value}"
+        )
+
+    # Process each item location
+    for loc_data in putaway_request.item_locations:
+        item_id = loc_data.get("item_id")
+        bin_id = loc_data.get("bin_id")
+        bin_location = loc_data.get("bin_location")
+
+        item_query = await db.execute(
+            select(SRNItem).where(SRNItem.id == UUID(str(item_id)))
+        )
+        item = item_query.scalar_one_or_none()
+
+        if item and item.quantity_accepted > 0:
+            item.bin_id = UUID(str(bin_id)) if bin_id else None
+            item.bin_location = bin_location
+
+            # Determine stock status based on restock decision
+            stock_status = StockItemStatus.AVAILABLE
+            quality_grade = "A"
+
+            if item.restock_decision:
+                if item.restock_decision == RestockDecision.RESTOCK_AS_NEW:
+                    stock_status = StockItemStatus.AVAILABLE
+                    quality_grade = "A"
+                elif item.restock_decision == RestockDecision.RESTOCK_AS_REFURB:
+                    stock_status = StockItemStatus.AVAILABLE
+                    quality_grade = "REFURBISHED"
+                elif item.restock_decision == RestockDecision.SEND_FOR_REPAIR:
+                    stock_status = StockItemStatus.DAMAGED
+                    quality_grade = "REPAIR"
+                elif item.restock_decision == RestockDecision.RETURN_TO_VENDOR:
+                    stock_status = StockItemStatus.QUARANTINE
+                    quality_grade = "RTV"
+                elif item.restock_decision == RestockDecision.SCRAP:
+                    stock_status = StockItemStatus.SCRAPPED
+                    quality_grade = "SCRAP"
+
+            # Create stock items for accepted quantity (only for restockable items)
+            if item.restock_decision in [RestockDecision.RESTOCK_AS_NEW, RestockDecision.RESTOCK_AS_REFURB, None]:
+                for i in range(item.quantity_accepted):
+                    serial = None
+                    if item.serial_numbers and i < len(item.serial_numbers):
+                        serial = item.serial_numbers[i]
+
+                    stock_item = StockItem(
+                        product_id=item.product_id,
+                        variant_id=item.variant_id,
+                        warehouse_id=srn.warehouse_id,
+                        sku=item.sku,
+                        serial_number=serial,
+                        status=stock_status,
+                        purchase_price=item.unit_price,
+                        quality_grade=quality_grade,
+                        srn_id=srn.id,
+                        bin_id=item.bin_id,
+                        created_by=current_user.id,
+                    )
+                    db.add(stock_item)
+
+                # Update inventory summary
+                summary_result = await db.execute(
+                    select(InventorySummary).where(
+                        and_(
+                            InventorySummary.product_id == item.product_id,
+                            InventorySummary.warehouse_id == srn.warehouse_id,
+                        )
+                    )
+                )
+                summary = summary_result.scalar_one_or_none()
+
+                if summary:
+                    summary.total_quantity += item.quantity_accepted
+                    summary.available_quantity += item.quantity_accepted
+                else:
+                    summary = InventorySummary(
+                        product_id=item.product_id,
+                        variant_id=item.variant_id,
+                        warehouse_id=srn.warehouse_id,
+                        total_quantity=item.quantity_accepted,
+                        available_quantity=item.quantity_accepted,
+                    )
+                    db.add(summary)
+
+            # Create stock movement record for all accepted items
+            movement = StockMovement(
+                product_id=item.product_id,
+                variant_id=item.variant_id,
+                warehouse_id=srn.warehouse_id,
+                movement_type=StockMovementType.RETURN_IN,
+                quantity=item.quantity_accepted,
+                reference_type="SRN",
+                reference_id=srn.id,
+                reference_number=srn.srn_number,
+                unit_price=item.unit_price,
+                total_value=item.return_value,
+                notes=f"Sales Return Put-away - {item.restock_decision.value if item.restock_decision else 'Standard'}",
+                created_by=current_user.id,
+            )
+            db.add(movement)
+
+    # Update SRN status
+    srn.status = SRNStatus.PUT_AWAY_COMPLETE
+    srn.put_away_complete = True
+    srn.put_away_at = datetime.utcnow()
+
+    await db.commit()
+    await db.refresh(srn)
+
+    return srn
+
+
+@router.post("/srn/{srn_id}/resolve", response_model=SalesReturnResponse)
+async def resolve_srn(
+    srn_id: UUID,
+    request: SRNResolveRequest,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Resolve SRN by issuing credit note, creating replacement, or processing refund."""
+    result = await db.execute(
+        select(SalesReturnNote)
+        .options(selectinload(SalesReturnNote.items))
+        .where(SalesReturnNote.id == srn_id)
+    )
+    srn = result.scalar_one_or_none()
+
+    if not srn:
+        raise HTTPException(status_code=404, detail="SRN not found")
+
+    if srn.status != SRNStatus.PUT_AWAY_COMPLETE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"SRN must be put-away complete before resolution. Current status: {srn.status.value}"
+        )
+
+    resolution_type = ResolutionType(request.resolution_type)
+    srn.resolution_type = resolution_type
+
+    if resolution_type == ResolutionType.CREDIT_NOTE:
+        # Generate credit note number
+        cn_count_result = await db.execute(
+            select(func.count(CreditDebitNote.id))
+        )
+        cn_count = cn_count_result.scalar() or 0
+        cn_number = f"CN-{date.today().strftime('%Y%m%d')}-{str(cn_count + 1).zfill(4)}"
+
+        # Create credit note
+        credit_note = CreditDebitNote(
+            note_number=cn_number,
+            document_type=DocumentType.CREDIT_NOTE,
+            invoice_id=srn.invoice_id,
+            order_id=srn.order_id,
+            note_date=date.today(),
+            reason=NoteReason.SALES_RETURN,
+            status=InvoiceStatus.DRAFT,
+            subtotal=srn.total_value,
+            taxable_amount=srn.total_value,
+            grand_total=srn.total_value,
+            internal_notes=f"Credit note for SRN {srn.srn_number}. {request.notes or ''}",
+            created_by=current_user.id,
+        )
+        db.add(credit_note)
+        await db.flush()
+
+        srn.credit_note_id = credit_note.id
+        srn.status = SRNStatus.CREDITED
+
+    elif resolution_type == ResolutionType.REPLACEMENT:
+        # For replacement, the order would typically be created manually
+        # Just update status - linking replacement order can be done later
+        srn.status = SRNStatus.REPLACED
+        # Note: replacement_order_id can be set via a separate update endpoint
+
+    elif resolution_type == ResolutionType.REFUND:
+        # Mark for refund processing
+        srn.status = SRNStatus.REFUNDED
+
+    elif resolution_type == ResolutionType.REJECT:
+        # Return rejected - no credit/replacement
+        srn.status = SRNStatus.CANCELLED
+
+    await db.commit()
+    await db.refresh(srn)
+
+    return srn
+
+
+@router.delete("/srn/{srn_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_srn(
+    srn_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a draft SRN."""
+    result = await db.execute(
+        select(SalesReturnNote).where(SalesReturnNote.id == srn_id)
+    )
+    srn = result.scalar_one_or_none()
+
+    if not srn:
+        raise HTTPException(status_code=404, detail="SRN not found")
+
+    if srn.status != SRNStatus.DRAFT:
+        raise HTTPException(
+            status_code=400,
+            detail="Only draft SRNs can be deleted"
+        )
+
+    # Delete items first
+    await db.execute(
+        delete(SRNItem).where(SRNItem.srn_id == srn_id)
+    )
+
+    # Delete SRN
+    await db.execute(
+        delete(SalesReturnNote).where(SalesReturnNote.id == srn_id)
+    )
+
+    await db.commit()
+
+    return None
+
+
+@router.get("/srn/{srn_id}/download")
+async def download_srn_pdf(
+    srn_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Download SRN as printable HTML/PDF."""
+    from fastapi.responses import HTMLResponse
+
+    result = await db.execute(
+        select(SalesReturnNote)
+        .options(selectinload(SalesReturnNote.items))
+        .where(SalesReturnNote.id == srn_id)
+    )
+    srn = result.scalar_one_or_none()
+
+    if not srn:
+        raise HTTPException(status_code=404, detail="SRN not found")
+
+    # Fetch customer
+    customer = None
+    if srn.customer_id:
+        customer_result = await db.execute(
+            select(Customer).where(Customer.id == srn.customer_id)
+        )
+        customer = customer_result.scalar_one_or_none()
+
+    # Fetch warehouse
+    warehouse = None
+    if srn.warehouse_id:
+        wh_result = await db.execute(
+            select(Warehouse).where(Warehouse.id == srn.warehouse_id)
+        )
+        warehouse = wh_result.scalar_one_or_none()
+
+    # Fetch order
+    order = None
+    if srn.order_id:
+        order_result = await db.execute(
+            select(Order).where(Order.id == srn.order_id)
+        )
+        order = order_result.scalar_one_or_none()
+
+    # Build items HTML
+    items_html = ""
+    for idx, item in enumerate(srn.items, 1):
+        serials_str = ", ".join(item.serial_numbers) if item.serial_numbers else "-"
+        condition_str = item.item_condition.value if item.item_condition else "-"
+        decision_str = item.restock_decision.value if item.restock_decision else "-"
+
+        items_html += f"""
+        <tr>
+            <td style="text-align: center;">{idx}</td>
+            <td>{item.product_name}<br><small style="color: #666;">SKU: {item.sku}</small></td>
+            <td style="text-align: center;">{serials_str[:50]}{'...' if len(serials_str) > 50 else ''}</td>
+            <td style="text-align: center;">{item.quantity_returned}</td>
+            <td style="text-align: center;">{item.quantity_accepted}</td>
+            <td style="text-align: center;">{condition_str}</td>
+            <td style="text-align: center;">{decision_str}</td>
+            <td style="text-align: right;">₹{float(item.unit_price):,.2f}</td>
+            <td style="text-align: right;">₹{float(item.return_value):,.2f}</td>
+        </tr>
+        """
+
+    status_val = srn.status.value if isinstance(srn.status, SRNStatus) else srn.status
+    reason_val = srn.return_reason.value if isinstance(srn.return_reason, ReturnReason) else srn.return_reason
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Sales Return Note - {srn.srn_number}</title>
+        <style>
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+            body {{ font-family: Arial, sans-serif; padding: 20px; max-width: 1000px; margin: auto; }}
+            @media print {{
+                body {{ padding: 0; }}
+                .no-print {{ display: none !important; }}
+            }}
+            .header {{ text-align: center; margin-bottom: 30px; border-bottom: 2px solid #0066cc; padding-bottom: 20px; }}
+            .company-name {{ font-size: 24px; font-weight: bold; color: #0066cc; margin-bottom: 5px; }}
+            .document-title {{ font-size: 18px; font-weight: bold; margin-top: 15px; background: #f0f0f0; padding: 10px; }}
+            .status-badge {{
+                display: inline-block; padding: 5px 15px; border-radius: 20px;
+                font-weight: bold; font-size: 12px;
+                background: {"#28a745" if status_val in ["CREDITED", "REPLACED", "REFUNDED", "PUT_AWAY_COMPLETE"] else "#ffc107" if status_val in ["PENDING_QC", "PUT_AWAY_PENDING"] else "#6c757d"};
+                color: white;
+            }}
+            .info-section {{ display: flex; justify-content: space-between; margin-bottom: 20px; gap: 20px; }}
+            .info-box {{ flex: 1; border: 1px solid #ddd; padding: 15px; border-radius: 5px; }}
+            .info-box h3 {{ color: #0066cc; margin-bottom: 10px; font-size: 14px; border-bottom: 1px solid #eee; padding-bottom: 5px; }}
+            .info-box p {{ margin: 5px 0; font-size: 13px; }}
+            table {{ width: 100%; border-collapse: collapse; margin-bottom: 20px; }}
+            th {{ background: #0066cc; color: white; padding: 10px 8px; text-align: left; font-size: 12px; }}
+            td {{ border: 1px solid #ddd; padding: 10px 8px; font-size: 12px; }}
+            .totals-section {{ margin-left: auto; width: 300px; }}
+            .totals-section table td {{ padding: 8px; }}
+            .totals-section .grand-total {{ background: #e6f0ff; font-size: 16px; font-weight: bold; }}
+            .remarks-box {{ background: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px; }}
+            .signatures {{ display: flex; justify-content: space-between; margin-top: 60px; }}
+            .signature-box {{ text-align: center; width: 150px; }}
+            .signature-line {{ border-top: 1px solid #333; margin-top: 40px; padding-top: 5px; }}
+            .print-btn {{ position: fixed; top: 10px; right: 10px; padding: 10px 20px; background: #0066cc; color: white; border: none; border-radius: 5px; cursor: pointer; }}
+        </style>
+    </head>
+    <body>
+        <button class="print-btn no-print" onclick="window.print()">Print / Save PDF</button>
+
+        <div class="header">
+            <div class="company-name">AQUAPURITE PRIVATE LIMITED</div>
+            <div style="font-size: 12px; color: #666;">
+                PLOT 36-A, KH NO 181, PH-1, SHYAM VIHAR, DINDAPUR EXT, New Delhi - 110043, Delhi<br>
+                GSTIN: 07ABDCA6170C1Z0 | PAN: ABDCA6170C
+            </div>
+            <div class="document-title">SALES RETURN NOTE</div>
+        </div>
+
+        <div style="text-align: center; margin-bottom: 20px;">
+            <span class="status-badge">{status_val}</span>
+        </div>
+
+        <div class="info-section">
+            <div class="info-box">
+                <h3>CUSTOMER DETAILS</h3>
+                <p><strong>{customer.first_name if customer else ''} {customer.last_name if customer else 'N/A'}</strong></p>
+                <p>{customer.address_line1 if customer and customer.address_line1 else ''}</p>
+                <p>{customer.city if customer else ''}, {customer.state if customer else ''} - {customer.pincode if customer else ''}</p>
+                <p>Phone: {customer.phone if customer else 'N/A'}</p>
+                <p>Email: {customer.email if customer else 'N/A'}</p>
+            </div>
+            <div class="info-box">
+                <h3>SRN DETAILS</h3>
+                <p><strong>SRN Number:</strong> {srn.srn_number}</p>
+                <p><strong>SRN Date:</strong> {srn.srn_date}</p>
+                <p><strong>Order Reference:</strong> {order.order_number if order else 'N/A'}</p>
+                <p><strong>Return Reason:</strong> {reason_val}</p>
+                <p><strong>Warehouse:</strong> {warehouse.name if warehouse else 'N/A'}</p>
+            </div>
+        </div>
+
+        {"<div class='info-box' style='margin-bottom: 20px;'><h3>PICKUP DETAILS</h3><p><strong>Pickup Status:</strong> " + (srn.pickup_status or "N/A") + "</p><p><strong>Scheduled Date:</strong> " + (str(srn.pickup_scheduled_date) if srn.pickup_scheduled_date else "N/A") + "</p><p><strong>AWB Number:</strong> " + (srn.courier_tracking_number or "N/A") + "</p><p><strong>Courier:</strong> " + (srn.courier_name or "N/A") + "</p></div>" if srn.pickup_required else ""}
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 40px;">#</th>
+                    <th>Product</th>
+                    <th style="width: 100px; text-align: center;">Serial#</th>
+                    <th style="width: 60px; text-align: center;">Returned</th>
+                    <th style="width: 60px; text-align: center;">Accepted</th>
+                    <th style="width: 80px; text-align: center;">Condition</th>
+                    <th style="width: 100px; text-align: center;">Decision</th>
+                    <th style="width: 90px; text-align: right;">Unit Price</th>
+                    <th style="width: 100px; text-align: right;">Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                {items_html}
+            </tbody>
+        </table>
+
+        <div class="totals-section">
+            <table>
+                <tr>
+                    <td>Total Qty Returned</td>
+                    <td style="text-align: right;">{srn.total_quantity_returned}</td>
+                </tr>
+                <tr>
+                    <td>Total Qty Accepted</td>
+                    <td style="text-align: right;">{srn.total_quantity_accepted}</td>
+                </tr>
+                <tr>
+                    <td>Total Qty Rejected</td>
+                    <td style="text-align: right;">{srn.total_quantity_rejected}</td>
+                </tr>
+                <tr class="grand-total">
+                    <td><strong>TOTAL VALUE</strong></td>
+                    <td style="text-align: right;"><strong>₹{float(srn.total_value or 0):,.2f}</strong></td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="remarks-box">
+            <h3 style="margin-bottom: 10px;">Remarks</h3>
+            <p><strong>Return Reason Detail:</strong> {srn.return_reason_detail or 'None'}</p>
+            <p><strong>Receiving Remarks:</strong> {srn.receiving_remarks or 'None'}</p>
+            <p><strong>QC Remarks:</strong> {srn.qc_remarks or 'None'}</p>
+            <p><strong>Resolution:</strong> {srn.resolution_type.value if srn.resolution_type else 'Pending'}</p>
+        </div>
+
+        <div class="signatures">
+            <div class="signature-box">
+                <div class="signature-line">Customer</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line">Received By</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line">QC Verified</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line">Authorized</div>
             </div>
         </div>
 
