@@ -832,7 +832,11 @@ export default function PurchaseOrdersPage() {
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handlePrint(row.original)}>
               <Printer className="mr-2 h-4 w-4" />
-              Print
+              Print PO
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleDownloadBarcodesCSV(row.original)}>
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Download Barcodes CSV
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             {row.original.status === 'DRAFT' && (

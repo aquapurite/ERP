@@ -2718,6 +2718,11 @@ async def download_purchase_order(
 
     # Build delivery schedule section HTML
     delivery_schedule_html = ""
+    # First lot values for Advance Payment Details section
+    first_lot_advance = Decimal("0")
+    first_lot_balance = Decimal("0")
+    first_lot_advance_percentage = Decimal("25")
+
     if delivery_schedules:
         schedule_rows = ""
         total_qty_sched = 0
@@ -2725,10 +2730,16 @@ async def download_purchase_order(
         total_advance = Decimal("0")
         total_balance = Decimal("0")
 
+        # Get first lot's advance/balance values
+        first_lot = delivery_schedules[0]
+        first_lot_advance = Decimal(str(first_lot.advance_amount))
+        first_lot_balance = Decimal(str(first_lot.balance_amount))
+
         # Get advance percentage from first delivery schedule
         # Note: po.advance_required is an AMOUNT, not percentage, so calculate percentage if needed
         if delivery_schedules and delivery_schedules[0].advance_percentage:
             lot_advance_percentage = Decimal(str(delivery_schedules[0].advance_percentage))
+            first_lot_advance_percentage = lot_advance_percentage
         elif po.advance_required and grand_total > 0:
             # Calculate percentage from advance amount
             lot_advance_percentage = (Decimal(str(po.advance_required)) / grand_total * Decimal("100")).quantize(Decimal("0.01"))
@@ -2902,7 +2913,20 @@ async def download_purchase_order(
     ship_to_state_code = ship_to_data.get('state_code') or (warehouse.state_code if warehouse and hasattr(warehouse, 'state_code') else company_state_code)
 
     # Tax type determination - compare SHIP TO state with VENDOR state (Place of Supply rule)
-    is_intra_state = ship_to_state_code == vendor_state_code
+    # Extract state code from GSTIN (first 2 digits) for accurate comparison
+    def get_state_from_gstin(gstin):
+        if gstin and len(gstin) >= 2 and gstin[:2].isdigit():
+            return gstin[:2]
+        return None
+
+    # Get state codes from GSTIN first, then fall back to explicit state codes
+    vendor_state_from_gstin = get_state_from_gstin(vendor_gstin)
+    ship_to_state_from_gstin = get_state_from_gstin(ship_to_gstin)
+
+    effective_vendor_state = vendor_state_from_gstin or vendor_state_code or "07"
+    effective_ship_to_state = ship_to_state_from_gstin or ship_to_state_code or "07"
+
+    is_intra_state = effective_vendor_state == effective_ship_to_state
     tax_type = "CGST + SGST (Intra-State)" if is_intra_state else "IGST (Inter-State)"
 
     # PO details
@@ -3248,52 +3272,44 @@ async def download_purchase_order(
                     <span class="totals-label">GRAND TOTAL:</span>
                     <span class="totals-value">Rs. {float(grand_total):,.2f}</span>
                 </div>
-                <div class="totals-row advance-paid">
-                    <span class="totals-label">Advance Required ({float(advance_percentage):.1f}%):</span>
-                    <span class="totals-value">Rs. {float(advance_required):,.2f}</span>
-                </div>
                 <div class="totals-row" style="background: #17a2b8; color: white;">
                     <span class="totals-label">Advance Paid:</span>
                     <span class="totals-value">Rs. {float(advance_paid):,.2f}</span>
-                </div>
-                <div class="totals-row balance-due">
-                    <span class="totals-label">Balance Due:</span>
-                    <span class="totals-value">Rs. {float(balance_due):,.2f}</span>
                 </div>
             </div>
         </div>
 
         <!-- Amount in Words -->
         <div class="amount-words">
-            <strong>Grand Total in Words:</strong> {_number_to_words(float(grand_total))}<br>
-            <strong>Advance Required in Words:</strong> {_number_to_words(float(advance_required))}<br>
-            <strong>Balance Due in Words:</strong> {_number_to_words(float(balance_due))}
+            <strong>Grand Total in Words:</strong> {_number_to_words(float(grand_total))}
         </div>
 
         {delivery_schedule_html}
 
-        <!-- Payment Details -->
+        {serials_html}
+
+        <!-- Payment Details (First Lot) -->
         <div class="payment-section">
-            <h4>ADVANCE PAYMENT DETAILS</h4>
+            <h4>ADVANCE PAYMENT DETAILS (LOT 1)</h4>
             <div class="payment-detail">
-                <label>Advance Required:</label>
-                <span><strong>Rs. {float(advance_required):,.2f}</strong> ({float(advance_percentage):.1f}% of Total)</span>
+                <label>Advance Required (Lot 1):</label>
+                <span><strong>Rs. {float(first_lot_advance):,.2f}</strong> ({float(first_lot_advance_percentage):.0f}% of Lot 1 Value)</span>
             </div>
             <div class="payment-detail">
                 <label>Advance Paid:</label>
-                <span><strong>Rs. {float(advance_paid):,.2f}</strong> {' ✓ Paid' if advance_paid >= advance_required and advance_required > 0 else ''}</span>
+                <span><strong>Rs. {float(advance_paid):,.2f}</strong> {' ✓ Paid' if advance_paid >= first_lot_advance and first_lot_advance > 0 else ''}</span>
             </div>
             <div class="payment-detail">
                 <label>Payment Date:</label>
-                <span>{getattr(po, 'advance_date', None).strftime('%d.%m.%Y') if getattr(po, 'advance_date', None) else 'TBD'}</span>
+                <span>{getattr(po, 'advance_date', None).strftime('%d.%m.%Y') if getattr(po, 'advance_date', None) else 'With PO'}</span>
             </div>
             <div class="payment-detail">
                 <label>Transaction Reference:</label>
                 <span>{getattr(po, 'advance_reference', None) or 'RTGS/NEFT Transfer'}</span>
             </div>
             <div class="payment-detail">
-                <label>Balance Payment:</label>
-                <span><strong>Rs. {float(balance_due):,.2f}</strong></span>
+                <label>Balance Payment (Lot 1):</label>
+                <span><strong>Rs. {float(first_lot_balance):,.2f}</strong></span>
             </div>
         </div>
 
@@ -3327,8 +3343,6 @@ async def download_purchase_order(
             <h4>TERMS & CONDITIONS:</h4>
             <div style="white-space: pre-wrap; font-size: 11px; line-height: 1.5;">{po_terms_html}</div>
         </div>
-
-        {serials_html}
 
         <!-- System Generated Notice -->
         <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; text-align: center;">
