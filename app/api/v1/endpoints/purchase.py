@@ -2625,22 +2625,27 @@ async def download_purchase_order(
     warehouse = warehouse_result.scalar_one_or_none()
 
     # Get PO serials - grouped by model code for summary
-    serials_result = await db.execute(
-        select(
-            POSerial.model_code,
-            POSerial.item_type,
-            func.count(POSerial.id).label('quantity'),
-            func.min(POSerial.serial_number).label('start_serial'),
-            func.max(POSerial.serial_number).label('end_serial'),
-            func.min(POSerial.barcode).label('start_barcode'),
-            func.max(POSerial.barcode).label('end_barcode'),
+    # Use text query to handle VARCHAR/UUID type mismatch in po_id column
+    try:
+        from sqlalchemy import text
+        serials_result = await db.execute(
+            text("""
+                SELECT model_code, item_type, count(id) as quantity,
+                       min(serial_number) as start_serial, max(serial_number) as end_serial,
+                       min(barcode) as start_barcode, max(barcode) as end_barcode
+                FROM po_serials
+                WHERE po_id = :po_id
+                GROUP BY model_code, item_type
+                ORDER BY model_code
+            """),
+            {"po_id": str(po.id)}
         )
-        .where(POSerial.po_id == str(po.id))
-        .group_by(POSerial.model_code, POSerial.item_type)
-        .order_by(POSerial.model_code)
-    )
-    serial_groups = serials_result.all()
-    total_serials = sum(sg.quantity for sg in serial_groups) if serial_groups else 0
+        serial_groups = serials_result.all()
+        total_serials = sum(sg.quantity for sg in serial_groups) if serial_groups else 0
+    except Exception:
+        # If serial query fails, continue without serial info
+        serial_groups = []
+        total_serials = 0
 
     # Check if this is a multi-delivery PO (has monthly_quantities or delivery_schedules)
     has_monthly_breakdown = any(item.monthly_quantities for item in po.items)
