@@ -34,6 +34,9 @@ else:
         pool_pre_ping=True,
         pool_size=10,
         max_overflow=20,
+        connect_args={
+            "prepare_threshold": None,  # Disable prepared statements to avoid DuplicatePreparedStatement errors
+        },
     )
 
 # Create async session factory
@@ -67,6 +70,20 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
         finally:
             await session.close()
+
+
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def get_db_session():
+    """Context manager for getting database session (for background jobs)."""
+    async with async_session_factory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
 
 async def init_db() -> None:
