@@ -1351,9 +1351,9 @@ async def submit_purchase_order(
 @router.post("/orders/{po_id}/approve", response_model=PurchaseOrderResponse)
 async def approve_purchase_order(
     po_id: UUID,
-    request: POApproveRequest,
     db: DB,
     current_user: User = Depends(get_current_user),
+    request: POApproveRequest = POApproveRequest(),
 ):
     """Approve or reject a purchase order."""
     result = await db.execute(

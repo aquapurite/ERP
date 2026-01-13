@@ -370,7 +370,7 @@ class POListResponse(BaseModel):
 
 class POApproveRequest(BaseModel):
     """Request to approve/reject PO."""
-    action: str = Field(..., pattern="^(APPROVE|REJECT)$")
+    action: str = Field(default="APPROVE", pattern="^(APPROVE|REJECT)$")
     rejection_reason: Optional[str] = None
 
 
