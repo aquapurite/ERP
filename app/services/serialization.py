@@ -532,14 +532,20 @@ class SerializationService:
 
         This is called when a PO is sent to the vendor.
         """
+        import logging
+        logging.info(f"[SerializationService] generate_serials_for_po called: po_id={request.po_id}, supplier={request.supplier_code}, items={len(request.items)}")
+
         # Year/month codes for barcode (traceability only, not for sequence lookup)
         year_code = self.get_year_code()
         month_code = self.get_month_code()
+        logging.info(f"[SerializationService] year_code={year_code}, month_code={month_code}")
 
         all_barcodes = []
         item_summaries = []
 
-        for item in request.items:
+        for idx, item in enumerate(request.items):
+            logging.info(f"[SerializationService] Processing item {idx+1}/{len(request.items)}: model={item.model_code}, qty={item.quantity}, type={item.item_type}")
+
             # NEW: Use product-level sequencing (continuous per model)
             product_sequence = await self.get_or_create_product_sequence(
                 model_code=item.model_code,
@@ -548,11 +554,13 @@ class SerializationService:
                 product_sku=item.product_sku,
                 item_type=item.item_type,
             )
+            logging.info(f"[SerializationService] Got sequence: id={product_sequence.id}, last_serial={product_sequence.last_serial}")
 
             # Reserve serial range from product sequence
             start_serial, end_serial = await self.get_next_product_serial_range(
                 product_sequence, item.quantity
             )
+            logging.info(f"[SerializationService] Reserved range: {start_serial} - {end_serial}")
 
             # Generate individual serial records
             item_barcodes = []
@@ -603,7 +611,9 @@ class SerializationService:
                 end_barcode=item_barcodes[-1],
             ))
 
+        logging.info(f"[SerializationService] Committing {len(all_barcodes)} serial records to database...")
         await self.db.commit()
+        logging.info(f"[SerializationService] COMMIT SUCCESS: {len(all_barcodes)} serials generated for PO {request.po_id}")
 
         return GenerateSerialsResponse(
             po_id=request.po_id,
