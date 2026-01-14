@@ -21,8 +21,8 @@ from sqlalchemy.orm import selectinload
 
 from app.models.customer import Customer
 from app.models.order import Order, OrderItem, OrderStatus
-from app.models.billing import Invoice
-from app.models.service_request import ServiceRequest, ServiceRequestStatus
+from app.models.billing import TaxInvoice
+from app.models.service_request import ServiceRequest, ServiceStatus
 from app.models.product import Product
 
 
@@ -281,7 +281,7 @@ class CustomerPortalService:
 
         return tracking
 
-    # ==================== Invoices ====================
+    # ==================== TaxInvoices ====================
 
     async def get_invoices(
         self,
@@ -289,16 +289,16 @@ class CustomerPortalService:
         limit: int = 20
     ) -> Dict:
         """Get customer invoices."""
-        query = select(Invoice).where(
-            Invoice.customer_id == self.customer_id
-        ).order_by(desc(Invoice.invoice_date)).offset(skip).limit(limit)
+        query = select(TaxInvoice).where(
+            TaxInvoice.customer_id == self.customer_id
+        ).order_by(desc(TaxInvoice.invoice_date)).offset(skip).limit(limit)
 
         result = await self.db.execute(query)
         invoices = result.scalars().all()
 
         count_result = await self.db.execute(
-            select(func.count(Invoice.id)).where(
-                Invoice.customer_id == self.customer_id
+            select(func.count(TaxInvoice.id)).where(
+                TaxInvoice.customer_id == self.customer_id
             )
         )
         total = count_result.scalar() or 0
@@ -314,7 +314,7 @@ class CustomerPortalService:
                     "paid_amount": float(getattr(inv, 'paid_amount', 0) or 0),
                     "balance": float(getattr(inv, 'balance_due', 0) or 0),
                     "status": getattr(inv, 'status', 'ISSUED'),
-                    "irn": getattr(inv, 'irn', None),  # E-Invoice IRN
+                    "irn": getattr(inv, 'irn', None),  # E-TaxInvoice IRN
                     "can_download": True,
                 }
                 for inv in invoices
@@ -327,19 +327,19 @@ class CustomerPortalService:
     async def get_invoice_details(self, invoice_id: UUID) -> Dict:
         """Get detailed invoice information."""
         result = await self.db.execute(
-            select(Invoice)
-            .options(selectinload(Invoice.items))
+            select(TaxInvoice)
+            .options(selectinload(TaxInvoice.items))
             .where(
                 and_(
-                    Invoice.id == invoice_id,
-                    Invoice.customer_id == self.customer_id
+                    TaxInvoice.id == invoice_id,
+                    TaxInvoice.customer_id == self.customer_id
                 )
             )
         )
         invoice = result.scalar_one_or_none()
 
         if not invoice:
-            raise CustomerPortalError("Invoice not found")
+            raise CustomerPortalError("TaxInvoice not found")
 
         return {
             "id": str(invoice.id),
@@ -385,13 +385,13 @@ class CustomerPortalService:
         )
 
         if status:
-            query = query.where(ServiceRequest.status == ServiceRequestStatus(status))
+            query = query.where(ServiceRequest.status == ServiceStatus(status))
 
         count_query = select(func.count(ServiceRequest.id)).where(
             ServiceRequest.customer_id == self.customer_id
         )
         if status:
-            count_query = count_query.where(ServiceRequest.status == ServiceRequestStatus(status))
+            count_query = count_query.where(ServiceRequest.status == ServiceStatus(status))
 
         count_result = await self.db.execute(count_query)
         total = count_result.scalar() or 0
@@ -459,7 +459,7 @@ class CustomerPortalService:
             product_id=product_id,
             order_id=order_id,
             priority=priority,
-            status=ServiceRequestStatus.OPEN,
+            status=ServiceStatus.OPEN,
             source="CUSTOMER_PORTAL",
             attachments=attachments or [],
         )
@@ -560,7 +560,7 @@ class CustomerPortalService:
                 and_(
                     ServiceRequest.id == request_id,
                     ServiceRequest.customer_id == self.customer_id,
-                    ServiceRequest.status == ServiceRequestStatus.CLOSED
+                    ServiceRequest.status == ServiceStatus.CLOSED
                 )
             )
         )
@@ -597,10 +597,10 @@ class CustomerPortalService:
 
         # Pending invoices
         invoices_result = await self.db.execute(
-            select(Invoice).where(
+            select(TaxInvoice).where(
                 and_(
-                    Invoice.customer_id == self.customer_id,
-                    Invoice.status.in_(["ISSUED", "PARTIALLY_PAID"])
+                    TaxInvoice.customer_id == self.customer_id,
+                    TaxInvoice.status.in_(["ISSUED", "PARTIALLY_PAID"])
                 )
             ).limit(5)
         )

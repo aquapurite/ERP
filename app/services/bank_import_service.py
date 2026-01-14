@@ -26,7 +26,7 @@ import re
 from sqlalchemy import select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.accounting import JournalEntry, JournalLine
+from app.models.accounting import JournalEntry, JournalEntryLine
 from app.models.banking import BankAccount, BankTransaction, TransactionType
 
 
@@ -584,11 +584,11 @@ class BankImportService:
         amount_high = bank_txn.amount + tolerance_amount
 
         # Query journal lines with matching amounts
-        query = select(JournalLine).where(
+        query = select(JournalEntryLine).where(
             and_(
                 or_(
-                    and_(JournalLine.debit >= amount_low, JournalLine.debit <= amount_high),
-                    and_(JournalLine.credit >= amount_low, JournalLine.credit <= amount_high)
+                    and_(JournalEntryLine.debit >= amount_low, JournalEntryLine.debit <= amount_high),
+                    and_(JournalEntryLine.credit >= amount_low, JournalEntryLine.credit <= amount_high)
                 )
             )
         ).limit(20)

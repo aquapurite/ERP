@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.user import User
-from app.models.accounting import JournalEntry, JournalStatus
+from app.models.accounting import JournalEntry, JournalEntryStatus
 from app.api.deps import DB, get_current_user
 from app.services.auto_journal_service import AutoJournalService, AutoJournalError
 
@@ -348,7 +348,7 @@ async def list_pending_journal_entries(
         .where(
             and_(
                 JournalEntry.company_id == effective_company_id,
-                JournalEntry.status == JournalStatus.DRAFT
+                JournalEntry.status == JournalEntryStatus.DRAFT
             )
         )
         .order_by(JournalEntry.entry_date.desc())
@@ -392,7 +392,7 @@ async def post_all_pending_journals(
         .where(
             and_(
                 JournalEntry.company_id == effective_company_id,
-                JournalEntry.status == JournalStatus.DRAFT
+                JournalEntry.status == JournalEntryStatus.DRAFT
             )
         )
     )

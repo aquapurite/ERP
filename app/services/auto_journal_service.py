@@ -22,8 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.accounting import (
-    JournalEntry, JournalLine, LedgerAccount,
-    JournalType, JournalStatus
+    JournalEntry, JournalEntryLine, ChartOfAccount,
+    JournalEntryStatus
 )
 from app.models.billing import TaxInvoice, InvoiceType
 
@@ -95,24 +95,24 @@ class AutoJournalService:
         self.db = db
         self.company_id = company_id
 
-    async def get_account_by_code(self, code: str) -> Optional[LedgerAccount]:
+    async def get_account_by_code(self, code: str) -> Optional[ChartOfAccount]:
         """Get ledger account by code."""
         result = await self.db.execute(
-            select(LedgerAccount).where(
+            select(ChartOfAccount).where(
                 and_(
-                    LedgerAccount.code == code,
-                    LedgerAccount.company_id == self.company_id
+                    ChartOfAccount.code == code,
+                    ChartOfAccount.company_id == self.company_id
                 )
             )
         )
         return result.scalar_one_or_none()
 
-    async def get_or_create_account(self, code: str, name: str, account_type: str) -> LedgerAccount:
+    async def get_or_create_account(self, code: str, name: str, account_type: str) -> ChartOfAccount:
         """Get or create a ledger account."""
         account = await self.get_account_by_code(code)
 
         if not account:
-            account = LedgerAccount(
+            account = ChartOfAccount(
                 company_id=self.company_id,
                 code=code,
                 name=name,
@@ -176,14 +176,14 @@ class AutoJournalService:
         # Create journal entry
         journal = JournalEntry(
             company_id=self.company_id,
-            journal_type=JournalType.SALES,
+            entry_type="SALES",
             entry_number=f"JV-SALE-{invoice.invoice_number}",
             entry_date=invoice.invoice_date,
             reference_type="TaxInvoice",
             reference_id=invoice_id,
             reference_number=invoice.invoice_number,
             narration=f"Sales invoice {invoice.invoice_number} to {invoice.customer_name}",
-            status=JournalStatus.DRAFT,
+            status=JournalEntryStatus.DRAFT,
             created_by=user_id,
         )
         self.db.add(journal)
@@ -192,7 +192,7 @@ class AutoJournalService:
         journal_lines = []
 
         # Debit: Accounts Receivable (full amount)
-        ar_line = JournalLine(
+        ar_line = JournalEntryLine(
             journal_entry_id=journal.id,
             account_id=ar_account.id,
             account_name=ar_account.name,
@@ -203,7 +203,7 @@ class AutoJournalService:
         journal_lines.append(ar_line)
 
         # Credit: Sales Revenue (taxable amount)
-        sales_line = JournalLine(
+        sales_line = JournalEntryLine(
             journal_entry_id=journal.id,
             account_id=sales_account.id,
             account_name=sales_account.name,
@@ -220,7 +220,7 @@ class AutoJournalService:
                 "CGST Payable",
                 "LIABILITY"
             )
-            cgst_line = JournalLine(
+            cgst_line = JournalEntryLine(
                 journal_entry_id=journal.id,
                 account_id=cgst_account.id,
                 account_name=cgst_account.name,
@@ -236,7 +236,7 @@ class AutoJournalService:
                 "SGST Payable",
                 "LIABILITY"
             )
-            sgst_line = JournalLine(
+            sgst_line = JournalEntryLine(
                 journal_entry_id=journal.id,
                 account_id=sgst_account.id,
                 account_name=sgst_account.name,
@@ -252,7 +252,7 @@ class AutoJournalService:
                 "IGST Payable",
                 "LIABILITY"
             )
-            igst_line = JournalLine(
+            igst_line = JournalEntryLine(
                 journal_entry_id=journal.id,
                 account_id=igst_account.id,
                 account_name=igst_account.name,
@@ -269,7 +269,7 @@ class AutoJournalService:
                 "Round Off",
                 "EXPENSE" if invoice.round_off > 0 else "REVENUE"
             )
-            roundoff_line = JournalLine(
+            roundoff_line = JournalEntryLine(
                 journal_entry_id=journal.id,
                 account_id=roundoff_account.id,
                 account_name=roundoff_account.name,
@@ -359,21 +359,21 @@ class AutoJournalService:
         # Create journal entry
         journal = JournalEntry(
             company_id=self.company_id,
-            journal_type=JournalType.RECEIPT,
+            entry_type="RECEIPT",
             entry_number=f"JV-REC-{receipt.receipt_number}",
             entry_date=receipt.receipt_date,
             reference_type="PaymentReceipt",
             reference_id=receipt_id,
             reference_number=receipt.receipt_number,
             narration=f"Payment received via {receipt.payment_mode}",
-            status=JournalStatus.DRAFT,
+            status=JournalEntryStatus.DRAFT,
             created_by=user_id,
         )
         self.db.add(journal)
         await self.db.flush()
 
         # Debit: Cash/Bank
-        debit_line = JournalLine(
+        debit_line = JournalEntryLine(
             journal_entry_id=journal.id,
             account_id=debit_account.id,
             account_name=debit_account.name,
@@ -384,7 +384,7 @@ class AutoJournalService:
         self.db.add(debit_line)
 
         # Credit: Accounts Receivable
-        credit_line = JournalLine(
+        credit_line = JournalEntryLine(
             journal_entry_id=journal.id,
             account_id=ar_account.id,
             account_name=ar_account.name,
@@ -459,14 +459,14 @@ class AutoJournalService:
         # Create journal
         journal = JournalEntry(
             company_id=self.company_id,
-            journal_type=JournalType.BANK,
+            entry_type="PAYMENT",
             entry_number=f"JV-BANK-{txn.id.hex[:8].upper()}",
             entry_date=txn.transaction_date,
             reference_type="BankTransaction",
             reference_id=bank_transaction_id,
             reference_number=txn.reference_number,
             narration=txn.description[:500] if txn.description else "Bank transaction",
-            status=JournalStatus.DRAFT,
+            status=JournalEntryStatus.DRAFT,
             created_by=user_id,
         )
         self.db.add(journal)
@@ -474,7 +474,7 @@ class AutoJournalService:
 
         if txn.transaction_type == TransactionType.CREDIT:
             # Deposit: Debit Bank, Credit Contra
-            bank_line = JournalLine(
+            bank_line = JournalEntryLine(
                 journal_entry_id=journal.id,
                 account_id=bank_ledger.id,
                 account_name=bank_ledger.name,
@@ -482,7 +482,7 @@ class AutoJournalService:
                 credit=Decimal("0"),
                 narration="Bank deposit"
             )
-            contra_line = JournalLine(
+            contra_line = JournalEntryLine(
                 journal_entry_id=journal.id,
                 account_id=contra_ledger.id,
                 account_name=contra_ledger.name,
@@ -492,7 +492,7 @@ class AutoJournalService:
             )
         else:
             # Withdrawal: Debit Contra, Credit Bank
-            contra_line = JournalLine(
+            contra_line = JournalEntryLine(
                 journal_entry_id=journal.id,
                 account_id=contra_ledger.id,
                 account_name=contra_ledger.name,
@@ -500,7 +500,7 @@ class AutoJournalService:
                 credit=Decimal("0"),
                 narration=txn.description[:200] if txn.description else ""
             )
-            bank_line = JournalLine(
+            bank_line = JournalEntryLine(
                 journal_entry_id=journal.id,
                 account_id=bank_ledger.id,
                 account_name=bank_ledger.name,
@@ -536,7 +536,7 @@ class AutoJournalService:
         if not journal:
             raise AutoJournalError("Journal entry not found")
 
-        if journal.status != JournalStatus.DRAFT:
+        if journal.status != JournalEntryStatus.DRAFT:
             raise AutoJournalError(f"Cannot post journal in {journal.status} status")
 
         # Verify balanced
@@ -549,7 +549,7 @@ class AutoJournalService:
                 {"debit": float(total_debit), "credit": float(total_credit)}
             )
 
-        journal.status = JournalStatus.POSTED
+        journal.status = JournalEntryStatus.POSTED
         journal.posted_at = datetime.utcnow()
 
         await self.db.commit()
