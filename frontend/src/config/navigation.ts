@@ -38,6 +38,9 @@ import {
   Briefcase,
   Calendar,
   CreditCard,
+  Bell,
+  Brain,
+  Lightbulb,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -55,6 +58,18 @@ export const navigation: NavItem[] = [
     href: '/dashboard',
     icon: LayoutDashboard,
     permissions: [],
+  },
+  {
+    title: 'AI Insights',
+    icon: Brain,
+    permissions: [],
+    badge: 'NEW',
+    children: [
+      { title: 'Overview', href: '/dashboard/insights', icon: Lightbulb, permissions: [] },
+      { title: 'Reorder Suggestions', href: '/dashboard/insights/reorder', permissions: [] },
+      { title: 'Churn Risk', href: '/dashboard/insights/churn-risk', permissions: [] },
+      { title: 'Slow Moving Stock', href: '/dashboard/insights/slow-moving', permissions: [] },
+    ],
   },
   {
     title: 'Sales Channels',
@@ -138,6 +153,7 @@ export const navigation: NavItem[] = [
       { title: 'General Ledger', href: '/dashboard/finance/general-ledger', permissions: ['ACCOUNTING_VIEW'] },
       { title: 'Bank Reconciliation', href: '/dashboard/finance/bank-reconciliation', permissions: ['ACCOUNTING_VIEW'] },
       { title: 'Cost Centers', href: '/dashboard/finance/cost-centers', permissions: ['ACCOUNTING_VIEW'] },
+      { title: 'Fixed Assets', href: '/dashboard/finance/fixed-assets', icon: Building2, permissions: ['ACCOUNTING_VIEW'] },
     ],
   },
   {
@@ -252,6 +268,12 @@ export const navigation: NavItem[] = [
     icon: CheckSquare,
     permissions: ['APPROVALS_VIEW'],
     badge: 'pending',
+  },
+  {
+    title: 'Notifications',
+    href: '/dashboard/notifications',
+    icon: Bell,
+    permissions: [],
   },
   {
     title: 'Audit Logs',

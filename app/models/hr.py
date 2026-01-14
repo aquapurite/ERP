@@ -336,6 +336,15 @@ class Employee(Base):
         "Payslip",
         back_populates="employee"
     )
+    goals: Mapped[List["Goal"]] = relationship(
+        "Goal",
+        back_populates="employee"
+    )
+    appraisals: Mapped[List["Appraisal"]] = relationship(
+        "Appraisal",
+        back_populates="employee",
+        foreign_keys="Appraisal.employee_id"
+    )
 
     def __repr__(self) -> str:
         return f"<Employee(code='{self.employee_code}')>"

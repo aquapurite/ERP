@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from app.models.role import Role
     from app.models.region import Region
     from app.models.technician import Technician
+    from app.models.notifications import Notification, NotificationPreference
 
 
 class User(Base):
@@ -79,6 +80,19 @@ class User(Base):
         "Technician",
         back_populates="user",
         uselist=False
+    )
+
+    # Notification relationships
+    notifications: Mapped[List["Notification"]] = relationship(
+        "Notification",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    notification_preferences: Mapped[Optional["NotificationPreference"]] = relationship(
+        "NotificationPreference",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan"
     )
 
     @property

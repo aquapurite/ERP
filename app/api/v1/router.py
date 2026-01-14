@@ -9,6 +9,12 @@ from app.api.v1.endpoints import (
     access_control,
     # HR & Payroll
     hr,
+    # Fixed Assets
+    fixed_assets,
+    # Notifications
+    notifications,
+    # AI Insights
+    insights,
     # Product Catalog
     categories,
     brands,
@@ -318,4 +324,25 @@ api_router.include_router(
     hr.router,
     prefix="/hr",
     tags=["HR & Payroll"]
+)
+
+# ==================== Fixed Assets ====================
+api_router.include_router(
+    fixed_assets.router,
+    prefix="/fixed-assets",
+    tags=["Fixed Assets"]
+)
+
+# ==================== Notifications ====================
+api_router.include_router(
+    notifications.router,
+    prefix="/notifications",
+    tags=["Notifications"]
+)
+
+# ==================== AI Insights ====================
+api_router.include_router(
+    insights.router,
+    prefix="/insights",
+    tags=["AI Insights"]
 )

@@ -2857,4 +2857,868 @@ export const hrApi = {
   },
 };
 
+// ==================== Fixed Assets Types ====================
+
+export type DepreciationMethod = 'SLM' | 'WDV';
+export type AssetStatus = 'ACTIVE' | 'UNDER_MAINTENANCE' | 'DISPOSED' | 'SOLD' | 'WRITTEN_OFF';
+export type TransferStatus = 'PENDING' | 'APPROVED' | 'COMPLETED' | 'CANCELLED';
+export type MaintenanceStatus = 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+
+export interface AssetCategory {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  depreciation_method: DepreciationMethod;
+  depreciation_rate: number;
+  useful_life_years: number;
+  asset_account_id: string | null;
+  depreciation_account_id: string | null;
+  expense_account_id: string | null;
+  is_active: boolean;
+  asset_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Asset {
+  id: string;
+  asset_code: string;
+  name: string;
+  description: string | null;
+  category_id: string;
+  category_name: string | null;
+  serial_number: string | null;
+  model_number: string | null;
+  manufacturer: string | null;
+  warehouse_id: string | null;
+  warehouse_name: string | null;
+  location_details: string | null;
+  custodian_employee_id: string | null;
+  custodian_name: string | null;
+  department_id: string | null;
+  department_name: string | null;
+  purchase_date: string;
+  purchase_price: number;
+  purchase_invoice_no: string | null;
+  vendor_id: string | null;
+  vendor_name: string | null;
+  po_number: string | null;
+  capitalization_date: string;
+  installation_cost: number;
+  other_costs: number;
+  capitalized_value: number;
+  depreciation_method: DepreciationMethod | null;
+  depreciation_rate: number | null;
+  useful_life_years: number | null;
+  salvage_value: number;
+  accumulated_depreciation: number;
+  current_book_value: number;
+  last_depreciation_date: string | null;
+  warranty_start_date: string | null;
+  warranty_end_date: string | null;
+  warranty_details: string | null;
+  insured: boolean;
+  insurance_policy_no: string | null;
+  insurance_value: number | null;
+  insurance_expiry: string | null;
+  disposal_date: string | null;
+  disposal_price: number | null;
+  disposal_reason: string | null;
+  gain_loss_on_disposal: number | null;
+  status: AssetStatus;
+  documents: Record<string, unknown> | null;
+  images: Record<string, unknown> | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DepreciationEntry {
+  id: string;
+  asset_id: string;
+  asset_code: string | null;
+  asset_name: string | null;
+  period_date: string;
+  financial_year: string;
+  opening_book_value: number;
+  depreciation_method: DepreciationMethod;
+  depreciation_rate: number;
+  depreciation_amount: number;
+  closing_book_value: number;
+  accumulated_depreciation: number;
+  is_posted: boolean;
+  journal_entry_id: string | null;
+  processed_by_name: string | null;
+  processed_at: string | null;
+  created_at: string;
+}
+
+export interface AssetTransfer {
+  id: string;
+  transfer_number: string;
+  asset_id: string;
+  asset_code: string | null;
+  asset_name: string | null;
+  from_warehouse_name: string | null;
+  from_department_name: string | null;
+  from_custodian_name: string | null;
+  from_location_details: string | null;
+  to_warehouse_name: string | null;
+  to_department_name: string | null;
+  to_custodian_name: string | null;
+  to_location_details: string | null;
+  transfer_date: string;
+  reason: string | null;
+  status: TransferStatus;
+  requested_by_name: string | null;
+  approved_by_name: string | null;
+  approved_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssetMaintenance {
+  id: string;
+  maintenance_number: string;
+  asset_id: string;
+  asset_code: string | null;
+  asset_name: string | null;
+  maintenance_type: string;
+  description: string;
+  scheduled_date: string;
+  started_date: string | null;
+  completed_date: string | null;
+  estimated_cost: number;
+  actual_cost: number;
+  vendor_name: string | null;
+  vendor_invoice_no: string | null;
+  status: MaintenanceStatus;
+  findings: string | null;
+  parts_replaced: string | null;
+  recommendations: string | null;
+  assigned_to_name: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FixedAssetsDashboard {
+  total_assets: number;
+  active_assets: number;
+  disposed_assets: number;
+  under_maintenance: number;
+  total_capitalized_value: number;
+  total_accumulated_depreciation: number;
+  total_current_book_value: number;
+  monthly_depreciation: number;
+  ytd_depreciation: number;
+  pending_maintenance: number;
+  pending_transfers: number;
+  category_wise: Array<{ category_name: string; count: number; book_value: number }>;
+  warranty_expiring_soon: number;
+  insurance_expiring_soon: number;
+}
+
+// ==================== Fixed Assets API ====================
+
+// ==================== Notification Types ====================
+
+export type NotificationType =
+  | 'SYSTEM' | 'ALERT' | 'ANNOUNCEMENT'
+  | 'ORDER_CREATED' | 'ORDER_CONFIRMED' | 'ORDER_SHIPPED' | 'ORDER_DELIVERED' | 'ORDER_CANCELLED'
+  | 'LOW_STOCK' | 'OUT_OF_STOCK' | 'STOCK_RECEIVED'
+  | 'APPROVAL_PENDING' | 'APPROVAL_APPROVED' | 'APPROVAL_REJECTED'
+  | 'LEAVE_REQUEST' | 'LEAVE_APPROVED' | 'LEAVE_REJECTED' | 'PAYSLIP_GENERATED' | 'APPRAISAL_DUE'
+  | 'PAYMENT_RECEIVED' | 'PAYMENT_DUE' | 'INVOICE_GENERATED'
+  | 'SERVICE_ASSIGNED' | 'SERVICE_COMPLETED' | 'WARRANTY_EXPIRING'
+  | 'ASSET_MAINTENANCE_DUE' | 'ASSET_TRANSFER_PENDING'
+  | 'TASK_ASSIGNED' | 'REMINDER' | 'MENTION';
+
+export type NotificationPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+
+export interface UserNotification {
+  id: string;
+  user_id: string;
+  notification_type: NotificationType;
+  priority: NotificationPriority;
+  title: string;
+  message: string;
+  action_url: string | null;
+  action_label: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  extra_data: Record<string, unknown> | null;
+  is_read: boolean;
+  read_at: string | null;
+  channels: string[] | null;
+  created_at: string;
+  expires_at: string | null;
+}
+
+export interface NotificationStats {
+  total: number;
+  unread: number;
+  by_type: Record<string, number>;
+  by_priority: Record<string, number>;
+}
+
+export interface NotificationPreference {
+  id: string;
+  user_id: string;
+  email_enabled: boolean;
+  sms_enabled: boolean;
+  push_enabled: boolean;
+  in_app_enabled: boolean;
+  type_preferences: Record<string, Record<string, boolean>> | null;
+  quiet_hours_enabled: boolean;
+  quiet_hours_start: string | null;
+  quiet_hours_end: string | null;
+  email_digest_enabled: boolean;
+  email_digest_frequency: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Announcement {
+  id: string;
+  title: string;
+  message: string;
+  announcement_type: string;
+  action_url: string | null;
+  action_label: string | null;
+  target_roles: string[] | null;
+  target_departments: string[] | null;
+  start_date: string;
+  end_date: string | null;
+  is_dismissible: boolean;
+  show_on_dashboard: boolean;
+  is_active: boolean;
+  created_by_id: string | null;
+  created_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+  is_dismissed: boolean;
+}
+
+// ==================== Notifications API ====================
+
+export const notificationsApi = {
+  // User notifications
+  getMyNotifications: async (params?: {
+    page?: number;
+    size?: number;
+    is_read?: boolean;
+    notification_type?: NotificationType;
+  }) => {
+    const { data } = await apiClient.get<{
+      items: UserNotification[];
+      total: number;
+      unread_count: number;
+      page: number;
+      size: number;
+      pages: number;
+    }>('/notifications/my', { params });
+    return data;
+  },
+
+  getUnreadCount: async () => {
+    const { data } = await apiClient.get<{ unread_count: number }>('/notifications/my/unread-count');
+    return data;
+  },
+
+  markAsRead: async (notificationIds: string[]) => {
+    const { data } = await apiClient.put<{ marked_read: number }>('/notifications/my/read', { notification_ids: notificationIds });
+    return data;
+  },
+
+  markAllAsRead: async () => {
+    const { data } = await apiClient.put<{ marked_read: number }>('/notifications/my/read-all');
+    return data;
+  },
+
+  deleteNotification: async (id: string) => {
+    const { data } = await apiClient.delete<{ deleted: boolean }>(`/notifications/my/${id}`);
+    return data;
+  },
+
+  getStats: async () => {
+    const { data } = await apiClient.get<NotificationStats>('/notifications/my/stats');
+    return data;
+  },
+
+  // Preferences
+  getPreferences: async () => {
+    const { data } = await apiClient.get<NotificationPreference>('/notifications/preferences');
+    return data;
+  },
+
+  updatePreferences: async (preferences: Partial<{
+    email_enabled: boolean;
+    sms_enabled: boolean;
+    push_enabled: boolean;
+    in_app_enabled: boolean;
+    type_preferences: Record<string, Record<string, boolean>>;
+    quiet_hours_enabled: boolean;
+    quiet_hours_start: string;
+    quiet_hours_end: string;
+    email_digest_enabled: boolean;
+    email_digest_frequency: string;
+  }>) => {
+    const { data } = await apiClient.put<NotificationPreference>('/notifications/preferences', preferences);
+    return data;
+  },
+
+  // Announcements
+  getAnnouncements: async (params?: { page?: number; size?: number; active_only?: boolean }) => {
+    const { data } = await apiClient.get<{ items: Announcement[]; total: number; page: number; size: number; pages: number }>('/notifications/announcements', { params });
+    return data;
+  },
+
+  getActiveAnnouncements: async () => {
+    const { data } = await apiClient.get<{ announcements: Announcement[] }>('/notifications/announcements/active');
+    return data;
+  },
+
+  dismissAnnouncement: async (id: string) => {
+    const { data } = await apiClient.post<{ dismissed: boolean }>(`/notifications/announcements/${id}/dismiss`);
+    return data;
+  },
+
+  // Admin - Announcements
+  createAnnouncement: async (announcement: {
+    title: string;
+    message: string;
+    announcement_type?: string;
+    action_url?: string;
+    action_label?: string;
+    target_roles?: string[];
+    target_departments?: string[];
+    start_date: string;
+    end_date?: string;
+    is_dismissible?: boolean;
+    show_on_dashboard?: boolean;
+  }) => {
+    const { data } = await apiClient.post<Announcement>('/notifications/announcements', announcement);
+    return data;
+  },
+
+  updateAnnouncement: async (id: string, announcement: Partial<{
+    title: string;
+    message: string;
+    announcement_type: string;
+    action_url: string;
+    action_label: string;
+    target_roles: string[];
+    target_departments: string[];
+    start_date: string;
+    end_date: string;
+    is_dismissible: boolean;
+    show_on_dashboard: boolean;
+    is_active: boolean;
+  }>) => {
+    const { data } = await apiClient.put<Announcement>(`/notifications/announcements/${id}`, announcement);
+    return data;
+  },
+
+  deleteAnnouncement: async (id: string) => {
+    const { data } = await apiClient.delete<{ deleted: boolean }>(`/notifications/announcements/${id}`);
+    return data;
+  },
+
+  // Notification types
+  getTypes: async () => {
+    const { data } = await apiClient.get<{
+      types: Array<{ type: string; category: string; label: string }>;
+      categories: string[];
+    }>('/notifications/types');
+    return data;
+  },
+};
+
+export const fixedAssetsApi = {
+  // Dashboard
+  getDashboard: async () => {
+    const { data } = await apiClient.get<FixedAssetsDashboard>('/fixed-assets/dashboard');
+    return data;
+  },
+
+  // Asset Categories
+  categories: {
+    list: async (params?: { page?: number; size?: number; is_active?: boolean; search?: string }) => {
+      const { data } = await apiClient.get<{ items: AssetCategory[]; total: number; page: number; size: number; pages: number }>('/fixed-assets/categories', { params });
+      return data;
+    },
+    dropdown: async () => {
+      const { data } = await apiClient.get<Array<{ id: string; code: string; name: string; depreciation_method: string; depreciation_rate: number }>>('/fixed-assets/categories/dropdown');
+      return data;
+    },
+    getById: async (id: string) => {
+      const { data } = await apiClient.get<AssetCategory>(`/fixed-assets/categories/${id}`);
+      return data;
+    },
+    create: async (category: {
+      code: string;
+      name: string;
+      description?: string;
+      depreciation_method?: DepreciationMethod;
+      depreciation_rate: number;
+      useful_life_years: number;
+      asset_account_id?: string;
+      depreciation_account_id?: string;
+      expense_account_id?: string;
+    }) => {
+      const { data } = await apiClient.post<AssetCategory>('/fixed-assets/categories', category);
+      return data;
+    },
+    update: async (id: string, category: Partial<{
+      name: string;
+      description: string;
+      depreciation_method: DepreciationMethod;
+      depreciation_rate: number;
+      useful_life_years: number;
+      asset_account_id: string;
+      depreciation_account_id: string;
+      expense_account_id: string;
+      is_active: boolean;
+    }>) => {
+      const { data } = await apiClient.put<AssetCategory>(`/fixed-assets/categories/${id}`, category);
+      return data;
+    },
+  },
+
+  // Assets
+  assets: {
+    list: async (params?: {
+      page?: number;
+      size?: number;
+      status?: AssetStatus;
+      category_id?: string;
+      warehouse_id?: string;
+      department_id?: string;
+      search?: string;
+    }) => {
+      const { data } = await apiClient.get<{ items: Asset[]; total: number; page: number; size: number; pages: number }>('/fixed-assets/assets', { params });
+      return data;
+    },
+    getById: async (id: string) => {
+      const { data } = await apiClient.get<Asset>(`/fixed-assets/assets/${id}`);
+      return data;
+    },
+    create: async (asset: {
+      name: string;
+      description?: string;
+      category_id: string;
+      serial_number?: string;
+      model_number?: string;
+      manufacturer?: string;
+      warehouse_id?: string;
+      location_details?: string;
+      custodian_employee_id?: string;
+      department_id?: string;
+      purchase_date: string;
+      purchase_price: number;
+      purchase_invoice_no?: string;
+      vendor_id?: string;
+      po_number?: string;
+      capitalization_date: string;
+      installation_cost?: number;
+      other_costs?: number;
+      depreciation_method?: DepreciationMethod;
+      depreciation_rate?: number;
+      useful_life_years?: number;
+      salvage_value?: number;
+      warranty_start_date?: string;
+      warranty_end_date?: string;
+      warranty_details?: string;
+      insured?: boolean;
+      insurance_policy_no?: string;
+      insurance_value?: number;
+      insurance_expiry?: string;
+      notes?: string;
+    }) => {
+      const { data } = await apiClient.post<Asset>('/fixed-assets/assets', asset);
+      return data;
+    },
+    update: async (id: string, asset: Partial<{
+      name: string;
+      description: string;
+      serial_number: string;
+      model_number: string;
+      manufacturer: string;
+      warehouse_id: string;
+      location_details: string;
+      custodian_employee_id: string;
+      department_id: string;
+      depreciation_method: DepreciationMethod;
+      depreciation_rate: number;
+      useful_life_years: number;
+      salvage_value: number;
+      warranty_start_date: string;
+      warranty_end_date: string;
+      warranty_details: string;
+      insured: boolean;
+      insurance_policy_no: string;
+      insurance_value: number;
+      insurance_expiry: string;
+      notes: string;
+    }>) => {
+      const { data } = await apiClient.put<Asset>(`/fixed-assets/assets/${id}`, asset);
+      return data;
+    },
+    dispose: async (id: string, disposal: {
+      disposal_date: string;
+      disposal_price: number;
+      disposal_reason: string;
+    }) => {
+      const { data } = await apiClient.post<Asset>(`/fixed-assets/assets/${id}/dispose`, disposal);
+      return data;
+    },
+  },
+
+  // Depreciation
+  depreciation: {
+    list: async (params?: {
+      page?: number;
+      size?: number;
+      asset_id?: string;
+      financial_year?: string;
+      is_posted?: boolean;
+    }) => {
+      const { data } = await apiClient.get<{ items: DepreciationEntry[]; total: number; page: number; size: number; pages: number }>('/fixed-assets/depreciation', { params });
+      return data;
+    },
+    run: async (request: {
+      period_date: string;
+      financial_year: string;
+      asset_ids?: string[];
+    }) => {
+      const { data } = await apiClient.post<{ entries_created: number; total_depreciation: number; entries: DepreciationEntry[] }>('/fixed-assets/depreciation/run', request);
+      return data;
+    },
+  },
+
+  // Transfers
+  transfers: {
+    list: async (params?: {
+      page?: number;
+      size?: number;
+      asset_id?: string;
+      status?: TransferStatus;
+    }) => {
+      const { data } = await apiClient.get<{ items: AssetTransfer[]; total: number; page: number; size: number; pages: number }>('/fixed-assets/transfers', { params });
+      return data;
+    },
+    create: async (transfer: {
+      asset_id: string;
+      to_warehouse_id?: string;
+      to_department_id?: string;
+      to_custodian_id?: string;
+      to_location_details?: string;
+      transfer_date: string;
+      reason?: string;
+    }) => {
+      const { data } = await apiClient.post<AssetTransfer>('/fixed-assets/transfers', transfer);
+      return data;
+    },
+    approve: async (id: string) => {
+      const { data } = await apiClient.put<AssetTransfer>(`/fixed-assets/transfers/${id}/approve`);
+      return data;
+    },
+    complete: async (id: string) => {
+      const { data } = await apiClient.put<AssetTransfer>(`/fixed-assets/transfers/${id}/complete`);
+      return data;
+    },
+    cancel: async (id: string) => {
+      const { data } = await apiClient.put<AssetTransfer>(`/fixed-assets/transfers/${id}/cancel`);
+      return data;
+    },
+  },
+
+  // Maintenance
+  maintenance: {
+    list: async (params?: {
+      page?: number;
+      size?: number;
+      asset_id?: string;
+      status?: MaintenanceStatus;
+      maintenance_type?: string;
+    }) => {
+      const { data } = await apiClient.get<{ items: AssetMaintenance[]; total: number; page: number; size: number; pages: number }>('/fixed-assets/maintenance', { params });
+      return data;
+    },
+    create: async (maintenance: {
+      asset_id: string;
+      maintenance_type: string;
+      description: string;
+      scheduled_date: string;
+      estimated_cost?: number;
+      vendor_id?: string;
+      assigned_to?: string;
+    }) => {
+      const { data } = await apiClient.post<AssetMaintenance>('/fixed-assets/maintenance', maintenance);
+      return data;
+    },
+    update: async (id: string, maintenance: Partial<{
+      description: string;
+      scheduled_date: string;
+      started_date: string;
+      completed_date: string;
+      estimated_cost: number;
+      actual_cost: number;
+      vendor_id: string;
+      vendor_invoice_no: string;
+      status: MaintenanceStatus;
+      findings: string;
+      parts_replaced: string;
+      recommendations: string;
+      assigned_to: string;
+    }>) => {
+      const { data } = await apiClient.put<AssetMaintenance>(`/fixed-assets/maintenance/${id}`, maintenance);
+      return data;
+    },
+  },
+};
+
+// ==================== AI INSIGHTS TYPES ====================
+
+export interface DailyPrediction {
+  date: string;
+  predicted_value: number;
+  lower_bound: number;
+  upper_bound: number;
+}
+
+export interface OrderPrediction {
+  date: string;
+  predicted_orders: number;
+}
+
+export interface RevenueForecast {
+  current_month_actual: number;
+  current_month_predicted: number;
+  next_month_predicted: number;
+  next_quarter_predicted: number;
+  trend_direction: 'UP' | 'DOWN' | 'STABLE';
+  trend_percentage: number;
+  confidence_score: number;
+  daily_predictions: DailyPrediction[];
+}
+
+export interface SalesTrends {
+  daily_average: number;
+  weekly_pattern: Record<string, number>;
+  monthly_growth: number;
+  peak_hours: number[];
+  best_days: string[];
+  seasonality_index: Record<number, number>;
+}
+
+export interface ProductPerformance {
+  id: string;
+  name: string;
+  sku: string;
+  revenue: number;
+  quantity: number;
+}
+
+export interface CategoryPerformance {
+  id: string;
+  name: string;
+  revenue: number;
+}
+
+export interface ChannelPerformance {
+  channel: string;
+  revenue: number;
+  order_count: number;
+}
+
+export interface TopPerformers {
+  top_products: ProductPerformance[];
+  top_categories: CategoryPerformance[];
+  top_channels: ChannelPerformance[];
+  fastest_growing: { id: string; name: string; growth_rate: number }[];
+  declining: { id: string; name: string; growth_rate: number }[];
+}
+
+export interface OrderPredictions {
+  daily_predictions: OrderPrediction[];
+  expected_total: number;
+  confidence: number;
+}
+
+export interface ReorderRecommendation {
+  product_id: string;
+  product_name: string;
+  sku: string;
+  current_stock: number;
+  reorder_level: number;
+  recommended_qty: number;
+  urgency: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+  days_until_stockout: number;
+  daily_velocity: number;
+  vendor_id: string | null;
+  vendor_name: string | null;
+  estimated_cost: number;
+}
+
+export interface StockoutRisk {
+  product_id: string;
+  product_name: string;
+  sku: string;
+  current_stock: number;
+  reserved_stock: number;
+  daily_velocity: number;
+  days_until_stockout: number;
+  risk_level: 'CRITICAL' | 'HIGH' | 'MEDIUM';
+  potential_revenue_loss: number;
+  pending_orders: number;
+}
+
+export interface SlowMovingItem {
+  product_id: string;
+  product_name: string;
+  sku: string;
+  current_stock: number;
+  days_since_last_sale: number;
+  stock_value: number;
+  recommendation: 'WRITE_OFF' | 'HEAVY_DISCOUNT' | 'DISCOUNT' | 'PROMOTION';
+}
+
+export interface ChurnRiskCustomer {
+  customer_id: string;
+  customer_name: string;
+  email: string | null;
+  phone: string | null;
+  risk_score: number;
+  days_since_last_order: number;
+  total_orders: number;
+  total_spent: number;
+  avg_order_value: number;
+  recommended_action: 'URGENT_CALL' | 'PERSONAL_EMAIL' | 'SPECIAL_OFFER' | 'LOYALTY_PROGRAM';
+}
+
+export interface CustomerSegment {
+  segment_name: string;
+  description: string;
+  customer_count: number;
+  percentage: number;
+  avg_order_value: number;
+  total_revenue: number;
+  characteristics: string[];
+}
+
+export interface CustomerSegments {
+  total_customers: number;
+  champions: CustomerSegment;
+  loyal_customers: CustomerSegment;
+  potential_loyalists: CustomerSegment;
+  new_customers: CustomerSegment;
+  at_risk: CustomerSegment;
+  hibernating: CustomerSegment;
+  lost: CustomerSegment;
+}
+
+export interface HighValueCustomer {
+  customer_id: string;
+  customer_name: string;
+  email: string | null;
+  total_orders: number;
+  total_spent: number;
+  predicted_clv: number;
+  segment: string;
+}
+
+export interface SegmentChart {
+  name: string;
+  value: number;
+}
+
+export interface StockoutTimeline {
+  product: string;
+  days: number;
+}
+
+export interface InsightsDashboard {
+  revenue_trend: string;
+  predicted_monthly_revenue: number;
+  order_trend: string;
+  predicted_monthly_orders: number;
+  critical_stockouts: number;
+  reorder_needed: number;
+  high_churn_risk: number;
+  slow_moving_value: number;
+  top_insight_sales: string;
+  top_insight_inventory: string;
+  top_insight_customers: string;
+  revenue_forecast_chart: DailyPrediction[];
+  order_forecast_chart: OrderPrediction[];
+  customer_segments_chart: SegmentChart[];
+  stockout_timeline: StockoutTimeline[];
+}
+
+// ==================== AI INSIGHTS API ====================
+
+export const insightsApi = {
+  // Dashboard
+  getDashboard: async () => {
+    const { data } = await apiClient.get<InsightsDashboard>('/insights/dashboard');
+    return data;
+  },
+
+  // Sales Insights
+  getRevenueForecast: async (params?: { days_ahead?: number; lookback_days?: number }) => {
+    const { data } = await apiClient.get<RevenueForecast>('/insights/sales/revenue-forecast', { params });
+    return data;
+  },
+
+  getSalesTrends: async (params?: { lookback_days?: number }) => {
+    const { data } = await apiClient.get<SalesTrends>('/insights/sales/trends', { params });
+    return data;
+  },
+
+  getTopPerformers: async (params?: { period_days?: number; limit?: number }) => {
+    const { data } = await apiClient.get<TopPerformers>('/insights/sales/top-performers', { params });
+    return data;
+  },
+
+  getOrderPredictions: async (params?: { days_ahead?: number }) => {
+    const { data } = await apiClient.get<OrderPredictions>('/insights/sales/order-predictions', { params });
+    return data;
+  },
+
+  // Inventory Insights
+  getReorderRecommendations: async (params?: { limit?: number }) => {
+    const { data } = await apiClient.get<{ items: ReorderRecommendation[]; total: number }>('/insights/inventory/reorder', { params });
+    return data;
+  },
+
+  getStockoutRisks: async (params?: { limit?: number }) => {
+    const { data } = await apiClient.get<{ items: StockoutRisk[]; total: number }>('/insights/inventory/stockout-risks', { params });
+    return data;
+  },
+
+  getSlowMovingInventory: async (params?: { days_threshold?: number; limit?: number }) => {
+    const { data } = await apiClient.get<{ items: SlowMovingItem[]; total: number }>('/insights/inventory/slow-moving', { params });
+    return data;
+  },
+
+  // Customer Insights
+  getChurnRiskCustomers: async (params?: { threshold?: number; limit?: number }) => {
+    const { data } = await apiClient.get<{ items: ChurnRiskCustomer[]; total: number }>('/insights/customers/churn-risk', { params });
+    return data;
+  },
+
+  getCustomerSegments: async () => {
+    const { data } = await apiClient.get<CustomerSegments>('/insights/customers/segments');
+    return data;
+  },
+
+  getHighValueCustomers: async (params?: { limit?: number }) => {
+    const { data } = await apiClient.get<{ items: HighValueCustomer[]; total: number }>('/insights/customers/high-value', { params });
+    return data;
+  },
+};
+
 export default apiClient;

@@ -1,7 +1,8 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { formatDistanceToNow } from 'date-fns';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { formatDistanceToNow, format, subDays } from 'date-fns';
+import Link from 'next/link';
 import {
   ShoppingCart,
   Package,
@@ -11,10 +12,39 @@ import {
   TrendingDown,
   Wrench,
   Truck,
+  Building2,
+  Briefcase,
+  AlertTriangle,
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  ArrowRight,
+  BarChart3,
+  X,
+  Info,
+  CreditCard,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { dashboardApi } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { dashboardApi, notificationsApi, fixedAssetsApi, hrApi } from '@/lib/api';
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from 'recharts';
 
 interface ActivityItem {
   type: string;
@@ -37,9 +67,26 @@ interface StatCardProps {
   change?: number;
   icon: React.ReactNode;
   isLoading?: boolean;
+  href?: string;
 }
 
-function StatCard({ title, value, change, icon, isLoading }: StatCardProps) {
+const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
+
+const announcementTypeColors: Record<string, string> = {
+  INFO: 'bg-blue-50 border-blue-200 text-blue-800',
+  WARNING: 'bg-yellow-50 border-yellow-200 text-yellow-800',
+  SUCCESS: 'bg-green-50 border-green-200 text-green-800',
+  ERROR: 'bg-red-50 border-red-200 text-red-800',
+};
+
+const announcementTypeIcons: Record<string, typeof Info> = {
+  INFO: Info,
+  WARNING: AlertTriangle,
+  SUCCESS: CheckCircle,
+  ERROR: AlertCircle,
+};
+
+function StatCard({ title, value, change, icon, isLoading, href }: StatCardProps) {
   if (isLoading) {
     return (
       <Card>
@@ -55,8 +102,8 @@ function StatCard({ title, value, change, icon, isLoading }: StatCardProps) {
     );
   }
 
-  return (
-    <Card>
+  const content = (
+    <Card className={href ? 'hover:shadow-md transition-shadow cursor-pointer' : ''}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
         <div className="text-muted-foreground">{icon}</div>
@@ -79,9 +126,17 @@ function StatCard({ title, value, change, icon, isLoading }: StatCardProps) {
       </CardContent>
     </Card>
   );
+
+  if (href) {
+    return <Link href={href}>{content}</Link>;
+  }
+
+  return content;
 }
 
 export default function DashboardPage() {
+  const queryClient = useQueryClient();
+
   const { data: stats, isLoading } = useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: dashboardApi.getStats,
@@ -95,6 +150,48 @@ export default function DashboardPage() {
   const { data: topProducts, isLoading: productsLoading } = useQuery({
     queryKey: ['top-selling-products'],
     queryFn: () => dashboardApi.getTopSellingProducts(4),
+  });
+
+  // Additional data for enhanced dashboard
+  const { data: announcements } = useQuery({
+    queryKey: ['dashboard-announcements'],
+    queryFn: async () => {
+      try {
+        const result = await notificationsApi.getActiveAnnouncements();
+        return result.announcements || [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  const { data: hrDashboard } = useQuery({
+    queryKey: ['hr-dashboard'],
+    queryFn: async () => {
+      try {
+        return await hrApi.getDashboard();
+      } catch {
+        return null;
+      }
+    },
+  });
+
+  const { data: fixedAssetsDashboard } = useQuery({
+    queryKey: ['fixed-assets-dashboard-mini'],
+    queryFn: async () => {
+      try {
+        return await fixedAssetsApi.getDashboard();
+      } catch {
+        return null;
+      }
+    },
+  });
+
+  const dismissAnnouncementMutation = useMutation({
+    mutationFn: notificationsApi.dismissAnnouncement,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard-announcements'] });
+    },
   });
 
   const defaultStats = {
@@ -119,6 +216,28 @@ export default function DashboardPage() {
     }).format(value);
   };
 
+  // Sample data for charts (in production, this would come from API)
+  const revenueData = Array.from({ length: 7 }, (_, i) => ({
+    date: format(subDays(new Date(), 6 - i), 'MMM dd'),
+    revenue: Math.floor(Math.random() * 500000) + 100000,
+    orders: Math.floor(Math.random() * 50) + 10,
+  }));
+
+  const orderStatusData = [
+    { name: 'Delivered', value: 45, color: '#10B981' },
+    { name: 'Shipped', value: 25, color: '#3B82F6' },
+    { name: 'Processing', value: 20, color: '#F59E0B' },
+    { name: 'Pending', value: 10, color: '#EF4444' },
+  ];
+
+  const categoryData = [
+    { name: 'Electronics', sales: 45000 },
+    { name: 'Home Appliances', sales: 38000 },
+    { name: 'Kitchen', sales: 32000 },
+    { name: 'Air Conditioners', sales: 28000 },
+    { name: 'Others', sales: 15000 },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
@@ -128,6 +247,41 @@ export default function DashboardPage() {
         </p>
       </div>
 
+      {/* Active Announcements */}
+      {announcements && announcements.length > 0 && (
+        <div className="space-y-2">
+          {announcements.slice(0, 2).map((announcement) => {
+            const Icon = announcementTypeIcons[announcement.announcement_type] || Info;
+            const colorClass = announcementTypeColors[announcement.announcement_type] || announcementTypeColors.INFO;
+            return (
+              <div
+                key={announcement.id}
+                className={`flex items-center justify-between p-3 rounded-lg border ${colorClass}`}
+              >
+                <div className="flex items-center gap-3">
+                  <Icon className="h-5 w-5" />
+                  <div>
+                    <span className="font-medium">{announcement.title}</span>
+                    <span className="mx-2">-</span>
+                    <span>{announcement.message}</span>
+                  </div>
+                </div>
+                {announcement.is_dismissible && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => dismissAnnouncementMutation.mutate(announcement.id)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Main Stats */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
@@ -136,6 +290,7 @@ export default function DashboardPage() {
           change={defaultStats.revenue_change}
           icon={<DollarSign className="h-4 w-4" />}
           isLoading={isLoading}
+          href="/dashboard/reports/profit-loss"
         />
         <StatCard
           title="Total Orders"
@@ -143,6 +298,7 @@ export default function DashboardPage() {
           change={defaultStats.orders_change}
           icon={<ShoppingCart className="h-4 w-4" />}
           isLoading={isLoading}
+          href="/dashboard/orders"
         />
         <StatCard
           title="Total Customers"
@@ -150,71 +306,319 @@ export default function DashboardPage() {
           change={defaultStats.customers_change}
           icon={<Users className="h-4 w-4" />}
           isLoading={isLoading}
+          href="/dashboard/crm/customers"
         />
         <StatCard
           title="Products"
           value={defaultStats.total_products.toLocaleString()}
           icon={<Package className="h-4 w-4" />}
           isLoading={isLoading}
+          href="/dashboard/catalog"
         />
+      </div>
+
+      {/* Charts Row */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {/* Revenue Trend Chart */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-lg">Revenue Trend</CardTitle>
+            <CardDescription>Last 7 days revenue and orders</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[250px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={revenueData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis dataKey="date" className="text-xs" />
+                  <YAxis yAxisId="left" className="text-xs" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                  <YAxis yAxisId="right" orientation="right" className="text-xs" />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
+                    formatter={(value, name) => [
+                      name === 'Revenue' ? formatCurrency(value as number) : value,
+                      name
+                    ]}
+                  />
+                  <Legend />
+                  <Line
+                    yAxisId="left"
+                    type="monotone"
+                    dataKey="revenue"
+                    stroke="#3B82F6"
+                    strokeWidth={2}
+                    dot={{ fill: '#3B82F6' }}
+                    name="Revenue"
+                  />
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey="orders"
+                    stroke="#10B981"
+                    strokeWidth={2}
+                    dot={{ fill: '#10B981' }}
+                    name="Orders"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Order Status Pie Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Order Status</CardTitle>
+            <CardDescription>Distribution by status</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[250px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={orderStatusData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={80}
+                    paddingAngle={2}
+                    dataKey="value"
+                  >
+                    {orderStatusData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
+                    formatter={(value) => [`${value}%`, 'Percentage']}
+                  />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Action Required */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-orange-200 dark:border-orange-800">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Orders</CardTitle>
-            <ShoppingCart className="h-4 w-4 text-orange-500" />
+        <Link href="/dashboard/orders?status=PENDING">
+          <Card className="border-orange-200 dark:border-orange-800 hover:shadow-md transition-shadow cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Pending Orders</CardTitle>
+              <ShoppingCart className="h-4 w-4 text-orange-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-orange-600">
+                {isLoading ? <Skeleton className="h-8 w-16" /> : defaultStats.pending_orders}
+              </div>
+              <p className="text-xs text-muted-foreground">Requires attention</p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href="/dashboard/service/requests?status=PENDING">
+          <Card className="border-blue-200 dark:border-blue-800 hover:shadow-md transition-shadow cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Service Requests</CardTitle>
+              <Wrench className="h-4 w-4 text-blue-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-600">
+                {isLoading ? <Skeleton className="h-8 w-16" /> : defaultStats.pending_service_requests}
+              </div>
+              <p className="text-xs text-muted-foreground">Pending assignment</p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href="/dashboard/inventory?low_stock=true">
+          <Card className="border-red-200 dark:border-red-800 hover:shadow-md transition-shadow cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Low Stock Items</CardTitle>
+              <Package className="h-4 w-4 text-red-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">
+                {isLoading ? <Skeleton className="h-8 w-16" /> : defaultStats.low_stock_items}
+              </div>
+              <p className="text-xs text-muted-foreground">Below reorder level</p>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href="/dashboard/logistics/shipments?status=IN_TRANSIT">
+          <Card className="border-green-200 dark:border-green-800 hover:shadow-md transition-shadow cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">In Transit</CardTitle>
+              <Truck className="h-4 w-4 text-green-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">
+                {isLoading ? <Skeleton className="h-8 w-16" /> : defaultStats.shipments_in_transit}
+              </div>
+              <p className="text-xs text-muted-foreground">Shipments on the way</p>
+            </CardContent>
+          </Card>
+        </Link>
+      </div>
+
+      {/* Category Sales & HR/Assets Summary */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {/* Category Sales Bar Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Sales by Category</CardTitle>
+            <CardDescription>Top performing categories</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-600">
-              {isLoading ? <Skeleton className="h-8 w-16" /> : defaultStats.pending_orders}
+            <div className="h-[200px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={categoryData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis type="number" className="text-xs" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                  <YAxis type="category" dataKey="name" className="text-xs" width={100} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
+                    formatter={(value) => [formatCurrency(value as number), 'Sales']}
+                  />
+                  <Bar dataKey="sales" fill="#3B82F6" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
-            <p className="text-xs text-muted-foreground">Requires attention</p>
           </CardContent>
         </Card>
 
-        <Card className="border-blue-200 dark:border-blue-800">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Service Requests</CardTitle>
-            <Wrench className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">
-              {isLoading ? <Skeleton className="h-8 w-16" /> : defaultStats.pending_service_requests}
+        {/* HR Summary */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-lg">HR Overview</CardTitle>
+              <CardDescription>Employee & attendance summary</CardDescription>
             </div>
-            <p className="text-xs text-muted-foreground">Pending assignment</p>
+            <Link href="/dashboard/hr">
+              <Button variant="ghost" size="sm">
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {hrDashboard ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Briefcase className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">Active Employees</span>
+                  </div>
+                  <span className="font-semibold">{hrDashboard.active_employees || 0}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">Present Today</span>
+                  </div>
+                  <span className="font-semibold text-green-600">{hrDashboard.present_today || 0}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-orange-500" />
+                    <span className="text-sm">Pending Leaves</span>
+                  </div>
+                  <Badge variant="secondary">{hrDashboard.pending_leave_requests || 0}</Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">Pending Payroll</span>
+                  </div>
+                  <Badge variant="secondary">{hrDashboard.pending_payroll_approval || 0}</Badge>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-4 text-muted-foreground">
+                <Briefcase className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">HR module not configured</p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        <Card className="border-red-200 dark:border-red-800">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Low Stock Items</CardTitle>
-            <Package className="h-4 w-4 text-red-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">
-              {isLoading ? <Skeleton className="h-8 w-16" /> : defaultStats.low_stock_items}
+        {/* Fixed Assets Summary */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-lg">Fixed Assets</CardTitle>
+              <CardDescription>Asset value summary</CardDescription>
             </div>
-            <p className="text-xs text-muted-foreground">Below reorder level</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-green-200 dark:border-green-800">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">In Transit</CardTitle>
-            <Truck className="h-4 w-4 text-green-500" />
+            <Link href="/dashboard/finance/fixed-assets">
+              <Button variant="ghost" size="sm">
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {isLoading ? <Skeleton className="h-8 w-16" /> : defaultStats.shipments_in_transit}
-            </div>
-            <p className="text-xs text-muted-foreground">Shipments on the way</p>
+          <CardContent className="space-y-4">
+            {fixedAssetsDashboard ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">Total Assets</span>
+                  </div>
+                  <span className="font-semibold">{fixedAssetsDashboard.total_assets || 0}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">Book Value</span>
+                  </div>
+                  <span className="font-semibold">
+                    {formatCurrency(fixedAssetsDashboard.total_current_book_value || 0)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Wrench className="h-4 w-4 text-orange-500" />
+                    <span className="text-sm">Under Maintenance</span>
+                  </div>
+                  <Badge variant="secondary">{fixedAssetsDashboard.under_maintenance || 0}</Badge>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Depreciation Progress</span>
+                    <span>
+                      {fixedAssetsDashboard.total_capitalized_value
+                        ? Math.round(
+                            (fixedAssetsDashboard.total_accumulated_depreciation /
+                              fixedAssetsDashboard.total_capitalized_value) *
+                              100
+                          )
+                        : 0}
+                      %
+                    </span>
+                  </div>
+                  <Progress
+                    value={
+                      fixedAssetsDashboard.total_capitalized_value
+                        ? (fixedAssetsDashboard.total_accumulated_depreciation /
+                            fixedAssetsDashboard.total_capitalized_value) *
+                          100
+                        : 0
+                    }
+                    className="h-2"
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-4 text-muted-foreground">
+                <Building2 className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No assets registered</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Quick Links */}
+      {/* Activity, Products & Quick Actions */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader>
@@ -237,7 +641,17 @@ export default function DashboardPage() {
               ) : recentActivity && recentActivity.length > 0 ? (
                 recentActivity.map((activity: ActivityItem, i: number) => (
                   <div key={i} className="flex items-center gap-4">
-                    <div className={`h-2 w-2 rounded-full bg-${activity.color}-500`} />
+                    <div
+                      className={`h-2 w-2 rounded-full ${
+                        activity.color === 'green'
+                          ? 'bg-green-500'
+                          : activity.color === 'blue'
+                          ? 'bg-blue-500'
+                          : activity.color === 'orange'
+                          ? 'bg-orange-500'
+                          : 'bg-gray-500'
+                      }`}
+                    />
                     <div className="flex-1">
                       <p className="text-sm font-medium">{activity.title}</p>
                       <p className="text-xs text-muted-foreground">
@@ -275,12 +689,22 @@ export default function DashboardPage() {
                 topProducts.map((product: TopProduct, i: number) => (
                   <div key={product.id} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                      <span
+                        className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
+                          i === 0
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : i === 1
+                            ? 'bg-gray-100 text-gray-800'
+                            : i === 2
+                            ? 'bg-orange-100 text-orange-800'
+                            : 'bg-muted text-muted-foreground'
+                        }`}
+                      >
                         {i + 1}
                       </span>
-                      <span className="text-sm font-medium">{product.name}</span>
+                      <span className="text-sm font-medium truncate max-w-[150px]">{product.name}</span>
                     </div>
-                    <span className="text-sm text-muted-foreground">{product.sales} units</span>
+                    <Badge variant="secondary">{product.sales} units</Badge>
                   </div>
                 ))
               ) : (
@@ -297,19 +721,25 @@ export default function DashboardPage() {
           <CardContent>
             <div className="grid grid-cols-2 gap-3">
               {[
-                { label: 'New Order', href: '/dashboard/orders/new' },
-                { label: 'Add Product', href: '/dashboard/catalog/new' },
-                { label: 'Create PO', href: '/dashboard/procurement/purchase-orders?create=true' },
-                { label: 'Service Request', href: '/dashboard/service/requests/new' },
-              ].map((action, i) => (
-                <a
-                  key={i}
-                  href={action.href}
-                  className="flex items-center justify-center rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-accent"
-                >
-                  {action.label}
-                </a>
-              ))}
+                { label: 'New Order', href: '/dashboard/orders/new', icon: ShoppingCart },
+                { label: 'Add Product', href: '/dashboard/catalog/new', icon: Package },
+                { label: 'Create PO', href: '/dashboard/procurement/purchase-orders?create=true', icon: DollarSign },
+                { label: 'Service Req', href: '/dashboard/service/requests/new', icon: Wrench },
+                { label: 'New Employee', href: '/dashboard/hr/employees/new', icon: Users },
+                { label: 'Add Asset', href: '/dashboard/finance/fixed-assets', icon: Building2 },
+              ].map((action, i) => {
+                const Icon = action.icon;
+                return (
+                  <Link
+                    key={i}
+                    href={action.href}
+                    className="flex items-center justify-center gap-2 rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-accent"
+                  >
+                    <Icon className="h-4 w-4" />
+                    {action.label}
+                  </Link>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
