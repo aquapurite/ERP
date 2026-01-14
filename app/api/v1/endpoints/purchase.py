@@ -1445,6 +1445,9 @@ async def approve_purchase_order(
     request: POApproveRequest = POApproveRequest(),
 ):
     """Approve or reject a purchase order."""
+    import logging
+    logging.info(f"PO APPROVE: Starting approval for po_id={po_id}, action={request.action}")
+
     result = await db.execute(
         select(PurchaseOrder)
         .options(
@@ -1456,9 +1459,13 @@ async def approve_purchase_order(
     po = result.scalar_one_or_none()
 
     if not po:
+        logging.error(f"PO APPROVE: PO not found for id={po_id}")
         raise HTTPException(status_code=404, detail="Purchase Order not found")
 
+    logging.info(f"PO APPROVE: Found PO {po.po_number}, current status={po.status}, items_count={len(po.items) if po.items else 0}")
+
     if po.status not in [POStatus.DRAFT, POStatus.PENDING_APPROVAL]:
+        logging.error(f"PO APPROVE: Invalid status {po.status} for PO {po.po_number}")
         raise HTTPException(
             status_code=400,
             detail=f"Cannot {request.action.lower()} PO in {po.status.value} status"
@@ -1648,6 +1655,7 @@ async def approve_purchase_order(
     )
     po = result.scalar_one()
 
+    logging.info(f"PO APPROVE: Returning PO {po.po_number}, status={po.status}, items={len(po.items) if po.items else 0}")
     return po
 
 
