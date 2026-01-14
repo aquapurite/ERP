@@ -5,6 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from pydantic import BaseModel
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -35,6 +36,8 @@ from app.schemas.billing import (
 )
 from app.api.deps import DB, CurrentUser, get_current_user, require_permissions
 from app.services.audit_service import AuditService
+from app.services.gst_einvoice_service import GSTEInvoiceService, GSTEInvoiceError
+from app.services.gst_ewaybill_service import GSTEWayBillService, GSTEWayBillError
 
 router = APIRouter()
 
@@ -373,9 +376,24 @@ async def get_invoice(
 async def generate_einvoice_irn(
     invoice_id: UUID,
     db: DB,
+    company_id: Optional[UUID] = None,
     current_user: User = Depends(get_current_user),
 ):
-    """Generate IRN from GST E-Invoice portal."""
+    """
+    Generate IRN (Invoice Reference Number) from GST E-Invoice portal.
+
+    This integrates with NIC (National Informatics Centre) E-Invoice API to:
+    - Authenticate with GST portal
+    - Submit invoice data in prescribed JSON format
+    - Receive IRN, ACK number, signed QR code
+    - Update invoice with E-Invoice details
+
+    Requirements:
+    - Company must have E-Invoice enabled
+    - E-Invoice credentials must be configured
+    - Invoice must be a B2B invoice (customer has GSTIN)
+    """
+    # Get invoice
     result = await db.execute(
         select(TaxInvoice)
         .options(selectinload(TaxInvoice.items))
@@ -387,37 +405,96 @@ async def generate_einvoice_irn(
         raise HTTPException(status_code=404, detail="Invoice not found")
 
     if invoice.irn:
-        raise HTTPException(status_code=400, detail="IRN already generated")
+        raise HTTPException(status_code=400, detail="IRN already generated for this invoice")
 
-    # TODO: Integrate with GST E-Invoice API
-    # For now, generate a mock IRN
-    import hashlib
-    mock_irn = hashlib.sha256(
-        f"{invoice.invoice_number}{invoice.invoice_date}".encode()
-    ).hexdigest()[:64]
+    # Check if B2B invoice (GSTIN required for E-Invoice)
+    if not invoice.customer_gstin:
+        raise HTTPException(
+            status_code=400,
+            detail="E-Invoice is only applicable for B2B invoices (customer GSTIN required)"
+        )
 
-    invoice.irn = mock_irn
-    invoice.irn_generated_at = datetime.utcnow()
-    invoice.ack_number = f"ACK-{invoice.invoice_number}"
-    invoice.ack_date = datetime.utcnow()
-    invoice.status = InvoiceStatus.IRN_GENERATED
-    # invoice.signed_qr_code = "..." # Would come from GST portal
-    # invoice.signed_invoice_data = "..." # Would come from GST portal
+    # Determine company_id - use from invoice or parameter
+    effective_company_id = company_id or current_user.company_id
 
-    await db.commit()
-    await db.refresh(invoice)
+    if not effective_company_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Company ID is required for E-Invoice generation"
+        )
 
-    return invoice
+    try:
+        # Initialize E-Invoice service
+        einvoice_service = GSTEInvoiceService(db, effective_company_id)
+
+        # Generate IRN via NIC portal
+        irn_result = await einvoice_service.generate_irn(invoice_id)
+
+        # Update invoice with E-Invoice details
+        invoice.irn = irn_result.get("irn")
+        invoice.irn_generated_at = datetime.utcnow()
+        invoice.ack_number = irn_result.get("ack_number")
+        invoice.ack_date = datetime.fromisoformat(irn_result["ack_date"]) if irn_result.get("ack_date") else datetime.utcnow()
+        invoice.signed_qr_code = irn_result.get("signed_qr_code")
+        invoice.signed_invoice_data = irn_result.get("signed_invoice")
+        invoice.status = InvoiceStatus.IRN_GENERATED
+
+        await db.commit()
+        await db.refresh(invoice)
+
+        # Log successful IRN generation
+        try:
+            audit_service = AuditService(db)
+            await audit_service.log_action(
+                user_id=current_user.id,
+                action="GENERATE_IRN",
+                entity_type="TaxInvoice",
+                entity_id=invoice_id,
+                details={
+                    "irn": invoice.irn,
+                    "ack_number": invoice.ack_number,
+                    "invoice_number": invoice.invoice_number
+                }
+            )
+        except Exception:
+            pass  # Don't fail if audit logging fails
+
+        return invoice
+
+    except GSTEInvoiceError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"E-Invoice generation failed: {e.message}",
+            headers={"X-Error-Code": e.error_code or "EINVOICE_ERROR"}
+        )
+
+
+class IRNCancelRequest(BaseModel):
+    """Request body for IRN cancellation."""
+    reason: str  # Reason code: "1" = Duplicate, "2" = Data Entry Mistake, "3" = Order Cancelled, "4" = Others
+    remarks: str = ""  # Additional remarks (optional)
 
 
 @router.post("/invoices/{invoice_id}/cancel-irn", response_model=InvoiceResponse)
 async def cancel_einvoice_irn(
     invoice_id: UUID,
-    cancel_reason: str,
+    cancel_request: IRNCancelRequest,
     db: DB,
+    company_id: Optional[UUID] = None,
     current_user: User = Depends(get_current_user),
 ):
-    """Cancel IRN within 24 hours."""
+    """
+    Cancel IRN within 24 hours of generation.
+
+    As per GST rules, an IRN can only be cancelled within 24 hours of generation.
+    After 24 hours, you must issue a Credit Note instead.
+
+    Valid reason codes:
+    - "1": Duplicate invoice
+    - "2": Data entry mistake
+    - "3": Order cancelled
+    - "4": Others
+    """
     result = await db.execute(
         select(TaxInvoice)
         .options(selectinload(TaxInvoice.items))
@@ -429,7 +506,10 @@ async def cancel_einvoice_irn(
         raise HTTPException(status_code=404, detail="Invoice not found")
 
     if not invoice.irn:
-        raise HTTPException(status_code=400, detail="No IRN to cancel")
+        raise HTTPException(status_code=400, detail="No IRN exists for this invoice")
+
+    if invoice.status == InvoiceStatus.IRN_CANCELLED:
+        raise HTTPException(status_code=400, detail="IRN is already cancelled")
 
     # Check 24 hour window
     if invoice.irn_generated_at:
@@ -437,19 +517,213 @@ async def cancel_einvoice_irn(
         if hours_elapsed > 24:
             raise HTTPException(
                 status_code=400,
-                detail="IRN can only be cancelled within 24 hours of generation"
+                detail="IRN cancellation window expired. IRN can only be cancelled within 24 hours. Please issue a Credit Note instead."
             )
 
-    # TODO: Call GST portal to cancel IRN
+    # Validate reason code
+    valid_reasons = ["1", "2", "3", "4"]
+    if cancel_request.reason not in valid_reasons:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid reason code. Valid codes: 1=Duplicate, 2=Data Entry Mistake, 3=Order Cancelled, 4=Others"
+        )
 
-    invoice.irn_cancelled_at = datetime.utcnow()
-    invoice.irn_cancel_reason = cancel_reason
-    invoice.status = InvoiceStatus.IRN_CANCELLED
+    # Determine company_id
+    effective_company_id = company_id or current_user.company_id
 
-    await db.commit()
-    await db.refresh(invoice)
+    if not effective_company_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Company ID is required for IRN cancellation"
+        )
 
-    return invoice
+    try:
+        # Initialize E-Invoice service
+        einvoice_service = GSTEInvoiceService(db, effective_company_id)
+
+        # Cancel IRN via NIC portal
+        cancel_result = await einvoice_service.cancel_irn(
+            invoice_id=invoice_id,
+            reason=cancel_request.reason,
+            cancel_remarks=cancel_request.remarks
+        )
+
+        # Update invoice status
+        invoice.irn_cancelled_at = datetime.utcnow()
+        invoice.irn_cancel_reason = cancel_request.reason
+        invoice.status = InvoiceStatus.IRN_CANCELLED
+
+        await db.commit()
+        await db.refresh(invoice)
+
+        # Log IRN cancellation
+        try:
+            audit_service = AuditService(db)
+            await audit_service.log_action(
+                user_id=current_user.id,
+                action="CANCEL_IRN",
+                entity_type="TaxInvoice",
+                entity_id=invoice_id,
+                details={
+                    "irn": invoice.irn,
+                    "reason": cancel_request.reason,
+                    "remarks": cancel_request.remarks,
+                    "invoice_number": invoice.invoice_number
+                }
+            )
+        except Exception:
+            pass  # Don't fail if audit logging fails
+
+        return invoice
+
+    except GSTEInvoiceError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"IRN cancellation failed: {e.message}",
+            headers={"X-Error-Code": e.error_code or "EINVOICE_ERROR"}
+        )
+
+
+@router.get("/invoices/{invoice_id}/irn-details")
+async def get_irn_details(
+    invoice_id: UUID,
+    db: DB,
+    company_id: Optional[UUID] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get IRN details from GST portal for an invoice.
+
+    Returns the full E-Invoice details including signed QR code.
+    """
+    result = await db.execute(
+        select(TaxInvoice)
+        .options(selectinload(TaxInvoice.items))
+        .where(TaxInvoice.id == invoice_id)
+    )
+    invoice = result.scalar_one_or_none()
+
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    if not invoice.irn:
+        raise HTTPException(status_code=400, detail="No IRN exists for this invoice")
+
+    effective_company_id = company_id or current_user.company_id
+
+    if not effective_company_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Company ID is required"
+        )
+
+    try:
+        einvoice_service = GSTEInvoiceService(db, effective_company_id)
+        irn_details = await einvoice_service.get_irn_details(invoice.irn)
+
+        return {
+            "invoice_id": str(invoice_id),
+            "invoice_number": invoice.invoice_number,
+            "irn": invoice.irn,
+            "ack_number": invoice.ack_number,
+            "ack_date": invoice.ack_date,
+            "irn_generated_at": invoice.irn_generated_at,
+            "signed_qr_code": invoice.signed_qr_code,
+            "portal_details": irn_details
+        }
+
+    except GSTEInvoiceError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to get IRN details: {e.message}",
+            headers={"X-Error-Code": e.error_code or "EINVOICE_ERROR"}
+        )
+
+
+@router.get("/invoices/{invoice_id}/qr-code")
+async def get_invoice_qr_code(
+    invoice_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get QR code image for an E-Invoice.
+
+    Returns PNG image of the signed QR code.
+    """
+    from fastapi.responses import Response
+    from app.services.gst_einvoice_service import generate_qr_code_image
+
+    result = await db.execute(
+        select(TaxInvoice).where(TaxInvoice.id == invoice_id)
+    )
+    invoice = result.scalar_one_or_none()
+
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    if not invoice.signed_qr_code:
+        raise HTTPException(
+            status_code=400,
+            detail="No QR code available. Generate IRN first."
+        )
+
+    try:
+        qr_image = generate_qr_code_image(invoice.signed_qr_code)
+        return Response(
+            content=qr_image,
+            media_type="image/png",
+            headers={
+                "Content-Disposition": f"inline; filename=qr_{invoice.invoice_number}.png"
+            }
+        )
+    except GSTEInvoiceError as e:
+        raise HTTPException(status_code=500, detail=str(e.message))
+
+
+@router.get("/gstin/verify/{gstin}")
+async def verify_gstin(
+    gstin: str,
+    db: DB,
+    company_id: Optional[UUID] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Verify a GSTIN via the E-Invoice portal.
+
+    Returns taxpayer details if the GSTIN is valid.
+
+    Response includes:
+    - Legal name and trade name
+    - Address and state code
+    - Registration status (Active/Inactive)
+    """
+    # Validate GSTIN format (15 characters)
+    if len(gstin) != 15:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid GSTIN format. GSTIN must be 15 characters."
+        )
+
+    effective_company_id = company_id or current_user.company_id
+
+    if not effective_company_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Company ID is required for GSTIN verification"
+        )
+
+    try:
+        einvoice_service = GSTEInvoiceService(db, effective_company_id)
+        result = await einvoice_service.verify_gstin(gstin)
+        return result
+
+    except GSTEInvoiceError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"GSTIN verification failed: {e.message}",
+            headers={"X-Error-Code": e.error_code or "GSTIN_VERIFY_ERROR"}
+        )
 
 
 # ==================== Credit/Debit Notes ====================
@@ -720,9 +994,22 @@ async def create_eway_bill(
 async def generate_eway_bill_number(
     ewb_id: UUID,
     db: DB,
+    company_id: Optional[UUID] = None,
     current_user: User = Depends(get_current_user),
 ):
-    """Generate E-Way Bill number from GST portal."""
+    """
+    Generate E-Way Bill number from NIC GST portal.
+
+    This integrates with the NIC E-Way Bill API to:
+    - Authenticate with E-Way Bill portal
+    - Submit E-Way Bill data in prescribed format
+    - Receive E-Way Bill number and validity period
+    - Update E-Way Bill record with portal response
+
+    E-Way Bill validity is based on distance:
+    - Up to 100 km: 1 day
+    - Every additional 100 km: 1 additional day
+    """
     result = await db.execute(
         select(EWayBill)
         .options(selectinload(EWayBill.items))
@@ -736,44 +1023,88 @@ async def generate_eway_bill_number(
     if ewb.eway_bill_number:
         raise HTTPException(status_code=400, detail="E-Way Bill number already generated")
 
-    # TODO: Integrate with GST E-Way Bill API
-    # For now, generate a mock E-Way Bill number
-    import random
-    mock_ewb_number = f"EWB{random.randint(100000000000, 999999999999)}"
+    # Determine company_id
+    effective_company_id = company_id or current_user.company_id
 
-    ewb.eway_bill_number = mock_ewb_number
-    ewb.generated_at = datetime.utcnow()
-    ewb.valid_from = datetime.utcnow()
-    # Validity based on distance
-    from datetime import timedelta
-    if ewb.distance_km <= 100:
-        validity_days = 1
-    elif ewb.distance_km <= 300:
-        validity_days = 3
-    elif ewb.distance_km <= 500:
-        validity_days = 5
-    else:
-        validity_days = int(ewb.distance_km / 100) + 1
+    if not effective_company_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Company ID is required for E-Way Bill generation"
+        )
 
-    ewb.valid_until = datetime.utcnow() + timedelta(days=validity_days)
-    ewb.status = EWayBillStatus.GENERATED
+    try:
+        # Initialize E-Way Bill service
+        ewaybill_service = GSTEWayBillService(db, effective_company_id)
 
-    await db.commit()
-    await db.refresh(ewb)
+        # Generate E-Way Bill via NIC portal
+        ewb_result = await ewaybill_service.generate_ewaybill(ewb_id)
 
-    return ewb
+        # Reload updated E-Way Bill
+        result = await db.execute(
+            select(EWayBill)
+            .options(selectinload(EWayBill.items))
+            .where(EWayBill.id == ewb_id)
+        )
+        ewb = result.scalar_one()
+
+        # Log successful generation
+        try:
+            audit_service = AuditService(db)
+            await audit_service.log_action(
+                user_id=current_user.id,
+                action="GENERATE_EWAYBILL",
+                entity_type="EWayBill",
+                entity_id=ewb_id,
+                details={
+                    "ewb_number": ewb.eway_bill_number,
+                    "valid_until": str(ewb.valid_until) if ewb.valid_until else None,
+                }
+            )
+        except Exception:
+            pass
+
+        return ewb
+
+    except GSTEWayBillError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"E-Way Bill generation failed: {e.message}",
+            headers={"X-Error-Code": e.error_code or "EWAYBILL_ERROR"}
+        )
+
+
+class PartBUpdateRequest(BaseModel):
+    """Request body for Part-B (vehicle) update."""
+    vehicle_number: str
+    transport_mode: str = "1"  # 1=Road, 2=Rail, 3=Air, 4=Ship
+    reason_code: str = "4"  # 1=Breakdown, 2=Transshipment, 3=Others, 4=First time
+    reason_remarks: str = ""
+    from_place: str = ""
+    from_state: str = ""
 
 
 @router.put("/eway-bills/{ewb_id}/vehicle", response_model=EWayBillResponse)
 async def update_eway_bill_vehicle(
     ewb_id: UUID,
-    vehicle_number: str,
+    update_request: PartBUpdateRequest,
     db: DB,
-    vehicle_type: Optional[str] = None,
-    reason: str = "BREAKDOWN",
+    company_id: Optional[UUID] = None,
     current_user: User = Depends(get_current_user),
 ):
-    """Update vehicle details for E-Way Bill (Part-B update)."""
+    """
+    Update Part-B (vehicle/transporter details) of E-Way Bill.
+
+    This is required when:
+    - Vehicle breaks down and needs to be changed
+    - Goods are transshipped to another vehicle
+    - First time entering vehicle details
+
+    Reason codes:
+    - "1": Due to breakdown
+    - "2": Due to transshipment
+    - "3": Others
+    - "4": First time
+    """
     result = await db.execute(
         select(EWayBill).where(EWayBill.id == ewb_id)
     )
@@ -782,30 +1113,77 @@ async def update_eway_bill_vehicle(
     if not ewb:
         raise HTTPException(status_code=404, detail="E-Way Bill not found")
 
+    if not ewb.eway_bill_number:
+        raise HTTPException(status_code=400, detail="E-Way Bill number not generated yet")
+
     if ewb.status == EWayBillStatus.CANCELLED:
         raise HTTPException(status_code=400, detail="Cannot update cancelled E-Way Bill")
 
-    # TODO: Call GST portal to update Part-B
+    effective_company_id = company_id or current_user.company_id
 
-    ewb.vehicle_number = vehicle_number
-    if vehicle_type:
-        ewb.vehicle_type = vehicle_type
-    ewb.updated_by = current_user.id
+    if not effective_company_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Company ID is required"
+        )
 
-    await db.commit()
-    await db.refresh(ewb)
+    try:
+        ewaybill_service = GSTEWayBillService(db, effective_company_id)
 
-    return ewb
+        update_result = await ewaybill_service.update_part_b(
+            ewb_id=ewb_id,
+            vehicle_number=update_request.vehicle_number,
+            transport_mode=update_request.transport_mode,
+            reason_code=update_request.reason_code,
+            reason_remarks=update_request.reason_remarks,
+            from_place=update_request.from_place,
+            from_state=update_request.from_state
+        )
+
+        # Reload E-Way Bill
+        result = await db.execute(
+            select(EWayBill)
+            .options(selectinload(EWayBill.items))
+            .where(EWayBill.id == ewb_id)
+        )
+        ewb = result.scalar_one()
+
+        return ewb
+
+    except GSTEWayBillError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Part-B update failed: {e.message}",
+            headers={"X-Error-Code": e.error_code or "EWAYBILL_ERROR"}
+        )
+
+
+class EWBCancelRequest(BaseModel):
+    """Request body for E-Way Bill cancellation."""
+    reason_code: str  # 1=Duplicate, 2=Order Cancelled, 3=Data Entry Mistake, 4=Others
+    remarks: str = ""
 
 
 @router.post("/eway-bills/{ewb_id}/cancel", response_model=EWayBillResponse)
 async def cancel_eway_bill(
     ewb_id: UUID,
-    cancel_reason: str,
+    cancel_request: EWBCancelRequest,
     db: DB,
+    company_id: Optional[UUID] = None,
     current_user: User = Depends(get_current_user),
 ):
-    """Cancel E-Way Bill within 24 hours."""
+    """
+    Cancel E-Way Bill within 24 hours of generation.
+
+    As per GST rules, an E-Way Bill can only be cancelled within 24 hours.
+    After 24 hours, it cannot be cancelled.
+
+    Cancel reason codes:
+    - "1": Duplicate
+    - "2": Order Cancelled
+    - "3": Data Entry Mistake
+    - "4": Others
+    """
     result = await db.execute(
         select(EWayBill).where(EWayBill.id == ewb_id)
     )
@@ -814,29 +1192,224 @@ async def cancel_eway_bill(
     if not ewb:
         raise HTTPException(status_code=404, detail="E-Way Bill not found")
 
+    if not ewb.eway_bill_number:
+        raise HTTPException(status_code=400, detail="E-Way Bill number not generated")
+
     if ewb.status == EWayBillStatus.CANCELLED:
         raise HTTPException(status_code=400, detail="E-Way Bill already cancelled")
 
     # Check 24 hour window
-    if ewb.ewb_date:
-        hours_elapsed = (datetime.utcnow() - ewb.ewb_date).total_seconds() / 3600
+    if ewb.generated_at:
+        hours_elapsed = (datetime.utcnow() - ewb.generated_at).total_seconds() / 3600
         if hours_elapsed > 24:
             raise HTTPException(
                 status_code=400,
-                detail="E-Way Bill can only be cancelled within 24 hours"
+                detail="E-Way Bill can only be cancelled within 24 hours of generation"
             )
 
-    # TODO: Call GST portal to cancel
+    # Validate reason code
+    valid_reasons = ["1", "2", "3", "4"]
+    if cancel_request.reason_code not in valid_reasons:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid reason code. Valid codes: 1=Duplicate, 2=Order Cancelled, 3=Data Entry Mistake, 4=Others"
+        )
 
-    ewb.status = EWayBillStatus.CANCELLED
-    ewb.cancel_reason = cancel_reason
-    ewb.cancelled_at = datetime.utcnow()
-    ewb.cancelled_by = current_user.id
+    effective_company_id = company_id or current_user.company_id
 
-    await db.commit()
-    await db.refresh(ewb)
+    if not effective_company_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Company ID is required"
+        )
 
-    return ewb
+    try:
+        ewaybill_service = GSTEWayBillService(db, effective_company_id)
+
+        cancel_result = await ewaybill_service.cancel_ewaybill(
+            ewb_id=ewb_id,
+            reason_code=cancel_request.reason_code,
+            remarks=cancel_request.remarks
+        )
+
+        # Reload E-Way Bill
+        result = await db.execute(
+            select(EWayBill)
+            .options(selectinload(EWayBill.items))
+            .where(EWayBill.id == ewb_id)
+        )
+        ewb = result.scalar_one()
+
+        # Log cancellation
+        try:
+            audit_service = AuditService(db)
+            await audit_service.log_action(
+                user_id=current_user.id,
+                action="CANCEL_EWAYBILL",
+                entity_type="EWayBill",
+                entity_id=ewb_id,
+                details={
+                    "ewb_number": ewb.eway_bill_number,
+                    "reason_code": cancel_request.reason_code,
+                    "remarks": cancel_request.remarks
+                }
+            )
+        except Exception:
+            pass
+
+        return ewb
+
+    except GSTEWayBillError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"E-Way Bill cancellation failed: {e.message}",
+            headers={"X-Error-Code": e.error_code or "EWAYBILL_ERROR"}
+        )
+
+
+class EWBExtendRequest(BaseModel):
+    """Request body for E-Way Bill validity extension."""
+    from_place: str
+    from_state: int
+    remaining_distance: int
+    reason_code: str = "99"  # 1=Natural calamity, 2=Law and order, 3=Transshipment, 4=Accident, 99=Others
+    reason_remarks: str = ""
+    transit_type: str = "C"  # C=In-transit, R=Reached destination
+    vehicle_number: str = ""
+
+
+@router.post("/eway-bills/{ewb_id}/extend", response_model=EWayBillResponse)
+async def extend_eway_bill_validity(
+    ewb_id: UUID,
+    extend_request: EWBExtendRequest,
+    db: DB,
+    company_id: Optional[UUID] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Extend E-Way Bill validity when goods are in transit.
+
+    Can be extended 8 hours before expiry or 8 hours after expiry.
+
+    Extension reason codes:
+    - "1": Natural calamity
+    - "2": Law and order situation
+    - "3": Transshipment
+    - "4": Accident
+    - "99": Others
+
+    Transit type:
+    - "C": In-transit (goods still moving)
+    - "R": Reached destination
+    """
+    result = await db.execute(
+        select(EWayBill).where(EWayBill.id == ewb_id)
+    )
+    ewb = result.scalar_one_or_none()
+
+    if not ewb:
+        raise HTTPException(status_code=404, detail="E-Way Bill not found")
+
+    if not ewb.eway_bill_number:
+        raise HTTPException(status_code=400, detail="E-Way Bill number not generated")
+
+    if ewb.status == EWayBillStatus.CANCELLED:
+        raise HTTPException(status_code=400, detail="Cannot extend cancelled E-Way Bill")
+
+    effective_company_id = company_id or current_user.company_id
+
+    if not effective_company_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Company ID is required"
+        )
+
+    try:
+        ewaybill_service = GSTEWayBillService(db, effective_company_id)
+
+        extend_result = await ewaybill_service.extend_validity(
+            ewb_id=ewb_id,
+            from_place=extend_request.from_place,
+            from_state=extend_request.from_state,
+            remaining_distance=extend_request.remaining_distance,
+            reason_code=extend_request.reason_code,
+            reason_remarks=extend_request.reason_remarks,
+            transit_type=extend_request.transit_type,
+            vehicle_number=extend_request.vehicle_number
+        )
+
+        # Reload E-Way Bill
+        result = await db.execute(
+            select(EWayBill)
+            .options(selectinload(EWayBill.items))
+            .where(EWayBill.id == ewb_id)
+        )
+        ewb = result.scalar_one()
+
+        return ewb
+
+    except GSTEWayBillError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"E-Way Bill extension failed: {e.message}",
+            headers={"X-Error-Code": e.error_code or "EWAYBILL_ERROR"}
+        )
+
+
+@router.get("/eway-bills/{ewb_id}/details")
+async def get_eway_bill_details(
+    ewb_id: UUID,
+    db: DB,
+    company_id: Optional[UUID] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get E-Way Bill details from GST portal.
+
+    Fetches the current status and details from NIC portal.
+    """
+    result = await db.execute(
+        select(EWayBill)
+        .options(selectinload(EWayBill.items))
+        .where(EWayBill.id == ewb_id)
+    )
+    ewb = result.scalar_one_or_none()
+
+    if not ewb:
+        raise HTTPException(status_code=404, detail="E-Way Bill not found")
+
+    if not ewb.eway_bill_number:
+        raise HTTPException(status_code=400, detail="E-Way Bill number not generated")
+
+    effective_company_id = company_id or current_user.company_id
+
+    if not effective_company_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Company ID is required"
+        )
+
+    try:
+        ewaybill_service = GSTEWayBillService(db, effective_company_id)
+        portal_details = await ewaybill_service.get_ewaybill_details(ewb.eway_bill_number)
+
+        return {
+            "ewb_id": str(ewb_id),
+            "ewb_number": ewb.eway_bill_number,
+            "document_number": ewb.document_number,
+            "status": ewb.status.value if ewb.status else None,
+            "valid_from": ewb.valid_from,
+            "valid_until": ewb.valid_until,
+            "vehicle_number": ewb.vehicle_number,
+            "portal_details": portal_details
+        }
+
+    except GSTEWayBillError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to get E-Way Bill details: {e.message}",
+            headers={"X-Error-Code": e.error_code or "EWAYBILL_ERROR"}
+        )
 
 
 @router.get("/eway-bills", response_model=EWayBillListResponse)

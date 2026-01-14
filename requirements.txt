@@ -33,5 +33,9 @@ aioredis>=2.0.0
 # Payment Gateway
 razorpay>=1.4.0
 
+# GST E-Invoice / QR Code
+qrcode[pil]>=7.4.0
+Pillow>=10.0.0
+
 # Production server
 gunicorn>=21.2.0
