@@ -151,7 +151,7 @@ class InsightsService:
         ).where(
             and_(
                 Order.created_at >= start_date,
-                Order.status.in_([OrderStatus.DELIVERED, OrderStatus.SHIPPED, OrderStatus.PROCESSING])
+                Order.status.in_([OrderStatus.DELIVERED, OrderStatus.SHIPPED, OrderStatus.CONFIRMED, OrderStatus.IN_TRANSIT])
             )
         ).group_by(
             func.date(Order.created_at)
