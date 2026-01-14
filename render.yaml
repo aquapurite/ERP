@@ -1,26 +1,83 @@
+# Render.com Blueprint Configuration
+# https://render.com/docs/blueprint-spec
+
 services:
+  # FastAPI Backend Service
   - type: web
     name: aquapurite-api
     runtime: python
     region: singapore
     plan: free
-    buildCommand: pip install -r requirements.txt
+    branch: main
+    autoDeploy: true
+
+    # Build configuration
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+
+    # Start command
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+
+    # Health check endpoint
+    healthCheckPath: /health
+
+    # Environment variables
     envVars:
+      # Database - Supabase PostgreSQL (set in dashboard)
       - key: DATABASE_URL
-        sync: false  # Set this manually in Render dashboard with Supabase URL
+        sync: false
+
+      # JWT Configuration
       - key: SECRET_KEY
         generateValue: true
       - key: ALGORITHM
         value: HS256
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
-        value: 30
+        value: "30"
       - key: REFRESH_TOKEN_EXPIRE_DAYS
-        value: 7
+        value: "7"
+
+      # Application
+      - key: APP_NAME
+        value: "Aquapurite ERP API"
+      - key: APP_VERSION
+        value: "1.0.0"
       - key: DEBUG
-        value: false
+        value: "false"
+
+      # CORS - Allowed Frontend URLs
       - key: CORS_ORIGINS
-        sync: false  # Set manually: ["https://yourdomain.com","https://www.yourdomain.com"]
+        value: '["https://erp-woad-eight.vercel.app","https://erp-five-phi.vercel.app","https://www.aquapurite.org","https://aquapurite.org","http://localhost:3000"]'
+
+      # Frontend URL for email links
       - key: FRONTEND_URL
-        sync: false  # Set manually: https://yourdomain.com
-    healthCheckPath: /health
+        value: "https://erp-woad-eight.vercel.app"
+
+      # Python version
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+
+      # Email/SMTP (set in dashboard)
+      - key: SMTP_HOST
+        value: "smtp.gmail.com"
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM_NAME
+        value: "Aquapurite ERP"
+
+      # Cache (optional)
+      - key: CACHE_ENABLED
+        value: "false"
+      - key: REDIS_URL
+        sync: false
+
+      # Razorpay (set in dashboard)
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
