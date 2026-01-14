@@ -2892,6 +2892,127 @@ def _number_to_words(num: float) -> str:
     return result + ' Only'
 
 
+@router.post("/orders/{po_id}/generate-serials")
+async def manually_generate_serials(
+    po_id: UUID,
+    db: DB,
+    # No auth required temporarily for fixing
+):
+    """
+    Manually generate serials for an approved PO that doesn't have serials.
+    Use this to fix POs where serial generation failed during approval.
+    """
+    from sqlalchemy import text
+    from app.services.serialization import SerializationService
+    from app.schemas.serialization import GenerateSerialsRequest, GenerateSerialItem, ItemType
+    import logging
+
+    # Get PO
+    result = await db.execute(
+        select(PurchaseOrder)
+        .options(selectinload(PurchaseOrder.items))
+        .where(PurchaseOrder.id == po_id)
+    )
+    po = result.scalar_one_or_none()
+
+    if not po:
+        raise HTTPException(status_code=404, detail="PO not found")
+
+    if po.status != POStatus.APPROVED:
+        raise HTTPException(status_code=400, detail=f"PO must be APPROVED to generate serials. Current status: {po.status.value}")
+
+    # Check if serials already exist
+    existing_result = await db.execute(
+        text("SELECT COUNT(*) FROM po_serials WHERE po_id = :po_id"),
+        {"po_id": str(po.id)}
+    )
+    existing_count = existing_result.scalar() or 0
+
+    if existing_count > 0:
+        return {"message": f"Serials already exist for this PO: {existing_count} serials", "count": existing_count}
+
+    # Get supplier code for vendor
+    supplier_code = "AP"  # Default
+    if po.vendor_id:
+        sc_result = await db.execute(
+            text("SELECT code FROM supplier_codes WHERE vendor_id = :vendor_id LIMIT 1"),
+            {"vendor_id": str(po.vendor_id)}
+        )
+        sc_row = sc_result.first()
+        if sc_row:
+            supplier_code = sc_row[0]
+            logging.info(f"MANUAL SERIAL GEN: Using supplier code '{supplier_code}' for vendor {po.vendor_id}")
+
+    # Build serial items
+    serial_items = []
+    for item in po.items:
+        model_code = None
+        item_type = ItemType.FINISHED_GOODS
+
+        # Try to find model code reference
+        if item.product_id:
+            ref_result = await db.execute(
+                text("SELECT model_code, item_type FROM model_code_references WHERE product_id = :product_id LIMIT 1"),
+                {"product_id": str(item.product_id)}
+            )
+            ref_row = ref_result.first()
+            if ref_row:
+                model_code = ref_row[0]
+                if ref_row[1] and ref_row[1] in ItemType.__members__:
+                    item_type = ItemType[ref_row[1]]
+
+        if not model_code and item.sku:
+            ref_result = await db.execute(
+                text("SELECT model_code, item_type FROM model_code_references WHERE product_sku = :sku LIMIT 1"),
+                {"sku": item.sku}
+            )
+            ref_row = ref_result.first()
+            if ref_row:
+                model_code = ref_row[0]
+                if ref_row[1] and ref_row[1] in ItemType.__members__:
+                    item_type = ItemType[ref_row[1]]
+
+        if not model_code:
+            # Generate from product name
+            product_name = item.product_name or item.sku or "UNK"
+            clean_name = ''.join(c for c in product_name if c.isalpha())
+            model_code = clean_name[:3].upper() if len(clean_name) >= 3 else clean_name.upper().ljust(3, 'X')
+
+        serial_items.append(GenerateSerialItem(
+            po_item_id=str(item.id),
+            product_id=str(item.product_id) if item.product_id else None,
+            product_sku=item.sku,
+            model_code=model_code,
+            item_type=item_type,
+            quantity=item.quantity_ordered
+        ))
+
+    if not serial_items:
+        return {"message": "No items to generate serials for", "count": 0}
+
+    # Generate serials
+    serial_service = SerializationService(db)
+    gen_request = GenerateSerialsRequest(
+        po_id=str(po.id),
+        supplier_code=supplier_code,
+        items=serial_items
+    )
+
+    try:
+        result = await serial_service.generate_serials_for_po(gen_request)
+        return {
+            "message": f"Successfully generated {result.total_generated} serials",
+            "count": result.total_generated,
+            "supplier_code": supplier_code,
+            "items": [{"model_code": s.model_code, "quantity": s.quantity, "start_barcode": s.start_barcode, "end_barcode": s.end_barcode} for s in result.items]
+        }
+    except Exception as e:
+        import traceback
+        logging.error(f"MANUAL SERIAL GEN FAILED: {e}")
+        logging.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Serial generation failed: {str(e)}")
+
+
 @router.get("/orders/{po_id}/diagnose")
 async def diagnose_po_serials(
     po_id: UUID,
