@@ -1544,7 +1544,7 @@ async def approve_purchase_order(
                         supplier_code=supplier_code,
                         items=serial_items
                     )
-                    await serial_service.generate_serials(gen_request)
+                    await serial_service.generate_serials_for_po(gen_request)
                 except Exception as e:
                     # Log but don't fail approval if serial generation fails
                     print(f"Warning: Serial generation failed for PO {po.po_number}: {e}")
