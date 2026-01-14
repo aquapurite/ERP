@@ -75,6 +75,69 @@ async def auto_seed_admin():
         traceback.print_exc()
 
 
+async def auto_link_vendors_to_supplier_codes():
+    """Auto-link vendors to supplier codes if not already linked."""
+    from sqlalchemy import select
+    from app.models.vendor import Vendor
+    from app.models.serialization import SupplierCode
+    import uuid
+
+    try:
+        async with async_session_factory() as db:
+            # Find vendors that match known supplier codes but aren't linked
+            vendor_mappings = [
+                ("STOS", "ST"),  # STOS Industrial -> ST supplier code
+            ]
+
+            for vendor_pattern, supplier_code in vendor_mappings:
+                # Check if supplier code exists and is linked
+                sc_result = await db.execute(
+                    select(SupplierCode).where(SupplierCode.code == supplier_code)
+                )
+                sc = sc_result.scalar_one_or_none()
+
+                if sc and sc.vendor_id:
+                    # Already linked
+                    continue
+
+                # Find vendor
+                vendor_result = await db.execute(
+                    select(Vendor).where(Vendor.name.ilike(f"%{vendor_pattern}%"))
+                )
+                vendor = vendor_result.scalar_one_or_none()
+
+                if not vendor:
+                    continue
+
+                # Check if vendor already linked to another code
+                existing_link = await db.execute(
+                    select(SupplierCode).where(SupplierCode.vendor_id == str(vendor.id))
+                )
+                if existing_link.scalar_one_or_none():
+                    continue
+
+                if sc:
+                    # Link existing supplier code to vendor
+                    sc.vendor_id = str(vendor.id)
+                    print(f"Linked vendor '{vendor.name}' to supplier code '{supplier_code}'")
+                else:
+                    # Create new supplier code
+                    new_sc = SupplierCode(
+                        id=str(uuid.uuid4()),
+                        code=supplier_code,
+                        name=vendor.name,
+                        vendor_id=str(vendor.id),
+                        description=f"Auto-linked to {vendor.name}",
+                        is_active=True,
+                    )
+                    db.add(new_sc)
+                    print(f"Created supplier code '{supplier_code}' for vendor '{vendor.name}'")
+
+            await db.commit()
+    except Exception as e:
+        print(f"Warning: Auto-link vendors failed: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -88,6 +151,8 @@ async def lifespan(app: FastAPI):
     print("Database initialized")
     # Auto-seed admin user if needed
     await auto_seed_admin()
+    # Auto-link vendors to supplier codes
+    await auto_link_vendors_to_supplier_codes()
     # Start background job scheduler
     start_scheduler()
     print("Background scheduler started")
