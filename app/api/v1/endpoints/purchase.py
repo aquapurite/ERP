@@ -2892,6 +2892,86 @@ def _number_to_words(num: float) -> str:
     return result + ' Only'
 
 
+@router.get("/orders/{po_id}/diagnose")
+async def diagnose_po_serials(
+    po_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Diagnostic endpoint to check PO status and serial generation.
+    Returns detailed info about:
+    - PO status
+    - Whether serials exist
+    - Supplier code configuration
+    """
+    from sqlalchemy import text
+    from app.models.serialization import SupplierCode
+
+    result = await db.execute(
+        select(PurchaseOrder)
+        .options(selectinload(PurchaseOrder.items))
+        .where(PurchaseOrder.id == po_id)
+    )
+    po = result.scalar_one_or_none()
+
+    if not po:
+        return {"error": "PO not found"}
+
+    # Check serials
+    serials_result = await db.execute(
+        text("SELECT COUNT(*) as count FROM po_serials WHERE po_id = :po_id"),
+        {"po_id": str(po.id)}
+    )
+    serial_count = serials_result.scalar() or 0
+
+    # Get sample serials if any
+    sample_serials = []
+    if serial_count > 0:
+        sample_result = await db.execute(
+            text("SELECT barcode, model_code, item_type FROM po_serials WHERE po_id = :po_id LIMIT 5"),
+            {"po_id": str(po.id)}
+        )
+        sample_serials = [{"barcode": r[0], "model_code": r[1], "item_type": r[2]} for r in sample_result.all()]
+
+    # Check supplier code for vendor
+    supplier_code_info = None
+    if po.vendor_id:
+        sc_result = await db.execute(
+            text("SELECT code, name, vendor_id FROM supplier_codes WHERE vendor_id = :vendor_id"),
+            {"vendor_id": str(po.vendor_id)}
+        )
+        sc_row = sc_result.first()
+        if sc_row:
+            supplier_code_info = {"code": sc_row[0], "name": sc_row[1], "vendor_id": sc_row[2]}
+
+    # List all supplier codes
+    all_sc_result = await db.execute(
+        text("SELECT code, name, vendor_id FROM supplier_codes ORDER BY code")
+    )
+    all_supplier_codes = [{"code": r[0], "name": r[1], "vendor_id": r[2]} for r in all_sc_result.all()]
+
+    return {
+        "po_id": str(po.id),
+        "po_number": po.po_number,
+        "status": po.status.value if po.status else None,
+        "vendor_id": str(po.vendor_id) if po.vendor_id else None,
+        "items_count": len(po.items) if po.items else 0,
+        "serials": {
+            "count": serial_count,
+            "samples": sample_serials
+        },
+        "supplier_code_for_vendor": supplier_code_info,
+        "all_supplier_codes": all_supplier_codes,
+        "diagnosis": {
+            "po_approved": po.status and po.status.value == "APPROVED",
+            "has_serials": serial_count > 0,
+            "vendor_has_supplier_code": supplier_code_info is not None,
+            "can_generate_barcodes": po.status and po.status.value == "APPROVED" and serial_count > 0
+        }
+    }
+
+
 @router.get("/orders/{po_id}/download")
 async def download_purchase_order(
     po_id: UUID,
@@ -2934,8 +3014,10 @@ async def download_purchase_order(
 
     # Get PO serials - grouped by model code for summary
     # Use text query to handle VARCHAR/UUID type mismatch in po_id column
+    import logging
     try:
         from sqlalchemy import text
+        logging.info(f"PDF DOWNLOAD: Fetching serials for PO {po.po_number} (id={po.id})")
         serials_result = await db.execute(
             text("""
                 SELECT model_code, item_type, count(id) as quantity,
@@ -2950,8 +3032,12 @@ async def download_purchase_order(
         )
         serial_groups = serials_result.all()
         total_serials = sum(sg.quantity for sg in serial_groups) if serial_groups else 0
-    except Exception:
-        # If serial query fails, continue without serial info
+        logging.info(f"PDF DOWNLOAD: Found {len(serial_groups)} serial groups, total={total_serials} serials")
+    except Exception as e:
+        # Log the actual error
+        import traceback
+        logging.error(f"PDF DOWNLOAD: Serial query failed for PO {po.po_number}: {type(e).__name__}: {e}")
+        logging.error(f"Traceback: {traceback.format_exc()}")
         serial_groups = []
         total_serials = 0
 
