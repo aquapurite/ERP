@@ -1464,6 +1464,10 @@ async def approve_purchase_order(
             detail=f"Cannot {request.action.lower()} PO in {po.status.value} status"
         )
 
+    # Store data needed for serial generation before commit
+    should_generate_serials = False
+    serial_gen_data = None
+
     if request.action == "APPROVE":
         po.status = POStatus.APPROVED
         po.approved_by = current_user.id
@@ -1472,23 +1476,8 @@ async def approve_purchase_order(
         for schedule in po.delivery_schedules:
             schedule.status = DeliveryLotStatus.ADVANCE_PENDING
 
-        # Auto-generate serial numbers/barcodes on approval
-        from app.services.serialization import SerializationService
-        from app.schemas.serialization import GenerateSerialsRequest, GenerateSerialItem, ItemType
-        from app.models.serialization import POSerial, ModelCodeReference, SupplierCode
-
-        # Get vendor for supplier code
-        vendor_result = await db.execute(select(Vendor).where(Vendor.id == po.vendor_id))
-        vendor = vendor_result.scalar_one_or_none()
-
-        supplier_code = "AP"  # Default
-        if vendor:
-            supplier_code_result = await db.execute(
-                select(SupplierCode).where(SupplierCode.vendor_id == vendor.id)
-            )
-            supplier_code_obj = supplier_code_result.scalar_one_or_none()
-            if supplier_code_obj:
-                supplier_code = supplier_code_obj.code
+        # Prepare serial generation data (but don't generate yet)
+        from app.models.serialization import POSerial, SupplierCode
 
         # Check if serials already exist
         existing_serials = await db.execute(
@@ -1496,65 +1485,40 @@ async def approve_purchase_order(
         )
         existing_count = existing_serials.scalar() or 0
 
-        # Generate serials if none exist
         if existing_count == 0 and po.items:
-            serial_service = SerializationService(db)
-            serial_items = []
+            # Get vendor for supplier code
+            supplier_code = "AP"  # Default
+            if po.vendor_id:
+                supplier_code_result = await db.execute(
+                    select(SupplierCode).where(SupplierCode.vendor_id == po.vendor_id)
+                )
+                supplier_code_obj = supplier_code_result.scalar_one_or_none()
+                if supplier_code_obj:
+                    supplier_code = supplier_code_obj.code
 
-            for item in po.items:
-                model_code = None
-                item_type = ItemType.FINISHED_GOODS
-
-                if item.product_id:
-                    ref_result = await db.execute(
-                        select(ModelCodeReference).where(ModelCodeReference.product_id == item.product_id)
-                    )
-                    ref = ref_result.scalar_one_or_none()
-                    if ref:
-                        model_code = ref.model_code
-                        item_type = ref.item_type
-
-                if not model_code and item.sku:
-                    ref_result = await db.execute(
-                        select(ModelCodeReference).where(ModelCodeReference.product_sku == item.sku)
-                    )
-                    ref = ref_result.scalar_one_or_none()
-                    if ref:
-                        model_code = ref.model_code
-                        item_type = ref.item_type
-
-                if not model_code:
-                    product_name = item.product_name or item.sku or "UNK"
-                    clean_name = ''.join(c for c in product_name if c.isalpha())
-                    model_code = clean_name[:3].upper() if len(clean_name) >= 3 else clean_name.upper().ljust(3, 'X')
-
-                serial_items.append(GenerateSerialItem(
-                    po_item_id=str(item.id),
-                    product_id=str(item.product_id) if item.product_id else None,
-                    product_sku=item.sku,
-                    model_code=model_code,
-                    item_type=item_type,
-                    quantity=item.quantity
-                ))
-
-            if serial_items:
-                try:
-                    gen_request = GenerateSerialsRequest(
-                        po_id=str(po.id),
-                        supplier_code=supplier_code,
-                        items=serial_items
-                    )
-                    await serial_service.generate_serials_for_po(gen_request)
-                except Exception as e:
-                    # Log but don't fail approval if serial generation fails
-                    print(f"Warning: Serial generation failed for PO {po.po_number}: {e}")
-
+            should_generate_serials = True
+            serial_gen_data = {
+                "po_id": str(po.id),
+                "po_number": po.po_number,
+                "supplier_code": supplier_code,
+                "items": [
+                    {
+                        "item_id": str(item.id),
+                        "product_id": str(item.product_id) if item.product_id else None,
+                        "product_sku": item.sku,
+                        "product_name": item.product_name,
+                        "quantity": item.quantity_ordered
+                    }
+                    for item in po.items
+                ]
+            }
     else:
         po.status = POStatus.CANCELLED
         # Cancel all delivery schedules
         for schedule in po.delivery_schedules:
             schedule.status = DeliveryLotStatus.CANCELLED
 
+    # Commit the approval/rejection first
     await db.commit()
 
     # Re-fetch PO with all relationships for response
@@ -1567,6 +1531,69 @@ async def approve_purchase_order(
         .where(PurchaseOrder.id == po_id)
     )
     po = result.scalar_one()
+
+    # Generate serials AFTER approval is committed (so approval succeeds even if serial gen fails)
+    if should_generate_serials and serial_gen_data:
+        try:
+            from app.services.serialization import SerializationService
+            from app.schemas.serialization import GenerateSerialsRequest, GenerateSerialItem, ItemType
+            from app.models.serialization import ModelCodeReference
+
+            serial_service = SerializationService(db)
+            serial_items = []
+
+            for item_data in serial_gen_data["items"]:
+                model_code = None
+                item_type = ItemType.FINISHED_GOODS
+
+                # Try to find model code reference
+                if item_data["product_id"]:
+                    ref_result = await db.execute(
+                        select(ModelCodeReference).where(
+                            ModelCodeReference.product_id == UUID(item_data["product_id"])
+                        )
+                    )
+                    ref = ref_result.scalar_one_or_none()
+                    if ref:
+                        model_code = ref.model_code
+                        item_type = ref.item_type
+
+                if not model_code and item_data["product_sku"]:
+                    ref_result = await db.execute(
+                        select(ModelCodeReference).where(
+                            ModelCodeReference.product_sku == item_data["product_sku"]
+                        )
+                    )
+                    ref = ref_result.scalar_one_or_none()
+                    if ref:
+                        model_code = ref.model_code
+                        item_type = ref.item_type
+
+                if not model_code:
+                    product_name = item_data["product_name"] or item_data["product_sku"] or "UNK"
+                    clean_name = ''.join(c for c in product_name if c.isalpha())
+                    model_code = clean_name[:3].upper() if len(clean_name) >= 3 else clean_name.upper().ljust(3, 'X')
+
+                serial_items.append(GenerateSerialItem(
+                    po_item_id=item_data["item_id"],
+                    product_id=item_data["product_id"],
+                    product_sku=item_data["product_sku"],
+                    model_code=model_code,
+                    item_type=item_type,
+                    quantity=item_data["quantity"]
+                ))
+
+            if serial_items:
+                gen_request = GenerateSerialsRequest(
+                    po_id=serial_gen_data["po_id"],
+                    supplier_code=serial_gen_data["supplier_code"],
+                    items=serial_items
+                )
+                await serial_service.generate_serials_for_po(gen_request)
+        except Exception as e:
+            # Log but don't fail - approval is already committed
+            import logging
+            logging.warning(f"Serial generation failed for PO {serial_gen_data['po_number']}: {e}")
 
     return po
 
