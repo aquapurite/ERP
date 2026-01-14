@@ -36,6 +36,7 @@ from app.api.v1.endpoints import (
     # Accounting & Finance (NEW)
     accounting,
     billing,
+    banking,  # Bank Statement Import & Reconciliation
     # Dealer/Distributor (NEW)
     dealers,
     # Commission & Incentives (NEW)
@@ -189,6 +190,11 @@ api_router.include_router(
     billing.router,
     prefix="/billing",
     tags=["Billing/E-Invoice"]
+)
+api_router.include_router(
+    banking.router,
+    prefix="/banking",
+    tags=["Banking/Reconciliation"]
 )
 
 # ==================== Dealer/Distributor ====================
