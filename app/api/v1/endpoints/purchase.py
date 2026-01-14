@@ -1556,7 +1556,17 @@ async def approve_purchase_order(
             schedule.status = DeliveryLotStatus.CANCELLED
 
     await db.commit()
-    await db.refresh(po)
+
+    # Re-fetch PO with all relationships for response
+    result = await db.execute(
+        select(PurchaseOrder)
+        .options(
+            selectinload(PurchaseOrder.items),
+            selectinload(PurchaseOrder.delivery_schedules)
+        )
+        .where(PurchaseOrder.id == po_id)
+    )
+    po = result.scalar_one()
 
     return po
 
