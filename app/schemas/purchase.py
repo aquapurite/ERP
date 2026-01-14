@@ -292,18 +292,50 @@ class PurchaseOrderUpdate(BaseModel):
     internal_notes: Optional[str] = None
 
 
-class PurchaseOrderResponse(PurchaseOrderBase):
+class PurchaseOrderResponse(BaseModel):
     """Response schema for PO."""
     model_config = ConfigDict(from_attributes=True)
 
+    # Core identifiers
     id: UUID
     po_number: str
     po_date: date
     status: POStatus
     requisition_id: Optional[UUID] = None
+
+    # Vendor info (from model fields, not relationships)
+    vendor_id: UUID
     vendor_name: str
+    vendor_code: Optional[str] = None
     vendor_gstin: Optional[str] = None
+    vendor_address: Optional[str] = None
+    vendor_contact_name: Optional[str] = None
+    vendor_contact_email: Optional[str] = None
+    vendor_contact_phone: Optional[str] = None
+
+    # Warehouse/Delivery info
+    delivery_warehouse_id: UUID
+    warehouse_name: Optional[str] = None
+    expected_delivery_date: Optional[date] = None
+    delivery_address: Optional[dict] = None
+    bill_to: Optional[dict] = None
+    ship_to: Optional[dict] = None
+
+    # Financial terms
+    currency: str = "INR"
+    exchange_rate: Decimal = Decimal("1")
+    payment_terms: Optional[str] = None
+    credit_days: int = 30
+    advance_required: Decimal = Decimal("0")
+    quotation_reference: Optional[str] = None
+    quotation_date: Optional[date] = None
+    freight_charges: Decimal = Decimal("0")
+    packing_charges: Decimal = Decimal("0")
+    other_charges: Decimal = Decimal("0")
+
+    # Calculated amounts
     subtotal: Decimal
+    discount_percentage: Decimal = Decimal("0")
     discount_amount: Decimal
     taxable_amount: Decimal
     cgst_amount: Decimal
@@ -312,14 +344,26 @@ class PurchaseOrderResponse(PurchaseOrderBase):
     cess_amount: Decimal
     total_tax: Decimal
     grand_total: Decimal
-    total_received_value: Decimal
-    advance_paid: Decimal
+    total_received_value: Decimal = Decimal("0")
+    advance_percentage: Decimal = Decimal("0")
+    advance_paid: Decimal = Decimal("0")
+    balance_due_date: Optional[date] = None
+
+    # Documents & Status
     po_pdf_url: Optional[str] = None
     sent_to_vendor_at: Optional[datetime] = None
     vendor_acknowledged_at: Optional[datetime] = None
+
+    # Notes
+    terms_and_conditions: Optional[str] = None
+    special_instructions: Optional[str] = None
+    internal_notes: Optional[str] = None
+
+    # Nested items and schedules
     items: List[POItemResponse] = []
-    # Delivery schedules for lot-wise payment tracking
     delivery_schedules: List[PODeliveryScheduleResponse] = []
+
+    # Audit fields
     created_by: UUID
     approved_by: Optional[UUID] = None
     approved_at: Optional[datetime] = None
