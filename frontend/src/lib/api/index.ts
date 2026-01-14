@@ -750,7 +750,7 @@ export const purchaseOrdersApi = {
     return data;
   },
   approve: async (id: string) => {
-    const { data } = await apiClient.post<PurchaseOrder>(`/purchase/orders/${id}/approve`);
+    const { data } = await apiClient.post<PurchaseOrder>(`/purchase/orders/${id}/approve`, { action: "APPROVE" });
     return data;
   },
   reject: async (id: string, reason: string) => {
