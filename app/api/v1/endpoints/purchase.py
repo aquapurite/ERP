@@ -1484,7 +1484,7 @@ async def approve_purchase_order(
         supplier_code = "AP"  # Default
         if vendor:
             supplier_code_result = await db.execute(
-                select(SupplierCode).where(SupplierCode.vendor_id == str(vendor.id))
+                select(SupplierCode).where(SupplierCode.vendor_id == vendor.id)
             )
             supplier_code_obj = supplier_code_result.scalar_one_or_none()
             if supplier_code_obj:
@@ -1492,7 +1492,7 @@ async def approve_purchase_order(
 
         # Check if serials already exist
         existing_serials = await db.execute(
-            select(func.count(POSerial.id)).where(POSerial.po_id == str(po.id))
+            select(func.count(POSerial.id)).where(POSerial.po_id == po.id)
         )
         existing_count = existing_serials.scalar() or 0
 
@@ -1507,7 +1507,7 @@ async def approve_purchase_order(
 
                 if item.product_id:
                     ref_result = await db.execute(
-                        select(ModelCodeReference).where(ModelCodeReference.product_id == str(item.product_id))
+                        select(ModelCodeReference).where(ModelCodeReference.product_id == item.product_id)
                     )
                     ref = ref_result.scalar_one_or_none()
                     if ref:
@@ -1605,7 +1605,7 @@ async def send_po_to_vendor(
     if vendor:
         # Try to find supplier code for this vendor
         supplier_code_result = await db.execute(
-            select(SupplierCode).where(SupplierCode.vendor_id == str(vendor.id))
+            select(SupplierCode).where(SupplierCode.vendor_id == vendor.id)
         )
         supplier_code_obj = supplier_code_result.scalar_one_or_none()
         if supplier_code_obj:
@@ -1613,7 +1613,7 @@ async def send_po_to_vendor(
 
     # Check if serials already exist for this PO
     existing_serials = await db.execute(
-        select(func.count(POSerial.id)).where(POSerial.po_id == str(po.id))
+        select(func.count(POSerial.id)).where(POSerial.po_id == po.id)
     )
     existing_count = existing_serials.scalar() or 0
 
@@ -1634,7 +1634,7 @@ async def send_po_to_vendor(
             if item.product_id:
                 ref_result = await db.execute(
                     select(ModelCodeReference).where(
-                        ModelCodeReference.product_id == str(item.product_id)
+                        ModelCodeReference.product_id == item.product_id
                     )
                 )
                 ref = ref_result.scalar_one_or_none()
