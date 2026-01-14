@@ -245,6 +245,19 @@ class OrderAllocationRequest(BaseModel):
         None,
         description="Order items with product_id and quantity"
     )
+    # Pricing engine parameters
+    weight_kg: Optional[float] = Field(
+        default=1.0,
+        description="Total weight in kg for shipping cost calculation"
+    )
+    dimensions: Optional[dict] = Field(
+        None,
+        description="Package dimensions (length, width, height in cm)"
+    )
+    allocation_strategy: Optional[str] = Field(
+        default="BALANCED",
+        description="Carrier allocation strategy: CHEAPEST_FIRST, FASTEST_FIRST, BEST_SLA, BALANCED"
+    )
 
 
 class AllocationDecision(BaseModel):
@@ -271,8 +284,32 @@ class AllocationDecision(BaseModel):
     # Transporter recommendation
     recommended_transporter_id: Optional[UUID] = None
     recommended_transporter_code: Optional[str] = None
+    recommended_transporter_name: Optional[str] = None
     estimated_delivery_days: Optional[int] = None
+    estimated_delivery_days_min: Optional[int] = None
     estimated_shipping_cost: Optional[float] = None
+
+    # Pricing engine details
+    cost_breakdown: Optional[dict] = Field(
+        None,
+        description="Detailed cost breakdown (base, fuel, COD, GST, etc.)"
+    )
+    rate_card_id: Optional[str] = None
+    rate_card_code: Optional[str] = None
+    allocation_score: Optional[float] = None
+    segment: Optional[str] = Field(
+        None,
+        description="Logistics segment: D2C, B2B, or FTL"
+    )
+    zone: Optional[str] = Field(
+        None,
+        description="Delivery zone (A-F)"
+    )
+    allocation_strategy: Optional[str] = None
+    alternative_carriers: Optional[List[dict]] = Field(
+        None,
+        description="Alternative carrier options with costs"
+    )
 
 
 class AllocationLogResponse(BaseModel):

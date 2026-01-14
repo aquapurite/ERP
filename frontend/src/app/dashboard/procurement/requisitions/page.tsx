@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, Send, CheckCircle, XCircle, FileText, ShoppingCart, Clock, AlertCircle, ArrowRight, Trash2, Loader2, Calendar, Printer, Lock } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, Send, CheckCircle, XCircle, FileText, ShoppingCart, Clock, AlertCircle, ArrowRight, Trash2, Loader2, Calendar, Printer, Lock, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -158,6 +158,10 @@ const requisitionsApi = {
   delete: async (id: string) => {
     await apiClient.delete(`/purchase/requisitions/${id}`);
   },
+  update: async (id: string, updateData: { required_by_date?: string; priority?: number; reason?: string; notes?: string }) => {
+    const { data } = await apiClient.put(`/purchase/requisitions/${id}`, updateData);
+    return data;
+  },
   getById: async (id: string) => {
     const { data } = await apiClient.get(`/purchase/requisitions/${id}`);
     return data;
@@ -197,6 +201,13 @@ export default function PurchaseRequisitionsPage() {
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [viewPRDetails, setViewPRDetails] = useState<any>(null);
   const [selectedVendorId, setSelectedVendorId] = useState('');
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editPRData, setEditPRData] = useState<{ required_by_date: string; priority: number; reason: string; notes: string }>({
+    required_by_date: '',
+    priority: 5,
+    reason: '',
+    notes: '',
+  });
 
   // Form state
   const [nextPRNumber, setNextPRNumber] = useState<string>('');
@@ -411,6 +422,45 @@ export default function PurchaseRequisitionsPage() {
     },
     onError: (error: Error) => toast.error(error.message || 'Failed to delete PR'),
   });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { required_by_date?: string; priority?: number; reason?: string; notes?: string } }) =>
+      requisitionsApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-requisitions'] });
+      queryClient.invalidateQueries({ queryKey: ['pr-stats'] });
+      toast.success('PR updated successfully');
+      setIsEditDialogOpen(false);
+      setSelectedPR(null);
+      setEditPRData({ required_by_date: '', priority: 5, reason: '', notes: '' });
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to update PR'),
+  });
+
+  // Handle Edit PR
+  const handleEditPR = (pr: PurchaseRequisition) => {
+    setSelectedPR(pr);
+    setEditPRData({
+      required_by_date: pr.required_by_date || '',
+      priority: pr.priority || 5,
+      reason: pr.reason || '',
+      notes: pr.notes || '',
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdatePR = () => {
+    if (!selectedPR) return;
+    updateMutation.mutate({
+      id: selectedPR.id,
+      data: {
+        required_by_date: editPRData.required_by_date || undefined,
+        priority: editPRData.priority,
+        reason: editPRData.reason || undefined,
+        notes: editPRData.notes || undefined,
+      },
+    });
+  };
 
   // Handle Print PR - Client-side HTML generation
   const handlePrintPR = async (pr: PurchaseRequisition) => {
@@ -824,7 +874,14 @@ export default function PurchaseRequisitionsPage() {
                 <Eye className="mr-2 h-4 w-4" />
                 View Details
               </DropdownMenuItem>
-              {/* 2. Convert to PO - Only for APPROVED */}
+              {/* 2. Edit PR - Only for DRAFT and SUBMITTED */}
+              {(pr.status === 'DRAFT' || pr.status === 'SUBMITTED') && (
+                <DropdownMenuItem onClick={() => handleEditPR(pr)}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit PR
+                </DropdownMenuItem>
+              )}
+              {/* 3. Convert to PO - Only for APPROVED */}
               {pr.status === 'APPROVED' && (
                 <DropdownMenuItem onClick={() => handleConvertToPO(pr)}>
                   <ArrowRight className="mr-2 h-4 w-4" />
@@ -1494,6 +1551,92 @@ export default function PurchaseRequisitionsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit PR Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setIsEditDialogOpen(false);
+          setSelectedPR(null);
+          setEditPRData({ required_by_date: '', priority: 5, reason: '', notes: '' });
+        }
+      }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Purchase Requisition</DialogTitle>
+            <DialogDescription>
+              Update PR {selectedPR?.requisition_number}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-required-date">Required By Date</Label>
+              <Input
+                id="edit-required-date"
+                type="date"
+                value={editPRData.required_by_date}
+                onChange={(e) => setEditPRData({ ...editPRData, required_by_date: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-priority">Priority (1-10)</Label>
+              <Select
+                value={String(editPRData.priority)}
+                onValueChange={(value) => setEditPRData({ ...editPRData, priority: parseInt(value) })}
+              >
+                <SelectTrigger id="edit-priority">
+                  <SelectValue placeholder="Select priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1 - Low</SelectItem>
+                  <SelectItem value="3">3 - Normal</SelectItem>
+                  <SelectItem value="5">5 - Medium</SelectItem>
+                  <SelectItem value="7">7 - High</SelectItem>
+                  <SelectItem value="10">10 - Urgent</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-reason">Reason / Justification</Label>
+              <Textarea
+                id="edit-reason"
+                value={editPRData.reason}
+                onChange={(e) => setEditPRData({ ...editPRData, reason: e.target.value })}
+                placeholder="Enter reason for requisition"
+                rows={3}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-notes">Notes</Label>
+              <Textarea
+                id="edit-notes"
+                value={editPRData.notes}
+                onChange={(e) => setEditPRData({ ...editPRData, notes: e.target.value })}
+                placeholder="Additional notes"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsEditDialogOpen(false);
+                setSelectedPR(null);
+                setEditPRData({ required_by_date: '', priority: 5, reason: '', notes: '' });
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUpdatePR}
+              disabled={updateMutation.isPending}
+            >
+              {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Update PR
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* View Details Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={(open) => {

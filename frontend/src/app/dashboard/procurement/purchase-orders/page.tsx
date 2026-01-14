@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, FileText, Send, CheckCircle, X, Loader2, Trash2, Download, Printer, Package, Barcode, Lock, FileSpreadsheet } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, FileText, Send, CheckCircle, X, Loader2, Trash2, Download, Printer, Package, Barcode, Lock, FileSpreadsheet, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/providers/auth-provider';
 import { Button } from '@/components/ui/button';
@@ -99,6 +99,13 @@ interface PurchaseOrder {
   gst_amount: number;
   grand_total: number;
   notes?: string;
+  payment_terms?: string;
+  freight_charges?: number;
+  packing_charges?: number;
+  other_charges?: number;
+  terms_and_conditions?: string;
+  special_instructions?: string;
+  internal_notes?: string;
   items?: POItem[];
   created_at: string;
 }
@@ -154,6 +161,28 @@ export default function PurchaseOrdersPage() {
   const [paymentReference, setPaymentReference] = useState<string>('');
   const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [isRecordingPayment, setIsRecordingPayment] = useState(false);
+
+  // Edit PO state
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editPOData, setEditPOData] = useState<{
+    expected_delivery_date: string;
+    payment_terms: string;
+    freight_charges: number;
+    packing_charges: number;
+    other_charges: number;
+    terms_and_conditions: string;
+    special_instructions: string;
+    internal_notes: string;
+  }>({
+    expected_delivery_date: '',
+    payment_terms: '',
+    freight_charges: 0,
+    packing_charges: 0,
+    other_charges: 0,
+    terms_and_conditions: '',
+    special_instructions: '',
+    internal_notes: '',
+  });
 
   const [formData, setFormData] = useState({
     requisition_id: '',  // Required - PO must be linked to an approved PR
@@ -344,6 +373,61 @@ export default function PurchaseOrdersPage() {
     },
     onError: (error: Error) => toast.error(error.message || 'Failed to delete PO'),
   });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+      purchaseOrdersApi.update(id, data as Parameters<typeof purchaseOrdersApi.update>[1]),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      toast.success('PO updated successfully');
+      setIsEditDialogOpen(false);
+      setSelectedPO(null);
+      setEditPOData({
+        expected_delivery_date: '',
+        payment_terms: '',
+        freight_charges: 0,
+        packing_charges: 0,
+        other_charges: 0,
+        terms_and_conditions: '',
+        special_instructions: '',
+        internal_notes: '',
+      });
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to update PO'),
+  });
+
+  // Handle Edit PO
+  const handleEditPO = (po: PurchaseOrder) => {
+    setSelectedPO(po);
+    setEditPOData({
+      expected_delivery_date: po.expected_delivery_date || '',
+      payment_terms: po.payment_terms || '',
+      freight_charges: po.freight_charges || 0,
+      packing_charges: po.packing_charges || 0,
+      other_charges: po.other_charges || 0,
+      terms_and_conditions: po.terms_and_conditions || '',
+      special_instructions: po.special_instructions || '',
+      internal_notes: po.internal_notes || '',
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdatePO = () => {
+    if (!selectedPO) return;
+    updateMutation.mutate({
+      id: selectedPO.id,
+      data: {
+        expected_delivery_date: editPOData.expected_delivery_date || undefined,
+        payment_terms: editPOData.payment_terms || undefined,
+        freight_charges: editPOData.freight_charges || undefined,
+        packing_charges: editPOData.packing_charges || undefined,
+        other_charges: editPOData.other_charges || undefined,
+        terms_and_conditions: editPOData.terms_and_conditions || undefined,
+        special_instructions: editPOData.special_instructions || undefined,
+        internal_notes: editPOData.internal_notes || undefined,
+      },
+    });
+  };
 
   // Handle lot payment recording
   const handleRecordPayment = async () => {
@@ -829,6 +913,13 @@ export default function PurchaseOrdersPage() {
               <Eye className="mr-2 h-4 w-4" />
               View Details
             </DropdownMenuItem>
+            {/* Edit PO - Only for DRAFT and PENDING_APPROVAL */}
+            {(row.original.status === 'DRAFT' || row.original.status === 'PENDING_APPROVAL') && (
+              <DropdownMenuItem onClick={() => handleEditPO(row.original)}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit PO
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => handleDownload(row.original)}>
               <Download className="mr-2 h-4 w-4" />
               Download PDF
@@ -2094,6 +2185,148 @@ export default function PurchaseOrdersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit PO Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setIsEditDialogOpen(false);
+          setSelectedPO(null);
+          setEditPOData({
+            expected_delivery_date: '',
+            payment_terms: '',
+            freight_charges: 0,
+            packing_charges: 0,
+            other_charges: 0,
+            terms_and_conditions: '',
+            special_instructions: '',
+            internal_notes: '',
+          });
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Purchase Order</DialogTitle>
+            <DialogDescription>
+              Update PO {selectedPO?.po_number}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-expected-date">Expected Delivery Date</Label>
+                <Input
+                  id="edit-expected-date"
+                  type="date"
+                  value={editPOData.expected_delivery_date}
+                  onChange={(e) => setEditPOData({ ...editPOData, expected_delivery_date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-payment-terms">Payment Terms</Label>
+                <Input
+                  id="edit-payment-terms"
+                  value={editPOData.payment_terms}
+                  onChange={(e) => setEditPOData({ ...editPOData, payment_terms: e.target.value })}
+                  placeholder="e.g., Net 30, 50% Advance"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-freight">Freight Charges</Label>
+                <Input
+                  id="edit-freight"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={editPOData.freight_charges}
+                  onChange={(e) => setEditPOData({ ...editPOData, freight_charges: parseFloat(e.target.value) || 0 })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-packing">Packing Charges</Label>
+                <Input
+                  id="edit-packing"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={editPOData.packing_charges}
+                  onChange={(e) => setEditPOData({ ...editPOData, packing_charges: parseFloat(e.target.value) || 0 })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-other">Other Charges</Label>
+                <Input
+                  id="edit-other"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={editPOData.other_charges}
+                  onChange={(e) => setEditPOData({ ...editPOData, other_charges: parseFloat(e.target.value) || 0 })}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-terms">Terms & Conditions</Label>
+              <Textarea
+                id="edit-terms"
+                value={editPOData.terms_and_conditions}
+                onChange={(e) => setEditPOData({ ...editPOData, terms_and_conditions: e.target.value })}
+                placeholder="Enter terms and conditions"
+                rows={3}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-instructions">Special Instructions</Label>
+              <Textarea
+                id="edit-instructions"
+                value={editPOData.special_instructions}
+                onChange={(e) => setEditPOData({ ...editPOData, special_instructions: e.target.value })}
+                placeholder="Enter special instructions for vendor"
+                rows={2}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-notes">Internal Notes</Label>
+              <Textarea
+                id="edit-notes"
+                value={editPOData.internal_notes}
+                onChange={(e) => setEditPOData({ ...editPOData, internal_notes: e.target.value })}
+                placeholder="Internal notes (not visible to vendor)"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsEditDialogOpen(false);
+                setSelectedPO(null);
+                setEditPOData({
+                  expected_delivery_date: '',
+                  payment_terms: '',
+                  freight_charges: 0,
+                  packing_charges: 0,
+                  other_charges: 0,
+                  terms_and_conditions: '',
+                  special_instructions: '',
+                  internal_notes: '',
+                });
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUpdatePO}
+              disabled={updateMutation.isPending}
+            >
+              {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Update PO
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* PO Created Success Dialog */}
       <Dialog open={isSuccessDialogOpen} onOpenChange={setIsSuccessDialogOpen}>

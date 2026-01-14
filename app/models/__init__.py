@@ -383,6 +383,30 @@ from app.models.hr import (
     Gender,
     MaritalStatus,
 )
+# Rate Cards (Logistics Pricing)
+from app.models.rate_card import (
+    D2CRateCard,
+    D2CWeightSlab,
+    D2CSurcharge,
+    ZoneMapping,
+    B2BRateCard,
+    B2BRateSlab,
+    B2BAdditionalCharge,
+    FTLRateCard,
+    FTLLaneRate,
+    FTLAdditionalCharge,
+    FTLVehicleType,
+    CarrierPerformance,
+    ServiceType,
+    ZoneCode,
+    SurchargeType,
+    CalculationType,
+    B2BServiceType,
+    TransportMode,
+    B2BRateType,
+    FTLRateType,
+    VehicleCategory,
+)
 
 __all__ = [
     # Access Control
@@ -695,4 +719,26 @@ __all__ = [
     "PayrollStatus",
     "Gender",
     "MaritalStatus",
+    # Rate Cards (Logistics Pricing)
+    "D2CRateCard",
+    "D2CWeightSlab",
+    "D2CSurcharge",
+    "ZoneMapping",
+    "B2BRateCard",
+    "B2BRateSlab",
+    "B2BAdditionalCharge",
+    "FTLRateCard",
+    "FTLLaneRate",
+    "FTLAdditionalCharge",
+    "FTLVehicleType",
+    "CarrierPerformance",
+    "ServiceType",
+    "ZoneCode",
+    "SurchargeType",
+    "CalculationType",
+    "B2BServiceType",
+    "TransportMode",
+    "B2BRateType",
+    "FTLRateType",
+    "VehicleCategory",
 ]

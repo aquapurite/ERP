@@ -141,9 +141,9 @@ export default function EmployeesPage() {
               />
             </div>
             <Select
-              value={statusFilter}
+              value={statusFilter || 'all'}
               onValueChange={(value) => {
-                setStatusFilter(value);
+                setStatusFilter(value === 'all' ? '' : value);
                 setPage(1);
               }}
             >
@@ -151,7 +151,7 @@ export default function EmployeesPage() {
                 <SelectValue placeholder="All Statuses" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Statuses</SelectItem>
+                <SelectItem value="all">All Statuses</SelectItem>
                 {employeeStatuses.map((status) => (
                   <SelectItem key={status.value} value={status.value}>
                     {status.label}
@@ -160,9 +160,9 @@ export default function EmployeesPage() {
               </SelectContent>
             </Select>
             <Select
-              value={departmentFilter}
+              value={departmentFilter || 'all'}
               onValueChange={(value) => {
-                setDepartmentFilter(value);
+                setDepartmentFilter(value === 'all' ? '' : value);
                 setPage(1);
               }}
             >
@@ -170,7 +170,7 @@ export default function EmployeesPage() {
                 <SelectValue placeholder="All Departments" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Departments</SelectItem>
+                <SelectItem value="all">All Departments</SelectItem>
                 {departments?.map((dept) => (
                   <SelectItem key={dept.id} value={dept.id}>
                     {dept.name}

@@ -565,6 +565,43 @@ async def delete_purchase_requisition(
     return None
 
 
+@router.put("/requisitions/{pr_id}", response_model=PurchaseRequisitionResponse)
+async def update_purchase_requisition(
+    pr_id: UUID,
+    update_data: PurchaseRequisitionUpdate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Update a purchase requisition. Only DRAFT and SUBMITTED PRs can be edited."""
+    result = await db.execute(
+        select(PurchaseRequisition)
+        .options(selectinload(PurchaseRequisition.items))
+        .where(PurchaseRequisition.id == pr_id)
+    )
+    pr = result.scalar_one_or_none()
+
+    if not pr:
+        raise HTTPException(status_code=404, detail="Purchase Requisition not found")
+
+    # Only allow editing of DRAFT or SUBMITTED PRs
+    allowed_statuses = [RequisitionStatus.DRAFT, RequisitionStatus.SUBMITTED]
+    if pr.status not in allowed_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot edit PR with status '{pr.status.value}'. Only DRAFT or SUBMITTED PRs can be edited."
+        )
+
+    # Update fields
+    update_dict = update_data.model_dump(exclude_unset=True)
+    for field, value in update_dict.items():
+        setattr(pr, field, value)
+
+    await db.commit()
+    await db.refresh(pr)
+
+    return pr
+
+
 @router.post("/requisitions/{pr_id}/convert-to-po", response_model=PurchaseOrderResponse)
 async def convert_requisition_to_po(
     pr_id: UUID,
@@ -1324,6 +1361,46 @@ async def delete_purchase_order(
 
     await db.commit()
     return None
+
+
+@router.put("/orders/{po_id}", response_model=PurchaseOrderResponse)
+async def update_purchase_order(
+    po_id: UUID,
+    update_data: PurchaseOrderUpdate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Update a purchase order. Only DRAFT and PENDING_APPROVAL POs can be edited."""
+    result = await db.execute(
+        select(PurchaseOrder)
+        .options(
+            selectinload(PurchaseOrder.items),
+            selectinload(PurchaseOrder.delivery_schedules)
+        )
+        .where(PurchaseOrder.id == po_id)
+    )
+    po = result.scalar_one_or_none()
+
+    if not po:
+        raise HTTPException(status_code=404, detail="Purchase Order not found")
+
+    # Only allow editing of DRAFT or PENDING_APPROVAL POs
+    allowed_statuses = [POStatus.DRAFT, POStatus.PENDING_APPROVAL]
+    if po.status not in allowed_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot edit PO with status '{po.status.value}'. Only DRAFT or PENDING_APPROVAL POs can be edited."
+        )
+
+    # Update fields
+    update_dict = update_data.model_dump(exclude_unset=True)
+    for field, value in update_dict.items():
+        setattr(po, field, value)
+
+    await db.commit()
+    await db.refresh(po)
+
+    return po
 
 
 @router.post("/orders/{po_id}/submit", response_model=PurchaseOrderResponse)

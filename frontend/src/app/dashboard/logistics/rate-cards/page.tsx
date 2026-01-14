@@ -209,11 +209,10 @@ export default function RateCardsPage() {
   const { data: comparedRates, refetch: fetchComparedRates } = useQuery({
     queryKey: ['compared-rates', compareParams],
     queryFn: () => rateCardsApi.calculate({
-      transporter_id: transporterFilter !== 'all' ? transporterFilter : '',
-      source_pincode: compareParams.zone_from,
+      origin_pincode: compareParams.zone_from,
       destination_pincode: compareParams.zone_to,
       weight_kg: parseFloat(compareParams.weight_kg) || 0,
-      is_cod: compareParams.is_cod,
+      payment_mode: compareParams.is_cod ? 'COD' : 'PREPAID',
     }),
     enabled: false,
   });

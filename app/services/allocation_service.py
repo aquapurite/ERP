@@ -7,13 +7,14 @@ Order Allocation Engine that handles:
 3. Inventory-based allocation (warehouse with stock)
 4. Cost-optimized allocation (lowest shipping cost)
 5. SLA-based allocation (fastest delivery)
+6. Rate card-based carrier selection with pricing engine
 
 Priority-Based Flow:
 1. Get applicable allocation rules for the channel
 2. For each rule (by priority), find matching warehouse
 3. Check inventory availability
-4. Select best transporter
-5. Log allocation decision
+4. Select best transporter using pricing engine
+5. Log allocation decision with cost breakdown
 """
 import uuid
 from typing import Optional, List, Dict, Any, Tuple
@@ -45,6 +46,18 @@ from app.schemas.serviceability import (
     AllocationRuleUpdate,
     AllocationRuleResponse,
 )
+
+# Import pricing engine for rate card-based allocation
+try:
+    from app.services.pricing_engine import (
+        PricingEngine,
+        RateCalculationRequest,
+        AllocationStrategy,
+        CarrierQuote,
+    )
+    PRICING_ENGINE_AVAILABLE = True
+except ImportError:
+    PRICING_ENGINE_AVAILABLE = False
 
 
 class AllocationService:
@@ -136,11 +149,15 @@ class AllocationService:
                 [self._ws_to_candidate(ws) for ws in serviceable_warehouses[:5]]
             )
 
-        # 5. Find best transporter
+        # 5. Find best transporter using pricing engine
         transporter, shipping_info = await self._select_transporter(
             selected_warehouse,
             pincode,
-            request.payment_mode
+            payment_mode=request.payment_mode,
+            weight_kg=request.weight_kg if hasattr(request, 'weight_kg') and request.weight_kg else 1.0,
+            order_value=float(request.order_value) if request.order_value else 0,
+            dimensions=request.dimensions if hasattr(request, 'dimensions') else None,
+            allocation_strategy=request.allocation_strategy if hasattr(request, 'allocation_strategy') else "BALANCED"
         )
 
         # 6. Log allocation
@@ -169,9 +186,20 @@ class AllocationService:
             allocation_type=applied_rule.allocation_type.value if applied_rule and hasattr(applied_rule.allocation_type, 'value') else "NEAREST",
             decision_factors=decision_factors,
             recommended_transporter_id=transporter.id if transporter else None,
-            recommended_transporter_code=transporter.code if transporter else None,
+            recommended_transporter_code=transporter.code if transporter else shipping_info.get("carrier_code") if shipping_info else None,
+            recommended_transporter_name=transporter.name if transporter else shipping_info.get("carrier_name") if shipping_info else None,
             estimated_delivery_days=shipping_info.get("estimated_days") if shipping_info else selected_warehouse.estimated_days,
-            estimated_shipping_cost=shipping_info.get("rate") if shipping_info else selected_warehouse.shipping_cost
+            estimated_delivery_days_min=shipping_info.get("estimated_days_min") if shipping_info else None,
+            estimated_shipping_cost=shipping_info.get("rate") if shipping_info else selected_warehouse.shipping_cost,
+            # Pricing engine details
+            cost_breakdown=shipping_info.get("cost_breakdown") if shipping_info else None,
+            rate_card_id=shipping_info.get("rate_card_id") if shipping_info else None,
+            rate_card_code=shipping_info.get("rate_card_code") if shipping_info else None,
+            allocation_score=shipping_info.get("allocation_score") if shipping_info else None,
+            segment=shipping_info.get("segment") if shipping_info else None,
+            zone=shipping_info.get("zone") if shipping_info else None,
+            allocation_strategy=shipping_info.get("strategy") if shipping_info else None,
+            alternative_carriers=shipping_info.get("alternatives") if shipping_info else None,
         )
 
     async def _get_order(self, order_id: uuid.UUID) -> Optional[Order]:
@@ -356,12 +384,134 @@ class AllocationService:
         self,
         warehouse_serviceability: WarehouseServiceability,
         destination_pincode: str,
-        payment_mode: Optional[str] = None
+        payment_mode: Optional[str] = None,
+        weight_kg: float = 1.0,
+        order_value: float = 0,
+        dimensions: Optional[Dict] = None,
+        allocation_strategy: str = "BALANCED"
     ) -> Tuple[Optional[Transporter], Optional[Dict]]:
-        """Select best transporter for the route."""
+        """
+        Select best transporter for the route.
+
+        Uses pricing engine if available for rate card-based selection,
+        falls back to TransporterServiceability otherwise.
+        """
         warehouse = warehouse_serviceability.warehouse
         origin_pincode = warehouse.pincode
 
+        # Try pricing engine first for rate card-based selection
+        if PRICING_ENGINE_AVAILABLE:
+            transporter, shipping_info = await self._select_transporter_with_pricing_engine(
+                origin_pincode=origin_pincode,
+                destination_pincode=destination_pincode,
+                payment_mode=payment_mode,
+                weight_kg=weight_kg,
+                order_value=order_value,
+                dimensions=dimensions,
+                allocation_strategy=allocation_strategy
+            )
+            if transporter or shipping_info:
+                return transporter, shipping_info
+
+        # Fallback to TransporterServiceability
+        return await self._select_transporter_legacy(
+            origin_pincode=origin_pincode,
+            destination_pincode=destination_pincode,
+            payment_mode=payment_mode
+        )
+
+    async def _select_transporter_with_pricing_engine(
+        self,
+        origin_pincode: str,
+        destination_pincode: str,
+        payment_mode: Optional[str] = None,
+        weight_kg: float = 1.0,
+        order_value: float = 0,
+        dimensions: Optional[Dict] = None,
+        allocation_strategy: str = "BALANCED"
+    ) -> Tuple[Optional[Transporter], Optional[Dict]]:
+        """
+        Select transporter using pricing engine and rate cards.
+
+        Returns carrier with full cost breakdown and performance data.
+        """
+        try:
+            engine = PricingEngine(self.db)
+
+            # Build rate calculation request
+            request = RateCalculationRequest(
+                origin_pincode=origin_pincode,
+                destination_pincode=destination_pincode,
+                weight_kg=weight_kg,
+                length_cm=dimensions.get("length") if dimensions else None,
+                width_cm=dimensions.get("width") if dimensions else None,
+                height_cm=dimensions.get("height") if dimensions else None,
+                payment_mode=payment_mode or "PREPAID",
+                order_value=order_value,
+            )
+
+            # Get allocation strategy enum
+            strategy = AllocationStrategy.BALANCED
+            if allocation_strategy == "CHEAPEST_FIRST":
+                strategy = AllocationStrategy.CHEAPEST_FIRST
+            elif allocation_strategy == "FASTEST_FIRST":
+                strategy = AllocationStrategy.FASTEST_FIRST
+            elif allocation_strategy == "BEST_SLA":
+                strategy = AllocationStrategy.BEST_SLA
+
+            # Allocate carrier
+            result = await engine.allocate(request, strategy)
+
+            if not result.get("success") or not result.get("allocation"):
+                return None, None
+
+            allocation = result["allocation"]
+            carrier = allocation.get("carrier", {})
+
+            # Get transporter from database
+            transporter = None
+            if carrier.get("id"):
+                try:
+                    transporter_id = uuid.UUID(carrier["id"])
+                    query = select(Transporter).where(Transporter.id == transporter_id)
+                    db_result = await self.db.execute(query)
+                    transporter = db_result.scalar_one_or_none()
+                except (ValueError, Exception):
+                    pass
+
+            # Build shipping info with full cost breakdown
+            shipping_info = {
+                "estimated_days": allocation.get("estimated_delivery", {}).get("max_days", 5),
+                "estimated_days_min": allocation.get("estimated_delivery", {}).get("min_days", 2),
+                "rate": allocation.get("total_cost", 0),
+                "cost_breakdown": allocation.get("cost_breakdown", {}),
+                "rate_card_id": allocation.get("rate_card_id"),
+                "rate_card_code": allocation.get("rate_card_code"),
+                "carrier_code": carrier.get("code"),
+                "carrier_name": carrier.get("name"),
+                "allocation_score": allocation.get("score", 0),
+                "segment": result.get("segment"),
+                "zone": result.get("zone"),
+                "strategy": result.get("strategy"),
+                "cod_available": payment_mode == "COD",
+                "alternatives": result.get("alternatives", []),
+            }
+
+            return transporter, shipping_info
+
+        except Exception as e:
+            # Log error and fall back to legacy method
+            import logging
+            logging.warning(f"Pricing engine error: {e}, falling back to legacy method")
+            return None, None
+
+    async def _select_transporter_legacy(
+        self,
+        origin_pincode: str,
+        destination_pincode: str,
+        payment_mode: Optional[str] = None
+    ) -> Tuple[Optional[Transporter], Optional[Dict]]:
+        """Legacy transporter selection using TransporterServiceability."""
         query = (
             select(TransporterServiceability)
             .join(Transporter)
@@ -388,7 +538,8 @@ class AllocationService:
             return ts.transporter, {
                 "estimated_days": ts.estimated_days,
                 "rate": ts.rate,
-                "cod_available": ts.cod_available
+                "cod_available": ts.cod_available,
+                "source": "legacy_serviceability"
             }
 
         return None, None

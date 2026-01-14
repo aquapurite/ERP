@@ -239,11 +239,11 @@ export default function BankReconciliationPage() {
         description="Match bank statements with book entries"
         actions={
           <div className="flex gap-2">
-            <Button variant="outline">
+            <Button variant="outline" onClick={() => toast.info('Import Statement feature coming soon')}>
               <Upload className="mr-2 h-4 w-4" />
               Import Statement
             </Button>
-            <Button variant="outline">
+            <Button variant="outline" onClick={() => toast.info('Export Report feature coming soon')}>
               <Download className="mr-2 h-4 w-4" />
               Export Report
             </Button>

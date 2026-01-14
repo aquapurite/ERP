@@ -143,9 +143,9 @@ export default function LeavesPage() {
         <CardContent className="pt-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-center">
             <Select
-              value={statusFilter}
+              value={statusFilter || 'all'}
               onValueChange={(value) => {
-                setStatusFilter(value);
+                setStatusFilter(value === 'all' ? '' : value);
                 setPage(1);
               }}
             >
@@ -153,7 +153,7 @@ export default function LeavesPage() {
                 <SelectValue placeholder="All Statuses" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Statuses</SelectItem>
+                <SelectItem value="all">All Statuses</SelectItem>
                 {leaveStatuses.map((status) => (
                   <SelectItem key={status.value} value={status.value}>
                     {status.label}

@@ -406,10 +406,10 @@ export default function ApprovalsPage() {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {statsLoading ? (
+            {statsLoading || pendingLoading ? (
               <Skeleton className="h-8 w-16" />
             ) : (
-              <div className="text-2xl font-bold">{stats?.pending_count ?? 0}</div>
+              <div className="text-2xl font-bold">{pendingData?.items?.length ?? stats?.pending_count ?? 0}</div>
             )}
             <p className="text-xs text-muted-foreground">awaiting your action</p>
           </CardContent>

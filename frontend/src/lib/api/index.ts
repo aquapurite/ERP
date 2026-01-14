@@ -1850,30 +1850,281 @@ export const threeWayMatchApi = {
 // LOGISTICS API
 // ============================================
 
-// Rate Cards API
+// Rate Cards API - D2C (Direct to Consumer)
 export const rateCardsApi = {
-  list: async (params?: { page?: number; size?: number; transporter_id?: string; is_active?: boolean }) => {
-    const { data } = await apiClient.get('/logistics/rate-cards', { params });
+  // Legacy API compatibility (uses D2C as default)
+  list: async (params?: { page?: number; size?: number; transporter_id?: string; is_active?: boolean; service_type?: string }) => {
+    const { data } = await apiClient.get('/rate-cards/d2c', { params });
     return data;
   },
   getById: async (id: string) => {
-    const { data } = await apiClient.get(`/logistics/rate-cards/${id}`);
+    const { data } = await apiClient.get(`/rate-cards/d2c/${id}`);
     return data;
   },
-  create: async (rateCard: { transporter_id: string; name: string; source_zone?: string; destination_zone?: string; weight_slab: string; rate_per_kg: number; min_charge: number; fuel_surcharge_percent?: number; cod_charges?: number; rto_charges?: number; effective_from: string; effective_to?: string; is_active?: boolean }) => {
-    const { data } = await apiClient.post('/logistics/rate-cards', rateCard);
+  create: async (rateCard: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/rate-cards/d2c', rateCard);
     return data;
   },
-  update: async (id: string, rateCard: Partial<{ name: string; source_zone?: string; destination_zone?: string; weight_slab: string; rate_per_kg: number; min_charge: number; fuel_surcharge_percent?: number; cod_charges?: number; rto_charges?: number; effective_from: string; effective_to?: string; is_active?: boolean }>) => {
-    const { data } = await apiClient.put(`/logistics/rate-cards/${id}`, rateCard);
+  update: async (id: string, rateCard: Record<string, unknown>) => {
+    const { data } = await apiClient.put(`/rate-cards/d2c/${id}`, rateCard);
     return data;
   },
   delete: async (id: string) => {
-    await apiClient.delete(`/logistics/rate-cards/${id}`);
+    await apiClient.delete(`/rate-cards/d2c/${id}`);
   },
-  calculate: async (params: { transporter_id: string; source_pincode: string; destination_pincode: string; weight_kg: number; is_cod?: boolean }) => {
-    const { data } = await apiClient.post('/logistics/rate-cards/calculate', params);
+  calculate: async (params: { origin_pincode: string; destination_pincode: string; weight_kg: number; payment_mode?: string; order_value?: number }) => {
+    const { data } = await apiClient.post('/rate-cards/calculate', params);
     return data;
+  },
+
+  // D2C Rate Cards (Courier Partners)
+  d2c: {
+    list: async (params?: { page?: number; size?: number; transporter_id?: string; service_type?: string; is_active?: boolean; effective_date?: string }) => {
+      const { data } = await apiClient.get('/rate-cards/d2c', { params });
+      return data;
+    },
+    getById: async (id: string) => {
+      const { data } = await apiClient.get(`/rate-cards/d2c/${id}`);
+      return data;
+    },
+    create: async (rateCard: Record<string, unknown>) => {
+      const { data } = await apiClient.post('/rate-cards/d2c', rateCard);
+      return data;
+    },
+    update: async (id: string, rateCard: Record<string, unknown>) => {
+      const { data } = await apiClient.put(`/rate-cards/d2c/${id}`, rateCard);
+      return data;
+    },
+    delete: async (id: string, hardDelete?: boolean) => {
+      await apiClient.delete(`/rate-cards/d2c/${id}`, { params: { hard_delete: hardDelete } });
+    },
+    addSlab: async (rateCardId: string, slab: Record<string, unknown>) => {
+      const { data } = await apiClient.post(`/rate-cards/d2c/${rateCardId}/slabs`, slab);
+      return data;
+    },
+    bulkAddSlabs: async (rateCardId: string, slabs: Record<string, unknown>[], replaceExisting?: boolean) => {
+      const { data } = await apiClient.post(`/rate-cards/d2c/${rateCardId}/slabs/bulk`, { slabs }, { params: { replace_existing: replaceExisting } });
+      return data;
+    },
+    deleteSlab: async (rateCardId: string, slabId: string) => {
+      await apiClient.delete(`/rate-cards/d2c/${rateCardId}/slabs/${slabId}`);
+    },
+    addSurcharge: async (rateCardId: string, surcharge: Record<string, unknown>) => {
+      const { data } = await apiClient.post(`/rate-cards/d2c/${rateCardId}/surcharges`, surcharge);
+      return data;
+    },
+    bulkAddSurcharges: async (rateCardId: string, surcharges: Record<string, unknown>[], replaceExisting?: boolean) => {
+      const { data } = await apiClient.post(`/rate-cards/d2c/${rateCardId}/surcharges/bulk`, { surcharges }, { params: { replace_existing: replaceExisting } });
+      return data;
+    },
+    deleteSurcharge: async (rateCardId: string, surchargeId: string) => {
+      await apiClient.delete(`/rate-cards/d2c/${rateCardId}/surcharges/${surchargeId}`);
+    },
+  },
+
+  // B2B Rate Cards (LTL/PTL)
+  b2b: {
+    list: async (params?: { page?: number; size?: number; transporter_id?: string; service_type?: string; is_active?: boolean }) => {
+      const { data } = await apiClient.get('/rate-cards/b2b', { params });
+      return data;
+    },
+    getById: async (id: string) => {
+      const { data } = await apiClient.get(`/rate-cards/b2b/${id}`);
+      return data;
+    },
+    create: async (rateCard: Record<string, unknown>) => {
+      const { data } = await apiClient.post('/rate-cards/b2b', rateCard);
+      return data;
+    },
+    update: async (id: string, rateCard: Record<string, unknown>) => {
+      const { data } = await apiClient.put(`/rate-cards/b2b/${id}`, rateCard);
+      return data;
+    },
+    delete: async (id: string, hardDelete?: boolean) => {
+      await apiClient.delete(`/rate-cards/b2b/${id}`, { params: { hard_delete: hardDelete } });
+    },
+    addSlab: async (rateCardId: string, slab: Record<string, unknown>) => {
+      const { data } = await apiClient.post(`/rate-cards/b2b/${rateCardId}/slabs`, slab);
+      return data;
+    },
+    bulkAddSlabs: async (rateCardId: string, slabs: Record<string, unknown>[], replaceExisting?: boolean) => {
+      const { data } = await apiClient.post(`/rate-cards/b2b/${rateCardId}/slabs/bulk`, { slabs }, { params: { replace_existing: replaceExisting } });
+      return data;
+    },
+    deleteSlab: async (rateCardId: string, slabId: string) => {
+      await apiClient.delete(`/rate-cards/b2b/${rateCardId}/slabs/${slabId}`);
+    },
+  },
+
+  // FTL Rate Cards (Full Truck Load)
+  ftl: {
+    list: async (params?: { page?: number; size?: number; transporter_id?: string; rate_type?: string; is_active?: boolean }) => {
+      const { data } = await apiClient.get('/rate-cards/ftl', { params });
+      return data;
+    },
+    getById: async (id: string) => {
+      const { data } = await apiClient.get(`/rate-cards/ftl/${id}`);
+      return data;
+    },
+    create: async (rateCard: Record<string, unknown>) => {
+      const { data } = await apiClient.post('/rate-cards/ftl', rateCard);
+      return data;
+    },
+    update: async (id: string, rateCard: Record<string, unknown>) => {
+      const { data } = await apiClient.put(`/rate-cards/ftl/${id}`, rateCard);
+      return data;
+    },
+    delete: async (id: string, hardDelete?: boolean) => {
+      await apiClient.delete(`/rate-cards/ftl/${id}`, { params: { hard_delete: hardDelete } });
+    },
+    addLane: async (rateCardId: string, lane: Record<string, unknown>) => {
+      const { data } = await apiClient.post(`/rate-cards/ftl/${rateCardId}/lanes`, lane);
+      return data;
+    },
+    bulkAddLanes: async (rateCardId: string, laneRates: Record<string, unknown>[], replaceExisting?: boolean) => {
+      const { data } = await apiClient.post(`/rate-cards/ftl/${rateCardId}/lanes/bulk`, { lane_rates: laneRates }, { params: { replace_existing: replaceExisting } });
+      return data;
+    },
+    deleteLane: async (rateCardId: string, laneId: string) => {
+      await apiClient.delete(`/rate-cards/ftl/${rateCardId}/lanes/${laneId}`);
+    },
+    searchLanes: async (params?: { origin_city?: string; destination_city?: string; vehicle_type?: string; rate_card_id?: string; page?: number; size?: number }) => {
+      const { data } = await apiClient.get('/rate-cards/ftl/lanes/search', { params });
+      return data;
+    },
+  },
+
+  // Zone Mappings
+  zones: {
+    list: async (params?: { page?: number; size?: number; origin_state?: string; destination_state?: string; zone?: string }) => {
+      const { data } = await apiClient.get('/rate-cards/zones', { params });
+      return data;
+    },
+    lookup: async (originPincode: string, destinationPincode: string) => {
+      const { data } = await apiClient.get('/rate-cards/zones/lookup', { params: { origin_pincode: originPincode, destination_pincode: destinationPincode } });
+      return data;
+    },
+    create: async (mapping: Record<string, unknown>) => {
+      const { data } = await apiClient.post('/rate-cards/zones', mapping);
+      return data;
+    },
+    bulkCreate: async (mappings: Record<string, unknown>[], skipDuplicates?: boolean) => {
+      const { data } = await apiClient.post('/rate-cards/zones/bulk', { mappings }, { params: { skip_duplicates: skipDuplicates } });
+      return data;
+    },
+    delete: async (id: string) => {
+      await apiClient.delete(`/rate-cards/zones/${id}`);
+    },
+  },
+
+  // Vehicle Types (FTL)
+  vehicleTypes: {
+    list: async (params?: { page?: number; size?: number; category?: string; is_active?: boolean }) => {
+      const { data } = await apiClient.get('/rate-cards/vehicle-types', { params });
+      return data;
+    },
+    getById: async (id: string) => {
+      const { data } = await apiClient.get(`/rate-cards/vehicle-types/${id}`);
+      return data;
+    },
+    create: async (vehicleType: Record<string, unknown>) => {
+      const { data } = await apiClient.post('/rate-cards/vehicle-types', vehicleType);
+      return data;
+    },
+    update: async (id: string, vehicleType: Record<string, unknown>) => {
+      const { data } = await apiClient.put(`/rate-cards/vehicle-types/${id}`, vehicleType);
+      return data;
+    },
+    delete: async (id: string) => {
+      await apiClient.delete(`/rate-cards/vehicle-types/${id}`);
+    },
+  },
+
+  // Carrier Performance
+  performance: {
+    list: async (params?: { page?: number; size?: number; transporter_id?: string; zone?: string; period_start?: string }) => {
+      const { data } = await apiClient.get('/rate-cards/carriers/performance', { params });
+      return data;
+    },
+    getByCarrier: async (transporterId: string, params?: { period_start?: string; period_end?: string; zone?: string }) => {
+      const { data } = await apiClient.get(`/rate-cards/carriers/${transporterId}/performance`, { params });
+      return data;
+    },
+  },
+
+  // Summary
+  summary: async (transporterId?: string) => {
+    const { data } = await apiClient.get('/rate-cards/summary', { params: { transporter_id: transporterId } });
+    return data;
+  },
+  dropdown: async (segment: 'd2c' | 'b2b' | 'ftl', transporterId?: string, isActive?: boolean) => {
+    const { data } = await apiClient.get('/rate-cards/dropdown', { params: { segment, transporter_id: transporterId, is_active: isActive } });
+    return data;
+  },
+
+  // Pricing Engine
+  pricing: {
+    calculateRate: async (params: {
+      origin_pincode: string;
+      destination_pincode: string;
+      weight_kg: number;
+      length_cm?: number;
+      width_cm?: number;
+      height_cm?: number;
+      payment_mode?: 'PREPAID' | 'COD';
+      order_value?: number;
+      channel?: string;
+      declared_value?: number;
+      is_fragile?: boolean;
+      num_packages?: number;
+      service_type?: string;
+      transporter_ids?: string[];
+    }) => {
+      const { data } = await apiClient.post('/rate-cards/calculate-rate', params);
+      return data;
+    },
+    compareCarriers: async (
+      params: {
+        origin_pincode: string;
+        destination_pincode: string;
+        weight_kg: number;
+        length_cm?: number;
+        width_cm?: number;
+        height_cm?: number;
+        payment_mode?: 'PREPAID' | 'COD';
+        order_value?: number;
+        channel?: string;
+        declared_value?: number;
+        is_fragile?: boolean;
+        num_packages?: number;
+        service_type?: string;
+        transporter_ids?: string[];
+      },
+      strategy?: 'CHEAPEST_FIRST' | 'FASTEST_FIRST' | 'BEST_SLA' | 'BALANCED'
+    ) => {
+      const { data } = await apiClient.post('/rate-cards/compare-carriers', params, { params: { strategy } });
+      return data;
+    },
+    allocate: async (params: {
+      origin_pincode: string;
+      destination_pincode: string;
+      weight_kg: number;
+      length_cm?: number;
+      width_cm?: number;
+      height_cm?: number;
+      payment_mode?: 'PREPAID' | 'COD';
+      order_value?: number;
+      channel?: string;
+      declared_value?: number;
+      is_fragile?: boolean;
+      num_packages?: number;
+      service_type?: string;
+      transporter_ids?: string[];
+      strategy?: 'CHEAPEST_FIRST' | 'FASTEST_FIRST' | 'BEST_SLA' | 'BALANCED';
+    }) => {
+      const { data } = await apiClient.post('/rate-cards/allocate', params);
+      return data;
+    },
   },
 };
 
@@ -1908,6 +2159,59 @@ export const serviceabilityApi = {
   getDashboard: async () => {
     const { data } = await apiClient.get('/serviceability/dashboard');
     return data;
+  },
+  // Allocation
+  allocateOrder: async (request: {
+    order_id: string;
+    customer_pincode: string;
+    channel_code?: string;
+    payment_mode?: string;
+    order_value?: number;
+    items?: { product_id: string; quantity: number }[];
+    weight_kg?: number;
+    dimensions?: { length: number; width: number; height: number };
+    allocation_strategy?: 'CHEAPEST_FIRST' | 'FASTEST_FIRST' | 'BEST_SLA' | 'BALANCED';
+  }) => {
+    const { data } = await apiClient.post('/serviceability/allocate', request);
+    return data;
+  },
+  getAllocationLogs: async (params?: {
+    order_id?: string;
+    is_successful?: boolean;
+    limit?: number;
+  }) => {
+    const { data } = await apiClient.get('/serviceability/allocation-logs', { params });
+    return data;
+  },
+  // Allocation Rules
+  getAllocationRules: async (params?: { channel_code?: string; is_active?: boolean }) => {
+    const { data } = await apiClient.get('/serviceability/allocation-rules', { params });
+    return data;
+  },
+  createAllocationRule: async (rule: {
+    name: string;
+    description?: string;
+    channel_code?: string;
+    priority: number;
+    allocation_type: string;
+    fixed_warehouse_id?: string;
+    priority_factors?: string[];
+    min_order_value?: number;
+    max_order_value?: number;
+    payment_mode?: string;
+    allow_split?: boolean;
+    max_splits?: number;
+    is_active?: boolean;
+  }) => {
+    const { data } = await apiClient.post('/serviceability/allocation-rules', rule);
+    return data;
+  },
+  updateAllocationRule: async (id: string, rule: Record<string, unknown>) => {
+    const { data } = await apiClient.put(`/serviceability/allocation-rules/${id}`, rule);
+    return data;
+  },
+  deleteAllocationRule: async (id: string) => {
+    await apiClient.delete(`/serviceability/allocation-rules/${id}`);
   },
 };
 

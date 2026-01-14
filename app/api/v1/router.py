@@ -58,6 +58,7 @@ from app.api.v1.endpoints import (
     shipments,
     manifests,
     serviceability,  # Pincode Serviceability & Order Allocation
+    rate_cards,  # Rate Cards (D2C, B2B, FTL)
     # Call Center CRM (NEW)
     call_center,
     # Lead Management (NEW)
@@ -287,6 +288,11 @@ api_router.include_router(
 api_router.include_router(
     serviceability.router,
     tags=["Serviceability & Order Allocation"]
+)
+api_router.include_router(
+    rate_cards.router,
+    prefix="/rate-cards",
+    tags=["Rate Cards (D2C/B2B/FTL)"]
 )
 
 # ==================== Call Center CRM ====================
