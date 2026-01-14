@@ -20,6 +20,7 @@ from app.database import Base
 if TYPE_CHECKING:
     from app.models.warehouse import Warehouse
     from app.models.user import User
+    from app.models.tds import TDSDeduction
 
 
 class CompanyType(str, Enum):
@@ -335,6 +336,11 @@ class Company(Base):
     )
     bank_accounts: Mapped[List["CompanyBankAccount"]] = relationship(
         "CompanyBankAccount",
+        back_populates="company",
+        cascade="all, delete-orphan"
+    )
+    tds_deductions: Mapped[List["TDSDeduction"]] = relationship(
+        "TDSDeduction",
         back_populates="company",
         cascade="all, delete-orphan"
     )

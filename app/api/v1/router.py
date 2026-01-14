@@ -39,6 +39,7 @@ from app.api.v1.endpoints import (
     banking,  # Bank Statement Import & Reconciliation
     credentials,  # Encrypted Credentials Management
     auto_journal,  # Auto Journal Entry Generation
+    tds,  # TDS Certificate Generation
     # Dealer/Distributor (NEW)
     dealers,
     # Commission & Incentives (NEW)
@@ -75,6 +76,8 @@ from app.api.v1.endpoints import (
     payments,
     # Public Storefront APIs
     storefront,
+    # Customer Self-Service Portal
+    portal,
 )
 
 
@@ -209,6 +212,11 @@ api_router.include_router(
     prefix="/auto-journal",
     tags=["Auto Journal Entry"]
 )
+api_router.include_router(
+    tds.router,
+    prefix="/tds",
+    tags=["TDS Certificates"]
+)
 
 # ==================== Dealer/Distributor ====================
 api_router.include_router(
@@ -341,6 +349,13 @@ api_router.include_router(
     storefront.router,
     prefix="/storefront",
     tags=["Storefront (Public)"]
+)
+
+# ==================== Customer Self-Service Portal ====================
+api_router.include_router(
+    portal.router,
+    prefix="/portal",
+    tags=["Customer Portal"]
 )
 
 # ==================== HR & Payroll ====================
