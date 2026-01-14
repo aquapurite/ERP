@@ -399,11 +399,11 @@ class SerializationService:
         if sequence:
             return sequence
 
-        # Create new product sequence
+        # Create new product sequence - use string UUIDs for VARCHAR columns
         sequence = ProductSerialSequence(
-            id=uuid.uuid4(),
+            id=str(uuid.uuid4()),
             model_code=model_code.upper(),
-            product_id=uuid.UUID(product_id) if product_id else None,
+            product_id=str(product_id) if product_id else None,
             product_name=product_name,
             product_sku=product_sku,
             item_type=item_type,
@@ -580,11 +580,12 @@ class SerializationService:
                     item_type=item.item_type,
                 )
 
+                # Use string UUIDs - database columns are VARCHAR despite model declaring UUID
                 po_serial = POSerial(
-                    id=uuid.uuid4(),
-                    po_id=uuid.UUID(request.po_id),
-                    po_item_id=uuid.UUID(item.po_item_id) if item.po_item_id else None,
-                    product_id=uuid.UUID(item.product_id) if item.product_id else None,
+                    id=str(uuid.uuid4()),
+                    po_id=str(request.po_id),
+                    po_item_id=str(item.po_item_id) if item.po_item_id else None,
+                    product_id=str(item.product_id) if item.product_id else None,
                     product_sku=item.product_sku,
                     model_code=item.model_code.upper(),
                     item_type=item.item_type,
