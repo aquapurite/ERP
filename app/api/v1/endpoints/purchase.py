@@ -1480,8 +1480,9 @@ async def approve_purchase_order(
         from app.models.serialization import POSerial, SupplierCode
 
         # Check if serials already exist
+        # Note: Cast to str because po_serials.po_id may be VARCHAR in database
         existing_serials = await db.execute(
-            select(func.count(POSerial.id)).where(POSerial.po_id == po.id)
+            select(func.count(POSerial.id)).where(POSerial.po_id == str(po.id))
         )
         existing_count = existing_serials.scalar() or 0
 
@@ -1490,7 +1491,7 @@ async def approve_purchase_order(
             supplier_code = "AP"  # Default
             if po.vendor_id:
                 supplier_code_result = await db.execute(
-                    select(SupplierCode).where(SupplierCode.vendor_id == po.vendor_id)
+                    select(SupplierCode).where(SupplierCode.vendor_id == str(po.vendor_id))
                 )
                 supplier_code_obj = supplier_code_result.scalar_one_or_none()
                 if supplier_code_obj:
