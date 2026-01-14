@@ -293,7 +293,12 @@ class PurchaseOrderUpdate(BaseModel):
 
 
 class PurchaseOrderResponse(BaseModel):
-    """Response schema for PO."""
+    """Response schema for PO.
+
+    IMPORTANT: This schema must ONLY include fields that exist as columns
+    or properties in the PurchaseOrder model. Do NOT add fields that would
+    need to come from relationships - those must be loaded separately.
+    """
     model_config = ConfigDict(from_attributes=True)
 
     # Core identifiers
@@ -303,39 +308,32 @@ class PurchaseOrderResponse(BaseModel):
     status: POStatus
     requisition_id: Optional[UUID] = None
 
-    # Vendor info (from model fields, not relationships)
+    # Vendor info (snapshot stored on PO)
     vendor_id: UUID
     vendor_name: str
-    vendor_code: Optional[str] = None
     vendor_gstin: Optional[str] = None
-    vendor_address: Optional[str] = None
-    vendor_contact_name: Optional[str] = None
-    vendor_contact_email: Optional[str] = None
-    vendor_contact_phone: Optional[str] = None
+    vendor_address: Optional[dict] = None  # JSON field in model
 
     # Warehouse/Delivery info
     delivery_warehouse_id: UUID
-    warehouse_name: Optional[str] = None
     expected_delivery_date: Optional[date] = None
     delivery_address: Optional[dict] = None
     bill_to: Optional[dict] = None
     ship_to: Optional[dict] = None
 
     # Financial terms
-    currency: str = "INR"
-    exchange_rate: Decimal = Decimal("1")
     payment_terms: Optional[str] = None
     credit_days: int = 30
     advance_required: Decimal = Decimal("0")
+    advance_paid: Decimal = Decimal("0")
     quotation_reference: Optional[str] = None
     quotation_date: Optional[date] = None
     freight_charges: Decimal = Decimal("0")
     packing_charges: Decimal = Decimal("0")
     other_charges: Decimal = Decimal("0")
 
-    # Calculated amounts
+    # Calculated amounts (all exist in model)
     subtotal: Decimal
-    discount_percentage: Decimal = Decimal("0")
     discount_amount: Decimal
     taxable_amount: Decimal
     cgst_amount: Decimal
@@ -345,9 +343,6 @@ class PurchaseOrderResponse(BaseModel):
     total_tax: Decimal
     grand_total: Decimal
     total_received_value: Decimal = Decimal("0")
-    advance_percentage: Decimal = Decimal("0")
-    advance_paid: Decimal = Decimal("0")
-    balance_due_date: Optional[date] = None
 
     # Documents & Status
     po_pdf_url: Optional[str] = None
