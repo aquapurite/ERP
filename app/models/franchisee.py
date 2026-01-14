@@ -174,8 +174,8 @@ class Franchisee(Base):
     """Franchisee master entity."""
     __tablename__ = "franchisees"
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=uuid.uuid4
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
 
     # Identification
@@ -220,11 +220,11 @@ class Franchisee(Base):
     bank_ifsc: Mapped[Optional[str]] = mapped_column(String(20))
 
     # Hierarchy
-    parent_franchisee_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("franchisees.id"), nullable=True
+    parent_franchisee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), nullable=True
     )
-    region_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("regions.id"), nullable=True
+    region_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("regions.id"), nullable=True
     )
 
     # Commercial Terms
@@ -254,14 +254,14 @@ class Franchisee(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
     # Tracking
-    created_by_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+    created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
-    approved_by_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+    approved_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
-    account_manager_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+    account_manager_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -288,11 +288,11 @@ class FranchiseeContract(Base):
     """Franchisee contract/agreement."""
     __tablename__ = "franchisee_contracts"
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=uuid.uuid4
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    franchisee_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("franchisees.id"), index=True
+    franchisee_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
     )
 
     # Contract Details
@@ -324,21 +324,21 @@ class FranchiseeContract(Base):
     signed_document_url: Mapped[Optional[str]] = mapped_column(String(500))
 
     # Approval
-    approved_by_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+    approved_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
     # Termination
-    terminated_by_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+    terminated_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     termination_reason: Mapped[Optional[str]] = mapped_column(Text)
     terminated_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
     notes: Mapped[Optional[str]] = mapped_column(Text)
-    created_by_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+    created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -353,11 +353,11 @@ class FranchiseeTerritory(Base):
     """Territory/area assignment for franchisee."""
     __tablename__ = "franchisee_territories"
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=uuid.uuid4
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    franchisee_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("franchisees.id"), index=True
+    franchisee_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
     )
 
     # Territory Definition
@@ -385,8 +385,8 @@ class FranchiseeTerritory(Base):
     total_revenue: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
 
     notes: Mapped[Optional[str]] = mapped_column(Text)
-    created_by_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+    created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -409,14 +409,14 @@ class FranchiseeServiceability(Base):
     """
     __tablename__ = "franchisee_serviceability"
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=uuid.uuid4
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    franchisee_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("franchisees.id"), index=True
+    franchisee_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
     )
-    territory_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("franchisee_territories.id"), nullable=True
+    territory_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("franchisee_territories.id"), nullable=True
     )
 
     # Pincode mapping (indexed for fast lookups)
@@ -468,11 +468,11 @@ class FranchiseePerformance(Base):
     """Monthly/periodic performance tracking."""
     __tablename__ = "franchisee_performance"
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=uuid.uuid4
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    franchisee_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("franchisees.id"), index=True
+    franchisee_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
     )
 
     # Period
@@ -537,11 +537,11 @@ class FranchiseeTraining(Base):
     """Training and certification tracking."""
     __tablename__ = "franchisee_trainings"
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=uuid.uuid4
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    franchisee_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("franchisees.id"), index=True
+    franchisee_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
     )
 
     # Training Details
@@ -593,8 +593,8 @@ class FranchiseeTraining(Base):
 
     # Trainer
     trainer_name: Mapped[Optional[str]] = mapped_column(String(200))
-    trainer_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+    trainer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
 
     notes: Mapped[Optional[str]] = mapped_column(Text)
@@ -611,11 +611,11 @@ class FranchiseeSupport(Base):
     """Support tickets from franchisees."""
     __tablename__ = "franchisee_support_tickets"
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=uuid.uuid4
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    franchisee_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("franchisees.id"), index=True
+    franchisee_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
     )
 
     # Ticket Details
@@ -640,8 +640,8 @@ class FranchiseeSupport(Base):
     contact_phone: Mapped[Optional[str]] = mapped_column(String(20))
 
     # Assignment
-    assigned_to_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+    assigned_to_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
@@ -651,8 +651,8 @@ class FranchiseeSupport(Base):
 
     # Resolution
     resolution: Mapped[Optional[str]] = mapped_column(Text)
-    resolved_by_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+    resolved_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     resolution_time_hours: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2))
@@ -663,8 +663,8 @@ class FranchiseeSupport(Base):
 
     # Escalation
     is_escalated: Mapped[bool] = mapped_column(Boolean, default=False)
-    escalated_to_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+    escalated_to_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     escalated_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     escalation_reason: Mapped[Optional[str]] = mapped_column(Text)
@@ -695,19 +695,19 @@ class FranchiseeSupportComment(Base):
     """Comments on support tickets."""
     __tablename__ = "franchisee_support_comments"
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=uuid.uuid4
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    ticket_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("franchisee_support_tickets.id"), index=True
+    ticket_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("franchisee_support_tickets.id"), index=True
     )
 
     comment: Mapped[str] = mapped_column(Text)
     is_internal: Mapped[bool] = mapped_column(Boolean, default=False)  # Internal vs visible to franchisee
 
     # Author
-    author_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+    author_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     author_type: Mapped[str] = mapped_column(String(20))  # STAFF, FRANCHISEE
     author_name: Mapped[str] = mapped_column(String(200))
@@ -724,11 +724,11 @@ class FranchiseeAudit(Base):
     """Compliance and quality audits."""
     __tablename__ = "franchisee_audits"
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=uuid.uuid4
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    franchisee_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("franchisees.id"), index=True
+    franchisee_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
     )
 
     # Audit Details
@@ -743,8 +743,8 @@ class FranchiseeAudit(Base):
     actual_date: Mapped[Optional[date]] = mapped_column(Date)
 
     # Auditor
-    auditor_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
+    auditor_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     auditor_name: Mapped[str] = mapped_column(String(200))
 

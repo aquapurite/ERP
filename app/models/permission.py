@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Optional, List
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import UUID
 
 from app.database import Base
 
@@ -21,18 +22,18 @@ class Permission(Base):
     """
     __tablename__ = "permissions"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     code: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Module relationship
-    module_id: Mapped[str] = mapped_column(
-        String(36),
+    module_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("modules.id", ondelete="CASCADE"),
         nullable=False
     )
@@ -79,25 +80,25 @@ class RolePermission(Base):
     """
     __tablename__ = "role_permissions"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
-    role_id: Mapped[str] = mapped_column(
-        String(36),
+    role_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("roles.id", ondelete="CASCADE"),
         nullable=False
     )
-    permission_id: Mapped[str] = mapped_column(
-        String(36),
+    permission_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("permissions.id", ondelete="CASCADE"),
         nullable=False
     )
 
     # Audit fields
-    granted_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    granted_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )

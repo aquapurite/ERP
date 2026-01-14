@@ -16,6 +16,7 @@ from decimal import Decimal
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date, JSON
 from sqlalchemy import Enum as SQLEnum, UniqueConstraint, Index
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -80,10 +81,10 @@ class CommissionPlan(Base):
     """
     __tablename__ = "commission_plans"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Plan Identification
@@ -238,21 +239,21 @@ class CommissionCategoryRate(Base):
         UniqueConstraint("plan_id", "category_id", name="uq_plan_category_rate"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    plan_id: Mapped[str] = mapped_column(
-        String(36),
+    plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("commission_plans.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
-    category_id: Mapped[str] = mapped_column(
-        String(36),
+    category_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("categories.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -299,21 +300,21 @@ class CommissionProductRate(Base):
         UniqueConstraint("plan_id", "product_id", name="uq_plan_product_rate"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    plan_id: Mapped[str] = mapped_column(
-        String(36),
+    plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("commission_plans.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
-    product_id: Mapped[str] = mapped_column(
-        String(36),
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("products.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -361,10 +362,10 @@ class CommissionEarner(Base):
         Index("ix_commission_earners_type", "earner_type"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Earner Type
@@ -374,14 +375,14 @@ class CommissionEarner(Base):
     )
 
     # Link to User or Dealer
-    user_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=True,
         index=True
     )
-    dealer_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    dealer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("dealers.id", ondelete="CASCADE"),
         nullable=True,
         index=True
@@ -402,8 +403,8 @@ class CommissionEarner(Base):
     )
 
     # Commission Plan
-    plan_id: Mapped[str] = mapped_column(
-        String(36),
+    plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("commission_plans.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
@@ -491,29 +492,29 @@ class CommissionTransaction(Base):
         Index("ix_commission_transactions_status", "status"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Earner
-    earner_id: Mapped[str] = mapped_column(
-        String(36),
+    earner_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("commission_earners.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
     # Order/Service Reference
-    order_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("orders.id", ondelete="SET NULL"),
         nullable=True,
         index=True
     )
-    service_request_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    service_request_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         nullable=True,
         comment="For service engineer commissions"
     )
@@ -589,8 +590,8 @@ class CommissionTransaction(Base):
     is_eligible: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Payout Reference
-    payout_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    payout_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("commission_payouts.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -602,8 +603,8 @@ class CommissionTransaction(Base):
     clawback_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Multi-level (for hierarchical commissions)
-    parent_transaction_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    parent_transaction_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("commission_transactions.id", ondelete="SET NULL"),
         nullable=True,
         comment="Parent transaction for override commissions"
@@ -655,10 +656,10 @@ class CommissionPayout(Base):
         Index("ix_commission_payouts_date", "payout_date"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Payout Identification
@@ -724,18 +725,18 @@ class CommissionPayout(Base):
     remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Audit
-    created_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    approved_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         nullable=True
     )
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    processed_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    processed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         nullable=True
     )
     processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -778,21 +779,21 @@ class CommissionPayoutLine(Base):
         UniqueConstraint("payout_id", "earner_id", name="uq_payout_earner"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    payout_id: Mapped[str] = mapped_column(
-        String(36),
+    payout_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("commission_payouts.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
-    earner_id: Mapped[str] = mapped_column(
-        String(36),
+    earner_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("commission_earners.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -849,15 +850,15 @@ class AffiliateReferral(Base):
     """
     __tablename__ = "affiliate_referrals"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Affiliate
-    earner_id: Mapped[str] = mapped_column(
-        String(36),
+    earner_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("commission_earners.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -869,8 +870,8 @@ class AffiliateReferral(Base):
     )
 
     # Referred Customer
-    customer_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         index=True
@@ -879,8 +880,8 @@ class AffiliateReferral(Base):
     customer_phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     # Order
-    order_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("orders.id", ondelete="SET NULL"),
         nullable=True,
         index=True

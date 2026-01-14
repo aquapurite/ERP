@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Optional, List
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Float, Date, JSON
 from sqlalchemy import Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -58,10 +59,10 @@ class Shipment(Base):
     """
     __tablename__ = "shipments"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Identification
@@ -74,32 +75,32 @@ class Shipment(Base):
     )
 
     # Order reference
-    order_id: Mapped[str] = mapped_column(
-        String(36),
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("orders.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
     )
 
     # Warehouse (origin)
-    warehouse_id: Mapped[str] = mapped_column(
-        String(36),
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("warehouses.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
     )
 
     # Transporter
-    transporter_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    transporter_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("transporters.id", ondelete="SET NULL"),
         nullable=True,
         index=True
     )
 
     # Manifest reference
-    manifest_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    manifest_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("manifests.id", ondelete="SET NULL"),
         nullable=True,
         index=True
@@ -215,13 +216,13 @@ class Shipment(Base):
     total_shipping_cost: Mapped[float] = mapped_column(Float, default=0.0)
 
     # Created/Packed by
-    created_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    packed_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    packed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -318,14 +319,14 @@ class ShipmentTracking(Base):
     """
     __tablename__ = "shipment_tracking"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    shipment_id: Mapped[str] = mapped_column(
-        String(36),
+    shipment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("shipments.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -370,8 +371,8 @@ class ShipmentTracking(Base):
         nullable=True,
         comment="Source of update: MANUAL, API, WEBHOOK"
     )
-    updated_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )

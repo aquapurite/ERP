@@ -48,11 +48,11 @@ class TDSDeduction(Base):
     """TDS Deduction Record."""
     __tablename__ = "tds_deductions"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    company_id = Column(String(36), ForeignKey("companies.id"), nullable=False)
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id = Column(PGUUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
 
     # Deductee Information
-    deductee_id = Column(String(36), nullable=True)  # Vendor/Customer ID
+    deductee_id = Column(PGUUID(as_uuid=True), nullable=True)  # Vendor/Customer ID
     deductee_type = Column(String(50), nullable=False)  # VENDOR, CUSTOMER, EMPLOYEE
     deductee_name = Column(String(255), nullable=False)
     deductee_pan = Column(String(10), nullable=False)
@@ -78,7 +78,7 @@ class TDSDeduction(Base):
 
     # Reference
     reference_type = Column(String(50), nullable=True)  # INVOICE, PAYMENT, BILL
-    reference_id = Column(String(36), nullable=True)
+    reference_id = Column(PGUUID(as_uuid=True), nullable=True)
     reference_number = Column(String(100), nullable=True)
     narration = Column(Text, nullable=True)
 
@@ -96,7 +96,7 @@ class TDSDeduction(Base):
     certificate_issued = Column(Boolean, default=False)
 
     # Audit
-    created_by = Column(String(36), ForeignKey("users.id"), nullable=True)
+    created_by = Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -115,8 +115,8 @@ class TDSRate(Base):
     """TDS Rate Configuration."""
     __tablename__ = "tds_rates"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    company_id = Column(String(36), ForeignKey("companies.id"), nullable=False)
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id = Column(PGUUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
 
     section = Column(SQLEnum(TDSSection), nullable=False)
     description = Column(String(255), nullable=False)
@@ -142,8 +142,8 @@ class Form16ACertificate(Base):
     """Form 16A Certificate Record."""
     __tablename__ = "form_16a_certificates"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    company_id = Column(String(36), ForeignKey("companies.id"), nullable=False)
+    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id = Column(PGUUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
 
     # Certificate Info
     certificate_number = Column(String(50), nullable=False)
@@ -171,12 +171,12 @@ class Form16ACertificate(Base):
 
     # Status
     is_revised = Column(Boolean, default=False)
-    original_certificate_id = Column(String(36), nullable=True)
+    original_certificate_id = Column(PGUUID(as_uuid=True), nullable=True)
 
     # Storage
     pdf_path = Column(String(500), nullable=True)
 
-    created_by = Column(String(36), ForeignKey("users.id"), nullable=True)
+    created_by = Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (

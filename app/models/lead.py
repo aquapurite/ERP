@@ -121,8 +121,8 @@ class Lead(Base):
     """Lead/Prospect model."""
     __tablename__ = "leads"
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=uuid.uuid4
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     lead_number: Mapped[str] = mapped_column(
         String(30), unique=True, index=True
@@ -134,7 +134,7 @@ class Lead(Base):
     )
     source: Mapped[LeadSource] = mapped_column(SQLEnum(LeadSource))
     source_details: Mapped[Optional[str]] = mapped_column(String(200))
-    campaign_id: Mapped[Optional[str]] = mapped_column(String(36))
+    campaign_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     referral_code: Mapped[Optional[str]] = mapped_column(String(50))
 
     # Contact Information
@@ -165,8 +165,8 @@ class Lead(Base):
         SQLEnum(LeadInterest), default=LeadInterest.NEW_PURCHASE
     )
     interested_products: Mapped[Optional[dict]] = mapped_column(JSON)  # List of product IDs
-    interested_category_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("categories.id", ondelete="SET NULL")
+    interested_category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL")
     )
     budget_min: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
     budget_max: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
@@ -186,21 +186,21 @@ class Lead(Base):
     score_breakdown: Mapped[Optional[dict]] = mapped_column(JSON)  # Individual scores
     is_qualified: Mapped[bool] = mapped_column(Boolean, default=False)
     qualification_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    qualified_by_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="SET NULL")
+    qualified_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
 
     # Assignment
-    assigned_to_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="SET NULL"), index=True
+    assigned_to_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
     assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    assigned_by_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="SET NULL")
+    assigned_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
-    team_id: Mapped[Optional[str]] = mapped_column(String(36))
-    region_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("regions.id", ondelete="SET NULL")
+    team_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    region_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("regions.id", ondelete="SET NULL")
     )
 
     # Follow-up
@@ -211,14 +211,14 @@ class Lead(Base):
 
     # Conversion
     converted_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    converted_by_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="SET NULL")
+    converted_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
-    converted_customer_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("customers.id", ondelete="SET NULL")
+    converted_customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL")
     )
-    converted_order_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("orders.id", ondelete="SET NULL")
+    converted_order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL")
     )
 
     # Lost Information
@@ -234,13 +234,13 @@ class Lead(Base):
     tags: Mapped[Optional[dict]] = mapped_column(JSON)  # List of tags
 
     # Call Integration
-    source_call_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("calls.id", ondelete="SET NULL")
+    source_call_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("calls.id", ondelete="SET NULL")
     )
 
     # Dealer/Franchisee Reference
-    dealer_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("dealers.id", ondelete="SET NULL")
+    dealer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dealers.id", ondelete="SET NULL")
     )
 
     # Value Estimation
@@ -248,8 +248,8 @@ class Lead(Base):
     actual_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
 
     # Timestamps
-    created_by_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="RESTRICT")
+    created_by_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -282,11 +282,11 @@ class LeadActivity(Base):
     """Lead activity/interaction log."""
     __tablename__ = "lead_activities"
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=uuid.uuid4
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    lead_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("leads.id", ondelete="CASCADE"), index=True
+    lead_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), index=True
     )
 
     # Activity Details
@@ -304,12 +304,12 @@ class LeadActivity(Base):
     new_status: Mapped[Optional[LeadStatus]] = mapped_column(SQLEnum(LeadStatus))
 
     # Assignment Change (if activity is assignment)
-    old_assignee_id: Mapped[Optional[str]] = mapped_column(String(36))
-    new_assignee_id: Mapped[Optional[str]] = mapped_column(String(36))
+    old_assignee_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    new_assignee_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
 
     # Call Reference
-    call_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("calls.id", ondelete="SET NULL")
+    call_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("calls.id", ondelete="SET NULL")
     )
 
     # Follow-up scheduled
@@ -317,8 +317,8 @@ class LeadActivity(Base):
     follow_up_notes: Mapped[Optional[str]] = mapped_column(Text)
 
     # Created by
-    created_by_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="RESTRICT")
+    created_by_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -331,8 +331,8 @@ class LeadScoreRule(Base):
     """Rules for automatic lead scoring."""
     __tablename__ = "lead_score_rules"
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=uuid.uuid4
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[Optional[str]] = mapped_column(Text)
@@ -362,8 +362,8 @@ class LeadAssignmentRule(Base):
     """Rules for automatic lead assignment."""
     __tablename__ = "lead_assignment_rules"
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=uuid.uuid4
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[Optional[str]] = mapped_column(Text)
@@ -371,21 +371,21 @@ class LeadAssignmentRule(Base):
     # Criteria
     source: Mapped[Optional[LeadSource]] = mapped_column(SQLEnum(LeadSource))
     lead_type: Mapped[Optional[LeadType]] = mapped_column(SQLEnum(LeadType))
-    region_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("regions.id", ondelete="SET NULL")
+    region_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("regions.id", ondelete="SET NULL")
     )
     pincode_pattern: Mapped[Optional[str]] = mapped_column(String(50))  # Regex or prefix
-    category_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("categories.id", ondelete="SET NULL")
+    category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL")
     )
     min_score: Mapped[Optional[int]] = mapped_column(Integer)
     max_score: Mapped[Optional[int]] = mapped_column(Integer)
 
     # Assignment Target
-    assign_to_user_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="SET NULL")
+    assign_to_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
-    assign_to_team_id: Mapped[Optional[str]] = mapped_column(String(36))
+    assign_to_team_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     round_robin: Mapped[bool] = mapped_column(Boolean, default=False)
     round_robin_users: Mapped[Optional[dict]] = mapped_column(JSON)  # List of user IDs
 

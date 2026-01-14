@@ -3,6 +3,7 @@ from enum import Enum
 from datetime import datetime, date
 from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float, Numeric
 from sqlalchemy import Enum as SQLEnum, UniqueConstraint, CheckConstraint
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -34,14 +35,14 @@ class StockItem(Base, TimestampMixin):
         UniqueConstraint("serial_number", name="uq_stock_item_serial"),
     )
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # Product reference
-    product_id = Column(String(36), ForeignKey("products.id"), nullable=False, index=True)
-    variant_id = Column(String(36), ForeignKey("product_variants.id"))
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False, index=True)
+    variant_id = Column(UUID(as_uuid=True), ForeignKey("product_variants.id"))
 
     # Warehouse location
-    warehouse_id = Column(String(36), ForeignKey("warehouses.id"), nullable=False, index=True)
+    warehouse_id = Column(UUID(as_uuid=True), ForeignKey("warehouses.id"), nullable=False, index=True)
 
     # Serial/Batch tracking
     serial_number = Column(String(100), unique=True, index=True)  # Unique per item
@@ -52,11 +53,9 @@ class StockItem(Base, TimestampMixin):
     status = Column(SQLEnum(StockItemStatus), default=StockItemStatus.AVAILABLE, index=True)
 
     # Procurement info
-    purchase_order_id = Column(
-        String(36))  # Reference to PO
+    purchase_order_id = Column(UUID(as_uuid=True))  # Reference to PO
     grn_number = Column(String(50))  # Goods Receipt Note
-    vendor_id = Column(
-        String(36))  # Supplier reference
+    vendor_id = Column(UUID(as_uuid=True))  # Supplier reference
 
     # Cost tracking
     purchase_price = Column(Numeric(12, 2), default=0)
@@ -70,13 +69,12 @@ class StockItem(Base, TimestampMixin):
     received_date = Column(DateTime, default=datetime.utcnow)
 
     # Order allocation
-    order_id = Column(String(36), ForeignKey("orders.id"))
-    order_item_id = Column(
-        String(36))
+    order_id = Column(UUID(as_uuid=True), ForeignKey("orders.id"))
+    order_item_id = Column(UUID(as_uuid=True))
     allocated_at = Column(DateTime)
 
     # Location within warehouse (WMS integration)
-    bin_id = Column(String(36), ForeignKey("warehouse_bins.id"), index=True)
+    bin_id = Column(UUID(as_uuid=True), ForeignKey("warehouse_bins.id"), index=True)
     rack_location = Column(String(50))  # e.g., "A1-B2-C3" (legacy, use bin_id)
     bin_number = Column(String(50))  # legacy, use bin_id
 
@@ -114,11 +112,11 @@ class InventorySummary(Base, TimestampMixin):
         UniqueConstraint("warehouse_id", "product_id", "variant_id", name="uq_inventory_summary"),
     )
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    warehouse_id = Column(String(36), ForeignKey("warehouses.id"), nullable=False, index=True)
-    product_id = Column(String(36), ForeignKey("products.id"), nullable=False, index=True)
-    variant_id = Column(String(36), ForeignKey("product_variants.id"))
+    warehouse_id = Column(UUID(as_uuid=True), ForeignKey("warehouses.id"), nullable=False, index=True)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False, index=True)
+    variant_id = Column(UUID(as_uuid=True), ForeignKey("product_variants.id"))
 
     # Stock levels
     total_quantity = Column(Integer, default=0)
@@ -178,7 +176,7 @@ class StockMovement(Base, TimestampMixin):
 
     __tablename__ = "stock_movements"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # Reference
     movement_number = Column(String(50), unique=True, nullable=False, index=True)
@@ -186,12 +184,12 @@ class StockMovement(Base, TimestampMixin):
     movement_date = Column(DateTime, default=datetime.utcnow)
 
     # Location
-    warehouse_id = Column(String(36), ForeignKey("warehouses.id"), nullable=False, index=True)
+    warehouse_id = Column(UUID(as_uuid=True), ForeignKey("warehouses.id"), nullable=False, index=True)
 
     # Product
-    product_id = Column(String(36), ForeignKey("products.id"), nullable=False)
-    variant_id = Column(String(36), ForeignKey("product_variants.id"))
-    stock_item_id = Column(String(36), ForeignKey("stock_items.id"))
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
+    variant_id = Column(UUID(as_uuid=True), ForeignKey("product_variants.id"))
+    stock_item_id = Column(UUID(as_uuid=True), ForeignKey("stock_items.id"))
 
     # Quantity
     quantity = Column(Integer, nullable=False)  # Positive for in, negative for out
@@ -202,8 +200,7 @@ class StockMovement(Base, TimestampMixin):
 
     # Related documents
     reference_type = Column(String(50))  # order, transfer, adjustment, grn, etc.
-    reference_id = Column(
-        String(36))
+    reference_id = Column(UUID(as_uuid=True))
     reference_number = Column(String(100))
 
     # Cost
@@ -211,7 +208,7 @@ class StockMovement(Base, TimestampMixin):
     total_cost = Column(Float, default=0)
 
     # User
-    created_by = Column(String(36), ForeignKey("users.id"))
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
 
     notes = Column(Text)
 

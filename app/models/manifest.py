@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Optional, List
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Float, Date
 from sqlalchemy import Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -41,10 +42,10 @@ class Manifest(Base):
     """
     __tablename__ = "manifests"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Identification
@@ -57,16 +58,16 @@ class Manifest(Base):
     )
 
     # Warehouse
-    warehouse_id: Mapped[str] = mapped_column(
-        String(36),
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("warehouses.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
     )
 
     # Transporter
-    transporter_id: Mapped[str] = mapped_column(
-        String(36),
+    transporter_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("transporters.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
@@ -115,15 +116,15 @@ class Manifest(Base):
     remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Created by
-    created_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
 
     # Confirmed by
-    confirmed_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    confirmed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -131,8 +132,8 @@ class Manifest(Base):
 
     # Handover
     handover_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    handover_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    handover_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -204,21 +205,21 @@ class ManifestItem(Base):
     """
     __tablename__ = "manifest_items"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    manifest_id: Mapped[str] = mapped_column(
-        String(36),
+    manifest_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("manifests.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
-    shipment_id: Mapped[str] = mapped_column(
-        String(36),
+    shipment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("shipments.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
@@ -242,8 +243,8 @@ class ManifestItem(Base):
         comment="Scanned for handover confirmation"
     )
     scanned_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    scanned_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    scanned_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )

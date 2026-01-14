@@ -21,6 +21,7 @@ from decimal import Decimal
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date, JSON
 from sqlalchemy import Enum as SQLEnum, UniqueConstraint, Index
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -77,10 +78,10 @@ class ApprovalRequest(Base):
         Index("ix_approval_status_level", "status", "approval_level"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Request Number (auto-generated)
@@ -98,8 +99,8 @@ class ApprovalRequest(Base):
         nullable=False,
         index=True
     )
-    entity_id: Mapped[str] = mapped_column(
-        String(36),
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         nullable=False,
         comment="ID of the entity (PO, Transfer, etc.)"
     )
@@ -151,8 +152,8 @@ class ApprovalRequest(Base):
     )
 
     # Requester
-    requested_by: Mapped[str] = mapped_column(
-        String(36),
+    requested_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False
     )
@@ -163,16 +164,16 @@ class ApprovalRequest(Base):
     )
 
     # Current Approver (who should approve at current level)
-    current_approver_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    current_approver_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         comment="Specific approver assigned, NULL means any approver with permission"
     )
 
     # Approval/Rejection
-    approved_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -186,8 +187,8 @@ class ApprovalRequest(Base):
     )
 
     # Rejection details
-    rejected_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    rejected_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -216,8 +217,8 @@ class ApprovalRequest(Base):
         DateTime,
         nullable=True
     )
-    escalated_to: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    escalated_to: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -286,14 +287,14 @@ class ApprovalHistory(Base):
     """
     __tablename__ = "approval_history"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    approval_request_id: Mapped[str] = mapped_column(
-        String(36),
+    approval_request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("approval_requests.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -311,8 +312,8 @@ class ApprovalHistory(Base):
     to_status: Mapped[str] = mapped_column(String(20), nullable=False)
 
     # Who performed the action
-    performed_by: Mapped[str] = mapped_column(
-        String(36),
+    performed_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False
     )

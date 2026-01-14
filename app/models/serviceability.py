@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Optional, List
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Float
 from sqlalchemy import Enum as SQLEnum, UniqueConstraint, Index
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -74,14 +75,14 @@ class WarehouseServiceability(Base):
         ),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    warehouse_id: Mapped[str] = mapped_column(
-        String(36),
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("warehouses.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -175,10 +176,10 @@ class AllocationRule(Base):
         ),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Rule identification
@@ -197,8 +198,8 @@ class AllocationRule(Base):
     )
 
     # Optional: Link to SalesChannel for marketplace-specific rules
-    channel_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    channel_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("sales_channels.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -219,8 +220,8 @@ class AllocationRule(Base):
     )
 
     # Fixed warehouse (if allocation_type is FIXED)
-    fixed_warehouse_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    fixed_warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("warehouses.id", ondelete="SET NULL"),
         nullable=True,
         comment="Fixed warehouse for FIXED allocation type"
@@ -280,8 +281,8 @@ class AllocationRule(Base):
         onupdate=datetime.utcnow,
         nullable=False
     )
-    created_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -313,29 +314,29 @@ class AllocationLog(Base):
     """
     __tablename__ = "allocation_logs"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    order_id: Mapped[str] = mapped_column(
-        String(36),
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("orders.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
     # Applied rule
-    rule_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    rule_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("allocation_rules.id", ondelete="SET NULL"),
         nullable=True
     )
 
     # Selected warehouse
-    warehouse_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("warehouses.id", ondelete="SET NULL"),
         nullable=True
     )

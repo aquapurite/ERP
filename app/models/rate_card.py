@@ -10,6 +10,7 @@ from sqlalchemy import (
     Numeric, UniqueConstraint, Index
 )
 from sqlalchemy import Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -123,15 +124,15 @@ class D2CRateCard(Base):
         ),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Transporter Reference
-    transporter_id: Mapped[str] = mapped_column(
-        String(36),
+    transporter_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("transporters.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -174,8 +175,8 @@ class D2CRateCard(Base):
     )
 
     # Audit
-    created_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -225,14 +226,14 @@ class D2CWeightSlab(Base):
         Index("idx_d2c_weight_slab_lookup", "rate_card_id", "zone", "min_weight_kg"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    rate_card_id: Mapped[str] = mapped_column(
-        String(36),
+    rate_card_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("d2c_rate_cards.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -311,14 +312,14 @@ class D2CSurcharge(Base):
         ),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    rate_card_id: Mapped[str] = mapped_column(
-        String(36),
+    rate_card_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("d2c_rate_cards.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -397,10 +398,10 @@ class ZoneMapping(Base):
         Index("idx_zone_mapping_origin", "origin_pincode"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Origin
@@ -457,15 +458,15 @@ class B2BRateCard(Base):
     """
     __tablename__ = "b2b_rate_cards"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Transporter Reference
-    transporter_id: Mapped[str] = mapped_column(
-        String(36),
+    transporter_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("transporters.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -510,8 +511,8 @@ class B2BRateCard(Base):
     effective_to: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -554,14 +555,14 @@ class B2BRateSlab(Base):
     """
     __tablename__ = "b2b_rate_slabs"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    rate_card_id: Mapped[str] = mapped_column(
-        String(36),
+    rate_card_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("b2b_rate_cards.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -639,14 +640,14 @@ class B2BAdditionalCharge(Base):
     """
     __tablename__ = "b2b_additional_charges"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    rate_card_id: Mapped[str] = mapped_column(
-        String(36),
+    rate_card_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("b2b_rate_cards.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -696,15 +697,15 @@ class FTLRateCard(Base):
     """
     __tablename__ = "ftl_rate_cards"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Transporter Reference (optional - can be market rates)
-    transporter_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    transporter_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("transporters.id", ondelete="SET NULL"),
         nullable=True,
         index=True
@@ -738,8 +739,8 @@ class FTLRateCard(Base):
     effective_to: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -789,14 +790,14 @@ class FTLLaneRate(Base):
         Index("idx_ftl_lane_lookup", "rate_card_id", "origin_city", "destination_city"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    rate_card_id: Mapped[str] = mapped_column(
-        String(36),
+    rate_card_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("ftl_rate_cards.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -886,14 +887,14 @@ class FTLAdditionalCharge(Base):
     """
     __tablename__ = "ftl_additional_charges"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    rate_card_id: Mapped[str] = mapped_column(
-        String(36),
+    rate_card_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("ftl_rate_cards.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -947,10 +948,10 @@ class FTLVehicleType(Base):
     """
     __tablename__ = "ftl_vehicle_types"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     code: Mapped[str] = mapped_column(
@@ -1004,14 +1005,14 @@ class CarrierPerformance(Base):
         ),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    transporter_id: Mapped[str] = mapped_column(
-        String(36),
+    transporter_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("transporters.id", ondelete="CASCADE"),
         nullable=False,
         index=True

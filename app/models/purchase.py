@@ -15,6 +15,7 @@ from decimal import Decimal
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date, JSON
 from sqlalchemy import Enum as SQLEnum, UniqueConstraint, Index, CheckConstraint
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -172,10 +173,10 @@ class PurchaseRequisition(Base):
     """
     __tablename__ = "purchase_requisitions"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Identification
@@ -201,8 +202,8 @@ class PurchaseRequisition(Base):
         nullable=True,
         comment="WAREHOUSE, SERVICE, MARKETING etc."
     )
-    requested_by: Mapped[str] = mapped_column(
-        String(36),
+    requested_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False
     )
@@ -214,8 +215,8 @@ class PurchaseRequisition(Base):
 
     # Delivery Requirements
     required_by_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    delivery_warehouse_id: Mapped[str] = mapped_column(
-        String(36),
+    delivery_warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("warehouses.id", ondelete="RESTRICT"),
         nullable=False
     )
@@ -238,8 +239,8 @@ class PurchaseRequisition(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Approval
-    approved_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -247,8 +248,8 @@ class PurchaseRequisition(Base):
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Conversion to PO
-    converted_to_po_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    converted_to_po_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         nullable=True,
         comment="PO ID if converted"
     )
@@ -290,27 +291,27 @@ class PurchaseRequisitionItem(Base):
     """Line items in a Purchase Requisition."""
     __tablename__ = "purchase_requisition_items"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    requisition_id: Mapped[str] = mapped_column(
-        String(36),
+    requisition_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("purchase_requisitions.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
     # Product
-    product_id: Mapped[str] = mapped_column(
-        String(36),
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("products.id", ondelete="RESTRICT"),
         nullable=False
     )
-    variant_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("product_variants.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -338,8 +339,8 @@ class PurchaseRequisitionItem(Base):
     )
 
     # Preferred Vendor (optional suggestion)
-    preferred_vendor_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    preferred_vendor_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("vendors.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -376,10 +377,10 @@ class PurchaseOrder(Base):
         Index("ix_po_vendor_date", "vendor_id", "po_date"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Identification
@@ -401,23 +402,23 @@ class PurchaseOrder(Base):
     )
 
     # Vendor
-    vendor_id: Mapped[str] = mapped_column(
-        String(36),
+    vendor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("vendors.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
     )
 
     # From Requisition (optional)
-    requisition_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    requisition_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("purchase_requisitions.id", ondelete="SET NULL"),
         nullable=True
     )
 
     # Delivery
-    delivery_warehouse_id: Mapped[str] = mapped_column(
-        String(36),
+    delivery_warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("warehouses.id", ondelete="RESTRICT"),
         nullable=False
     )
@@ -543,21 +544,21 @@ class PurchaseOrder(Base):
     po_pdf_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Approval Workflow
-    created_by: Mapped[str] = mapped_column(
-        String(36),
+    created_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False
     )
-    approved_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Multi-level Approval
-    approval_request_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    approval_request_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("approval_requests.id", ondelete="SET NULL"),
         nullable=True,
         comment="Reference to approval request for multi-level approval"
@@ -644,27 +645,27 @@ class PurchaseOrderItem(Base):
     """Line items in a Purchase Order."""
     __tablename__ = "purchase_order_items"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    purchase_order_id: Mapped[str] = mapped_column(
-        String(36),
+    purchase_order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("purchase_orders.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
     # Product (nullable - vendor items may not be in our catalog)
-    product_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("products.id", ondelete="RESTRICT"),
         nullable=True
     )
-    variant_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("product_variants.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -816,15 +817,15 @@ class PODeliverySchedule(Base):
         Index("ix_po_delivery_date", "expected_delivery_date"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Parent PO
-    purchase_order_id: Mapped[str] = mapped_column(
-        String(36),
+    purchase_order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("purchase_orders.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -947,8 +948,8 @@ class PODeliverySchedule(Base):
     )
 
     # GRN Reference
-    grn_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    grn_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("goods_receipt_notes.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -1038,10 +1039,10 @@ class GoodsReceiptNote(Base):
         Index("ix_grn_po", "purchase_order_id"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Identification
@@ -1063,23 +1064,23 @@ class GoodsReceiptNote(Base):
     )
 
     # Against PO
-    purchase_order_id: Mapped[str] = mapped_column(
-        String(36),
+    purchase_order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("purchase_orders.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
     )
 
     # Vendor
-    vendor_id: Mapped[str] = mapped_column(
-        String(36),
+    vendor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("vendors.id", ondelete="RESTRICT"),
         nullable=False
     )
 
     # Receiving Warehouse
-    warehouse_id: Mapped[str] = mapped_column(
-        String(36),
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("warehouses.id", ondelete="RESTRICT"),
         nullable=False
     )
@@ -1121,8 +1122,8 @@ class GoodsReceiptNote(Base):
         SQLEnum(QualityCheckResult),
         nullable=True
     )
-    qc_done_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    qc_done_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -1130,8 +1131,8 @@ class GoodsReceiptNote(Base):
     qc_remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Receiving
-    received_by: Mapped[str] = mapped_column(
-        String(36),
+    received_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False
     )
@@ -1191,34 +1192,34 @@ class GRNItem(Base):
     """Line items in a GRN."""
     __tablename__ = "grn_items"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    grn_id: Mapped[str] = mapped_column(
-        String(36),
+    grn_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("goods_receipt_notes.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
     # Link to PO Item
-    po_item_id: Mapped[str] = mapped_column(
-        String(36),
+    po_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("purchase_order_items.id", ondelete="RESTRICT"),
         nullable=False
     )
 
     # Product
-    product_id: Mapped[str] = mapped_column(
-        String(36),
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("products.id", ondelete="RESTRICT"),
         nullable=False
     )
-    variant_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("product_variants.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -1261,8 +1262,8 @@ class GRNItem(Base):
     )
 
     # Put Away Location
-    bin_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    bin_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("warehouse_bins.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -1300,10 +1301,10 @@ class VendorInvoice(Base):
         UniqueConstraint("vendor_id", "invoice_number", name="uq_vendor_invoice"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Vendor's Invoice Details
@@ -1333,21 +1334,21 @@ class VendorInvoice(Base):
     )
 
     # Vendor
-    vendor_id: Mapped[str] = mapped_column(
-        String(36),
+    vendor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("vendors.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
     )
 
     # Linked Documents
-    purchase_order_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    purchase_order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("purchase_orders.id", ondelete="SET NULL"),
         nullable=True
     )
-    grn_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    grn_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("goods_receipt_notes.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -1417,8 +1418,8 @@ class VendorInvoice(Base):
     invoice_pdf_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Workflow
-    received_by: Mapped[str] = mapped_column(
-        String(36),
+    received_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False
     )
@@ -1427,14 +1428,14 @@ class VendorInvoice(Base):
         default=datetime.utcnow,
         nullable=False
     )
-    verified_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    verified_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
     verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    approved_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -1503,10 +1504,10 @@ class VendorProformaInvoice(Base):
         UniqueConstraint("vendor_id", "proforma_number", name="uq_vendor_proforma"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Proforma Identification
@@ -1533,8 +1534,8 @@ class VendorProformaInvoice(Base):
     )
 
     # Vendor
-    vendor_id: Mapped[str] = mapped_column(
-        String(36),
+    vendor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("vendors.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
@@ -1549,22 +1550,22 @@ class VendorProformaInvoice(Base):
     )
 
     # Purchase Requisition Reference (if from PR)
-    requisition_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    requisition_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("purchase_requisitions.id", ondelete="SET NULL"),
         nullable=True
     )
 
     # Converted PO (if converted)
-    purchase_order_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    purchase_order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("purchase_orders.id", ondelete="SET NULL"),
         nullable=True
     )
 
     # Delivery Terms
-    delivery_warehouse_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    delivery_warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("warehouses.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -1617,14 +1618,14 @@ class VendorProformaInvoice(Base):
     internal_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Workflow
-    received_by: Mapped[str] = mapped_column(
-        String(36),
+    received_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False
     )
     received_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    approved_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -1670,22 +1671,22 @@ class VendorProformaItem(Base):
     """Line items in vendor proforma invoice."""
     __tablename__ = "vendor_proforma_items"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    proforma_id: Mapped[str] = mapped_column(
-        String(36),
+    proforma_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("vendor_proforma_invoices.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
     # Product (optional - might be new product from vendor)
-    product_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("products.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -1740,10 +1741,10 @@ class SalesReturnNote(Base):
     """
     __tablename__ = "sales_return_notes"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Identification
@@ -1757,29 +1758,29 @@ class SalesReturnNote(Base):
     srn_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
 
     # Source References (either order or invoice - at least one required)
-    order_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("orders.id", ondelete="SET NULL"),
         nullable=True,
         index=True
     )
-    invoice_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    invoice_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("tax_invoices.id", ondelete="SET NULL"),
         nullable=True
     )
 
     # Customer
-    customer_id: Mapped[str] = mapped_column(
-        String(36),
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("customers.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
     )
 
     # Warehouse (Returns area)
-    warehouse_id: Mapped[str] = mapped_column(
-        String(36),
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("warehouses.id", ondelete="RESTRICT"),
         nullable=False
     )
@@ -1804,13 +1805,13 @@ class SalesReturnNote(Base):
         SQLEnum(ResolutionType),
         nullable=True
     )
-    credit_note_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    credit_note_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("credit_debit_notes.id", ondelete="SET NULL"),
         nullable=True
     )
-    replacement_order_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    replacement_order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("orders.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -1830,8 +1831,8 @@ class SalesReturnNote(Base):
     pickup_address: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     pickup_contact_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     pickup_contact_phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    courier_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    courier_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("transporters.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -1850,8 +1851,8 @@ class SalesReturnNote(Base):
         SQLEnum(QualityCheckResult),
         nullable=True
     )
-    qc_done_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    qc_done_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -1876,8 +1877,8 @@ class SalesReturnNote(Base):
     put_away_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Receiving
-    received_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    received_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -1889,8 +1890,8 @@ class SalesReturnNote(Base):
     photos_urls: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
 
     # Audit
-    created_by: Mapped[str] = mapped_column(
-        String(36),
+    created_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False
     )
@@ -1953,39 +1954,39 @@ class SRNItem(Base):
     """Line item for Sales Return Note."""
     __tablename__ = "srn_items"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    srn_id: Mapped[str] = mapped_column(
-        String(36),
+    srn_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("sales_return_notes.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
     # Original Order/Invoice Reference
-    order_item_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    order_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("order_items.id", ondelete="SET NULL"),
         nullable=True
     )
-    invoice_item_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    invoice_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("invoice_items.id", ondelete="SET NULL"),
         nullable=True
     )
 
     # Product
-    product_id: Mapped[str] = mapped_column(
-        String(36),
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("products.id", ondelete="RESTRICT"),
         nullable=False
     )
-    variant_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("product_variants.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -2039,8 +2040,8 @@ class SRNItem(Base):
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Put-away Location
-    bin_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    bin_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("warehouse_bins.id", ondelete="SET NULL"),
         nullable=True
     )

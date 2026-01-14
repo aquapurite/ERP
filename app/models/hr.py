@@ -15,6 +15,7 @@ from decimal import Decimal
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date, JSON
 from sqlalchemy import Enum as SQLEnum, UniqueConstraint, Index
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -105,10 +106,10 @@ class Department(Base):
     """
     __tablename__ = "departments"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Identification
@@ -123,15 +124,15 @@ class Department(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Hierarchy
-    parent_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("departments.id", ondelete="SET NULL"),
         nullable=True
     )
 
     # Department Head
-    head_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    head_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -178,10 +179,10 @@ class Employee(Base):
     """
     __tablename__ = "employees"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Identification
@@ -194,8 +195,8 @@ class Employee(Base):
     )
 
     # Link to User (1:1)
-    user_id: Mapped[str] = mapped_column(
-        String(36),
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         unique=True,
         nullable=False
@@ -228,8 +229,8 @@ class Employee(Base):
     permanent_address: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     # Employment Details
-    department_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("departments.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -253,8 +254,8 @@ class Employee(Base):
     last_working_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     # Reporting
-    reporting_manager_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    reporting_manager_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("employees.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -357,15 +358,15 @@ class SalaryStructure(Base):
     """
     __tablename__ = "salary_structures"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Employee link (1:1 active structure)
-    employee_id: Mapped[str] = mapped_column(
-        String(36),
+    employee_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("employees.id", ondelete="CASCADE"),
         unique=True,
         nullable=False
@@ -469,15 +470,15 @@ class Attendance(Base):
     """
     __tablename__ = "attendance"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Employee & Date
-    employee_id: Mapped[str] = mapped_column(
-        String(36),
+    employee_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("employees.id", ondelete="CASCADE"),
         nullable=False
     )
@@ -511,8 +512,8 @@ class Attendance(Base):
 
     # Notes
     remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    approved_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -555,15 +556,15 @@ class LeaveBalance(Base):
     """
     __tablename__ = "leave_balances"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Employee & Type
-    employee_id: Mapped[str] = mapped_column(
-        String(36),
+    employee_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("employees.id", ondelete="CASCADE"),
         nullable=False
     )
@@ -625,15 +626,15 @@ class LeaveRequest(Base):
     """
     __tablename__ = "leave_requests"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Employee & Type
-    employee_id: Mapped[str] = mapped_column(
-        String(36),
+    employee_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("employees.id", ondelete="CASCADE"),
         nullable=False
     )
@@ -674,8 +675,8 @@ class LeaveRequest(Base):
     )
 
     # Approval tracking
-    approved_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -714,10 +715,10 @@ class Payroll(Base):
     """
     __tablename__ = "payrolls"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Period
@@ -747,14 +748,14 @@ class Payroll(Base):
     total_net: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
 
     # Processing tracking
-    processed_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    processed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
     processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    approved_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -790,20 +791,20 @@ class Payslip(Base):
     """
     __tablename__ = "payslips"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # References
-    payroll_id: Mapped[str] = mapped_column(
-        String(36),
+    payroll_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("payrolls.id", ondelete="CASCADE"),
         nullable=False
     )
-    employee_id: Mapped[str] = mapped_column(
-        String(36),
+    employee_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("employees.id", ondelete="CASCADE"),
         nullable=False
     )
@@ -944,10 +945,10 @@ class AppraisalCycle(Base):
     """
     __tablename__ = "appraisal_cycles"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Cycle Details
@@ -995,10 +996,10 @@ class KPI(Base):
     """
     __tablename__ = "kpis"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # KPI Details
@@ -1024,8 +1025,8 @@ class KPI(Base):
     )
 
     # Applicability
-    department_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("departments.id", ondelete="SET NULL"),
         nullable=True,
         comment="Department-specific KPI"
@@ -1056,21 +1057,21 @@ class Goal(Base):
     """
     __tablename__ = "goals"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Employee & Cycle
-    employee_id: Mapped[str] = mapped_column(
-        String(36),
+    employee_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("employees.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
-    cycle_id: Mapped[str] = mapped_column(
-        String(36),
+    cycle_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("appraisal_cycles.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -1082,8 +1083,8 @@ class Goal(Base):
     category: Mapped[str] = mapped_column(String(50), nullable=False)
 
     # Linked KPI (optional)
-    kpi_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    kpi_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("kpis.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -1138,21 +1139,21 @@ class Appraisal(Base):
     """
     __tablename__ = "appraisals"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Employee & Cycle
-    employee_id: Mapped[str] = mapped_column(
-        String(36),
+    employee_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("employees.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
-    cycle_id: Mapped[str] = mapped_column(
-        String(36),
+    cycle_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("appraisal_cycles.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -1175,8 +1176,8 @@ class Appraisal(Base):
     self_review_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Manager Review
-    manager_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    manager_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("employees.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -1218,8 +1219,8 @@ class Appraisal(Base):
     )
 
     # HR Review
-    hr_reviewed_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    hr_reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -1266,23 +1267,23 @@ class PerformanceFeedback(Base):
     """
     __tablename__ = "performance_feedback"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Employee receiving feedback
-    employee_id: Mapped[str] = mapped_column(
-        String(36),
+    employee_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("employees.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
     # Feedback giver
-    given_by: Mapped[str] = mapped_column(
-        String(36),
+    given_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False
     )
@@ -1306,8 +1307,8 @@ class PerformanceFeedback(Base):
     )
 
     # Related Goal (optional)
-    goal_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    goal_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("goals.id", ondelete="SET NULL"),
         nullable=True
     )

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Optional, List
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Float
 from sqlalchemy import Enum as SQLEnum, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -50,14 +51,14 @@ class WarehouseZone(Base):
         UniqueConstraint("warehouse_id", "zone_code", name="uq_warehouse_zone_code"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    warehouse_id: Mapped[str] = mapped_column(
-        String(36),
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("warehouses.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -155,21 +156,21 @@ class WarehouseBin(Base):
         UniqueConstraint("warehouse_id", "bin_code", name="uq_warehouse_bin_code"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    warehouse_id: Mapped[str] = mapped_column(
-        String(36),
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("warehouses.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
-    zone_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    zone_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("warehouse_zones.id", ondelete="SET NULL"),
         nullable=True,
         index=True
@@ -229,8 +230,8 @@ class WarehouseBin(Base):
     is_receivable: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Reserved for specific product (optional)
-    reserved_product_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    reserved_product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("products.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -304,14 +305,14 @@ class PutAwayRule(Base):
         ),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    warehouse_id: Mapped[str] = mapped_column(
-        String(36),
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("warehouses.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -322,26 +323,26 @@ class PutAwayRule(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Criteria - what to match
-    category_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("categories.id", ondelete="SET NULL"),
         nullable=True,
         index=True
     )
-    product_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("products.id", ondelete="SET NULL"),
         nullable=True
     )
-    brand_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    brand_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("brands.id", ondelete="SET NULL"),
         nullable=True
     )
 
     # Target location
-    target_zone_id: Mapped[str] = mapped_column(
-        String(36),
+    target_zone_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("warehouse_zones.id", ondelete="CASCADE"),
         nullable=False
     )

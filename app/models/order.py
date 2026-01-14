@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Enum as SQLEnum, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import UUID
 
 from app.database import Base
 
@@ -103,10 +104,10 @@ class Order(Base):
     """
     __tablename__ = "orders"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Order Identification
@@ -118,8 +119,8 @@ class Order(Base):
     )
 
     # Customer
-    customer_id: Mapped[str] = mapped_column(
-        String(36),
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("customers.id", ondelete="RESTRICT"),
         nullable=False
     )
@@ -140,8 +141,8 @@ class Order(Base):
     )
 
     # Warehouse (fulfillment location)
-    warehouse_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("warehouses.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
@@ -149,8 +150,8 @@ class Order(Base):
     )
 
     # Dealer (for B2B orders)
-    dealer_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    dealer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("dealers.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
@@ -214,8 +215,8 @@ class Order(Base):
     delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Region for filtering
-    region_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    region_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("regions.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -225,8 +226,8 @@ class Order(Base):
     internal_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Tracking
-    created_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -325,23 +326,23 @@ class OrderItem(Base):
     """Order line item model."""
     __tablename__ = "order_items"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
-    order_id: Mapped[str] = mapped_column(
-        String(36),
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("orders.id", ondelete="CASCADE"),
         nullable=False
     )
-    product_id: Mapped[str] = mapped_column(
-        String(36),
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("products.id", ondelete="RESTRICT"),
         nullable=False
     )
-    variant_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("product_variants.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -401,13 +402,13 @@ class OrderStatusHistory(Base):
     """Order status change history."""
     __tablename__ = "order_status_history"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
-    order_id: Mapped[str] = mapped_column(
-        String(36),
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("orders.id", ondelete="CASCADE"),
         nullable=False
     )
@@ -421,8 +422,8 @@ class OrderStatusHistory(Base):
         nullable=False
     )
 
-    changed_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    changed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -447,13 +448,13 @@ class Payment(Base):
     """Payment transaction model."""
     __tablename__ = "payments"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
-    order_id: Mapped[str] = mapped_column(
-        String(36),
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("orders.id", ondelete="CASCADE"),
         nullable=False
     )
@@ -498,13 +499,13 @@ class Invoice(Base):
     """Invoice model for orders."""
     __tablename__ = "invoices"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
-    order_id: Mapped[str] = mapped_column(
-        String(36),
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("orders.id", ondelete="CASCADE"),
         nullable=False,
         unique=True

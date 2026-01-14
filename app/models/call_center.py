@@ -17,6 +17,7 @@ from sqlalchemy import (
     String, Text, Integer, Boolean, DateTime, Date, Time,
     ForeignKey, Numeric, Enum as SQLEnum, JSON
 )
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -112,10 +113,10 @@ class CallDisposition(Base):
     """
     __tablename__ = "call_dispositions"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Disposition Details
@@ -171,10 +172,10 @@ class Call(Base):
     """
     __tablename__ = "calls"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Call Identification
@@ -198,8 +199,8 @@ class Call(Base):
     sub_category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     # Customer Information
-    customer_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("customers.id", ondelete="SET NULL"),
         nullable=True,
         index=True
@@ -210,8 +211,8 @@ class Call(Base):
     customer_address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Agent Information
-    agent_id: Mapped[str] = mapped_column(
-        String(36),
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
@@ -238,8 +239,8 @@ class Call(Base):
         SQLEnum(CallOutcome),
         nullable=True
     )
-    disposition_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    disposition_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("call_dispositions.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -271,39 +272,39 @@ class Call(Base):
     )
 
     # Linked Records
-    linked_ticket_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    linked_ticket_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("service_requests.id", ondelete="SET NULL"),
         nullable=True,
         comment="Created or referenced service ticket"
     )
-    linked_lead_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    linked_lead_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         nullable=True,
         comment="Created or referenced lead"
     )
-    linked_order_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    linked_order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("orders.id", ondelete="SET NULL"),
         nullable=True
     )
 
     # Product Context
-    product_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("products.id", ondelete="SET NULL"),
         nullable=True
     )
     serial_number: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     # Transfer Information
-    transferred_from_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    transferred_from_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    transferred_to_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    transferred_to_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -327,8 +328,8 @@ class Call(Base):
     follow_up_required: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Campaign (if outbound)
-    campaign_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    campaign_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         nullable=True,
         comment="Campaign for outbound calls"
     )
@@ -403,23 +404,23 @@ class CallbackSchedule(Base):
     """
     __tablename__ = "callback_schedules"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Reference
-    call_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    call_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("calls.id", ondelete="SET NULL"),
         nullable=True,
         comment="Original call if any"
     )
 
     # Customer
-    customer_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("customers.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -427,14 +428,14 @@ class CallbackSchedule(Base):
     customer_phone: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
 
     # Assignment
-    assigned_agent_id: Mapped[str] = mapped_column(
-        String(36),
+    assigned_agent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
     )
-    created_by_id: Mapped[str] = mapped_column(
-        String(36),
+    created_by_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False
     )
@@ -467,8 +468,8 @@ class CallbackSchedule(Base):
     )
 
     # Completion
-    completed_call_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    completed_call_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         nullable=True,
         comment="Call that completed this callback"
     )
@@ -481,8 +482,8 @@ class CallbackSchedule(Base):
     last_attempt_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Rescheduling
-    rescheduled_from_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    rescheduled_from_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("callback_schedules.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -528,23 +529,23 @@ class CallQAReview(Base):
     """
     __tablename__ = "call_qa_reviews"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Call Reference
-    call_id: Mapped[str] = mapped_column(
-        String(36),
+    call_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("calls.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
     # Reviewer
-    reviewer_id: Mapped[str] = mapped_column(
-        String(36),
+    reviewer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False
     )

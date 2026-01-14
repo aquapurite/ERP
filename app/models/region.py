@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Optional, List
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import UUID
 
 from app.database import Base
 
@@ -29,10 +30,10 @@ class Region(Base):
     """
     __tablename__ = "regions"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
@@ -43,8 +44,8 @@ class Region(Base):
     )
 
     # Self-referential for hierarchy
-    parent_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("regions.id", ondelete="SET NULL"),
         nullable=True
     )

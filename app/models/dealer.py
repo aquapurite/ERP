@@ -16,6 +16,7 @@ from decimal import Decimal
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date, JSON
 from sqlalchemy import Enum as SQLEnum, UniqueConstraint, Index, CheckConstraint
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -98,10 +99,10 @@ class Dealer(Base):
         Index("ix_dealers_region", "region", "state"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Identification
@@ -139,16 +140,16 @@ class Dealer(Base):
     )
 
     # Hierarchy (for sub-dealers)
-    parent_dealer_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    parent_dealer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("dealers.id", ondelete="SET NULL"),
         nullable=True,
         comment="Parent dealer for sub-dealers"
     )
 
     # User Account (for portal login)
-    user_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         unique=True
@@ -274,21 +275,21 @@ class Dealer(Base):
     security_deposit_paid: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Assigned Warehouse
-    default_warehouse_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    default_warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("warehouses.id", ondelete="SET NULL"),
         nullable=True
     )
 
     # Sales Representative
-    sales_rep_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    sales_rep_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         comment="Assigned sales representative"
     )
-    area_sales_manager_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    area_sales_manager_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -307,8 +308,8 @@ class Dealer(Base):
     # KYC Status
     kyc_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     kyc_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    kyc_verified_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    kyc_verified_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         nullable=True
     )
 
@@ -412,28 +413,28 @@ class DealerPricing(Base):
         UniqueConstraint("dealer_id", "product_id", "variant_id", name="uq_dealer_product_pricing"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    dealer_id: Mapped[str] = mapped_column(
-        String(36),
+    dealer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("dealers.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
-    product_id: Mapped[str] = mapped_column(
-        String(36),
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("products.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
-    variant_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("product_variants.id", ondelete="CASCADE"),
         nullable=True
     )
@@ -519,10 +520,10 @@ class DealerTierPricing(Base):
         UniqueConstraint("tier", "product_id", "variant_id", name="uq_tier_product_pricing"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     tier: Mapped[DealerTier] = mapped_column(
@@ -531,15 +532,15 @@ class DealerTierPricing(Base):
         index=True
     )
 
-    product_id: Mapped[str] = mapped_column(
-        String(36),
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("products.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
-    variant_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("product_variants.id", ondelete="CASCADE"),
         nullable=True
     )
@@ -593,14 +594,14 @@ class DealerCreditLedger(Base):
         Index("ix_dealer_credit_ledger_date", "dealer_id", "transaction_date"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    dealer_id: Mapped[str] = mapped_column(
-        String(36),
+    dealer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("dealers.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -625,8 +626,8 @@ class DealerCreditLedger(Base):
         nullable=False,
         comment="Invoice/Receipt number"
     )
-    reference_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    reference_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         nullable=True
     )
 
@@ -687,14 +688,14 @@ class DealerTarget(Base):
         ),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    dealer_id: Mapped[str] = mapped_column(
-        String(36),
+    dealer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("dealers.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -726,13 +727,13 @@ class DealerTarget(Base):
     )
 
     # Category/Product specific (optional)
-    category_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("categories.id", ondelete="SET NULL"),
         nullable=True
     )
-    product_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("products.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -812,10 +813,10 @@ class DealerScheme(Base):
     """
     __tablename__ = "dealer_schemes"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Scheme Identification
@@ -897,13 +898,13 @@ class DealerScheme(Base):
     )
 
     # Audit
-    created_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    approved_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         nullable=True
     )
 
@@ -943,29 +944,29 @@ class DealerSchemeApplication(Base):
     """
     __tablename__ = "dealer_scheme_applications"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    scheme_id: Mapped[str] = mapped_column(
-        String(36),
+    scheme_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("dealer_schemes.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
-    dealer_id: Mapped[str] = mapped_column(
-        String(36),
+    dealer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("dealers.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
     # Order Reference
-    order_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("orders.id", ondelete="SET NULL"),
         nullable=True
     )

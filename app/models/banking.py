@@ -46,7 +46,7 @@ class BankAccount(Base):
     """
     __tablename__ = "bank_accounts"
 
-    id: Mapped[UUID] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
 
     # Account Details
     account_name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -64,7 +64,7 @@ class BankAccount(Base):
     current_balance: Mapped[Decimal] = mapped_column(Numeric(15, 2), default=0)
 
     # Linked Ledger Account (for auto journal entries)
-    ledger_account_id: Mapped[Optional[UUID]] = mapped_column(String(36), ForeignKey("ledger_accounts.id"))
+    ledger_account_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("ledger_accounts.id"))
 
     # Credit Limits (for CC/OD accounts)
     credit_limit: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2))
@@ -80,7 +80,7 @@ class BankAccount(Base):
     # Audit
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    created_by: Mapped[Optional[UUID]] = mapped_column(String(36), ForeignKey("users.id"))
+    created_by: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id"))
 
     # Relationships
     transactions = relationship("BankTransaction", back_populates="bank_account", lazy="dynamic")
@@ -97,10 +97,10 @@ class BankTransaction(Base):
     """
     __tablename__ = "bank_transactions"
 
-    id: Mapped[UUID] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
 
     # Parent Account
-    bank_account_id: Mapped[UUID] = mapped_column(String(36), ForeignKey("bank_accounts.id"), nullable=False)
+    bank_account_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("bank_accounts.id"), nullable=False)
 
     # Transaction Details
     transaction_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
@@ -124,22 +124,22 @@ class BankTransaction(Base):
     # Reconciliation
     is_reconciled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     reconciled_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    matched_journal_entry_id: Mapped[Optional[UUID]] = mapped_column(String(36), ForeignKey("journal_entries.id"))
+    matched_journal_entry_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("journal_entries.id"))
     reconciliation_status: Mapped[Optional[str]] = mapped_column(String(50), default="PENDING")
 
     # Import Tracking
     source: Mapped[str] = mapped_column(String(50), default="IMPORT")  # IMPORT, MANUAL, API
     import_reference: Mapped[Optional[str]] = mapped_column(String(255))  # Original filename
-    import_batch_id: Mapped[Optional[UUID]] = mapped_column(String(36))
+    import_batch_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True))
 
     # Categorization (auto-detected or manual)
     category: Mapped[Optional[str]] = mapped_column(String(100))
     party_name: Mapped[Optional[str]] = mapped_column(String(200))
-    party_id: Mapped[Optional[UUID]] = mapped_column(String(36))
+    party_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True))
 
     # Audit
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    created_by: Mapped[Optional[UUID]] = mapped_column(String(36), ForeignKey("users.id"))
+    created_by: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id"))
 
     # Relationships
     bank_account = relationship("BankAccount", back_populates="transactions")
@@ -156,10 +156,10 @@ class BankReconciliation(Base):
     """
     __tablename__ = "bank_reconciliations"
 
-    id: Mapped[UUID] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
 
     # Account
-    bank_account_id: Mapped[UUID] = mapped_column(String(36), ForeignKey("bank_accounts.id"), nullable=False)
+    bank_account_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("bank_accounts.id"), nullable=False)
 
     # Period
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -185,7 +185,7 @@ class BankReconciliation(Base):
     # Status
     status: Mapped[str] = mapped_column(String(50), default="IN_PROGRESS")  # IN_PROGRESS, COMPLETED, APPROVED
     is_balanced: Mapped[bool] = mapped_column(Boolean, default=False)
-    approved_by: Mapped[Optional[UUID]] = mapped_column(String(36), ForeignKey("users.id"))
+    approved_by: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id"))
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
     # Notes
@@ -194,7 +194,7 @@ class BankReconciliation(Base):
     # Audit
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    created_by: Mapped[Optional[UUID]] = mapped_column(String(36), ForeignKey("users.id"))
+    created_by: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id"))
 
     def __repr__(self):
         return f"<BankReconciliation {self.start_date} to {self.end_date}>"

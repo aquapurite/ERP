@@ -15,6 +15,7 @@ from decimal import Decimal
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date, JSON
 from sqlalchemy import Enum as SQLEnum, UniqueConstraint, Index, CheckConstraint
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -94,10 +95,10 @@ class Vendor(Base):
         Index("ix_vendors_state", "state"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Identification
@@ -302,8 +303,8 @@ class Vendor(Base):
     )
 
     # Preferred Warehouse (for delivery)
-    default_warehouse_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    default_warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("warehouses.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -318,8 +319,8 @@ class Vendor(Base):
     # Verification Status
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    verified_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    verified_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -347,8 +348,8 @@ class Vendor(Base):
     internal_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Approval Workflow
-    approved_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -414,14 +415,14 @@ class VendorLedger(Base):
         Index("ix_vendor_ledger_date", "vendor_id", "transaction_date"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    vendor_id: Mapped[str] = mapped_column(
-        String(36),
+    vendor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("vendors.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -447,8 +448,8 @@ class VendorLedger(Base):
         nullable=False,
         index=True
     )
-    reference_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    reference_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         nullable=True,
         comment="ID of the reference document"
     )
@@ -509,8 +510,8 @@ class VendorLedger(Base):
     narration: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Audit
-    created_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -542,14 +543,14 @@ class VendorContact(Base):
     """
     __tablename__ = "vendor_contacts"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    vendor_id: Mapped[str] = mapped_column(
-        String(36),
+    vendor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("vendors.id", ondelete="CASCADE"),
         nullable=False,
         index=True

@@ -11,6 +11,7 @@ from decimal import Decimal
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date, JSON
 from sqlalchemy import Enum as SQLEnum, UniqueConstraint, CheckConstraint
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -91,10 +92,10 @@ class ChartOfAccount(Base):
     """
     __tablename__ = "chart_of_accounts"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Account Identification
@@ -120,8 +121,8 @@ class ChartOfAccount(Base):
     )
 
     # Hierarchy
-    parent_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("chart_of_accounts.id", ondelete="RESTRICT"),
         nullable=True,
         index=True
@@ -218,10 +219,10 @@ class FinancialPeriod(Base):
     """
     __tablename__ = "financial_periods"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Period Identification
@@ -272,8 +273,8 @@ class FinancialPeriod(Base):
     )
 
     # Closing
-    closed_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    closed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -303,10 +304,10 @@ class CostCenter(Base):
     """
     __tablename__ = "cost_centers"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Identification
@@ -320,8 +321,8 @@ class CostCenter(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Hierarchy
-    parent_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("cost_centers.id", ondelete="RESTRICT"),
         nullable=True
     )
@@ -347,8 +348,8 @@ class CostCenter(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Manager
-    manager_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    manager_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -383,10 +384,10 @@ class JournalEntry(Base):
     """
     __tablename__ = "journal_entries"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Entry Identification
@@ -400,8 +401,8 @@ class JournalEntry(Base):
 
     # Entry Details
     entry_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
-    period_id: Mapped[str] = mapped_column(
-        String(36),
+    period_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("financial_periods.id", ondelete="RESTRICT"),
         nullable=False
     )
@@ -417,8 +418,8 @@ class JournalEntry(Base):
         nullable=True,
         comment="order, invoice, payment, etc."
     )
-    source_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    source_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         nullable=True,
         comment="Reference to source document"
     )
@@ -428,8 +429,8 @@ class JournalEntry(Base):
     narration: Mapped[str] = mapped_column(Text, nullable=False)
 
     # Channel (for channel-wise P&L reporting)
-    channel_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    channel_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("sales_channels.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
@@ -449,30 +450,30 @@ class JournalEntry(Base):
 
     # Reversal
     is_reversed: Mapped[bool] = mapped_column(Boolean, default=False)
-    reversal_of_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    reversal_of_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("journal_entries.id", ondelete="SET NULL"),
         nullable=True,
         comment="If this is a reversal entry"
     )
-    reversed_by_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    reversed_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("journal_entries.id", ondelete="SET NULL"),
         nullable=True,
         comment="Entry that reversed this"
     )
 
     # Maker-Checker Workflow
-    created_by: Mapped[str] = mapped_column(
-        String(36),
+    created_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,
         comment="Maker - who created the entry"
     )
 
     # Submission for approval
-    submitted_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    submitted_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         comment="Who submitted for approval"
@@ -491,8 +492,8 @@ class JournalEntry(Base):
     )
 
     # Checker approval/rejection
-    approved_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         comment="Checker - who approved/rejected"
@@ -509,8 +510,8 @@ class JournalEntry(Base):
     )
 
     # Posting
-    posted_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    posted_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         comment="Who posted to GL after approval"
@@ -563,22 +564,22 @@ class JournalEntryLine(Base):
     """
     __tablename__ = "journal_entry_lines"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
-    journal_entry_id: Mapped[str] = mapped_column(
-        String(36),
+    journal_entry_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("journal_entries.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
     # Account
-    account_id: Mapped[str] = mapped_column(
-        String(36),
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("chart_of_accounts.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
@@ -597,8 +598,8 @@ class JournalEntryLine(Base):
     )
 
     # Cost Center (optional)
-    cost_center_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    cost_center_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("cost_centers.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -645,23 +646,23 @@ class GeneralLedger(Base):
     """
     __tablename__ = "general_ledger"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Account
-    account_id: Mapped[str] = mapped_column(
-        String(36),
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("chart_of_accounts.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
     )
 
     # Period
-    period_id: Mapped[str] = mapped_column(
-        String(36),
+    period_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("financial_periods.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
@@ -671,13 +672,13 @@ class GeneralLedger(Base):
     transaction_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
 
     # Source
-    journal_entry_id: Mapped[str] = mapped_column(
-        String(36),
+    journal_entry_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("journal_entries.id", ondelete="CASCADE"),
         nullable=False
     )
-    journal_line_id: Mapped[str] = mapped_column(
-        String(36),
+    journal_line_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("journal_entry_lines.id", ondelete="CASCADE"),
         nullable=False
     )
@@ -697,15 +698,15 @@ class GeneralLedger(Base):
     narration: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Cost Center
-    cost_center_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    cost_center_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("cost_centers.id", ondelete="SET NULL"),
         nullable=True
     )
 
     # Channel (for channel-wise P&L reporting)
-    channel_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    channel_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("sales_channels.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
@@ -742,10 +743,10 @@ class TaxConfiguration(Base):
         UniqueConstraint("hsn_code", "state_code", name="uq_tax_hsn_state"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # HSN/SAC Code
@@ -834,15 +835,15 @@ class BankStatementLine(Base):
     """
     __tablename__ = "bank_statement_lines"
 
-    id: Mapped[str] = mapped_column(
-        String(36),
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4())
+        default=uuid.uuid4
     )
 
     # Bank Account
-    bank_account_id: Mapped[str] = mapped_column(
-        String(36),
+    bank_account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("chart_of_accounts.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -884,15 +885,15 @@ class BankStatementLine(Base):
     # Reconciliation
     is_reconciled: Mapped[bool] = mapped_column(Boolean, default=False)
     reconciled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    reconciled_by: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    reconciled_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
 
     # Matched GL entry
-    matched_gl_id: Mapped[Optional[str]] = mapped_column(
-        String(36),
+    matched_gl_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("general_ledger.id", ondelete="SET NULL"),
         nullable=True,
         comment="Matched General Ledger entry"
