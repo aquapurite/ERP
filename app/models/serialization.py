@@ -47,10 +47,11 @@ class SerialSequence(Base):
     """
     __tablename__ = "serial_sequences"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Use String to avoid UUID type casting issues
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
     # Product identification
-    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=True)
+    product_id = Column(String(36), ForeignKey("products.id"), nullable=True)
     model_code = Column(String(10), nullable=False, index=True)  # IEL, IPR, PRG, etc.
     item_type = Column(Enum(ItemType), default=ItemType.FINISHED_GOODS)
 
@@ -93,10 +94,11 @@ class ProductSerialSequence(Base):
     """
     __tablename__ = "product_serial_sequences"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Use String to avoid UUID type casting issues with VARCHAR columns
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
     # Product identification - unique per (model_code + item_type) combination
-    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=True)
+    product_id = Column(String(36), ForeignKey("products.id"), nullable=True)
     model_code = Column(String(10), nullable=False, index=True)  # IEL, ELG, AUR, MTR, etc.
     item_type = Column(Enum(ItemType), nullable=False, default=ItemType.FINISHED_GOODS)
 
@@ -144,14 +146,15 @@ class POSerial(Base):
     """
     __tablename__ = "po_serials"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Use String to avoid UUID type casting issues with VARCHAR columns
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
     # PO linkage
-    po_id = Column(UUID(as_uuid=True), ForeignKey("purchase_orders.id"), nullable=False, index=True)
-    po_item_id = Column(UUID(as_uuid=True), ForeignKey("purchase_order_items.id"), nullable=True)
+    po_id = Column(String(36), ForeignKey("purchase_orders.id"), nullable=False, index=True)
+    po_item_id = Column(String(36), ForeignKey("purchase_order_items.id"), nullable=True)
 
     # Product identification
-    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=True)
+    product_id = Column(String(36), ForeignKey("products.id"), nullable=True)
     product_sku = Column(String(50), nullable=True)
     model_code = Column(String(10), nullable=False)
     item_type = Column(Enum(ItemType), default=ItemType.FINISHED_GOODS)
@@ -170,20 +173,20 @@ class POSerial(Base):
     status = Column(Enum(SerialStatus), default=SerialStatus.GENERATED)
 
     # GRN linkage (when received)
-    grn_id = Column(UUID(as_uuid=True), ForeignKey("goods_receipt_notes.id"), nullable=True)
-    grn_item_id = Column(UUID(as_uuid=True), nullable=True)
+    grn_id = Column(String(36), ForeignKey("goods_receipt_notes.id"), nullable=True)
+    grn_item_id = Column(String(36), nullable=True)
     received_at = Column(DateTime, nullable=True)
-    received_by = Column(UUID(as_uuid=True), nullable=True)
+    received_by = Column(String(36), nullable=True)
 
     # Stock item linkage (when assigned to inventory)
-    stock_item_id = Column(UUID(as_uuid=True), ForeignKey("stock_items.id"), nullable=True)
+    stock_item_id = Column(String(36), ForeignKey("stock_items.id"), nullable=True)
     assigned_at = Column(DateTime, nullable=True)
 
     # Sale linkage (when sold)
-    order_id = Column(UUID(as_uuid=True), nullable=True)
-    order_item_id = Column(UUID(as_uuid=True), nullable=True)
+    order_id = Column(String(36), nullable=True)
+    order_item_id = Column(String(36), nullable=True)
     sold_at = Column(DateTime, nullable=True)
-    customer_id = Column(UUID(as_uuid=True), nullable=True)
+    customer_id = Column(String(36), nullable=True)
 
     # Warranty tracking
     warranty_start_date = Column(DateTime, nullable=True)
@@ -211,10 +214,11 @@ class ModelCodeReference(Base):
     """
     __tablename__ = "model_code_references"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Use String to avoid UUID type casting issues
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
     # Product linkage
-    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=True, unique=True)
+    product_id = Column(String(36), ForeignKey("products.id"), nullable=True, unique=True)
     product_sku = Column(String(50), nullable=True, index=True)
 
     # FG/Item Code (full code like WPRAIEL001)
@@ -250,10 +254,11 @@ class SupplierCode(Base):
     """
     __tablename__ = "supplier_codes"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Use String to avoid UUID type casting issues
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
     # Vendor linkage
-    vendor_id = Column(UUID(as_uuid=True), ForeignKey("vendors.id"), nullable=True, unique=True)
+    vendor_id = Column(String(36), ForeignKey("vendors.id"), nullable=True, unique=True)
 
     # 2-letter supplier code
     code = Column(String(2), unique=True, nullable=False, index=True)
