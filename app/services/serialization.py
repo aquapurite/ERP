@@ -348,7 +348,7 @@ class SerializationService:
 
         # Create new sequence
         sequence = SerialSequence(
-            id=str(uuid.uuid4()).replace("-", ""),
+            id=uuid.uuid4(),
             model_code=model_code.upper(),
             supplier_code=supplier_code.upper(),
             year_code=year_code,
@@ -401,9 +401,9 @@ class SerializationService:
 
         # Create new product sequence
         sequence = ProductSerialSequence(
-            id=str(uuid.uuid4()).replace("-", ""),
+            id=uuid.uuid4(),
             model_code=model_code.upper(),
-            product_id=product_id,
+            product_id=uuid.UUID(product_id) if product_id else None,
             product_name=product_name,
             product_sku=product_sku,
             item_type=item_type,
@@ -573,10 +573,10 @@ class SerializationService:
                 )
 
                 po_serial = POSerial(
-                    id=str(uuid.uuid4()).replace("-", ""),
-                    po_id=request.po_id,
-                    po_item_id=item.po_item_id,
-                    product_id=item.product_id,
+                    id=uuid.uuid4(),
+                    po_id=uuid.UUID(request.po_id),
+                    po_item_id=uuid.UUID(item.po_item_id) if item.po_item_id else None,
+                    product_id=uuid.UUID(item.product_id) if item.product_id else None,
                     product_sku=item.product_sku,
                     model_code=item.model_code.upper(),
                     item_type=item.item_type,
@@ -969,7 +969,7 @@ class SerializationService:
             raise ValueError(f"Supplier code {code} already exists")
 
         supplier_code = SupplierCode(
-            id=str(uuid.uuid4()).replace("-", ""),
+            id=uuid.uuid4(),
             code=code.upper(),
             name=name,
             vendor_id=vendor_id,
@@ -1012,7 +1012,7 @@ class SerializationService:
             raise ValueError(f"FG code {fg_code} already exists")
 
         model_ref = ModelCodeReference(
-            id=str(uuid.uuid4()).replace("-", ""),
+            id=uuid.uuid4(),
             fg_code=fg_code.upper(),
             model_code=model_code.upper(),
             item_type=item_type,
