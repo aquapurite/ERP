@@ -1637,6 +1637,17 @@ async def approve_purchase_order(
             logging.error(f"SERIAL GENERATION FAILED for PO {serial_gen_data['po_number']}: {type(e).__name__}: {e}")
             logging.error(f"Traceback: {traceback.format_exc()}")
 
+    # Re-fetch PO to ensure it's attached to session (serial generation may have committed)
+    result = await db.execute(
+        select(PurchaseOrder)
+        .options(
+            selectinload(PurchaseOrder.items),
+            selectinload(PurchaseOrder.delivery_schedules)
+        )
+        .where(PurchaseOrder.id == po_id)
+    )
+    po = result.scalar_one()
+
     return po
 
 
