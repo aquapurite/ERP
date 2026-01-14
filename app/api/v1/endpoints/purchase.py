@@ -1478,6 +1478,8 @@ async def approve_purchase_order(
 
         # Prepare serial generation data (but don't generate yet)
         # Wrapped in try/except to ensure approval succeeds even if serial check fails
+        import logging
+        logging.info(f"Preparing serial generation for PO {po.po_number}, items_count={len(po.items) if po.items else 0}")
         try:
             from app.models.serialization import POSerial, SupplierCode
             from sqlalchemy import text
@@ -1488,11 +1490,14 @@ async def approve_purchase_order(
                 {"po_id": str(po.id)}
             )
             existing_count = existing_serials.scalar() or 0
+            logging.info(f"Existing serials for PO {po.po_number}: {existing_count}")
 
             if existing_count == 0 and po.items:
+                logging.info(f"Will generate serials: existing_count=0, items_count={len(po.items)}")
                 # Get vendor for supplier code using raw SQL
                 supplier_code = "AP"  # Default
                 if po.vendor_id:
+                    logging.info(f"Looking up supplier_code for vendor_id={po.vendor_id}")
                     supplier_code_result = await db.execute(
                         text("SELECT code FROM supplier_codes WHERE vendor_id = :vendor_id LIMIT 1"),
                         {"vendor_id": str(po.vendor_id)}
@@ -1500,7 +1505,11 @@ async def approve_purchase_order(
                     supplier_code_row = supplier_code_result.first()
                     if supplier_code_row:
                         supplier_code = supplier_code_row[0]
+                        logging.info(f"Found supplier_code: {supplier_code}")
+                    else:
+                        logging.warning(f"No supplier_code found for vendor_id={po.vendor_id}, using default 'AP'")
 
+                logging.info(f"Setting should_generate_serials=True with supplier_code={supplier_code}")
                 should_generate_serials = True
                 serial_gen_data = {
                     "po_id": str(po.id),
@@ -1541,18 +1550,24 @@ async def approve_purchase_order(
     po = result.scalar_one()
 
     # Generate serials AFTER approval is committed (so approval succeeds even if serial gen fails)
+    import logging
+    logging.info(f"Serial generation check: should_generate={should_generate_serials}, has_data={serial_gen_data is not None}")
+
     if should_generate_serials and serial_gen_data:
         try:
             from app.services.serialization import SerializationService
             from app.schemas.serialization import GenerateSerialsRequest, GenerateSerialItem, ItemType
             from app.models.serialization import ModelCodeReference
 
+            logging.info(f"Starting serial generation for PO {serial_gen_data['po_number']}, supplier_code={serial_gen_data['supplier_code']}, items_count={len(serial_gen_data['items'])}")
+
             serial_service = SerializationService(db)
             serial_items = []
 
-            for item_data in serial_gen_data["items"]:
+            for idx, item_data in enumerate(serial_gen_data["items"]):
                 model_code = None
                 item_type = ItemType.FINISHED_GOODS
+                logging.info(f"Processing item {idx+1}: SKU={item_data['product_sku']}, qty={item_data['quantity']}, product_id={item_data['product_id']}")
 
                 # Try to find model code reference
                 # Use raw SQL to handle VARCHAR/UUID type mismatch in database
@@ -1566,6 +1581,7 @@ async def approve_purchase_order(
                         model_code = ref_row[0]
                         if ref_row[1]:
                             item_type = ItemType(ref_row[1])
+                        logging.info(f"Found model_code_ref by product_id: model_code={model_code}, item_type={item_type}")
 
                 if not model_code and item_data["product_sku"]:
                     ref_result = await db.execute(
@@ -1577,11 +1593,13 @@ async def approve_purchase_order(
                         model_code = ref_row[0]
                         if ref_row[1]:
                             item_type = ItemType(ref_row[1])
+                        logging.info(f"Found model_code_ref by SKU: model_code={model_code}, item_type={item_type}")
 
                 if not model_code:
                     product_name = item_data["product_name"] or item_data["product_sku"] or "UNK"
                     clean_name = ''.join(c for c in product_name if c.isalpha())
                     model_code = clean_name[:3].upper() if len(clean_name) >= 3 else clean_name.upper().ljust(3, 'X')
+                    logging.info(f"Generated model_code from name: {model_code}")
 
                 serial_items.append(GenerateSerialItem(
                     po_item_id=item_data["item_id"],
@@ -1593,20 +1611,20 @@ async def approve_purchase_order(
                 ))
 
             if serial_items:
-                import logging
-                logging.info(f"Generating serials for PO {serial_gen_data['po_number']}: {len(serial_items)} items, supplier={serial_gen_data['supplier_code']}")
+                logging.info(f"Calling generate_serials_for_po with {len(serial_items)} items")
                 gen_request = GenerateSerialsRequest(
                     po_id=serial_gen_data["po_id"],
                     supplier_code=serial_gen_data["supplier_code"],
                     items=serial_items
                 )
                 result = await serial_service.generate_serials_for_po(gen_request)
-                logging.info(f"Generated {result.total_generated} serials for PO {serial_gen_data['po_number']}")
+                logging.info(f"SUCCESS: Generated {result.total_generated} serials for PO {serial_gen_data['po_number']}")
+            else:
+                logging.warning(f"No serial_items to generate for PO {serial_gen_data['po_number']}")
         except Exception as e:
-            # Log but don't fail - approval is already committed
-            import logging
+            # Log detailed error - approval is already committed
             import traceback
-            logging.error(f"Serial generation failed for PO {serial_gen_data['po_number']}: {e}")
+            logging.error(f"SERIAL GENERATION FAILED for PO {serial_gen_data['po_number']}: {type(e).__name__}: {e}")
             logging.error(f"Traceback: {traceback.format_exc()}")
 
     return po
