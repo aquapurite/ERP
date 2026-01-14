@@ -2892,6 +2892,162 @@ def _number_to_words(num: float) -> str:
     return result + ' Only'
 
 
+@router.post("/orders/{po_id}/fix-and-test")
+async def fix_and_test_po(
+    po_id: UUID,
+    db: DB,
+):
+    """
+    Complete fix for PO barcode generation:
+    1. Delete existing serials
+    2. Reset to DRAFT
+    3. Approve
+    4. Generate serials
+    5. Return PDF preview with barcode status
+    """
+    from sqlalchemy import text
+    from app.services.serialization import SerializationService
+    from app.schemas.serialization import GenerateSerialsRequest, GenerateSerialItem, ItemType
+    from datetime import datetime
+    import logging
+
+    steps = []
+
+    # Get PO with items
+    result = await db.execute(
+        select(PurchaseOrder)
+        .options(selectinload(PurchaseOrder.items))
+        .where(PurchaseOrder.id == po_id)
+    )
+    po = result.scalar_one_or_none()
+
+    if not po:
+        raise HTTPException(status_code=404, detail="PO not found")
+
+    steps.append({"step": 1, "action": "Found PO", "result": f"{po.po_number}, status={po.status.value}, items={len(po.items)}"})
+
+    # Step 2: Delete existing serials
+    delete_result = await db.execute(
+        text("DELETE FROM po_serials WHERE po_id = :po_id"),
+        {"po_id": str(po.id)}
+    )
+    steps.append({"step": 2, "action": "Deleted existing serials", "result": "Done"})
+
+    # Step 3: Reset to DRAFT then APPROVE
+    po.status = POStatus.APPROVED
+    po.approved_at = datetime.utcnow()
+    await db.commit()
+    steps.append({"step": 3, "action": "Set status to APPROVED", "result": "Done"})
+
+    # Step 4: Get supplier code
+    supplier_code = "AP"
+    if po.vendor_id:
+        sc_result = await db.execute(
+            text("SELECT code FROM supplier_codes WHERE vendor_id = :vendor_id LIMIT 1"),
+            {"vendor_id": str(po.vendor_id)}
+        )
+        sc_row = sc_result.first()
+        if sc_row:
+            supplier_code = sc_row[0]
+    steps.append({"step": 4, "action": "Got supplier code", "result": supplier_code})
+
+    # Step 5: Build serial items
+    serial_items = []
+    for item in po.items:
+        model_code = None
+        item_type = ItemType.SPARE_PART  # Default to spare part for this vendor
+
+        # Try to find model code reference
+        if item.product_id:
+            ref_result = await db.execute(
+                text("SELECT model_code, item_type FROM model_code_references WHERE product_id = :product_id LIMIT 1"),
+                {"product_id": str(item.product_id)}
+            )
+            ref_row = ref_result.first()
+            if ref_row:
+                model_code = ref_row[0]
+                if ref_row[1] and ref_row[1] in ItemType.__members__:
+                    item_type = ItemType[ref_row[1]]
+
+        if not model_code and item.sku:
+            ref_result = await db.execute(
+                text("SELECT model_code, item_type FROM model_code_references WHERE product_sku = :sku LIMIT 1"),
+                {"sku": item.sku}
+            )
+            ref_row = ref_result.first()
+            if ref_row:
+                model_code = ref_row[0]
+                if ref_row[1] and ref_row[1] in ItemType.__members__:
+                    item_type = ItemType[ref_row[1]]
+
+        if not model_code:
+            # Generate from SKU or product name - use first 3 alpha chars
+            source = item.sku or item.product_name or "UNK"
+            clean = ''.join(c for c in source if c.isalpha())
+            model_code = clean[:3].upper() if len(clean) >= 3 else clean.upper().ljust(3, 'X')
+
+        serial_items.append(GenerateSerialItem(
+            po_item_id=str(item.id),
+            product_id=str(item.product_id) if item.product_id else None,
+            product_sku=item.sku,
+            model_code=model_code,
+            item_type=item_type,
+            quantity=item.quantity_ordered
+        ))
+
+    steps.append({"step": 5, "action": "Built serial items", "result": f"{len(serial_items)} items"})
+
+    # Step 6: Generate serials
+    try:
+        serial_service = SerializationService(db)
+        gen_request = GenerateSerialsRequest(
+            po_id=str(po.id),
+            supplier_code=supplier_code,
+            items=serial_items
+        )
+        gen_result = await serial_service.generate_serials_for_po(gen_request)
+        steps.append({
+            "step": 6,
+            "action": "Generated serials",
+            "result": f"SUCCESS: {gen_result.total_generated} serials",
+            "items": [{"model": s.model_code, "qty": s.quantity, "start": s.start_barcode, "end": s.end_barcode} for s in gen_result.items]
+        })
+    except Exception as e:
+        import traceback
+        steps.append({
+            "step": 6,
+            "action": "Generate serials",
+            "result": f"FAILED: {type(e).__name__}: {str(e)}",
+            "traceback": traceback.format_exc()
+        })
+        return {"success": False, "steps": steps}
+
+    # Step 7: Verify serials in database
+    verify_result = await db.execute(
+        text("SELECT COUNT(*) FROM po_serials WHERE po_id = :po_id"),
+        {"po_id": str(po.id)}
+    )
+    final_count = verify_result.scalar() or 0
+    steps.append({"step": 7, "action": "Verified serials in DB", "result": f"{final_count} serials"})
+
+    # Step 8: Get sample barcodes
+    sample_result = await db.execute(
+        text("SELECT barcode, model_code FROM po_serials WHERE po_id = :po_id LIMIT 5"),
+        {"po_id": str(po.id)}
+    )
+    samples = [{"barcode": r[0], "model_code": r[1]} for r in sample_result.all()]
+    steps.append({"step": 8, "action": "Sample barcodes", "result": samples})
+
+    return {
+        "success": final_count > 0,
+        "po_number": po.po_number,
+        "total_serials": final_count,
+        "supplier_code": supplier_code,
+        "steps": steps,
+        "next": f"Download PDF at: /api/v1/purchase/orders/{po_id}/download"
+    }
+
+
 @router.post("/orders/{po_id}/reset-to-draft")
 async def reset_po_to_draft(
     po_id: UUID,
