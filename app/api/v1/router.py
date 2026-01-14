@@ -46,6 +46,7 @@ from app.api.v1.endpoints import (
     promotions,
     # Multi-Channel Commerce (NEW)
     channels,
+    marketplaces,  # Marketplace API Integration
     # Company/Business Entity (NEW)
     company,
     # OMS/WMS (NEW)
@@ -229,6 +230,11 @@ api_router.include_router(
     channels.router,
     prefix="/channels",
     tags=["Sales Channels"]
+)
+api_router.include_router(
+    marketplaces.router,
+    prefix="/marketplaces",
+    tags=["Marketplace Integration"]
 )
 
 # ==================== Company/Business Entity ====================

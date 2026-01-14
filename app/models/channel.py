@@ -514,3 +514,100 @@ class ChannelOrder(Base):
 
     def __repr__(self) -> str:
         return f"<ChannelOrder(channel_order_id='{self.channel_order_id}')>"
+
+
+class MarketplaceIntegration(Base):
+    """
+    Marketplace API integration credentials and settings.
+
+    Stores encrypted credentials for marketplace APIs:
+    - Amazon SP-API
+    - Flipkart Seller API
+    - Meesho API
+    - Snapdeal API
+    """
+    __tablename__ = "marketplace_integrations"
+    __table_args__ = (
+        UniqueConstraint("company_id", "marketplace_type", name="uq_company_marketplace"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Company
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Marketplace
+    marketplace_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        index=True,
+        comment="AMAZON, FLIPKART, MEESHO, SNAPDEAL"
+    )
+
+    # Credentials (encrypted)
+    client_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    client_secret: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Encrypted client secret"
+    )
+    refresh_token: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Encrypted refresh token (Amazon)"
+    )
+    api_key: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Encrypted API key"
+    )
+
+    # Seller Info
+    seller_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    marketplace_seller_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    # Settings
+    is_sandbox: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Sync Settings
+    auto_sync_orders: Mapped[bool] = mapped_column(Boolean, default=True)
+    auto_sync_inventory: Mapped[bool] = mapped_column(Boolean, default=True)
+    sync_interval_minutes: Mapped[int] = mapped_column(Integer, default=30)
+
+    # Last Sync Timestamps
+    last_order_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_inventory_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_sync_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    last_sync_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Audit
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True
+    )
+
+    def __repr__(self) -> str:
+        return f"<MarketplaceIntegration({self.marketplace_type}, active={self.is_active})>"
