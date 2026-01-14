@@ -1580,7 +1580,9 @@ async def approve_purchase_order(
                     if ref_row:
                         model_code = ref_row[0]
                         if ref_row[1]:
-                            item_type = ItemType(ref_row[1])
+                            # Use name lookup (ItemType[name]) not value lookup (ItemType(value))
+                            # Database stores enum NAME like "SPARE_PART", not VALUE like "SP"
+                            item_type = ItemType[ref_row[1]]
                         logging.info(f"Found model_code_ref by product_id: model_code={model_code}, item_type={item_type}")
 
                 if not model_code and item_data["product_sku"]:
@@ -1592,7 +1594,8 @@ async def approve_purchase_order(
                     if ref_row:
                         model_code = ref_row[0]
                         if ref_row[1]:
-                            item_type = ItemType(ref_row[1])
+                            # Use name lookup (ItemType[name]) not value lookup (ItemType(value))
+                            item_type = ItemType[ref_row[1]]
                         logging.info(f"Found model_code_ref by SKU: model_code={model_code}, item_type={item_type}")
 
                 if not model_code:
@@ -1712,7 +1715,8 @@ async def send_po_to_vendor(
                 if ref_row:
                     model_code = ref_row[0]
                     if ref_row[1]:
-                        item_type = ItemType(ref_row[1])
+                        # Use name lookup - database stores enum NAME not VALUE
+                        item_type = ItemType[ref_row[1]]
 
             if not model_code and item.sku:
                 # Try by SKU - use raw SQL
@@ -1724,7 +1728,8 @@ async def send_po_to_vendor(
                 if ref_row:
                     model_code = ref_row[0]
                     if ref_row[1]:
-                        item_type = ItemType(ref_row[1])
+                        # Use name lookup - database stores enum NAME not VALUE
+                        item_type = ItemType[ref_row[1]]
 
             if not model_code:
                 # Generate model code from product name (first 3 letters)
