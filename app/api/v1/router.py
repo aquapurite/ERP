@@ -37,6 +37,7 @@ from app.api.v1.endpoints import (
     accounting,
     billing,
     banking,  # Bank Statement Import & Reconciliation
+    credentials,  # Encrypted Credentials Management
     # Dealer/Distributor (NEW)
     dealers,
     # Commission & Incentives (NEW)
@@ -195,6 +196,11 @@ api_router.include_router(
     banking.router,
     prefix="/banking",
     tags=["Banking/Reconciliation"]
+)
+api_router.include_router(
+    credentials.router,
+    prefix="/credentials",
+    tags=["Credentials/Security"]
 )
 
 # ==================== Dealer/Distributor ====================
