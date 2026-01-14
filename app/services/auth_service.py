@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 import uuid
 
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User, UserRole
@@ -38,16 +38,17 @@ class AuthService:
         Returns:
             User object if authentication successful, None otherwise
         """
+        # Use joinedload instead of selectinload to avoid psycopg3 UUID type casting issues
         stmt = (
             select(User)
             .options(
-                selectinload(User.user_roles).selectinload(UserRole.role),
-                selectinload(User.region)
+                joinedload(User.user_roles).joinedload(UserRole.role),
+                joinedload(User.region)
             )
             .where(User.email == email.lower())
         )
         result = await self.db.execute(stmt)
-        user = result.scalar_one_or_none()
+        user = result.unique().scalar_one_or_none()  # unique() needed with joinedload
 
         if user is None:
             return None
