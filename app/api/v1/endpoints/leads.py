@@ -5,6 +5,7 @@ from uuid import UUID
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import select, func, and_, or_, Integer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +26,9 @@ from app.schemas.lead import (
     LeadDashboardResponse, LeadPipelineResponse, LeadSourceReportResponse
 )
 from app.api.deps import get_current_user
+from app.services.lead_assignment_service import (
+    LeadAssignmentService, LeadAssignmentError, AssignmentStrategy
+)
 
 router = APIRouter()
 
@@ -386,6 +390,196 @@ async def assign_lead(
         response.assigned_to_name = f"{lead.assigned_to.first_name} {lead.assigned_to.last_name or ''}".strip()
 
     return response
+
+
+# ==================== Auto Assignment Endpoints ====================
+
+class AutoAssignRequest(BaseModel):
+    """Request for auto-assigning a lead."""
+    strategy: str = "ROUND_ROBIN"  # ROUND_ROBIN, LOAD_BALANCED, GEOGRAPHIC
+    team_id: Optional[UUID] = None
+
+
+class BulkAutoAssignRequest(BaseModel):
+    """Request for bulk auto-assignment."""
+    lead_ids: Optional[List[UUID]] = None
+    assign_all_unassigned: bool = False
+    strategy: str = "ROUND_ROBIN"
+    team_id: Optional[UUID] = None
+
+
+@router.post("/{lead_id}/auto-assign")
+async def auto_assign_lead(
+    lead_id: UUID,
+    request: AutoAssignRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Auto-assign a lead using the specified strategy.
+
+    Strategies:
+    - ROUND_ROBIN: Even distribution among agents
+    - LOAD_BALANCED: Assign to agent with lowest current load
+    - GEOGRAPHIC: Match lead location to agent territory
+    """
+    try:
+        strategy = AssignmentStrategy(request.strategy.upper())
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid strategy. Valid options: {[s.value for s in AssignmentStrategy]}"
+        )
+
+    company_id = current_user.company_id
+    if not company_id:
+        raise HTTPException(status_code=400, detail="Company ID required")
+
+    try:
+        service = LeadAssignmentService(db, company_id)
+        lead = await service.assign_lead(
+            lead_id=lead_id,
+            strategy=strategy,
+            team_id=request.team_id,
+            user_id=current_user.id
+        )
+
+        return {
+            "success": True,
+            "lead_id": str(lead_id),
+            "assigned_to": str(lead.assigned_to) if lead.assigned_to else None,
+            "strategy": strategy.value,
+            "message": "Lead assigned successfully"
+        }
+
+    except LeadAssignmentError as e:
+        raise HTTPException(status_code=400, detail=e.message)
+
+
+@router.post("/auto-assign/bulk")
+async def bulk_auto_assign_leads(
+    request: BulkAutoAssignRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Auto-assign multiple leads in bulk.
+
+    Either provide specific lead_ids or set assign_all_unassigned=True.
+    """
+    try:
+        strategy = AssignmentStrategy(request.strategy.upper())
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid strategy. Valid options: {[s.value for s in AssignmentStrategy]}"
+        )
+
+    company_id = current_user.company_id
+    if not company_id:
+        raise HTTPException(status_code=400, detail="Company ID required")
+
+    service = LeadAssignmentService(db, company_id)
+
+    if request.assign_all_unassigned:
+        result = await service.auto_assign_all_pending(
+            strategy=strategy,
+            team_id=request.team_id,
+            user_id=current_user.id
+        )
+    elif request.lead_ids:
+        result = await service.bulk_assign_leads(
+            lead_ids=request.lead_ids,
+            strategy=strategy,
+            team_id=request.team_id,
+            user_id=current_user.id
+        )
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Either provide lead_ids or set assign_all_unassigned=True"
+        )
+
+    return result
+
+
+@router.get("/unassigned")
+async def get_unassigned_leads(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    source: Optional[str] = None,
+    limit: int = Query(100, ge=1, le=500)
+):
+    """Get all unassigned leads for assignment."""
+    company_id = current_user.company_id
+    if not company_id:
+        raise HTTPException(status_code=400, detail="Company ID required")
+
+    service = LeadAssignmentService(db, company_id)
+    leads = await service.get_unassigned_leads(limit=limit, source=source)
+
+    return {
+        "count": len(leads),
+        "leads": [
+            {
+                "id": str(lead.id),
+                "lead_number": lead.lead_number,
+                "name": lead.name,
+                "source": lead.source.value if lead.source else None,
+                "created_at": lead.created_at.isoformat() if lead.created_at else None,
+            }
+            for lead in leads
+        ]
+    }
+
+
+@router.get("/assignment-stats")
+async def get_lead_assignment_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    days: int = Query(30, ge=1, le=365)
+):
+    """Get lead assignment statistics and distribution."""
+    company_id = current_user.company_id
+    if not company_id:
+        raise HTTPException(status_code=400, detail="Company ID required")
+
+    service = LeadAssignmentService(db, company_id)
+    start_date = datetime.utcnow() - timedelta(days=days)
+
+    stats = await service.get_assignment_stats(start_date=start_date)
+
+    return stats
+
+
+@router.get("/agents/workload")
+async def get_agents_workload(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    team_id: Optional[UUID] = None
+):
+    """Get current workload for all sales agents."""
+    company_id = current_user.company_id
+    if not company_id:
+        raise HTTPException(status_code=400, detail="Company ID required")
+
+    service = LeadAssignmentService(db, company_id)
+    agents = await service.get_available_agents(team_id=team_id)
+
+    workloads = []
+    for agent in agents:
+        load = await service.get_agent_current_load(agent.id)
+        workloads.append({
+            "agent_id": str(agent.id),
+            "agent_name": f"{agent.first_name} {agent.last_name or ''}".strip() if hasattr(agent, 'first_name') else str(agent.id),
+            "email": agent.email if hasattr(agent, 'email') else None,
+            **load
+        })
+
+    return {
+        "agents": workloads,
+        "total_agents": len(workloads)
+    }
 
 
 @router.post("/{lead_id}/status", response_model=LeadResponse)
