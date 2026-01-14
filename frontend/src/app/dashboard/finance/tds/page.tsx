@@ -13,7 +13,6 @@ import {
   Clock,
   AlertTriangle,
   Search,
-  Filter,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -356,23 +355,23 @@ export default function TDSManagementPage() {
                     <SelectItem value="2022-23">FY 2022-23</SelectItem>
                   </SelectContent>
                 </Select>
-                <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
+                <Select value={selectedQuarter || 'all'} onValueChange={(v) => setSelectedQuarter(v === 'all' ? '' : v)}>
                   <SelectTrigger className="w-[150px]">
                     <SelectValue placeholder="All Quarters" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Quarters</SelectItem>
+                    <SelectItem value="all">All Quarters</SelectItem>
                     {QUARTERS.map(q => (
                       <SelectItem key={q} value={q}>{q}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                <Select value={selectedStatus || 'all'} onValueChange={(v) => setSelectedStatus(v === 'all' ? '' : v)}>
                   <SelectTrigger className="w-[150px]">
                     <SelectValue placeholder="All Status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Status</SelectItem>
+                    <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="PENDING">Pending</SelectItem>
                     <SelectItem value="DEPOSITED">Deposited</SelectItem>
                     <SelectItem value="CERTIFICATE_ISSUED">Certificate Issued</SelectItem>
