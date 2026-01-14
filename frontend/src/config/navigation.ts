@@ -100,8 +100,10 @@ export const navigation: NavItem[] = [
     permissions: ['INVENTORY_VIEW', 'WAREHOUSES_VIEW', 'TRANSFERS_VIEW', 'WMS_VIEW'],
     children: [
       { title: 'Stock Summary', href: '/dashboard/inventory', permissions: ['INVENTORY_VIEW'] },
+      { title: 'Stock Items', href: '/dashboard/inventory/stock-items', permissions: ['INVENTORY_VIEW'] },
       { title: 'Warehouses', href: '/dashboard/inventory/warehouses', permissions: ['WAREHOUSES_VIEW'] },
       { title: 'Transfers', href: '/dashboard/inventory/transfers', permissions: ['TRANSFERS_VIEW'] },
+      { title: 'Adjustments', href: '/dashboard/inventory/adjustments', permissions: ['INVENTORY_VIEW'] },
     ],
   },
   {
@@ -139,6 +141,7 @@ export const navigation: NavItem[] = [
       { title: 'Vendor Proformas', href: '/dashboard/procurement/vendor-proformas', permissions: ['PURCHASE_VIEW'] },
       { title: 'Purchase Orders', href: '/dashboard/procurement/purchase-orders', permissions: ['PURCHASE_VIEW'] },
       { title: 'GRN', href: '/dashboard/procurement/grn', permissions: ['GRN_VIEW'] },
+      { title: 'Sales Returns', href: '/dashboard/procurement/sales-returns', permissions: ['PURCHASE_VIEW'] },
       { title: 'Vendor Invoices', href: '/dashboard/procurement/vendor-invoices', icon: Receipt, permissions: ['PURCHASE_VIEW'] },
       { title: '3-Way Match', href: '/dashboard/procurement/three-way-match', icon: FileCheck, permissions: ['PURCHASE_VIEW'] },
     ],
@@ -157,6 +160,10 @@ export const navigation: NavItem[] = [
       { title: 'TDS Management', href: '/dashboard/finance/tds', icon: Receipt, permissions: ['ACCOUNTING_VIEW'], badge: 'NEW' },
       { title: 'Cost Centers', href: '/dashboard/finance/cost-centers', permissions: ['ACCOUNTING_VIEW'] },
       { title: 'Fixed Assets', href: '/dashboard/finance/fixed-assets', icon: Building2, permissions: ['ACCOUNTING_VIEW'] },
+      { title: 'GSTR-1', href: '/dashboard/finance/gstr1', icon: FileText, permissions: ['ACCOUNTING_VIEW'] },
+      { title: 'GSTR-2A', href: '/dashboard/finance/gstr2a', icon: FileText, permissions: ['ACCOUNTING_VIEW'] },
+      { title: 'GSTR-3B', href: '/dashboard/finance/gstr3b', icon: FileText, permissions: ['ACCOUNTING_VIEW'] },
+      { title: 'HSN Summary', href: '/dashboard/finance/hsn-summary', permissions: ['ACCOUNTING_VIEW'] },
     ],
   },
   {
@@ -179,6 +186,7 @@ export const navigation: NavItem[] = [
       { title: 'Invoices', href: '/dashboard/billing/invoices', permissions: ['BILLING_VIEW'] },
       { title: 'E-Way Bills', href: '/dashboard/billing/eway-bills', permissions: ['BILLING_VIEW'] },
       { title: 'Credit Notes', href: '/dashboard/billing/credit-notes', permissions: ['BILLING_VIEW'] },
+      { title: 'Receipts', href: '/dashboard/billing/receipts', icon: Receipt, permissions: ['BILLING_VIEW'] },
     ],
   },
   {
@@ -216,6 +224,7 @@ export const navigation: NavItem[] = [
       { title: 'Leave Management', href: '/dashboard/hr/leaves', icon: Clock, permissions: ['LEAVE_VIEW'] },
       { title: 'Payroll', href: '/dashboard/hr/payroll', icon: CreditCard, permissions: ['PAYROLL_VIEW'] },
       { title: 'Performance', href: '/dashboard/hr/performance', icon: TrendingUp, permissions: ['HR_VIEW'] },
+      { title: 'Reports', href: '/dashboard/hr/reports', icon: BarChart3, permissions: ['HR_VIEW'] },
     ],
   },
   {
@@ -257,6 +266,7 @@ export const navigation: NavItem[] = [
     children: [
       { title: 'Users', href: '/dashboard/access-control/users', permissions: ['USERS_VIEW'] },
       { title: 'Roles', href: '/dashboard/access-control/roles', permissions: ['ROLES_VIEW'] },
+      { title: 'Permissions', href: '/dashboard/access-control/permissions', permissions: ['ROLES_VIEW'] },
     ],
   },
   {
