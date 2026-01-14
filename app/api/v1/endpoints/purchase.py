@@ -1477,42 +1477,49 @@ async def approve_purchase_order(
             schedule.status = DeliveryLotStatus.ADVANCE_PENDING
 
         # Prepare serial generation data (but don't generate yet)
-        from app.models.serialization import POSerial, SupplierCode
+        # Wrapped in try/except to ensure approval succeeds even if serial check fails
+        try:
+            from app.models.serialization import POSerial, SupplierCode
+            from sqlalchemy import text
 
-        # Check if serials already exist
-        # Note: Cast to str because po_serials.po_id may be VARCHAR in database
-        existing_serials = await db.execute(
-            select(func.count(POSerial.id)).where(POSerial.po_id == str(po.id))
-        )
-        existing_count = existing_serials.scalar() or 0
+            # Use raw SQL to avoid UUID/VARCHAR type mismatch issues
+            existing_serials = await db.execute(
+                text("SELECT COUNT(*) FROM po_serials WHERE po_id = :po_id"),
+                {"po_id": str(po.id)}
+            )
+            existing_count = existing_serials.scalar() or 0
 
-        if existing_count == 0 and po.items:
-            # Get vendor for supplier code
-            supplier_code = "AP"  # Default
-            if po.vendor_id:
-                supplier_code_result = await db.execute(
-                    select(SupplierCode).where(SupplierCode.vendor_id == str(po.vendor_id))
-                )
-                supplier_code_obj = supplier_code_result.scalar_one_or_none()
-                if supplier_code_obj:
-                    supplier_code = supplier_code_obj.code
+            if existing_count == 0 and po.items:
+                # Get vendor for supplier code using raw SQL
+                supplier_code = "AP"  # Default
+                if po.vendor_id:
+                    supplier_code_result = await db.execute(
+                        text("SELECT code FROM supplier_codes WHERE vendor_id = :vendor_id LIMIT 1"),
+                        {"vendor_id": str(po.vendor_id)}
+                    )
+                    supplier_code_row = supplier_code_result.first()
+                    if supplier_code_row:
+                        supplier_code = supplier_code_row[0]
 
-            should_generate_serials = True
-            serial_gen_data = {
-                "po_id": str(po.id),
-                "po_number": po.po_number,
-                "supplier_code": supplier_code,
-                "items": [
-                    {
-                        "item_id": str(item.id),
-                        "product_id": str(item.product_id) if item.product_id else None,
-                        "product_sku": item.sku,
-                        "product_name": item.product_name,
-                        "quantity": item.quantity_ordered
-                    }
-                    for item in po.items
-                ]
-            }
+                should_generate_serials = True
+                serial_gen_data = {
+                    "po_id": str(po.id),
+                    "po_number": po.po_number,
+                    "supplier_code": supplier_code,
+                    "items": [
+                        {
+                            "item_id": str(item.id),
+                            "product_id": str(item.product_id) if item.product_id else None,
+                            "product_sku": item.sku,
+                            "product_name": item.product_name,
+                            "quantity": item.quantity_ordered
+                        }
+                        for item in po.items
+                    ]
+                }
+        except Exception as serial_check_error:
+            import logging
+            logging.warning(f"Serial check failed (will skip serial generation): {serial_check_error}")
     else:
         po.status = POStatus.CANCELLED
         # Cancel all delivery schedules
