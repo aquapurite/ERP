@@ -23,6 +23,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -150,7 +160,61 @@ const operators = [
   { label: 'Not In List', value: 'NOT_IN' },
 ];
 
-const columns: ColumnDef<PutawayRule>[] = [
+// Separate component for actions cell to properly use hooks
+function RuleActionsCell({ rule, onEdit, onDelete }: { rule: PutawayRule; onEdit: (rule: PutawayRule) => void; onDelete: (rule: PutawayRule) => void }) {
+  const queryClient = useQueryClient();
+
+  const moveUpMutation = useMutation({
+    mutationFn: () => putawayRulesApi.updatePriority(rule.id, rule.priority - 1),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['putaway-rules'] });
+      toast.success('Priority updated');
+    },
+    onError: () => toast.error('Failed to update priority'),
+  });
+
+  const moveDownMutation = useMutation({
+    mutationFn: () => putawayRulesApi.updatePriority(rule.id, rule.priority + 1),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['putaway-rules'] });
+      toast.success('Priority updated');
+    },
+    onError: () => toast.error('Failed to update priority'),
+  });
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-8 w-8">
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => moveUpMutation.mutate()} disabled={rule.priority <= 1}>
+          <ArrowUp className="mr-2 h-4 w-4" />
+          Move Up
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => moveDownMutation.mutate()}>
+          <ArrowDown className="mr-2 h-4 w-4" />
+          Move Down
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => onEdit(rule)}>
+          <Pencil className="mr-2 h-4 w-4" />
+          Edit Rule
+        </DropdownMenuItem>
+        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(rule)}>
+          <Trash2 className="mr-2 h-4 w-4" />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+const createColumns = (onEdit: (rule: PutawayRule) => void, onDelete: (rule: PutawayRule) => void): ColumnDef<PutawayRule>[] => [
   {
     accessorKey: 'priority',
     header: 'Priority',
@@ -220,56 +284,7 @@ const columns: ColumnDef<PutawayRule>[] = [
   },
   {
     id: 'actions',
-    cell: ({ row }) => {
-      const queryClient = useQueryClient();
-
-      const moveUpMutation = useMutation({
-        mutationFn: () => putawayRulesApi.updatePriority(row.original.id, row.original.priority - 1),
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: ['putaway-rules'] });
-          toast.success('Priority updated');
-        },
-      });
-
-      const moveDownMutation = useMutation({
-        mutationFn: () => putawayRulesApi.updatePriority(row.original.id, row.original.priority + 1),
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: ['putaway-rules'] });
-          toast.success('Priority updated');
-        },
-      });
-
-      return (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => moveUpMutation.mutate()}>
-              <ArrowUp className="mr-2 h-4 w-4" />
-              Move Up
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => moveDownMutation.mutate()}>
-              <ArrowDown className="mr-2 h-4 w-4" />
-              Move Down
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <Pencil className="mr-2 h-4 w-4" />
-              Edit Rule
-            </DropdownMenuItem>
-            <DropdownMenuItem className="text-destructive focus:text-destructive">
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      );
-    },
+    cell: ({ row }) => <RuleActionsCell rule={row.original} onEdit={onEdit} onDelete={onDelete} />,
   },
 ];
 
@@ -277,6 +292,9 @@ export default function PutawayRulesPage() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingRule, setEditingRule] = useState<PutawayRule | null>(null);
+  const [deleteRule, setDeleteRule] = useState<PutawayRule | null>(null);
   const [newRule, setNewRule] = useState<{
     name: string;
     warehouse_id: string;
@@ -300,6 +318,29 @@ export default function PutawayRulesPage() {
   });
 
   const queryClient = useQueryClient();
+
+  const handleEditClick = (rule: PutawayRule) => {
+    setEditingRule(rule);
+    setNewRule({
+      name: rule.name,
+      warehouse_id: rule.warehouse_id,
+      rule_type: rule.rule_type,
+      condition_field: rule.condition_field,
+      condition_operator: rule.condition_operator,
+      condition_value: rule.condition_value,
+      target_zone_id: rule.target_zone_id,
+      target_bin_type: rule.target_bin_type || '',
+      is_active: rule.is_active,
+    });
+    setIsEditMode(true);
+    setIsDialogOpen(true);
+  };
+
+  const handleDeleteClick = (rule: PutawayRule) => {
+    setDeleteRule(rule);
+  };
+
+  const columns = createColumns(handleEditClick, handleDeleteClick);
 
   const { data, isLoading } = useQuery({
     queryKey: ['putaway-rules', page, pageSize],
@@ -327,19 +368,64 @@ export default function PutawayRulesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['putaway-rules'] });
       toast.success('Putaway rule created successfully');
-      setIsDialogOpen(false);
+      handleDialogClose();
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to create rule');
     },
   });
 
-  const handleCreate = () => {
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<PutawayRule> }) => putawayRulesApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['putaway-rules'] });
+      toast.success('Putaway rule updated successfully');
+      handleDialogClose();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to update rule');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: putawayRulesApi.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['putaway-rules'] });
+      toast.success('Putaway rule deleted successfully');
+      setDeleteRule(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to delete rule');
+    },
+  });
+
+  const handleDialogClose = () => {
+    setIsDialogOpen(false);
+    setIsEditMode(false);
+    setEditingRule(null);
+    setNewRule({
+      name: '',
+      warehouse_id: '',
+      rule_type: 'CATEGORY',
+      condition_field: 'category_name',
+      condition_operator: 'EQUALS',
+      condition_value: '',
+      target_zone_id: '',
+      target_bin_type: '',
+      is_active: true,
+    });
+  };
+
+  const handleSubmit = () => {
     if (!newRule.name.trim()) {
       toast.error('Rule name is required');
       return;
     }
-    createMutation.mutate(newRule);
+    if (isEditMode && editingRule) {
+      updateMutation.mutate({ id: editingRule.id, data: newRule });
+    } else {
+      createMutation.mutate(newRule);
+    }
   };
 
   return (
@@ -348,16 +434,16 @@ export default function PutawayRulesPage() {
         title="Putaway Rules"
         description="Configure automatic putaway logic for incoming inventory"
         actions={
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <Dialog open={isDialogOpen} onOpenChange={(open) => !open && handleDialogClose()}>
             <DialogTrigger asChild>
-              <Button>
+              <Button onClick={() => { setIsEditMode(false); setIsDialogOpen(true); }}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add Rule
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-lg">
               <DialogHeader>
-                <DialogTitle>Create Putaway Rule</DialogTitle>
+                <DialogTitle>{isEditMode ? 'Edit Putaway Rule' : 'Create Putaway Rule'}</DialogTitle>
                 <DialogDescription>
                   Define conditions to automatically route items to specific zones.
                 </DialogDescription>
@@ -512,15 +598,36 @@ export default function PutawayRulesPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-                <Button onClick={handleCreate} disabled={createMutation.isPending}>
-                  {createMutation.isPending ? 'Creating...' : 'Create Rule'}
+                <Button variant="outline" onClick={handleDialogClose}>Cancel</Button>
+                <Button onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending}>
+                  {createMutation.isPending || updateMutation.isPending ? 'Saving...' : isEditMode ? 'Update Rule' : 'Create Rule'}
                 </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
         }
       />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteRule} onOpenChange={() => setDeleteRule(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Putaway Rule</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the rule &quot;{deleteRule?.name}&quot;? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteRule && deleteMutation.mutate(deleteRule.id)}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-4">

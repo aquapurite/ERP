@@ -23,6 +23,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -121,7 +131,32 @@ const zoneTypes = [
   { label: 'Returns', value: 'RETURNS' },
 ];
 
-const columns: ColumnDef<Zone>[] = [
+// Separate component for actions cell
+function ZoneActionsCell({ zone, onEdit, onDelete }: { zone: Zone; onEdit: (zone: Zone) => void; onDelete: (zone: Zone) => void }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-8 w-8">
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => onEdit(zone)}>
+          <Pencil className="mr-2 h-4 w-4" />
+          Edit
+        </DropdownMenuItem>
+        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(zone)}>
+          <Trash2 className="mr-2 h-4 w-4" />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+const createColumns = (onEdit: (zone: Zone) => void, onDelete: (zone: Zone) => void): ColumnDef<Zone>[] => [
   {
     accessorKey: 'name',
     header: 'Zone',
@@ -202,27 +237,7 @@ const columns: ColumnDef<Zone>[] = [
   },
   {
     id: 'actions',
-    cell: ({ row }) => (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-8 w-8">
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem>
-            <Pencil className="mr-2 h-4 w-4" />
-            Edit
-          </DropdownMenuItem>
-          <DropdownMenuItem className="text-destructive focus:text-destructive">
-            <Trash2 className="mr-2 h-4 w-4" />
-            Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    ),
+    cell: ({ row }) => <ZoneActionsCell zone={row.original} onEdit={onEdit} onDelete={onDelete} />,
   },
 ];
 
@@ -230,6 +245,9 @@ export default function ZonesPage() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingZone, setEditingZone] = useState<Zone | null>(null);
+  const [deleteZone, setDeleteZone] = useState<Zone | null>(null);
   const [newZone, setNewZone] = useState<{
     name: string;
     code: string;
@@ -250,6 +268,27 @@ export default function ZonesPage() {
 
   const queryClient = useQueryClient();
 
+  const handleEditClick = (zone: Zone) => {
+    setEditingZone(zone);
+    setNewZone({
+      name: zone.name,
+      code: zone.code,
+      warehouse_id: zone.warehouse_id,
+      zone_type: zone.zone_type,
+      max_capacity: zone.max_capacity?.toString() || '',
+      temperature_controlled: zone.temperature_controlled,
+      is_active: zone.is_active,
+    });
+    setIsEditMode(true);
+    setIsDialogOpen(true);
+  };
+
+  const handleDeleteClick = (zone: Zone) => {
+    setDeleteZone(zone);
+  };
+
+  const columns = createColumns(handleEditClick, handleDeleteClick);
+
   const { data, isLoading } = useQuery({
     queryKey: ['wms-zones', page, pageSize],
     queryFn: () => zonesApi.list({ page: page + 1, size: pageSize }),
@@ -266,28 +305,61 @@ export default function ZonesPage() {
     queryFn: warehousesApi.dropdown,
   });
 
+  const handleDialogClose = () => {
+    setIsDialogOpen(false);
+    setIsEditMode(false);
+    setEditingZone(null);
+    setNewZone({
+      name: '',
+      code: '',
+      warehouse_id: '',
+      zone_type: 'STORAGE',
+      max_capacity: '',
+      temperature_controlled: false,
+      is_active: true,
+    });
+  };
+
   const createMutation = useMutation({
     mutationFn: zonesApi.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['wms-zones'] });
+      queryClient.invalidateQueries({ queryKey: ['wms-zones-stats'] });
       toast.success('Zone created successfully');
-      setIsDialogOpen(false);
-      setNewZone({
-        name: '',
-        code: '',
-        warehouse_id: '',
-        zone_type: 'STORAGE',
-        max_capacity: '',
-        temperature_controlled: false,
-        is_active: true,
-      });
+      handleDialogClose();
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to create zone');
     },
   });
 
-  const handleCreate = () => {
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Zone> }) => zonesApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['wms-zones'] });
+      queryClient.invalidateQueries({ queryKey: ['wms-zones-stats'] });
+      toast.success('Zone updated successfully');
+      handleDialogClose();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to update zone');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: zonesApi.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['wms-zones'] });
+      queryClient.invalidateQueries({ queryKey: ['wms-zones-stats'] });
+      toast.success('Zone deleted successfully');
+      setDeleteZone(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to delete zone');
+    },
+  });
+
+  const handleSubmit = () => {
     if (!newZone.name.trim()) {
       toast.error('Zone name is required');
       return;
@@ -296,7 +368,8 @@ export default function ZonesPage() {
       toast.error('Warehouse is required');
       return;
     }
-    createMutation.mutate({
+
+    const zoneData = {
       zone_name: newZone.name,
       zone_code: newZone.code || undefined,
       warehouse_id: newZone.warehouse_id,
@@ -304,7 +377,13 @@ export default function ZonesPage() {
       max_capacity: parseInt(newZone.max_capacity) || 0,
       temperature_controlled: newZone.temperature_controlled,
       is_active: newZone.is_active,
-    });
+    };
+
+    if (isEditMode && editingZone) {
+      updateMutation.mutate({ id: editingZone.id, data: zoneData });
+    } else {
+      createMutation.mutate(zoneData);
+    }
   };
 
   return (
@@ -313,18 +392,18 @@ export default function ZonesPage() {
         title="Warehouse Zones"
         description="Manage warehouse zones for organized inventory storage"
         actions={
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <Dialog open={isDialogOpen} onOpenChange={(open) => !open && handleDialogClose()}>
             <DialogTrigger asChild>
-              <Button>
+              <Button onClick={() => { setIsEditMode(false); setIsDialogOpen(true); }}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add Zone
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader>
-                <DialogTitle>Create New Zone</DialogTitle>
+                <DialogTitle>{isEditMode ? 'Edit Zone' : 'Create New Zone'}</DialogTitle>
                 <DialogDescription>
-                  Add a new zone to organize inventory within a warehouse.
+                  {isEditMode ? 'Update zone details.' : 'Add a new zone to organize inventory within a warehouse.'}
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
@@ -419,15 +498,36 @@ export default function ZonesPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-                <Button onClick={handleCreate} disabled={createMutation.isPending}>
-                  {createMutation.isPending ? 'Creating...' : 'Create Zone'}
+                <Button variant="outline" onClick={handleDialogClose}>Cancel</Button>
+                <Button onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending}>
+                  {createMutation.isPending || updateMutation.isPending ? 'Saving...' : isEditMode ? 'Update Zone' : 'Create Zone'}
                 </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
         }
       />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteZone} onOpenChange={() => setDeleteZone(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Zone</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the zone &quot;{deleteZone?.name}&quot;? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteZone && deleteMutation.mutate(deleteZone.id)}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-4">
