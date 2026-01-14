@@ -201,7 +201,7 @@ export default function ShipmentsPage() {
         <div className="flex items-center gap-2">
           <Package className="h-4 w-4 text-muted-foreground" />
           <div>
-            <Link href={`/logistics/shipments/${row.original.id}`} className="font-medium hover:underline">
+            <Link href={`/dashboard/logistics/shipments/${row.original.id}`} className="font-medium hover:underline">
               {row.original.shipment_number}
             </Link>
             {(row.original.awb_number || row.original.tracking_number) && (
@@ -288,7 +288,7 @@ export default function ShipmentsPage() {
             <DropdownMenuLabel>Actions</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link href={`/logistics/shipments/${row.original.id}`}>
+              <Link href={`/dashboard/logistics/shipments/${row.original.id}`}>
                 <Eye className="mr-2 h-4 w-4" />
                 View Details
               </Link>
