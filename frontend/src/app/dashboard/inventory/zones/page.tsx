@@ -250,7 +250,7 @@ export default function ZonesPage() {
             <DropdownMenuLabel>Actions</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link href={`/inventory/bins?zone_id=${row.original.id}`}>
+              <Link href={`/dashboard/inventory/bins?zone_id=${row.original.id}`}>
                 <Grid3X3 className="mr-2 h-4 w-4" />
                 View Bins
               </Link>

@@ -63,6 +63,8 @@ export default function WarehousesPage() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingWarehouse, setEditingWarehouse] = useState<WarehouseType | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [warehouseToDelete, setWarehouseToDelete] = useState<WarehouseType | null>(null);
   const [newWarehouse, setNewWarehouse] = useState<{
@@ -89,6 +91,40 @@ export default function WarehousesPage() {
 
   const queryClient = useQueryClient();
 
+  const handleEdit = (warehouse: WarehouseType) => {
+    setEditingWarehouse(warehouse);
+    setNewWarehouse({
+      name: warehouse.name,
+      code: warehouse.code,
+      type: warehouse.type as 'MAIN' | 'REGIONAL' | 'SERVICE_CENTER' | 'DEALER' | 'VIRTUAL',
+      address: warehouse.address || '',
+      city: warehouse.city || '',
+      state: warehouse.state || '',
+      pincode: warehouse.pincode || '',
+      capacity: warehouse.capacity?.toString() || '',
+      is_active: warehouse.is_active,
+    });
+    setIsEditMode(true);
+    setIsDialogOpen(true);
+  };
+
+  const handleDialogClose = () => {
+    setIsDialogOpen(false);
+    setIsEditMode(false);
+    setEditingWarehouse(null);
+    setNewWarehouse({
+      name: '',
+      code: '',
+      type: 'MAIN',
+      address: '',
+      city: '',
+      state: '',
+      pincode: '',
+      capacity: '',
+      is_active: true,
+    });
+  };
+
   const { data, isLoading } = useQuery({
     queryKey: ['warehouses', page, pageSize],
     queryFn: () => warehousesApi.list({ page: page + 1, size: pageSize }),
@@ -99,21 +135,22 @@ export default function WarehousesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['warehouses'] });
       toast.success('Warehouse created successfully');
-      setIsDialogOpen(false);
-      setNewWarehouse({
-        name: '',
-        code: '',
-        type: 'MAIN',
-        address: '',
-        city: '',
-        state: '',
-        pincode: '',
-        capacity: '',
-        is_active: true,
-      });
+      handleDialogClose();
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to create warehouse');
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<WarehouseType> }) => warehousesApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['warehouses'] });
+      toast.success('Warehouse updated successfully');
+      handleDialogClose();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to update warehouse');
     },
   });
 
@@ -196,7 +233,7 @@ export default function WarehousesPage() {
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>Actions</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleEdit(row.original)}>
               <Pencil className="mr-2 h-4 w-4" />
               Edit
             </DropdownMenuItem>
@@ -218,7 +255,7 @@ export default function WarehousesPage() {
     },
   ];
 
-  const handleCreate = () => {
+  const handleSubmit = () => {
     if (!newWarehouse.name.trim()) {
       toast.error('Warehouse name is required');
       return;
@@ -227,7 +264,8 @@ export default function WarehousesPage() {
       toast.error('Warehouse code is required');
       return;
     }
-    createMutation.mutate({
+
+    const warehouseData = {
       name: newWarehouse.name,
       code: newWarehouse.code.toUpperCase(),
       type: newWarehouse.type,
@@ -237,7 +275,13 @@ export default function WarehousesPage() {
       pincode: newWarehouse.pincode,
       capacity: newWarehouse.capacity ? parseInt(newWarehouse.capacity) : undefined,
       is_active: newWarehouse.is_active,
-    });
+    };
+
+    if (isEditMode && editingWarehouse) {
+      updateMutation.mutate({ id: editingWarehouse.id, data: warehouseData });
+    } else {
+      createMutation.mutate(warehouseData);
+    }
   };
 
   return (
@@ -246,18 +290,18 @@ export default function WarehousesPage() {
         title="Warehouses"
         description="Manage warehouse locations and inventory storage"
         actions={
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <Dialog open={isDialogOpen} onOpenChange={(open) => !open && handleDialogClose()}>
             <DialogTrigger asChild>
-              <Button>
+              <Button onClick={() => { setIsEditMode(false); setIsDialogOpen(true); }}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add Warehouse
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader>
-                <DialogTitle>Create New Warehouse</DialogTitle>
+                <DialogTitle>{isEditMode ? 'Edit Warehouse' : 'Create New Warehouse'}</DialogTitle>
                 <DialogDescription>
-                  Add a new warehouse location for inventory storage.
+                  {isEditMode ? 'Update warehouse details.' : 'Add a new warehouse location for inventory storage.'}
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
@@ -377,11 +421,11 @@ export default function WarehousesPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                <Button variant="outline" onClick={handleDialogClose}>
                   Cancel
                 </Button>
-                <Button onClick={handleCreate} disabled={createMutation.isPending}>
-                  {createMutation.isPending ? 'Creating...' : 'Create Warehouse'}
+                <Button onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending}>
+                  {createMutation.isPending || updateMutation.isPending ? 'Saving...' : isEditMode ? 'Update Warehouse' : 'Create Warehouse'}
                 </Button>
               </DialogFooter>
             </DialogContent>
