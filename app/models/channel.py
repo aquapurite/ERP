@@ -11,7 +11,6 @@ from decimal import Decimal
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Float, JSON
 from sqlalchemy import Enum as SQLEnum, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -70,10 +69,10 @@ class SalesChannel(Base):
     """
     __tablename__ = "sales_channels"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Identification
@@ -111,8 +110,8 @@ class SalesChannel(Base):
     webhook_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Fulfillment Settings
-    default_warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    default_warehouse_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("warehouses.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -237,28 +236,28 @@ class ChannelPricing(Base):
         UniqueConstraint("channel_id", "product_id", "variant_id", name="uq_channel_product_pricing"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
-    channel_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    channel_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("sales_channels.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
-    product_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    product_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("products.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
-    variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    variant_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("product_variants.id", ondelete="CASCADE"),
         nullable=True
     )
@@ -336,35 +335,35 @@ class ChannelInventory(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
-    channel_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    channel_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("sales_channels.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
-    warehouse_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    warehouse_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("warehouses.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
-    product_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    product_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("products.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
-    variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    variant_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("product_variants.id", ondelete="CASCADE"),
         nullable=True
     )
@@ -437,21 +436,21 @@ class ChannelOrder(Base):
         UniqueConstraint("channel_id", "channel_order_id", name="uq_channel_order"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
-    channel_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    channel_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("sales_channels.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
     )
 
-    order_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    order_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("orders.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -531,15 +530,15 @@ class MarketplaceIntegration(Base):
         UniqueConstraint("company_id", "marketplace_type", name="uq_company_marketplace"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Company
-    company_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    company_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("companies.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -603,8 +602,8 @@ class MarketplaceIntegration(Base):
         onupdate=datetime.utcnow,
         nullable=False
     )
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    created_by: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("users.id"),
         nullable=True
     )

@@ -6,7 +6,6 @@ from decimal import Decimal
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Enum as SQLEnum, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
 
 from app.database import Base
 
@@ -41,10 +40,10 @@ class Product(Base):
     """
     __tablename__ = "products"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Basic Info
@@ -88,13 +87,13 @@ class Product(Base):
     features: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # HTML/Markdown
 
     # Relationships
-    category_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    category_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("categories.id", ondelete="RESTRICT"),
         nullable=False
     )
-    brand_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    brand_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("brands.id", ondelete="RESTRICT"),
         nullable=False
     )
@@ -296,13 +295,13 @@ class ProductImage(Base):
     """Product images with support for multiple images per product."""
     __tablename__ = "product_images"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
-    product_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    product_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("products.id", ondelete="CASCADE"),
         nullable=False
     )
@@ -334,13 +333,13 @@ class ProductSpecification(Base):
     """
     __tablename__ = "product_specifications"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
-    product_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    product_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("products.id", ondelete="CASCADE"),
         nullable=False
     )
@@ -370,13 +369,13 @@ class ProductVariant(Base):
     """
     __tablename__ = "product_variants"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
-    product_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    product_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("products.id", ondelete="CASCADE"),
         nullable=False
     )
@@ -447,13 +446,13 @@ class ProductDocument(Base):
     """
     __tablename__ = "product_documents"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
-    product_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    product_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("products.id", ondelete="CASCADE"),
         nullable=False
     )

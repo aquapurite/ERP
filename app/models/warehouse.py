@@ -2,7 +2,6 @@
 from enum import Enum
 from datetime import datetime
 from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Enum as SQLEnum, Float, DateTime
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -23,7 +22,7 @@ class Warehouse(Base, TimestampMixin):
 
     __tablename__ = "warehouses"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     code = Column(String(20), unique=True, nullable=False, index=True)
     name = Column(String(200), nullable=False)
     warehouse_type = Column(SQLEnum(WarehouseType), default=WarehouseType.REGIONAL)
@@ -46,10 +45,10 @@ class Warehouse(Base, TimestampMixin):
     contact_email = Column(String(100))
 
     # Region association
-    region_id = Column(UUID(as_uuid=True), ForeignKey("regions.id"))
+    region_id = Column(String(36), ForeignKey("regions.id"))
 
     # Manager
-    manager_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    manager_id = Column(String(36), ForeignKey("users.id"))
 
     # Capacity
     total_capacity = Column(Float, default=0)  # In square feet or units

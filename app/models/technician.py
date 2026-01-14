@@ -3,7 +3,6 @@ from enum import Enum
 from datetime import datetime, date
 from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float, JSON
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -40,7 +39,7 @@ class Technician(Base, TimestampMixin):
 
     __tablename__ = "technicians"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
     # Basic Info
     employee_code = Column(String(20), unique=True, nullable=False, index=True)
@@ -51,7 +50,7 @@ class Technician(Base, TimestampMixin):
     email = Column(String(100))
 
     # Link to User account (if they have system access)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), unique=True)
+    user_id = Column(String(36), ForeignKey("users.id"), unique=True)
 
     # Employment
     technician_type = Column(SQLEnum(TechnicianType), default=TechnicianType.INTERNAL)
@@ -65,8 +64,8 @@ class Technician(Base, TimestampMixin):
     certifications = Column(JSON)  # [{"name": "...", "date": "...", "expiry": "..."}]
 
     # Location/Assignment
-    region_id = Column(UUID(as_uuid=True), ForeignKey("regions.id"))
-    assigned_warehouse_id = Column(UUID(as_uuid=True), ForeignKey("warehouses.id"))
+    region_id = Column(String(36), ForeignKey("regions.id"))
+    assigned_warehouse_id = Column(String(36), ForeignKey("warehouses.id"))
     service_pincodes = Column(JSON)  # List of serviceable pincodes
 
     # Address
@@ -125,14 +124,14 @@ class TechnicianJobHistory(Base, TimestampMixin):
 
     __tablename__ = "technician_job_history"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
-    technician_id = Column(UUID(as_uuid=True), ForeignKey("technicians.id"), nullable=False, index=True)
-    service_request_id = Column(UUID(as_uuid=True), ForeignKey("service_requests.id"), nullable=False)
+    technician_id = Column(String(36), ForeignKey("technicians.id"), nullable=False, index=True)
+    service_request_id = Column(String(36), ForeignKey("service_requests.id"), nullable=False)
 
     # Assignment
     assigned_at = Column(DateTime, default=datetime.utcnow)
-    assigned_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    assigned_by = Column(String(36), ForeignKey("users.id"))
 
     # Timing
     started_at = Column(DateTime)
@@ -163,9 +162,9 @@ class TechnicianLeave(Base, TimestampMixin):
 
     __tablename__ = "technician_leaves"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
-    technician_id = Column(UUID(as_uuid=True), ForeignKey("technicians.id"), nullable=False, index=True)
+    technician_id = Column(String(36), ForeignKey("technicians.id"), nullable=False, index=True)
 
     leave_type = Column(String(50))  # sick, casual, earned, emergency
     from_date = Column(Date, nullable=False)
@@ -173,7 +172,7 @@ class TechnicianLeave(Base, TimestampMixin):
     reason = Column(Text)
 
     status = Column(String(50), default="pending")  # pending, approved, rejected, cancelled
-    approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    approved_by = Column(String(36), ForeignKey("users.id"))
     approved_at = Column(DateTime)
     rejection_reason = Column(Text)
 

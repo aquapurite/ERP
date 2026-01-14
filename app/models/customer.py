@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Optional, List
 
 from sqlalchemy import String, Boolean, DateTime, Date, ForeignKey, Text, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
 
 from app.database import Base
 
@@ -52,10 +51,10 @@ class Customer(Base):
     """
     __tablename__ = "customers"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Basic Info
@@ -94,8 +93,8 @@ class Customer(Base):
     anniversary_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     # Region for filtering
-    region_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    region_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("regions.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -167,13 +166,13 @@ class CustomerAddress(Base):
     """Customer address model."""
     __tablename__ = "customer_addresses"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
-    customer_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    customer_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("customers.id", ondelete="CASCADE"),
         nullable=False
     )

@@ -107,20 +107,20 @@ class EscalationMatrix(Base):
     """Escalation matrix configuration - defines escalation rules."""
     __tablename__ = "escalation_matrix"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[Optional[str]] = mapped_column(Text)
 
     # Applicable to
     source_type: Mapped[EscalationSource] = mapped_column(SQLEnum(EscalationSource))
-    category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL")
+    category_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("categories.id", ondelete="SET NULL")
     )
     priority: Mapped[Optional[EscalationPriority]] = mapped_column(SQLEnum(EscalationPriority))
-    region_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("regions.id", ondelete="SET NULL")
+    region_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("regions.id", ondelete="SET NULL")
     )
 
     # Level configuration
@@ -132,23 +132,23 @@ class EscalationMatrix(Base):
     resolution_sla_minutes: Mapped[int] = mapped_column(Integer)  # Expected resolution time
 
     # Who to notify/assign
-    notify_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    notify_user_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL")
     )
-    notify_role_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("roles.id", ondelete="SET NULL")
+    notify_role_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("roles.id", ondelete="SET NULL")
     )
-    assign_to_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    assign_to_user_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL")
     )
-    assign_to_role_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("roles.id", ondelete="SET NULL")
+    assign_to_role_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("roles.id", ondelete="SET NULL")
     )
     additional_notify_emails: Mapped[Optional[dict]] = mapped_column(JSON)  # List of emails
 
     # Notification settings
     notification_channels: Mapped[Optional[dict]] = mapped_column(JSON)  # List of channels
-    notification_template_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    notification_template_id: Mapped[Optional[str]] = mapped_column(String(36))
 
     # Auto-actions
     auto_escalate: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -177,8 +177,8 @@ class Escalation(Base):
     """Escalation record - tracks individual escalations."""
     __tablename__ = "escalations"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=uuid.uuid4
     )
     escalation_number: Mapped[str] = mapped_column(
         String(30), unique=True, index=True
@@ -186,12 +186,12 @@ class Escalation(Base):
 
     # Source reference
     source_type: Mapped[EscalationSource] = mapped_column(SQLEnum(EscalationSource))
-    source_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), index=True)
+    source_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
     source_reference: Mapped[Optional[str]] = mapped_column(String(50))  # e.g., SR number, Order number
 
     # Customer
-    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), index=True
+    customer_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("customers.id", ondelete="SET NULL"), index=True
     )
     customer_name: Mapped[str] = mapped_column(String(200))
     customer_phone: Mapped[str] = mapped_column(String(20))
@@ -215,12 +215,12 @@ class Escalation(Base):
     )
 
     # Assignment
-    assigned_to_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
+    assigned_to_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
     assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    assigned_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    assigned_by_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL")
     )
 
     # SLA tracking
@@ -232,15 +232,15 @@ class Escalation(Base):
 
     # Acknowledgment
     acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    acknowledged_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    acknowledged_by_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL")
     )
     acknowledgment_notes: Mapped[Optional[str]] = mapped_column(Text)
 
     # Resolution
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    resolved_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    resolved_by_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL")
     )
     resolution_notes: Mapped[Optional[str]] = mapped_column(Text)
     resolution_type: Mapped[Optional[str]] = mapped_column(String(50))
@@ -256,26 +256,26 @@ class Escalation(Base):
     reopen_reason: Mapped[Optional[str]] = mapped_column(Text)
 
     # Matrix reference
-    matrix_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("escalation_matrix.id", ondelete="SET NULL")
+    matrix_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("escalation_matrix.id", ondelete="SET NULL")
     )
 
     # Product/Category
-    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL")
+    product_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("products.id", ondelete="SET NULL")
     )
-    category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL")
+    category_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("categories.id", ondelete="SET NULL")
     )
 
     # Region
-    region_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("regions.id", ondelete="SET NULL")
+    region_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("regions.id", ondelete="SET NULL")
     )
 
     # Dealer/Franchisee
-    dealer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("dealers.id", ondelete="SET NULL")
+    dealer_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("dealers.id", ondelete="SET NULL")
     )
 
     # Internal notes
@@ -283,8 +283,8 @@ class Escalation(Base):
     tags: Mapped[Optional[dict]] = mapped_column(JSON)
 
     # Creator
-    created_by_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    created_by_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -309,11 +309,11 @@ class EscalationHistory(Base):
     """Escalation level change history."""
     __tablename__ = "escalation_history"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=uuid.uuid4
     )
-    escalation_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("escalations.id", ondelete="CASCADE"), index=True
+    escalation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("escalations.id", ondelete="CASCADE"), index=True
     )
 
     # Level change
@@ -325,8 +325,8 @@ class EscalationHistory(Base):
     to_status: Mapped[EscalationStatus] = mapped_column(SQLEnum(EscalationStatus))
 
     # Assignment change
-    from_assignee_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
-    to_assignee_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    from_assignee_id: Mapped[Optional[str]] = mapped_column(String(36))
+    to_assignee_id: Mapped[Optional[str]] = mapped_column(String(36))
 
     # Reason and notes
     action: Mapped[str] = mapped_column(String(50))  # ESCALATED, DE_ESCALATED, ASSIGNED, STATUS_CHANGE
@@ -338,8 +338,8 @@ class EscalationHistory(Base):
     trigger_type: Mapped[Optional[str]] = mapped_column(String(50))  # SLA_BREACH, MANUAL, RULE
 
     # Who made the change
-    changed_by_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    changed_by_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT")
     )
     changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -352,11 +352,11 @@ class EscalationComment(Base):
     """Comments/updates on escalation."""
     __tablename__ = "escalation_comments"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=uuid.uuid4
     )
-    escalation_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("escalations.id", ondelete="CASCADE"), index=True
+    escalation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("escalations.id", ondelete="CASCADE"), index=True
     )
 
     # Comment details
@@ -368,8 +368,8 @@ class EscalationComment(Base):
     attachments: Mapped[Optional[dict]] = mapped_column(JSON)  # List of attachment URLs
 
     # Created by
-    created_by_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    created_by_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -382,17 +382,17 @@ class EscalationNotification(Base):
     """Notification records for escalations."""
     __tablename__ = "escalation_notifications"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=uuid.uuid4
     )
-    escalation_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("escalations.id", ondelete="CASCADE"), index=True
+    escalation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("escalations.id", ondelete="CASCADE"), index=True
     )
 
     # Notification details
     channel: Mapped[NotificationChannel] = mapped_column(SQLEnum(NotificationChannel))
     recipient_type: Mapped[str] = mapped_column(String(20))  # USER, CUSTOMER, EXTERNAL
-    recipient_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    recipient_id: Mapped[Optional[str]] = mapped_column(String(36))
     recipient_email: Mapped[Optional[str]] = mapped_column(String(255))
     recipient_phone: Mapped[Optional[str]] = mapped_column(String(20))
 
@@ -422,8 +422,8 @@ class SLAConfiguration(Base):
     """SLA configuration for different scenarios."""
     __tablename__ = "sla_configurations"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[Optional[str]] = mapped_column(Text)
@@ -431,8 +431,8 @@ class SLAConfiguration(Base):
     # Applicable to
     source_type: Mapped[EscalationSource] = mapped_column(SQLEnum(EscalationSource))
     priority: Mapped[EscalationPriority] = mapped_column(SQLEnum(EscalationPriority))
-    category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL")
+    category_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("categories.id", ondelete="SET NULL")
     )
 
     # SLA times (in minutes)

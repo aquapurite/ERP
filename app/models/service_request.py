@@ -3,7 +3,6 @@ from enum import Enum
 from datetime import datetime, date
 from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float, JSON, Numeric
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -67,7 +66,7 @@ class ServiceRequest(Base, TimestampMixin):
 
     __tablename__ = "service_requests"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
     # Identification
     ticket_number = Column(String(50), unique=True, nullable=False, index=True)
@@ -77,20 +76,21 @@ class ServiceRequest(Base, TimestampMixin):
     status = Column(SQLEnum(ServiceStatus), default=ServiceStatus.PENDING, index=True)
 
     # Customer
-    customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id"), nullable=False, index=True)
-    customer_address_id = Column(UUID(as_uuid=True), ForeignKey("customer_addresses.id"))
+    customer_id = Column(String(36), ForeignKey("customers.id"), nullable=False, index=True)
+    customer_address_id = Column(String(36), ForeignKey("customer_addresses.id"))
 
     # Product/Order reference
-    order_id = Column(UUID(as_uuid=True), ForeignKey("orders.id"))
-    order_item_id = Column(UUID(as_uuid=True))
-    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), index=True)
+    order_id = Column(String(36), ForeignKey("orders.id"))
+    order_item_id = Column(
+        String(36))
+    product_id = Column(String(36), ForeignKey("products.id"), index=True)
     serial_number = Column(String(100), index=True)
 
     # Installation details (for installation type)
-    installation_id = Column(UUID(as_uuid=True), ForeignKey("installations.id"))
+    installation_id = Column(String(36), ForeignKey("installations.id"))
 
     # AMC reference (if applicable)
-    amc_id = Column(UUID(as_uuid=True), ForeignKey("amc_contracts.id"))
+    amc_id = Column(String(36), ForeignKey("amc_contracts.id"))
 
     # Problem description
     title = Column(String(255), nullable=False)
@@ -107,10 +107,10 @@ class ServiceRequest(Base, TimestampMixin):
     longitude = Column(Float)
 
     # Assignment
-    technician_id = Column(UUID(as_uuid=True), ForeignKey("technicians.id"))
-    franchisee_id = Column(UUID(as_uuid=True), ForeignKey("franchisees.id"))  # For franchisee allocation
+    technician_id = Column(String(36), ForeignKey("technicians.id"))
+    franchisee_id = Column(String(36), ForeignKey("franchisees.id"))  # For franchisee allocation
     assigned_at = Column(DateTime)
-    assigned_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    assigned_by = Column(String(36), ForeignKey("users.id"))
 
     # Scheduling
     preferred_date = Column(Date)
@@ -119,7 +119,7 @@ class ServiceRequest(Base, TimestampMixin):
     scheduled_time_slot = Column(String(50))
 
     # Region
-    region_id = Column(UUID(as_uuid=True), ForeignKey("regions.id"))
+    region_id = Column(String(36), ForeignKey("regions.id"))
 
     # Timing
     started_at = Column(DateTime)
@@ -161,11 +161,11 @@ class ServiceRequest(Base, TimestampMixin):
     # Internal
     internal_notes = Column(Text)
     escalation_level = Column(Integer, default=0)
-    escalated_to = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    escalated_to = Column(String(36), ForeignKey("users.id"))
     escalation_reason = Column(Text)
 
     # Audit
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_by = Column(String(36), ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -194,13 +194,13 @@ class ServiceStatusHistory(Base, TimestampMixin):
 
     __tablename__ = "service_status_history"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
-    service_request_id = Column(UUID(as_uuid=True), ForeignKey("service_requests.id"), nullable=False, index=True)
+    service_request_id = Column(String(36), ForeignKey("service_requests.id"), nullable=False, index=True)
 
     from_status = Column(SQLEnum(ServiceStatus))
     to_status = Column(SQLEnum(ServiceStatus), nullable=False)
-    changed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    changed_by = Column(String(36), ForeignKey("users.id"))
     notes = Column(Text)
 
     # Relationships
@@ -216,10 +216,10 @@ class PartsRequest(Base, TimestampMixin):
 
     __tablename__ = "parts_requests"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
     request_number = Column(String(50), unique=True, nullable=False, index=True)
-    service_request_id = Column(UUID(as_uuid=True), ForeignKey("service_requests.id"), nullable=False, index=True)
+    service_request_id = Column(String(36), ForeignKey("service_requests.id"), nullable=False, index=True)
 
     status = Column(String(50), default="pending")  # pending, approved, dispatched, delivered, returned
 
@@ -227,11 +227,11 @@ class PartsRequest(Base, TimestampMixin):
     items = Column(JSON)  # [{"product_id": "", "quantity": 1, "notes": ""}]
 
     # Warehouse
-    from_warehouse_id = Column(UUID(as_uuid=True), ForeignKey("warehouses.id"))
+    from_warehouse_id = Column(String(36), ForeignKey("warehouses.id"))
 
     # Approval
-    requested_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    requested_by = Column(String(36), ForeignKey("users.id"))
+    approved_by = Column(String(36), ForeignKey("users.id"))
     approved_at = Column(DateTime)
 
     # Delivery

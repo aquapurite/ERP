@@ -3,7 +3,6 @@ from enum import Enum
 from datetime import datetime, date
 from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float, JSON, Numeric
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -33,7 +32,7 @@ class AMCContract(Base, TimestampMixin):
 
     __tablename__ = "amc_contracts"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
     # Identification
     contract_number = Column(String(50), unique=True, nullable=False, index=True)
@@ -41,12 +40,12 @@ class AMCContract(Base, TimestampMixin):
     status = Column(SQLEnum(AMCStatus), default=AMCStatus.DRAFT, index=True)
 
     # Customer
-    customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id"), nullable=False, index=True)
-    customer_address_id = Column(UUID(as_uuid=True), ForeignKey("customer_addresses.id"))
+    customer_id = Column(String(36), ForeignKey("customers.id"), nullable=False, index=True)
+    customer_address_id = Column(String(36), ForeignKey("customer_addresses.id"))
 
     # Product/Installation
-    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
-    installation_id = Column(UUID(as_uuid=True), ForeignKey("installations.id"))
+    product_id = Column(String(36), ForeignKey("products.id"), nullable=False)
+    installation_id = Column(String(36), ForeignKey("installations.id"))
     serial_number = Column(String(100), nullable=False, index=True)  # Required - links AMC to specific product unit
 
     # Duration
@@ -82,8 +81,8 @@ class AMCContract(Base, TimestampMixin):
     # Renewal
     is_renewable = Column(Boolean, default=True)
     renewal_reminder_sent = Column(Boolean, default=False)
-    renewed_from_id = Column(UUID(as_uuid=True), ForeignKey("amc_contracts.id"))
-    renewed_to_id = Column(UUID(as_uuid=True), ForeignKey("amc_contracts.id"))
+    renewed_from_id = Column(String(36), ForeignKey("amc_contracts.id"))
+    renewed_to_id = Column(String(36), ForeignKey("amc_contracts.id"))
 
     # Service schedule
     service_schedule = Column(JSON)  # [{"month": 1, "scheduled_date": null, "completed_date": null}]
@@ -93,8 +92,8 @@ class AMCContract(Base, TimestampMixin):
     internal_notes = Column(Text)
 
     # Audit
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_by = Column(String(36), ForeignKey("users.id"))
+    approved_by = Column(String(36), ForeignKey("users.id"))
 
     # Relationships
     customer = relationship("Customer", back_populates="amc_contracts")
@@ -129,14 +128,14 @@ class AMCPlan(Base, TimestampMixin):
 
     __tablename__ = "amc_plans"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
     name = Column(String(200), nullable=False)
     code = Column(String(20), unique=True, nullable=False)
     amc_type = Column(SQLEnum(AMCType), default=AMCType.STANDARD)
 
     # Applicable products
-    category_id = Column(UUID(as_uuid=True), ForeignKey("categories.id"))  # If specific to category
+    category_id = Column(String(36), ForeignKey("categories.id"))  # If specific to category
     product_ids = Column(JSON)  # List of specific product IDs if applicable
 
     # Duration options

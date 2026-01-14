@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Optional, List
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
 
 from app.database import Base
 
@@ -22,10 +21,10 @@ class User(Base):
     """
     __tablename__ = "users"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Basic info
@@ -44,8 +43,8 @@ class User(Base):
     designation: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     # Region assignment (for attribute-based filtering)
-    region_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    region_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("regions.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -122,25 +121,25 @@ class UserRole(Base):
     """
     __tablename__ = "user_roles"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    user_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False
     )
-    role_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    role_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("roles.id", ondelete="CASCADE"),
         nullable=False
     )
 
     # Audit fields
-    assigned_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    assigned_by: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )

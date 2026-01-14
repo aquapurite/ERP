@@ -88,10 +88,10 @@ class Notification(Base):
     """
     __tablename__ = "notifications"
 
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
 
     # Recipient
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Notification content
     notification_type = Column(SAEnum(NotificationType), nullable=False, index=True)
@@ -106,7 +106,7 @@ class Notification(Base):
 
     # Reference to related entity
     entity_type = Column(String(50))  # e.g., "order", "leave_request", "asset"
-    entity_id = Column(PGUUID(as_uuid=True))
+    entity_id = Column(String(36))
 
     # Additional data as JSON
     extra_data = Column(JSON, default=dict)
@@ -139,9 +139,9 @@ class NotificationPreference(Base):
     """
     __tablename__ = "notification_preferences"
 
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
 
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
 
     # Channel preferences (which channels are enabled)
     email_enabled = Column(Boolean, default=True, nullable=False)
@@ -175,7 +175,7 @@ class NotificationTemplate(Base):
     """
     __tablename__ = "notification_templates"
 
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
 
     notification_type = Column(SAEnum(NotificationType), nullable=False, unique=True)
 
@@ -210,7 +210,7 @@ class Announcement(Base):
     """
     __tablename__ = "announcements"
 
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
 
     title = Column(String(200), nullable=False)
     message = Column(Text, nullable=False)
@@ -238,7 +238,7 @@ class Announcement(Base):
     is_active = Column(Boolean, default=True, nullable=False)
 
     # Created by
-    created_by_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_by_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"))
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -254,10 +254,10 @@ class AnnouncementDismissal(Base):
     """
     __tablename__ = "announcement_dismissals"
 
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
 
-    announcement_id = Column(PGUUID(as_uuid=True), ForeignKey("announcements.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    announcement_id = Column(String(36), ForeignKey("announcements.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
     dismissed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 

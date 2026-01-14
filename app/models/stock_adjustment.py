@@ -3,7 +3,6 @@ from enum import Enum
 from datetime import datetime
 from sqlalchemy import Column, String, Text, ForeignKey, Integer, DateTime, Float, Numeric
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -39,7 +38,7 @@ class StockAdjustment(Base, TimestampMixin):
 
     __tablename__ = "stock_adjustments"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
     # Identification
     adjustment_number = Column(String(50), unique=True, nullable=False, index=True)
@@ -47,7 +46,7 @@ class StockAdjustment(Base, TimestampMixin):
     status = Column(SQLEnum(AdjustmentStatus), default=AdjustmentStatus.DRAFT, index=True)
 
     # Location
-    warehouse_id = Column(UUID(as_uuid=True), ForeignKey("warehouses.id"), nullable=False, index=True)
+    warehouse_id = Column(String(36), ForeignKey("warehouses.id"), nullable=False, index=True)
 
     # Dates
     adjustment_date = Column(DateTime, default=datetime.utcnow)
@@ -55,8 +54,8 @@ class StockAdjustment(Base, TimestampMixin):
     completed_at = Column(DateTime)
 
     # Users
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_by = Column(String(36), ForeignKey("users.id"), nullable=False)
+    approved_by = Column(String(36), ForeignKey("users.id"))
 
     # Approval
     requires_approval = Column(Integer, default=True)
@@ -88,14 +87,14 @@ class StockAdjustmentItem(Base, TimestampMixin):
 
     __tablename__ = "stock_adjustment_items"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
-    adjustment_id = Column(UUID(as_uuid=True), ForeignKey("stock_adjustments.id"), nullable=False, index=True)
+    adjustment_id = Column(String(36), ForeignKey("stock_adjustments.id"), nullable=False, index=True)
 
     # Product
-    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
-    variant_id = Column(UUID(as_uuid=True), ForeignKey("product_variants.id"))
-    stock_item_id = Column(UUID(as_uuid=True), ForeignKey("stock_items.id"))  # For serial tracked
+    product_id = Column(String(36), ForeignKey("products.id"), nullable=False)
+    variant_id = Column(String(36), ForeignKey("product_variants.id"))
+    stock_item_id = Column(String(36), ForeignKey("stock_items.id"))  # For serial tracked
 
     # Quantities
     system_quantity = Column(Integer, default=0)  # What system shows
@@ -126,15 +125,15 @@ class InventoryAudit(Base, TimestampMixin):
 
     __tablename__ = "inventory_audits"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
     # Identification
     audit_number = Column(String(50), unique=True, nullable=False, index=True)
     audit_name = Column(String(200))
 
     # Scope
-    warehouse_id = Column(UUID(as_uuid=True), ForeignKey("warehouses.id"), nullable=False, index=True)
-    category_id = Column(UUID(as_uuid=True), ForeignKey("categories.id"))  # Optional: specific category
+    warehouse_id = Column(String(36), ForeignKey("warehouses.id"), nullable=False, index=True)
+    category_id = Column(String(36), ForeignKey("categories.id"))  # Optional: specific category
 
     # Schedule
     scheduled_date = Column(DateTime)
@@ -145,8 +144,8 @@ class InventoryAudit(Base, TimestampMixin):
     status = Column(String(50), default="planned")  # planned, in_progress, completed, cancelled
 
     # Users
-    assigned_to = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    assigned_to = Column(String(36), ForeignKey("users.id"))
+    created_by = Column(String(36), ForeignKey("users.id"))
 
     # Results
     total_items_counted = Column(Integer, default=0)
@@ -154,7 +153,7 @@ class InventoryAudit(Base, TimestampMixin):
     total_variance_value = Column(Numeric(14, 2), default=0)
 
     # Linked adjustment
-    adjustment_id = Column(UUID(as_uuid=True), ForeignKey("stock_adjustments.id"))
+    adjustment_id = Column(String(36), ForeignKey("stock_adjustments.id"))
 
     notes = Column(Text)
 

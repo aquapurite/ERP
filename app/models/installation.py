@@ -3,7 +3,6 @@ from enum import Enum
 from datetime import datetime, date
 from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float, JSON, Numeric
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -25,25 +24,26 @@ class Installation(Base, TimestampMixin):
 
     __tablename__ = "installations"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
     # Identification
     installation_number = Column(String(50), unique=True, nullable=False, index=True)
     status = Column(SQLEnum(InstallationStatus), default=InstallationStatus.PENDING, index=True)
 
     # Customer & Order
-    customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id"), nullable=False, index=True)
-    order_id = Column(UUID(as_uuid=True), ForeignKey("orders.id"))
-    order_item_id = Column(UUID(as_uuid=True))
+    customer_id = Column(String(36), ForeignKey("customers.id"), nullable=False, index=True)
+    order_id = Column(String(36), ForeignKey("orders.id"))
+    order_item_id = Column(
+        String(36))
 
     # Product
-    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
-    variant_id = Column(UUID(as_uuid=True), ForeignKey("product_variants.id"))
+    product_id = Column(String(36), ForeignKey("products.id"), nullable=False)
+    variant_id = Column(String(36), ForeignKey("product_variants.id"))
     serial_number = Column(String(100), unique=True, index=True)
-    stock_item_id = Column(UUID(as_uuid=True), ForeignKey("stock_items.id"))
+    stock_item_id = Column(String(36), ForeignKey("stock_items.id"))
 
     # Installation Address
-    address_id = Column(UUID(as_uuid=True), ForeignKey("customer_addresses.id"))
+    address_id = Column(String(36), ForeignKey("customer_addresses.id"))
     installation_address = Column(JSON)  # Address snapshot
     installation_pincode = Column(String(10), index=True)
     installation_city = Column(String(100))
@@ -57,8 +57,8 @@ class Installation(Base, TimestampMixin):
     scheduled_time_slot = Column(String(50))
 
     # Assignment (Technician or Franchisee)
-    technician_id = Column(UUID(as_uuid=True), ForeignKey("technicians.id"))
-    franchisee_id = Column(UUID(as_uuid=True), ForeignKey("franchisees.id"))  # For franchisee allocation
+    technician_id = Column(String(36), ForeignKey("technicians.id"))
+    franchisee_id = Column(String(36), ForeignKey("franchisees.id"))  # For franchisee allocation
     assigned_at = Column(DateTime)
 
     # Execution
@@ -97,7 +97,7 @@ class Installation(Base, TimestampMixin):
     demo_notes = Column(Text)
 
     # Region
-    region_id = Column(UUID(as_uuid=True), ForeignKey("regions.id"))
+    region_id = Column(String(36), ForeignKey("regions.id"))
 
     notes = Column(Text)
     internal_notes = Column(Text)
@@ -107,7 +107,7 @@ class Installation(Base, TimestampMixin):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Audit
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_by = Column(String(36), ForeignKey("users.id"))
 
     # Relationships
     customer = relationship("Customer", back_populates="installations")
@@ -146,17 +146,17 @@ class WarrantyClaim(Base, TimestampMixin):
 
     __tablename__ = "warranty_claims"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
     claim_number = Column(String(50), unique=True, nullable=False, index=True)
 
     # References
-    installation_id = Column(UUID(as_uuid=True), ForeignKey("installations.id"), nullable=False, index=True)
-    service_request_id = Column(UUID(as_uuid=True), ForeignKey("service_requests.id"))
-    customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id"), nullable=False)
+    installation_id = Column(String(36), ForeignKey("installations.id"), nullable=False, index=True)
+    service_request_id = Column(String(36), ForeignKey("service_requests.id"))
+    customer_id = Column(String(36), ForeignKey("customers.id"), nullable=False)
 
     # Product
-    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
+    product_id = Column(String(36), ForeignKey("products.id"), nullable=False)
     serial_number = Column(String(100), nullable=False, index=True)  # Required - links warranty claim to specific product unit
 
     # Claim details
@@ -170,7 +170,7 @@ class WarrantyClaim(Base, TimestampMixin):
     # Decision
     is_valid_claim = Column(Boolean)
     rejection_reason = Column(Text)
-    approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    approved_by = Column(String(36), ForeignKey("users.id"))
     approved_at = Column(DateTime)
 
     # Resolution
@@ -191,7 +191,7 @@ class WarrantyClaim(Base, TimestampMixin):
     notes = Column(Text)
 
     # Audit
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_by = Column(String(36), ForeignKey("users.id"))
 
     # Relationships
     installation = relationship("Installation", back_populates="warranty_claims")

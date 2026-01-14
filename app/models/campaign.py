@@ -103,8 +103,8 @@ class CampaignTemplate(Base):
     """Reusable campaign templates."""
     __tablename__ = "campaign_templates"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[Optional[str]] = mapped_column(Text)
@@ -129,8 +129,8 @@ class CampaignTemplate(Base):
     is_system: Mapped[bool] = mapped_column(Boolean, default=False)  # System templates
 
     # Creator
-    created_by_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    created_by_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -145,8 +145,8 @@ class AudienceSegment(Base):
     """Customer segments for targeted campaigns."""
     __tablename__ = "audience_segments"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[Optional[str]] = mapped_column(Text)
@@ -172,8 +172,8 @@ class AudienceSegment(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Creator
-    created_by_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    created_by_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -188,8 +188,8 @@ class Campaign(Base):
     """Marketing campaign."""
     __tablename__ = "campaigns"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=uuid.uuid4
     )
     campaign_code: Mapped[str] = mapped_column(
         String(30), unique=True, index=True
@@ -207,8 +207,8 @@ class Campaign(Base):
     )
 
     # Template (optional)
-    template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("campaign_templates.id", ondelete="SET NULL")
+    template_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("campaign_templates.id", ondelete="SET NULL")
     )
 
     # Content
@@ -225,8 +225,8 @@ class Campaign(Base):
     audience_type: Mapped[AudienceType] = mapped_column(
         SQLEnum(AudienceType), default=AudienceType.ALL_CUSTOMERS
     )
-    segment_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("audience_segments.id", ondelete="SET NULL")
+    segment_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("audience_segments.id", ondelete="SET NULL")
     )
     target_count: Mapped[int] = mapped_column(Integer, default=0)
 
@@ -271,8 +271,8 @@ class Campaign(Base):
     tags: Mapped[Optional[dict]] = mapped_column(JSON)
 
     # Creator
-    created_by_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    created_by_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -290,14 +290,14 @@ class CampaignRecipient(Base):
     """Individual recipient in a campaign."""
     __tablename__ = "campaign_recipients"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=uuid.uuid4
     )
-    campaign_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("campaigns.id", ondelete="CASCADE"), index=True
+    campaign_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("campaigns.id", ondelete="CASCADE"), index=True
     )
-    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), index=True
+    customer_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("customers.id", ondelete="SET NULL"), index=True
     )
 
     # Contact details (stored for record)
@@ -350,8 +350,8 @@ class CampaignAutomation(Base):
     """Automated campaign triggers."""
     __tablename__ = "campaign_automations"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[Optional[str]] = mapped_column(Text)
@@ -369,8 +369,8 @@ class CampaignAutomation(Base):
     delay_minutes: Mapped[int] = mapped_column(Integer, default=0)
 
     # Campaign to send
-    template_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("campaign_templates.id", ondelete="CASCADE")
+    template_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("campaign_templates.id", ondelete="CASCADE")
     )
 
     # Channel
@@ -388,8 +388,8 @@ class CampaignAutomation(Base):
     total_sent: Mapped[int] = mapped_column(Integer, default=0)
 
     # Creator
-    created_by_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    created_by_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -405,27 +405,27 @@ class CampaignAutomationLog(Base):
     """Log of automated campaign executions."""
     __tablename__ = "campaign_automation_logs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=uuid.uuid4
     )
-    automation_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("campaign_automations.id", ondelete="CASCADE"), index=True
+    automation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("campaign_automations.id", ondelete="CASCADE"), index=True
     )
-    customer_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE"), index=True
+    customer_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("customers.id", ondelete="CASCADE"), index=True
     )
 
     # Trigger details
     trigger_entity_type: Mapped[Optional[str]] = mapped_column(String(50))  # ORDER, SERVICE, etc.
-    trigger_entity_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    trigger_entity_id: Mapped[Optional[str]] = mapped_column(String(36))
 
     # Status
     status: Mapped[str] = mapped_column(String(20))  # TRIGGERED, SENT, SKIPPED, FAILED
     skip_reason: Mapped[Optional[str]] = mapped_column(Text)  # Why skipped (cooldown, limit, etc.)
 
     # Sent message reference
-    recipient_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("campaign_recipients.id", ondelete="SET NULL")
+    recipient_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("campaign_recipients.id", ondelete="SET NULL")
     )
 
     # Timestamps
@@ -441,13 +441,13 @@ class UnsubscribeList(Base):
     """Customers who have unsubscribed from campaigns."""
     __tablename__ = "unsubscribe_list"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=uuid.uuid4
     )
 
     # Contact
-    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), index=True
+    customer_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("customers.id", ondelete="SET NULL"), index=True
     )
     email: Mapped[Optional[str]] = mapped_column(String(255), index=True)
     phone: Mapped[Optional[str]] = mapped_column(String(20), index=True)
@@ -459,8 +459,8 @@ class UnsubscribeList(Base):
     reason: Mapped[Optional[str]] = mapped_column(Text)
 
     # Source
-    source_campaign_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("campaigns.id", ondelete="SET NULL")
+    source_campaign_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("campaigns.id", ondelete="SET NULL")
     )
 
     # Timestamps

@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Optional, Any
 
 from sqlalchemy import String, DateTime, ForeignKey, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
 
 from app.database import Base
 
@@ -19,15 +18,15 @@ class AuditLog(Base):
     """
     __tablename__ = "audit_logs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Who performed the action
-    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -41,8 +40,8 @@ class AuditLog(Base):
     entity_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     # Entity types: USER, ROLE, PERMISSION, MODULE, REGION, etc.
 
-    entity_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    entity_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         nullable=True
     )
 

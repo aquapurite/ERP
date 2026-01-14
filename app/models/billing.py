@@ -15,7 +15,6 @@ from decimal import Decimal
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date, JSON
 from sqlalchemy import Enum as SQLEnum, UniqueConstraint, Index
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -112,10 +111,10 @@ class TaxInvoice(Base):
         Index("ix_tax_invoices_irn", "irn"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Invoice Identification
@@ -155,23 +154,23 @@ class TaxInvoice(Base):
     )
 
     # Order Reference
-    order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    order_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("orders.id", ondelete="SET NULL"),
         nullable=True,
         index=True
     )
 
     # Warehouse/Branch
-    warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    warehouse_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("warehouses.id", ondelete="SET NULL"),
         nullable=True
     )
 
     # Customer Details (denormalized for invoice permanence)
-    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    customer_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         index=True
@@ -394,19 +393,19 @@ class TaxInvoice(Base):
     )
 
     # Audit
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    created_by: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    approved_by: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    cancelled_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    cancelled_by: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -468,27 +467,27 @@ class InvoiceItem(Base):
     """Invoice line item with HSN/SAC and tax breakup."""
     __tablename__ = "invoice_items"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
-    invoice_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    invoice_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("tax_invoices.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
     # Product Reference
-    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    product_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("products.id", ondelete="SET NULL"),
         nullable=True
     )
-    variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    variant_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("product_variants.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -601,8 +600,8 @@ class InvoiceItem(Base):
     warranty_end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     # Order Item Reference
-    order_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    order_item_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         nullable=True
     )
 
@@ -631,10 +630,10 @@ class CreditDebitNote(Base):
         Index("ix_credit_debit_notes_date", "note_date"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Note Identification
@@ -651,8 +650,8 @@ class CreditDebitNote(Base):
     )
 
     # Reference Invoice
-    invoice_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    invoice_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("tax_invoices.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
@@ -680,8 +679,8 @@ class CreditDebitNote(Base):
     )
 
     # Customer Details
-    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    customer_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -723,13 +722,13 @@ class CreditDebitNote(Base):
     pdf_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Audit
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    created_by: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    approved_by: Mapped[Optional[str]] = mapped_column(
+        String(36),
         nullable=True
     )
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -767,22 +766,22 @@ class CreditDebitNoteItem(Base):
     """Line items for Credit/Debit Note."""
     __tablename__ = "credit_debit_note_items"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
-    note_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    note_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("credit_debit_notes.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
     # Item Details
-    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    product_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("products.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -807,8 +806,8 @@ class CreditDebitNoteItem(Base):
     line_total: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
 
     # Reference to original invoice item
-    original_invoice_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    original_invoice_item_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         nullable=True
     )
 
@@ -836,10 +835,10 @@ class EWayBill(Base):
     """
     __tablename__ = "eway_bills"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # E-Way Bill Number
@@ -852,8 +851,8 @@ class EWayBill(Base):
     )
 
     # Invoice Reference
-    invoice_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    invoice_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("tax_invoices.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -920,8 +919,8 @@ class EWayBill(Base):
     cess_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
 
     # Transport Details
-    transporter_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    transporter_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("transporters.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -1011,14 +1010,14 @@ class EWayBillItem(Base):
     """E-Way Bill item details."""
     __tablename__ = "eway_bill_items"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
-    eway_bill_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    eway_bill_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("eway_bills.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -1054,10 +1053,10 @@ class PaymentReceipt(Base):
     """
     __tablename__ = "payment_receipts"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Receipt Number
@@ -1070,16 +1069,16 @@ class PaymentReceipt(Base):
     )
 
     # Invoice Reference
-    invoice_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    invoice_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("tax_invoices.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
     # Customer
-    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    customer_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -1132,8 +1131,8 @@ class PaymentReceipt(Base):
     remarks: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Audit
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    created_by: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -1168,10 +1167,10 @@ class InvoiceNumberSequence(Base):
         UniqueConstraint("series_code", "financial_year", name="uq_invoice_sequence"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Series Identification
@@ -1206,8 +1205,8 @@ class InvoiceNumberSequence(Base):
     )
 
     # Warehouse specific (optional)
-    warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    warehouse_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("warehouses.id", ondelete="SET NULL"),
         nullable=True
     )

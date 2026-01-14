@@ -3,7 +3,6 @@ from enum import Enum
 from datetime import datetime
 from sqlalchemy import Column, String, Text, ForeignKey, Integer, DateTime, Float, Numeric
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -36,7 +35,7 @@ class StockTransfer(Base, TimestampMixin):
 
     __tablename__ = "stock_transfers"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
     # Transfer identification
     transfer_number = Column(String(50), unique=True, nullable=False, index=True)
@@ -44,8 +43,8 @@ class StockTransfer(Base, TimestampMixin):
     status = Column(SQLEnum(TransferStatus), default=TransferStatus.DRAFT, index=True)
 
     # Warehouses
-    from_warehouse_id = Column(UUID(as_uuid=True), ForeignKey("warehouses.id"), nullable=False, index=True)
-    to_warehouse_id = Column(UUID(as_uuid=True), ForeignKey("warehouses.id"), nullable=False, index=True)
+    from_warehouse_id = Column(String(36), ForeignKey("warehouses.id"), nullable=False, index=True)
+    to_warehouse_id = Column(String(36), ForeignKey("warehouses.id"), nullable=False, index=True)
 
     # Dates
     request_date = Column(DateTime, default=datetime.utcnow)
@@ -54,10 +53,10 @@ class StockTransfer(Base, TimestampMixin):
     received_date = Column(DateTime)
 
     # Users involved
-    requested_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    dispatched_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    received_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    requested_by = Column(String(36), ForeignKey("users.id"))
+    approved_by = Column(String(36), ForeignKey("users.id"))
+    dispatched_by = Column(String(36), ForeignKey("users.id"))
+    received_by = Column(String(36), ForeignKey("users.id"))
 
     # Approval
     approved_at = Column(DateTime)
@@ -109,13 +108,13 @@ class StockTransferItem(Base, TimestampMixin):
 
     __tablename__ = "stock_transfer_items"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
-    transfer_id = Column(UUID(as_uuid=True), ForeignKey("stock_transfers.id"), nullable=False, index=True)
+    transfer_id = Column(String(36), ForeignKey("stock_transfers.id"), nullable=False, index=True)
 
     # Product
-    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
-    variant_id = Column(UUID(as_uuid=True), ForeignKey("product_variants.id"))
+    product_id = Column(String(36), ForeignKey("products.id"), nullable=False)
+    variant_id = Column(String(36), ForeignKey("product_variants.id"))
 
     # Quantities
     requested_quantity = Column(Integer, nullable=False)
@@ -145,10 +144,10 @@ class StockTransferSerial(Base, TimestampMixin):
 
     __tablename__ = "stock_transfer_serials"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
-    transfer_item_id = Column(UUID(as_uuid=True), ForeignKey("stock_transfer_items.id"), nullable=False)
-    stock_item_id = Column(UUID(as_uuid=True), ForeignKey("stock_items.id"), nullable=False)
+    transfer_item_id = Column(String(36), ForeignKey("stock_transfer_items.id"), nullable=False)
+    stock_item_id = Column(String(36), ForeignKey("stock_items.id"), nullable=False)
 
     # Status
     is_dispatched = Column(Integer, default=False)

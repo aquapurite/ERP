@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Optional, List
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -42,10 +41,10 @@ class Picklist(Base):
     """
     __tablename__ = "picklists"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Identification
@@ -58,8 +57,8 @@ class Picklist(Base):
     )
 
     # Warehouse
-    warehouse_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    warehouse_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("warehouses.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
@@ -102,8 +101,8 @@ class Picklist(Base):
     picked_quantity: Mapped[int] = mapped_column(Integer, default=0)
 
     # Assignment
-    assigned_to: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    assigned_to: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
         comment="Assigned picker"
@@ -111,8 +110,8 @@ class Picklist(Base):
     assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Timestamps
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    created_by: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -181,40 +180,40 @@ class PicklistItem(Base):
     """
     __tablename__ = "picklist_items"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
-    picklist_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    picklist_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("picklists.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
     # Order reference
-    order_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    order_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("orders.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
     )
-    order_item_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    order_item_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("order_items.id", ondelete="RESTRICT"),
         nullable=False
     )
 
     # Product reference
-    product_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    product_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("products.id", ondelete="RESTRICT"),
         nullable=False
     )
-    variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    variant_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("product_variants.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -225,8 +224,8 @@ class PicklistItem(Base):
     variant_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     # Bin location
-    bin_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    bin_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("warehouse_bins.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -268,8 +267,8 @@ class PicklistItem(Base):
     )
 
     # Picked by
-    picked_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    picked_by: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )

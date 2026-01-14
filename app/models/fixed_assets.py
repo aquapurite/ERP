@@ -16,7 +16,6 @@ from decimal import Decimal
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date, JSON
 from sqlalchemy import Enum as SQLEnum, UniqueConstraint, Index
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -67,10 +66,10 @@ class AssetCategory(Base):
     """
     __tablename__ = "asset_categories"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Category Details
@@ -96,18 +95,18 @@ class AssetCategory(Base):
     )
 
     # Accounting
-    asset_account_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    asset_account_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         nullable=True,
         comment="GL Account for Asset"
     )
-    depreciation_account_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    depreciation_account_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         nullable=True,
         comment="GL Account for Accumulated Depreciation"
     )
-    expense_account_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    expense_account_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         nullable=True,
         comment="GL Account for Depreciation Expense"
     )
@@ -143,10 +142,10 @@ class Asset(Base):
     """
     __tablename__ = "assets"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Asset Identification
@@ -158,8 +157,8 @@ class Asset(Base):
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    category_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    category_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("asset_categories.id", ondelete="RESTRICT"),
         nullable=False,
         index=True
@@ -171,8 +170,8 @@ class Asset(Base):
     manufacturer: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     # Location
-    warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    warehouse_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         nullable=True,
         comment="Current location warehouse"
     )
@@ -183,13 +182,13 @@ class Asset(Base):
     )
 
     # Custodian
-    custodian_employee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    custodian_employee_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         nullable=True,
         comment="Employee responsible for the asset"
     )
-    department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    department_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         nullable=True,
         comment="Department using the asset"
     )
@@ -202,8 +201,8 @@ class Asset(Base):
         comment="Original purchase price"
     )
     purchase_invoice_no: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    vendor_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    vendor_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         nullable=True
     )
     po_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
@@ -353,15 +352,15 @@ class DepreciationEntry(Base):
     """
     __tablename__ = "depreciation_entries"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # References
-    asset_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    asset_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("assets.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -395,16 +394,16 @@ class DepreciationEntry(Base):
     accumulated_depreciation: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
 
     # Journal Entry (if posted)
-    journal_entry_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    journal_entry_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         nullable=True,
         comment="Related journal entry"
     )
     is_posted: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Processing
-    processed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    processed_by: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -438,15 +437,15 @@ class AssetTransfer(Base):
     """
     __tablename__ = "asset_transfers"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Asset
-    asset_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    asset_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("assets.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -461,15 +460,15 @@ class AssetTransfer(Base):
     )
 
     # From Location
-    from_warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
-    from_department_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
-    from_custodian_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    from_warehouse_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    from_department_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    from_custodian_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     from_location_details: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
     # To Location
-    to_warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
-    to_department_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
-    to_custodian_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    to_warehouse_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    to_department_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    to_custodian_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     to_location_details: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
     # Transfer Details
@@ -484,13 +483,13 @@ class AssetTransfer(Base):
     )
 
     # Approval
-    requested_by: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    requested_by: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=False
     )
-    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    approved_by: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -498,8 +497,8 @@ class AssetTransfer(Base):
 
     # Completion
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    received_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    received_by: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
@@ -536,15 +535,15 @@ class AssetMaintenance(Base):
     """
     __tablename__ = "asset_maintenance"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Asset
-    asset_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    asset_id: Mapped[str] = mapped_column(
+        String(36),
         ForeignKey("assets.id", ondelete="CASCADE"),
         nullable=False,
         index=True
@@ -576,7 +575,7 @@ class AssetMaintenance(Base):
     actual_cost: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
 
     # Vendor
-    vendor_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    vendor_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     vendor_invoice_no: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     # Status
@@ -592,8 +591,8 @@ class AssetMaintenance(Base):
     recommendations: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Assigned
-    assigned_to: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    assigned_to: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
