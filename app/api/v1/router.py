@@ -38,6 +38,7 @@ from app.api.v1.endpoints import (
     billing,
     banking,  # Bank Statement Import & Reconciliation
     credentials,  # Encrypted Credentials Management
+    auto_journal,  # Auto Journal Entry Generation
     # Dealer/Distributor (NEW)
     dealers,
     # Commission & Incentives (NEW)
@@ -202,6 +203,11 @@ api_router.include_router(
     credentials.router,
     prefix="/credentials",
     tags=["Credentials/Security"]
+)
+api_router.include_router(
+    auto_journal.router,
+    prefix="/auto-journal",
+    tags=["Auto Journal Entry"]
 )
 
 # ==================== Dealer/Distributor ====================

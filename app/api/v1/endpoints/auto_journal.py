@@ -1,0 +1,423 @@
+"""API endpoints for Auto Journal Entry Generation."""
+from typing import Optional, List
+from uuid import UUID
+from datetime import date
+
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from pydantic import BaseModel
+from sqlalchemy import select, and_
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.models.user import User
+from app.models.accounting import JournalEntry, JournalStatus
+from app.api.deps import DB, get_current_user
+from app.services.auto_journal_service import AutoJournalService, AutoJournalError
+
+router = APIRouter()
+
+
+# ==================== Schemas ====================
+
+class GenerateFromInvoiceRequest(BaseModel):
+    """Request to generate journal from invoice."""
+    invoice_id: UUID
+    auto_post: bool = False
+
+
+class GenerateFromReceiptRequest(BaseModel):
+    """Request to generate journal from payment receipt."""
+    receipt_id: UUID
+    bank_account_code: Optional[str] = None
+    auto_post: bool = False
+
+
+class GenerateFromBankTxnRequest(BaseModel):
+    """Request to generate journal from bank transaction."""
+    bank_transaction_id: UUID
+    contra_account_code: str
+    auto_post: bool = False
+
+
+class BulkGenerateRequest(BaseModel):
+    """Request for bulk journal generation."""
+    invoice_ids: Optional[List[UUID]] = None
+    receipt_ids: Optional[List[UUID]] = None
+    auto_post: bool = False
+
+
+class JournalEntryResponse(BaseModel):
+    """Response for journal entry."""
+    id: UUID
+    entry_number: str
+    entry_date: date
+    journal_type: str
+    narration: str
+    total_debit: float
+    total_credit: float
+    status: str
+    reference_type: Optional[str]
+    reference_id: Optional[UUID]
+
+
+class GenerationResult(BaseModel):
+    """Result of journal generation."""
+    success: bool
+    journal_id: Optional[UUID] = None
+    entry_number: Optional[str] = None
+    message: str
+    error: Optional[str] = None
+
+
+# ==================== Auto Generate Endpoints ====================
+
+@router.post("/generate/from-invoice", response_model=GenerationResult)
+async def generate_from_sales_invoice(
+    request: GenerateFromInvoiceRequest,
+    db: DB,
+    company_id: Optional[UUID] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Generate journal entry from a sales invoice.
+
+    Creates:
+    - Debit: Accounts Receivable (total amount)
+    - Credit: Sales Revenue (taxable amount)
+    - Credit: CGST/SGST/IGST Payable (tax amounts)
+
+    The journal entry is created in DRAFT status unless auto_post is True.
+    """
+    effective_company_id = company_id or current_user.company_id
+
+    if not effective_company_id:
+        raise HTTPException(status_code=400, detail="Company ID is required")
+
+    try:
+        service = AutoJournalService(db, effective_company_id)
+        journal = await service.generate_for_sales_invoice(
+            invoice_id=request.invoice_id,
+            user_id=current_user.id
+        )
+
+        if request.auto_post:
+            journal = await service.post_journal_entry(journal.id)
+
+        return GenerationResult(
+            success=True,
+            journal_id=journal.id,
+            entry_number=journal.entry_number,
+            message=f"Journal entry {journal.entry_number} created successfully"
+        )
+
+    except AutoJournalError as e:
+        return GenerationResult(
+            success=False,
+            message="Journal generation failed",
+            error=e.message
+        )
+
+
+@router.post("/generate/from-receipt", response_model=GenerationResult)
+async def generate_from_payment_receipt(
+    request: GenerateFromReceiptRequest,
+    db: DB,
+    company_id: Optional[UUID] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Generate journal entry from a payment receipt.
+
+    Creates:
+    - Debit: Cash/Bank account
+    - Credit: Accounts Receivable
+    """
+    effective_company_id = company_id or current_user.company_id
+
+    if not effective_company_id:
+        raise HTTPException(status_code=400, detail="Company ID is required")
+
+    try:
+        service = AutoJournalService(db, effective_company_id)
+        journal = await service.generate_for_payment_receipt(
+            receipt_id=request.receipt_id,
+            bank_account_code=request.bank_account_code,
+            user_id=current_user.id
+        )
+
+        if request.auto_post:
+            journal = await service.post_journal_entry(journal.id)
+
+        return GenerationResult(
+            success=True,
+            journal_id=journal.id,
+            entry_number=journal.entry_number,
+            message=f"Journal entry {journal.entry_number} created successfully"
+        )
+
+    except AutoJournalError as e:
+        return GenerationResult(
+            success=False,
+            message="Journal generation failed",
+            error=e.message
+        )
+
+
+@router.post("/generate/from-bank-transaction", response_model=GenerationResult)
+async def generate_from_bank_transaction(
+    request: GenerateFromBankTxnRequest,
+    db: DB,
+    company_id: Optional[UUID] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Generate journal entry from a bank transaction.
+
+    Requires specifying the contra account (the other side of the entry).
+
+    For deposits: Debit Bank, Credit Contra
+    For withdrawals: Debit Contra, Credit Bank
+    """
+    effective_company_id = company_id or current_user.company_id
+
+    if not effective_company_id:
+        raise HTTPException(status_code=400, detail="Company ID is required")
+
+    try:
+        service = AutoJournalService(db, effective_company_id)
+        journal = await service.generate_for_bank_transaction(
+            bank_transaction_id=request.bank_transaction_id,
+            contra_account_code=request.contra_account_code,
+            user_id=current_user.id
+        )
+
+        if request.auto_post:
+            journal = await service.post_journal_entry(journal.id)
+
+        return GenerationResult(
+            success=True,
+            journal_id=journal.id,
+            entry_number=journal.entry_number,
+            message=f"Journal entry {journal.entry_number} created successfully"
+        )
+
+    except AutoJournalError as e:
+        return GenerationResult(
+            success=False,
+            message="Journal generation failed",
+            error=e.message
+        )
+
+
+@router.post("/generate/bulk")
+async def generate_bulk_journal_entries(
+    request: BulkGenerateRequest,
+    db: DB,
+    company_id: Optional[UUID] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Generate journal entries in bulk for multiple invoices/receipts.
+
+    Returns summary of successful and failed generations.
+    """
+    effective_company_id = company_id or current_user.company_id
+
+    if not effective_company_id:
+        raise HTTPException(status_code=400, detail="Company ID is required")
+
+    service = AutoJournalService(db, effective_company_id)
+    results = {
+        "invoices": {"success": 0, "failed": 0, "entries": [], "errors": []},
+        "receipts": {"success": 0, "failed": 0, "entries": [], "errors": []}
+    }
+
+    # Process invoices
+    if request.invoice_ids:
+        for invoice_id in request.invoice_ids:
+            try:
+                journal = await service.generate_for_sales_invoice(
+                    invoice_id=invoice_id,
+                    user_id=current_user.id
+                )
+                if request.auto_post:
+                    journal = await service.post_journal_entry(journal.id)
+
+                results["invoices"]["success"] += 1
+                results["invoices"]["entries"].append({
+                    "invoice_id": str(invoice_id),
+                    "journal_id": str(journal.id),
+                    "entry_number": journal.entry_number
+                })
+            except AutoJournalError as e:
+                results["invoices"]["failed"] += 1
+                results["invoices"]["errors"].append({
+                    "invoice_id": str(invoice_id),
+                    "error": e.message
+                })
+
+    # Process receipts
+    if request.receipt_ids:
+        for receipt_id in request.receipt_ids:
+            try:
+                journal = await service.generate_for_payment_receipt(
+                    receipt_id=receipt_id,
+                    user_id=current_user.id
+                )
+                if request.auto_post:
+                    journal = await service.post_journal_entry(journal.id)
+
+                results["receipts"]["success"] += 1
+                results["receipts"]["entries"].append({
+                    "receipt_id": str(receipt_id),
+                    "journal_id": str(journal.id),
+                    "entry_number": journal.entry_number
+                })
+            except AutoJournalError as e:
+                results["receipts"]["failed"] += 1
+                results["receipts"]["errors"].append({
+                    "receipt_id": str(receipt_id),
+                    "error": e.message
+                })
+
+    total_success = results["invoices"]["success"] + results["receipts"]["success"]
+    total_failed = results["invoices"]["failed"] + results["receipts"]["failed"]
+
+    return {
+        "success": True,
+        "summary": {
+            "total_processed": total_success + total_failed,
+            "successful": total_success,
+            "failed": total_failed
+        },
+        "details": results
+    }
+
+
+@router.post("/journals/{journal_id}/post", response_model=JournalEntryResponse)
+async def post_journal_entry(
+    journal_id: UUID,
+    db: DB,
+    company_id: Optional[UUID] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Post a draft journal entry."""
+    effective_company_id = company_id or current_user.company_id
+
+    if not effective_company_id:
+        raise HTTPException(status_code=400, detail="Company ID is required")
+
+    try:
+        service = AutoJournalService(db, effective_company_id)
+        journal = await service.post_journal_entry(journal_id)
+
+        return JournalEntryResponse(
+            id=journal.id,
+            entry_number=journal.entry_number,
+            entry_date=journal.entry_date,
+            journal_type=journal.journal_type.value if journal.journal_type else "GENERAL",
+            narration=journal.narration or "",
+            total_debit=float(journal.total_debit or 0),
+            total_credit=float(journal.total_credit or 0),
+            status=journal.status.value if journal.status else "DRAFT",
+            reference_type=journal.reference_type,
+            reference_id=journal.reference_id
+        )
+
+    except AutoJournalError as e:
+        raise HTTPException(status_code=400, detail=e.message)
+
+
+@router.get("/journals/pending")
+async def list_pending_journal_entries(
+    db: DB,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    company_id: Optional[UUID] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """List all draft/pending journal entries for review."""
+    effective_company_id = company_id or current_user.company_id
+
+    if not effective_company_id:
+        raise HTTPException(status_code=400, detail="Company ID is required")
+
+    result = await db.execute(
+        select(JournalEntry)
+        .options(selectinload(JournalEntry.lines))
+        .where(
+            and_(
+                JournalEntry.company_id == effective_company_id,
+                JournalEntry.status == JournalStatus.DRAFT
+            )
+        )
+        .order_by(JournalEntry.entry_date.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    journals = result.scalars().all()
+
+    return [
+        {
+            "id": str(j.id),
+            "entry_number": j.entry_number,
+            "entry_date": str(j.entry_date),
+            "journal_type": j.journal_type.value if j.journal_type else None,
+            "narration": j.narration,
+            "total_debit": float(j.total_debit or 0),
+            "total_credit": float(j.total_credit or 0),
+            "reference_type": j.reference_type,
+            "reference_id": str(j.reference_id) if j.reference_id else None,
+            "lines_count": len(j.lines) if j.lines else 0
+        }
+        for j in journals
+    ]
+
+
+@router.post("/journals/post-all")
+async def post_all_pending_journals(
+    db: DB,
+    company_id: Optional[UUID] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Post all pending journal entries."""
+    effective_company_id = company_id or current_user.company_id
+
+    if not effective_company_id:
+        raise HTTPException(status_code=400, detail="Company ID is required")
+
+    result = await db.execute(
+        select(JournalEntry)
+        .options(selectinload(JournalEntry.lines))
+        .where(
+            and_(
+                JournalEntry.company_id == effective_company_id,
+                JournalEntry.status == JournalStatus.DRAFT
+            )
+        )
+    )
+    journals = result.scalars().all()
+
+    service = AutoJournalService(db, effective_company_id)
+    posted = 0
+    failed = 0
+    errors = []
+
+    for journal in journals:
+        try:
+            await service.post_journal_entry(journal.id)
+            posted += 1
+        except AutoJournalError as e:
+            failed += 1
+            errors.append({
+                "journal_id": str(journal.id),
+                "entry_number": journal.entry_number,
+                "error": e.message
+            })
+
+    return {
+        "success": True,
+        "posted": posted,
+        "failed": failed,
+        "errors": errors if errors else None
+    }
