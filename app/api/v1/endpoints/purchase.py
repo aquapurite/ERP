@@ -2892,6 +2892,46 @@ def _number_to_words(num: float) -> str:
     return result + ' Only'
 
 
+@router.post("/orders/{po_id}/reset-to-draft")
+async def reset_po_to_draft(
+    po_id: UUID,
+    db: DB,
+):
+    """Reset an approved PO back to DRAFT for re-approval testing."""
+    from sqlalchemy import text
+
+    # Get PO
+    result = await db.execute(
+        select(PurchaseOrder).where(PurchaseOrder.id == po_id)
+    )
+    po = result.scalar_one_or_none()
+
+    if not po:
+        raise HTTPException(status_code=404, detail="PO not found")
+
+    old_status = po.status.value if po.status else None
+
+    # Delete any existing serials for this PO
+    await db.execute(
+        text("DELETE FROM po_serials WHERE po_id = :po_id"),
+        {"po_id": str(po.id)}
+    )
+
+    # Reset PO to DRAFT
+    po.status = POStatus.DRAFT
+    po.approved_by = None
+    po.approved_at = None
+
+    await db.commit()
+
+    return {
+        "message": f"PO {po.po_number} reset to DRAFT",
+        "old_status": old_status,
+        "new_status": "DRAFT",
+        "serials_deleted": True
+    }
+
+
 @router.post("/orders/{po_id}/generate-serials")
 async def manually_generate_serials(
     po_id: UUID,
