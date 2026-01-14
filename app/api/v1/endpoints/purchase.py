@@ -1555,28 +1555,28 @@ async def approve_purchase_order(
                 item_type = ItemType.FINISHED_GOODS
 
                 # Try to find model code reference
-                # Use str() for UUID comparison to handle VARCHAR columns in database
+                # Use raw SQL to handle VARCHAR/UUID type mismatch in database
                 if item_data["product_id"]:
                     ref_result = await db.execute(
-                        select(ModelCodeReference).where(
-                            ModelCodeReference.product_id == item_data["product_id"]
-                        )
+                        text("SELECT model_code, item_type FROM model_code_references WHERE product_id = :product_id LIMIT 1"),
+                        {"product_id": str(item_data["product_id"])}
                     )
-                    ref = ref_result.scalar_one_or_none()
-                    if ref:
-                        model_code = ref.model_code
-                        item_type = ref.item_type
+                    ref_row = ref_result.first()
+                    if ref_row:
+                        model_code = ref_row[0]
+                        if ref_row[1]:
+                            item_type = ItemType(ref_row[1])
 
                 if not model_code and item_data["product_sku"]:
                     ref_result = await db.execute(
-                        select(ModelCodeReference).where(
-                            ModelCodeReference.product_sku == item_data["product_sku"]
-                        )
+                        text("SELECT model_code, item_type FROM model_code_references WHERE product_sku = :product_sku LIMIT 1"),
+                        {"product_sku": item_data["product_sku"]}
                     )
-                    ref = ref_result.scalar_one_or_none()
-                    if ref:
-                        model_code = ref.model_code
-                        item_type = ref.item_type
+                    ref_row = ref_result.first()
+                    if ref_row:
+                        model_code = ref_row[0]
+                        if ref_row[1]:
+                            item_type = ItemType(ref_row[1])
 
                 if not model_code:
                     product_name = item_data["product_name"] or item_data["product_sku"] or "UNK"
@@ -1654,17 +1654,19 @@ async def send_po_to_vendor(
     supplier_code = "AP"  # Default to Aquapurite
 
     if vendor:
-        # Try to find supplier code for this vendor
+        # Try to find supplier code for this vendor - use raw SQL for VARCHAR/UUID mismatch
         supplier_code_result = await db.execute(
-            select(SupplierCode).where(SupplierCode.vendor_id == vendor.id)
+            text("SELECT code FROM supplier_codes WHERE vendor_id = :vendor_id LIMIT 1"),
+            {"vendor_id": str(vendor.id)}
         )
-        supplier_code_obj = supplier_code_result.scalar_one_or_none()
-        if supplier_code_obj:
-            supplier_code = supplier_code_obj.code
+        supplier_code_row = supplier_code_result.first()
+        if supplier_code_row:
+            supplier_code = supplier_code_row[0]
 
-    # Check if serials already exist for this PO
+    # Check if serials already exist for this PO - use raw SQL for VARCHAR/UUID mismatch
     existing_serials = await db.execute(
-        select(func.count(POSerial.id)).where(POSerial.po_id == po.id)
+        text("SELECT COUNT(*) FROM po_serials WHERE po_id = :po_id"),
+        {"po_id": str(po.id)}
     )
     existing_count = existing_serials.scalar() or 0
 
@@ -1683,27 +1685,28 @@ async def send_po_to_vendor(
             item_type = ItemType.FINISHED_GOODS
 
             if item.product_id:
+                # Use raw SQL to handle VARCHAR/UUID type mismatch
                 ref_result = await db.execute(
-                    select(ModelCodeReference).where(
-                        ModelCodeReference.product_id == item.product_id
-                    )
+                    text("SELECT model_code, item_type FROM model_code_references WHERE product_id = :product_id LIMIT 1"),
+                    {"product_id": str(item.product_id)}
                 )
-                ref = ref_result.scalar_one_or_none()
-                if ref:
-                    model_code = ref.model_code
-                    item_type = ref.item_type
+                ref_row = ref_result.first()
+                if ref_row:
+                    model_code = ref_row[0]
+                    if ref_row[1]:
+                        item_type = ItemType(ref_row[1])
 
             if not model_code and item.sku:
-                # Try by SKU
+                # Try by SKU - use raw SQL
                 ref_result = await db.execute(
-                    select(ModelCodeReference).where(
-                        ModelCodeReference.product_sku == item.sku
-                    )
+                    text("SELECT model_code, item_type FROM model_code_references WHERE product_sku = :product_sku LIMIT 1"),
+                    {"product_sku": item.sku}
                 )
-                ref = ref_result.scalar_one_or_none()
-                if ref:
-                    model_code = ref.model_code
-                    item_type = ref.item_type
+                ref_row = ref_result.first()
+                if ref_row:
+                    model_code = ref_row[0]
+                    if ref_row[1]:
+                        item_type = ItemType(ref_row[1])
 
             if not model_code:
                 # Generate model code from product name (first 3 letters)

@@ -1030,10 +1030,11 @@ class SerializationService:
 
     async def mark_serials_sent_to_vendor(self, po_id: str) -> int:
         """Mark all serials for a PO as sent to vendor"""
+        from sqlalchemy import cast, String
         result = await self.db.execute(
             select(POSerial).where(
                 and_(
-                    POSerial.po_id == po_id,
+                    cast(POSerial.po_id, String) == str(po_id),
                     POSerial.status == SerialStatus.GENERATED
                 )
             )
@@ -1051,10 +1052,11 @@ class SerializationService:
 
     async def cancel_serials(self, po_id: str, reason: str = None) -> int:
         """Cancel all unreceived serials for a PO"""
+        from sqlalchemy import cast, String
         result = await self.db.execute(
             select(POSerial).where(
                 and_(
-                    POSerial.po_id == po_id,
+                    cast(POSerial.po_id, String) == str(po_id),
                     POSerial.status.in_([
                         SerialStatus.GENERATED,
                         SerialStatus.PRINTED,
