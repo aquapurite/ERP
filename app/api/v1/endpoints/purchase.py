@@ -1555,10 +1555,11 @@ async def approve_purchase_order(
                 item_type = ItemType.FINISHED_GOODS
 
                 # Try to find model code reference
+                # Use str() for UUID comparison to handle VARCHAR columns in database
                 if item_data["product_id"]:
                     ref_result = await db.execute(
                         select(ModelCodeReference).where(
-                            ModelCodeReference.product_id == UUID(item_data["product_id"])
+                            ModelCodeReference.product_id == item_data["product_id"]
                         )
                     )
                     ref = ref_result.scalar_one_or_none()
@@ -1592,16 +1593,21 @@ async def approve_purchase_order(
                 ))
 
             if serial_items:
+                import logging
+                logging.info(f"Generating serials for PO {serial_gen_data['po_number']}: {len(serial_items)} items, supplier={serial_gen_data['supplier_code']}")
                 gen_request = GenerateSerialsRequest(
                     po_id=serial_gen_data["po_id"],
                     supplier_code=serial_gen_data["supplier_code"],
                     items=serial_items
                 )
-                await serial_service.generate_serials_for_po(gen_request)
+                result = await serial_service.generate_serials_for_po(gen_request)
+                logging.info(f"Generated {result.total_generated} serials for PO {serial_gen_data['po_number']}")
         except Exception as e:
             # Log but don't fail - approval is already committed
             import logging
-            logging.warning(f"Serial generation failed for PO {serial_gen_data['po_number']}: {e}")
+            import traceback
+            logging.error(f"Serial generation failed for PO {serial_gen_data['po_number']}: {e}")
+            logging.error(f"Traceback: {traceback.format_exc()}")
 
     return po
 
