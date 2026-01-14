@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Eye, Download, ShoppingCart, Package, Truck, CheckCircle } from 'lucide-react';
+import { MoreHorizontal, Eye, Download, ShoppingCart, Package, Truck, CheckCircle, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -20,6 +21,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
@@ -90,7 +98,10 @@ const marketplaceOrdersApi = {
   },
 };
 
-const columns: ColumnDef<MarketplaceOrder>[] = [
+const createColumns = (
+  onView: (order: MarketplaceOrder) => void,
+  onImport: (order: MarketplaceOrder) => void
+): ColumnDef<MarketplaceOrder>[] => [
   {
     accessorKey: 'channel_order_id',
     header: 'Order ID',
@@ -191,12 +202,12 @@ const columns: ColumnDef<MarketplaceOrder>[] = [
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Actions</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onView(row.original)}>
             <Eye className="mr-2 h-4 w-4" />
             View Details
           </DropdownMenuItem>
           {!row.original.is_imported && (
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onImport(row.original)}>
               <Download className="mr-2 h-4 w-4" />
               Import Order
             </DropdownMenuItem>
@@ -208,11 +219,50 @@ const columns: ColumnDef<MarketplaceOrder>[] = [
 ];
 
 export default function MarketplaceOrdersPage() {
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [channelFilter, setChannelFilter] = useState<string>('all');
   const [paymentFilter, setPaymentFilter] = useState<string>('all');
   const [importFilter, setImportFilter] = useState<string>('all');
+  const [viewOrder, setViewOrder] = useState<MarketplaceOrder | null>(null);
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
+
+  const handleView = (order: MarketplaceOrder) => {
+    setViewOrder(order);
+    setIsSheetOpen(true);
+  };
+
+  const importMutation = useMutation({
+    mutationFn: (orderId: string) => marketplaceOrdersApi.importOrder(orderId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['marketplace-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['marketplace-orders-stats'] });
+      toast.success('Order imported successfully');
+    },
+    onError: () => toast.error('Failed to import order'),
+  });
+
+  const handleImport = (order: MarketplaceOrder) => {
+    importMutation.mutate(order.id);
+  };
+
+  const handleFetchOrders = async () => {
+    setIsFetching(true);
+    try {
+      await marketplaceOrdersApi.fetchFromChannel('all');
+      queryClient.invalidateQueries({ queryKey: ['marketplace-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['marketplace-orders-stats'] });
+      toast.success('Orders fetched from channels');
+    } catch {
+      toast.error('Failed to fetch orders from channels');
+    } finally {
+      setIsFetching(false);
+    }
+  };
+
+  const columns = createColumns(handleView, handleImport);
 
   const { data, isLoading } = useQuery({
     queryKey: ['marketplace-orders', page, pageSize, channelFilter, paymentFilter, importFilter],
@@ -235,9 +285,9 @@ export default function MarketplaceOrdersPage() {
         title="Marketplace Orders"
         description="View and manage orders from all connected sales channels"
         actions={
-          <Button variant="outline">
-            <Download className="mr-2 h-4 w-4" />
-            Fetch Orders
+          <Button variant="outline" onClick={handleFetchOrders} disabled={isFetching}>
+            {isFetching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+            {isFetching ? 'Fetching...' : 'Fetch Orders'}
           </Button>
         }
       />
@@ -347,6 +397,65 @@ export default function MarketplaceOrdersPage() {
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
+
+      {/* Order Details Sheet */}
+      <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+        <SheetContent className="sm:max-w-lg">
+          <SheetHeader>
+            <SheetTitle>Order Details</SheetTitle>
+            <SheetDescription>
+              {viewOrder?.channel_order_id}
+            </SheetDescription>
+          </SheetHeader>
+          {viewOrder && (
+            <div className="mt-6 space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm text-muted-foreground">Channel</label>
+                  <p className="font-medium">{viewOrder.channel_name}</p>
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground">Status</label>
+                  <p><StatusBadge status={viewOrder.channel_status} /></p>
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground">Customer</label>
+                  <p className="font-medium">{viewOrder.customer_name}</p>
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground">Phone</label>
+                  <p className="font-medium">{viewOrder.customer_phone}</p>
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground">Items</label>
+                  <p className="font-medium">{viewOrder.items_count} items</p>
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground">Amount</label>
+                  <p className="font-medium">{formatCurrency(viewOrder.total_amount)}</p>
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground">Payment Mode</label>
+                  <p className="font-medium">{viewOrder.payment_mode}</p>
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground">Import Status</label>
+                  <p className="font-medium">{viewOrder.is_imported ? 'Imported' : 'Pending'}</p>
+                </div>
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground">Shipping Address</label>
+                <p className="font-medium">{viewOrder.shipping_address}</p>
+                <p className="text-muted-foreground">{viewOrder.shipping_city} - {viewOrder.shipping_pincode}</p>
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground">Order Date</label>
+                <p className="font-medium">{formatDate(viewOrder.ordered_at)}</p>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

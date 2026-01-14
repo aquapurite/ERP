@@ -668,7 +668,7 @@ export default function Customer360Page() {
                         <Badge className={statusColors[amc.status]}>{amc.status}</Badge>
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="sm" onClick={() => router.push(`/service/amc/${amc.id}`)}>
+                        <Button variant="ghost" size="sm" onClick={() => router.push(`/dashboard/service/amc/${amc.id}`)}>
                           View
                         </Button>
                       </TableCell>

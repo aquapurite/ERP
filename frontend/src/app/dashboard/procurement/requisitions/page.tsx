@@ -619,7 +619,7 @@ export default function PurchaseRequisitionsPage() {
   // Handle Convert to PO - Navigate to PO page with PR ID
   const handleConvertToPO = (pr: PurchaseRequisition) => {
     // Navigate to Purchase Orders page with the PR ID as a query param
-    router.push(`/procurement/purchase-orders?create=true&pr_id=${pr.id}`);
+    router.push(`/dashboard/procurement/purchase-orders?create=true&pr_id=${pr.id}`);
   };
 
   // Helper functions

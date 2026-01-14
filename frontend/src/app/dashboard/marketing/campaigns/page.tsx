@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal, Plus, Eye, Play, Pause, Megaphone, Calendar } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -152,18 +153,18 @@ const columns: ColumnDef<Campaign>[] = [
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Actions</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => toast.success(`Viewing campaign: ${row.original.name}`)}>
             <Eye className="mr-2 h-4 w-4" />
             View Details
           </DropdownMenuItem>
           {row.original.status === 'SCHEDULED' && (
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => toast.success(`Starting campaign: ${row.original.name}`)}>
               <Play className="mr-2 h-4 w-4" />
               Start Now
             </DropdownMenuItem>
           )}
           {row.original.status === 'RUNNING' && (
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => toast.success(`Pausing campaign: ${row.original.name}`)}>
               <Pause className="mr-2 h-4 w-4" />
               Pause
             </DropdownMenuItem>
@@ -189,7 +190,7 @@ export default function CampaignsPage() {
         title="Campaigns"
         description="Create and manage marketing campaigns"
         actions={
-          <Button>
+          <Button onClick={() => toast.success('Opening campaign creation wizard')}>
             <Plus className="mr-2 h-4 w-4" />
             Create Campaign
           </Button>

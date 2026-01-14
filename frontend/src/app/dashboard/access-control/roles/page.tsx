@@ -98,7 +98,7 @@ const columns: ColumnDef<Role>[] = [
           <DropdownMenuLabel>Actions</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
-            <Link href={`/access-control/roles/${row.original.id}`}>
+            <Link href={`/dashboard/access-control/roles/${row.original.id}`}>
               <Pencil className="mr-2 h-4 w-4" />
               Edit
             </Link>
@@ -163,7 +163,7 @@ export default function RolesPage() {
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href={`/access-control/roles/${row.original.id}`}>
+                <Link href={`/dashboard/access-control/roles/${row.original.id}`}>
                   <Pencil className="mr-2 h-4 w-4" />
                   Edit
                 </Link>

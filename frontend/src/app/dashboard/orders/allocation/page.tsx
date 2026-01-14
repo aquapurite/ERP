@@ -334,7 +334,7 @@ export default function OrderAllocationPage() {
                 Retry Allocation
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => toast.success(`Viewing order ${row.original.order_number}`)}>
               <ArrowRight className="mr-2 h-4 w-4" />
               View Order
             </DropdownMenuItem>

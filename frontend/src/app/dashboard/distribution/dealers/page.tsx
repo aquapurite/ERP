@@ -55,7 +55,7 @@ const getColumns = (
     cell: ({ row }) => (
       <div
         className="flex items-center gap-3 cursor-pointer hover:opacity-80"
-        onClick={() => router.push(`/distribution/dealers/${row.original.id}`)}
+        onClick={() => router.push(`/dashboard/distribution/dealers/${row.original.id}`)}
       >
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
           <Store className="h-5 w-5 text-muted-foreground" />
@@ -127,19 +127,19 @@ const getColumns = (
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Actions</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => router.push(`/distribution/dealers/${row.original.id}`)}>
+          <DropdownMenuItem onClick={() => router.push(`/dashboard/distribution/dealers/${row.original.id}`)}>
             <Eye className="mr-2 h-4 w-4" />
             View Details
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => router.push(`/distribution/dealers/${row.original.id}?tab=territory`)}>
+          <DropdownMenuItem onClick={() => router.push(`/dashboard/distribution/dealers/${row.original.id}?tab=territory`)}>
             <MapPin className="mr-2 h-4 w-4" />
             Manage Territory
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => router.push(`/distribution/dealers/${row.original.id}?tab=credit`)}>
+          <DropdownMenuItem onClick={() => router.push(`/dashboard/distribution/dealers/${row.original.id}?tab=credit`)}>
             <CreditCard className="mr-2 h-4 w-4" />
             Credit Ledger
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => router.push(`/distribution/dealers/${row.original.id}?tab=targets`)}>
+          <DropdownMenuItem onClick={() => router.push(`/dashboard/distribution/dealers/${row.original.id}?tab=targets`)}>
             <Target className="mr-2 h-4 w-4" />
             Targets
           </DropdownMenuItem>

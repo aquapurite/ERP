@@ -299,7 +299,7 @@ export default function AMCPage() {
       cell: ({ row }) => (
         <div
           className="flex items-center gap-2 cursor-pointer hover:opacity-80"
-          onClick={() => router.push(`/service/amc/${row.original.id}`)}
+          onClick={() => router.push(`/dashboard/service/amc/${row.original.id}`)}
         >
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
             <Shield className="h-4 w-4" />
@@ -405,7 +405,7 @@ export default function AMCPage() {
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>Actions</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => router.push(`/service/amc/${row.original.id}`)}>
+            <DropdownMenuItem onClick={() => router.push(`/dashboard/service/amc/${row.original.id}`)}>
               <Eye className="mr-2 h-4 w-4" />
               View Details
             </DropdownMenuItem>

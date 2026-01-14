@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal, Plus, Eye, Phone, PhoneIncoming, PhoneOutgoing, Clock } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -120,7 +121,7 @@ const columns: ColumnDef<Call>[] = [
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Actions</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => toast.success(`Viewing call ${row.original.call_id}`)}>
             <Eye className="mr-2 h-4 w-4" />
             View Details
           </DropdownMenuItem>
@@ -150,7 +151,7 @@ export default function CallCenterPage() {
         title="Call Center"
         description="Manage call logs and agent activities"
         actions={
-          <Button>
+          <Button onClick={() => toast.success('Opening call log form')}>
             <Plus className="mr-2 h-4 w-4" />
             Log Call
           </Button>

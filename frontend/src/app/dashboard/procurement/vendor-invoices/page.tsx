@@ -287,11 +287,11 @@ export default function VendorInvoicesPage() {
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => toast.success(`Viewing invoice ${invoice.invoice_number}`)}>
                 <Eye className="mr-2 h-4 w-4" />
                 View Details
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => toast.success(`Downloading invoice ${invoice.invoice_number}`)}>
                 <Download className="mr-2 h-4 w-4" />
                 Download Invoice
               </DropdownMenuItem>
@@ -309,7 +309,7 @@ export default function VendorInvoicesPage() {
                 </DropdownMenuItem>
               )}
               {invoice.match_status === 'MISMATCH' && (
-                <DropdownMenuItem className="text-orange-600">
+                <DropdownMenuItem className="text-orange-600" onClick={() => toast.success('Opening discrepancy resolution')}>
                   <AlertTriangle className="mr-2 h-4 w-4" />
                   Resolve Discrepancy
                 </DropdownMenuItem>
@@ -401,7 +401,7 @@ export default function VendorInvoicesPage() {
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setIsUploadDialogOpen(false)}>Cancel</Button>
-                  <Button>Upload & Process</Button>
+                  <Button onClick={() => { toast.success('Processing invoice upload'); setIsUploadDialogOpen(false); }}>Upload & Process</Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>

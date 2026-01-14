@@ -382,15 +382,15 @@ export default function CommissionsPage() {
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>Actions</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => toast.success(`Viewing plan: ${row.original.name}`)}>
               <Eye className="mr-2 h-4 w-4" />
               View Details
             </DropdownMenuItem>
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => toast.success(`Editing plan: ${row.original.name}`)}>
               <Pencil className="mr-2 h-4 w-4" />
               Edit
             </DropdownMenuItem>
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => toast.success(`Viewing beneficiaries of: ${row.original.name}`)}>
               <Users className="mr-2 h-4 w-4" />
               View Beneficiaries
             </DropdownMenuItem>
@@ -477,7 +477,7 @@ export default function CommissionsPage() {
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>Actions</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => toast.success(`Viewing transaction: ${row.original.transaction_number}`)}>
               <Eye className="mr-2 h-4 w-4" />
               View Details
             </DropdownMenuItem>
@@ -488,7 +488,7 @@ export default function CommissionsPage() {
               </DropdownMenuItem>
             )}
             {row.original.status === 'CALCULATED' && (
-              <DropdownMenuItem className="text-red-600">
+              <DropdownMenuItem className="text-red-600" onClick={() => toast.success('Rejecting transaction')}>
                 <XCircle className="mr-2 h-4 w-4" />
                 Reject
               </DropdownMenuItem>
@@ -571,11 +571,11 @@ export default function CommissionsPage() {
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>Actions</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => toast.success(`Viewing payout: ${row.original.payout_number}`)}>
               <Eye className="mr-2 h-4 w-4" />
               View Details
             </DropdownMenuItem>
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => toast.success(`Downloading statement for: ${row.original.payout_number}`)}>
               <FileText className="mr-2 h-4 w-4" />
               Download Statement
             </DropdownMenuItem>
@@ -601,7 +601,7 @@ export default function CommissionsPage() {
         description="Manage commission plans, transactions and payouts"
         actions={
           <div className="flex gap-2">
-            <Button variant="outline">
+            <Button variant="outline" onClick={() => toast.success('Exporting commission data')}>
               <Download className="mr-2 h-4 w-4" />
               Export
             </Button>
@@ -711,7 +711,7 @@ export default function CommissionsPage() {
                 <SelectItem value="CANCELLED">Cancelled</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={() => toast.success('Opening advanced filters')}>
               <Filter className="mr-2 h-4 w-4" />
               More Filters
             </Button>

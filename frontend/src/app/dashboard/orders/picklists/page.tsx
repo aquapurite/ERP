@@ -24,6 +24,13 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -114,7 +121,78 @@ const priorityColors: Record<string, string> = {
   URGENT: 'bg-red-100 text-red-700',
 };
 
-const columns: ColumnDef<Picklist>[] = [
+// Separate component for actions cell to properly use hooks
+function PicklistActionsCell({
+  picklist,
+  onView,
+  onPrint
+}: {
+  picklist: Picklist;
+  onView: (p: Picklist) => void;
+  onPrint: (p: Picklist) => void;
+}) {
+  const queryClient = useQueryClient();
+
+  const startMutation = useMutation({
+    mutationFn: () => picklistsApi.start(picklist.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['picklists'] });
+      queryClient.invalidateQueries({ queryKey: ['picklists-stats'] });
+      toast.success('Picklist started');
+    },
+    onError: () => toast.error('Failed to start picklist'),
+  });
+
+  const completeMutation = useMutation({
+    mutationFn: () => picklistsApi.complete(picklist.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['picklists'] });
+      queryClient.invalidateQueries({ queryKey: ['picklists-stats'] });
+      toast.success('Picklist completed');
+    },
+    onError: () => toast.error('Failed to complete picklist'),
+  });
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-8 w-8">
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => onView(picklist)}>
+          <Eye className="mr-2 h-4 w-4" />
+          View Details
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onPrint(picklist)}>
+          <Printer className="mr-2 h-4 w-4" />
+          Print Picklist
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {picklist.status === 'ASSIGNED' && (
+          <DropdownMenuItem onClick={() => startMutation.mutate()}>
+            <Play className="mr-2 h-4 w-4" />
+            Start Picking
+          </DropdownMenuItem>
+        )}
+        {picklist.status === 'IN_PROGRESS' && (
+          <DropdownMenuItem onClick={() => completeMutation.mutate()}>
+            <CheckCircle className="mr-2 h-4 w-4" />
+            Mark Complete
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+const createColumns = (
+  onView: (p: Picklist) => void,
+  onPrint: (p: Picklist) => void
+): ColumnDef<Picklist>[] => [
   {
     accessorKey: 'picklist_number',
     header: 'Picklist #',
@@ -210,60 +288,13 @@ const columns: ColumnDef<Picklist>[] = [
   },
   {
     id: 'actions',
-    cell: ({ row }) => {
-      const queryClient = useQueryClient();
-
-      const startMutation = useMutation({
-        mutationFn: () => picklistsApi.start(row.original.id),
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: ['picklists'] });
-          toast.success('Picklist started');
-        },
-      });
-
-      const completeMutation = useMutation({
-        mutationFn: () => picklistsApi.complete(row.original.id),
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: ['picklists'] });
-          toast.success('Picklist completed');
-        },
-      });
-
-      return (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <Eye className="mr-2 h-4 w-4" />
-              View Details
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Printer className="mr-2 h-4 w-4" />
-              Print Picklist
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {row.original.status === 'ASSIGNED' && (
-              <DropdownMenuItem onClick={() => startMutation.mutate()}>
-                <Play className="mr-2 h-4 w-4" />
-                Start Picking
-              </DropdownMenuItem>
-            )}
-            {row.original.status === 'IN_PROGRESS' && (
-              <DropdownMenuItem onClick={() => completeMutation.mutate()}>
-                <CheckCircle className="mr-2 h-4 w-4" />
-                Mark Complete
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      );
-    },
+    cell: ({ row }) => (
+      <PicklistActionsCell
+        picklist={row.original}
+        onView={onView}
+        onPrint={onPrint}
+      />
+    ),
   },
 ];
 
@@ -272,8 +303,21 @@ export default function PicklistsPage() {
   const [pageSize, setPageSize] = useState(10);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [viewPicklist, setViewPicklist] = useState<Picklist | null>(null);
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
 
-  const queryClient = useQueryClient();
+  const handleView = (picklist: Picklist) => {
+    setViewPicklist(picklist);
+    setIsSheetOpen(true);
+  };
+
+  const handlePrint = (picklist: Picklist) => {
+    // Open print dialog for picklist
+    toast.success(`Printing picklist ${picklist.picklist_number}`);
+    window.print();
+  };
+
+  const columns = createColumns(handleView, handlePrint);
 
   const { data, isLoading } = useQuery({
     queryKey: ['picklists', page, pageSize, statusFilter],
@@ -438,6 +482,74 @@ export default function PicklistsPage() {
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
+
+      {/* Picklist Details Sheet */}
+      <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+        <SheetContent className="sm:max-w-lg">
+          <SheetHeader>
+            <SheetTitle>Picklist Details</SheetTitle>
+            <SheetDescription>
+              {viewPicklist?.picklist_number}
+            </SheetDescription>
+          </SheetHeader>
+          {viewPicklist && (
+            <div className="mt-6 space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm text-muted-foreground">Warehouse</label>
+                  <p className="font-medium">{viewPicklist.warehouse_name}</p>
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground">Picker</label>
+                  <p className="font-medium">{viewPicklist.picker_name || 'Unassigned'}</p>
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground">Status</label>
+                  <p><StatusBadge status={viewPicklist.status} /></p>
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground">Priority</label>
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${priorityColors[viewPicklist.priority]}`}>
+                    {viewPicklist.priority}
+                  </span>
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground">Total Orders</label>
+                  <p className="font-medium">{viewPicklist.total_orders}</p>
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground">Total Items</label>
+                  <p className="font-medium">{viewPicklist.total_items}</p>
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground">Progress</label>
+                  <p className="font-medium">{viewPicklist.picked_quantity} / {viewPicklist.total_quantity} qty</p>
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground">Est. Time</label>
+                  <p className="font-medium">{viewPicklist.estimated_time_minutes ? `${viewPicklist.estimated_time_minutes} min` : '-'}</p>
+                </div>
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground">Created At</label>
+                <p className="font-medium">{formatDate(viewPicklist.created_at)}</p>
+              </div>
+              {viewPicklist.started_at && (
+                <div>
+                  <label className="text-sm text-muted-foreground">Started At</label>
+                  <p className="font-medium">{formatDate(viewPicklist.started_at)}</p>
+                </div>
+              )}
+              {viewPicklist.completed_at && (
+                <div>
+                  <label className="text-sm text-muted-foreground">Completed At</label>
+                  <p className="font-medium">{formatDate(viewPicklist.completed_at)}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

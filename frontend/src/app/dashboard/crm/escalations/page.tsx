@@ -180,7 +180,7 @@ const columns: ColumnDef<Escalation>[] = [
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Actions</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => toast.success(`Viewing escalation ${row.original.escalation_number}`)}>
             <Eye className="mr-2 h-4 w-4" />
             View Details
           </DropdownMenuItem>

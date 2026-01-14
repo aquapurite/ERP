@@ -568,7 +568,7 @@ export default function ThreeWayMatchPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDetailOpen(false)}>Close</Button>
             {selectedMatch?.status === 'MISMATCH' && (
-              <Button variant="secondary">
+              <Button variant="secondary" onClick={() => toast.success('Opening variance resolution workflow')}>
                 <AlertTriangle className="mr-2 h-4 w-4" />
                 Resolve Variance
               </Button>
