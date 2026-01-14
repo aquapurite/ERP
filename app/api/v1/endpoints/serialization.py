@@ -117,6 +117,142 @@ async def get_supplier_code(
     return supplier
 
 
+@router.put("/suppliers/{code}/link-vendor")
+async def link_vendor_to_supplier_code(
+    code: str,
+    vendor_id: str = Query(..., description="Vendor ID to link"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Link a vendor to an existing supplier code.
+
+    This is required for barcode generation during PO approval.
+    Each vendor should be linked to a unique supplier code.
+    """
+    # Find the supplier code
+    result = await db.execute(
+        select(SupplierCode).where(SupplierCode.code == code.upper())
+    )
+    supplier = result.scalar_one_or_none()
+    if not supplier:
+        raise HTTPException(status_code=404, detail=f"Supplier code {code} not found")
+
+    # Verify vendor exists
+    from app.models.vendor import Vendor
+    vendor_result = await db.execute(
+        select(Vendor).where(Vendor.id == vendor_id)
+    )
+    vendor = vendor_result.scalar_one_or_none()
+    if not vendor:
+        raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
+
+    # Check if vendor already linked to another supplier code
+    existing_link = await db.execute(
+        select(SupplierCode).where(
+            SupplierCode.vendor_id == vendor_id,
+            SupplierCode.code != code.upper()
+        )
+    )
+    existing = existing_link.scalar_one_or_none()
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Vendor already linked to supplier code '{existing.code}'"
+        )
+
+    # Link vendor to supplier code
+    supplier.vendor_id = vendor_id
+    await db.commit()
+
+    return {
+        "success": True,
+        "message": f"Vendor '{vendor.name}' linked to supplier code '{code.upper()}'",
+        "supplier_code": code.upper(),
+        "vendor_id": vendor_id,
+        "vendor_name": vendor.name
+    }
+
+
+@router.post("/suppliers/auto-create-for-vendor")
+async def auto_create_supplier_code_for_vendor(
+    vendor_id: str = Query(..., description="Vendor ID"),
+    code: str = Query(..., min_length=2, max_length=2, description="2-letter supplier code"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Create a new supplier code and link it to a vendor.
+
+    Use this when a vendor doesn't have a supplier code yet.
+    """
+    import uuid
+
+    # Verify vendor exists
+    from app.models.vendor import Vendor
+    vendor_result = await db.execute(
+        select(Vendor).where(Vendor.id == vendor_id)
+    )
+    vendor = vendor_result.scalar_one_or_none()
+    if not vendor:
+        raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
+
+    # Check if vendor already has a supplier code
+    existing_vendor_code = await db.execute(
+        select(SupplierCode).where(SupplierCode.vendor_id == vendor_id)
+    )
+    if existing_vendor_code.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Vendor already has a supplier code"
+        )
+
+    # Check if code already exists
+    existing_code = await db.execute(
+        select(SupplierCode).where(SupplierCode.code == code.upper())
+    )
+    existing = existing_code.scalar_one_or_none()
+
+    if existing:
+        if existing.vendor_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Supplier code '{code.upper()}' already exists and is linked to another vendor"
+            )
+        # Link existing code to vendor
+        existing.vendor_id = vendor_id
+        await db.commit()
+        return {
+            "success": True,
+            "message": f"Existing supplier code '{code.upper()}' linked to vendor '{vendor.name}'",
+            "supplier_code": code.upper(),
+            "vendor_id": vendor_id,
+            "vendor_name": vendor.name,
+            "action": "linked_existing"
+        }
+
+    # Create new supplier code
+    new_supplier = SupplierCode(
+        id=str(uuid.uuid4()),
+        code=code.upper(),
+        name=vendor.name,
+        vendor_id=vendor_id,
+        description=f"Auto-created for vendor {vendor.name}",
+        is_active=True,
+    )
+    db.add(new_supplier)
+    await db.commit()
+
+    return {
+        "success": True,
+        "message": f"Created supplier code '{code.upper()}' for vendor '{vendor.name}'",
+        "supplier_code": code.upper(),
+        "vendor_id": vendor_id,
+        "vendor_name": vendor.name,
+        "action": "created_new"
+    }
+
+
 # ==================== Model Code Reference Endpoints ====================
 
 @router.get("/model-codes", response_model=List[ModelCodeResponse])
