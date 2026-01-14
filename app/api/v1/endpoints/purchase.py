@@ -3058,6 +3058,46 @@ async def fix_barcodes_get(po_id: UUID, db: DB):
     return await fix_and_test_po(po_id, db)
 
 
+@router.get("/orders/{po_id}/verify-serials")
+async def verify_serials(po_id: UUID, db: DB):
+    """
+    Public endpoint to verify serials were generated for a PO.
+    Returns count and sample barcodes.
+    """
+    from sqlalchemy import text
+
+    # Get PO info
+    result = await db.execute(
+        select(PurchaseOrder).where(PurchaseOrder.id == po_id)
+    )
+    po = result.scalar_one_or_none()
+
+    if not po:
+        raise HTTPException(status_code=404, detail="PO not found")
+
+    # Count serials
+    count_result = await db.execute(
+        text("SELECT COUNT(*) FROM po_serials WHERE po_id = :po_id"),
+        {"po_id": str(po.id)}
+    )
+    count = count_result.scalar() or 0
+
+    # Get sample barcodes
+    samples_result = await db.execute(
+        text("SELECT barcode, model_code, supplier_code FROM po_serials WHERE po_id = :po_id ORDER BY serial_number LIMIT 10"),
+        {"po_id": str(po.id)}
+    )
+    samples = [{"barcode": r[0], "model_code": r[1], "supplier_code": r[2]} for r in samples_result.all()]
+
+    return {
+        "po_number": po.po_number,
+        "status": po.status.value if po.status else None,
+        "total_serials": count,
+        "samples": samples,
+        "message": "SUCCESS - Barcodes are generated!" if count > 0 else "No serials found"
+    }
+
+
 @router.post("/orders/{po_id}/reset-to-draft")
 async def reset_po_to_draft(
     po_id: UUID,
