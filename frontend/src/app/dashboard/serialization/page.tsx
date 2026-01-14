@@ -292,42 +292,7 @@ const spModelCodeColumns: ColumnDef<ModelCodeReference>[] = [
   },
 ];
 
-const supplierCodeColumns: ColumnDef<SupplierCode>[] = [
-  {
-    accessorKey: 'code',
-    header: 'Supplier Code',
-    cell: ({ row }) => (
-      <Badge variant="secondary" className="font-mono text-base">
-        {row.original.code}
-      </Badge>
-    ),
-  },
-  {
-    accessorKey: 'name',
-    header: 'Supplier Name',
-    cell: ({ row }) => (
-      <span className="font-medium">{row.original.name}</span>
-    ),
-  },
-  {
-    accessorKey: 'vendor_id',
-    header: 'Linked Vendor',
-    cell: ({ row }) => (
-      <span className="text-sm text-muted-foreground">
-        {row.original.vendor_id ? 'Linked' : 'Not linked'}
-      </span>
-    ),
-  },
-  {
-    accessorKey: 'is_active',
-    header: 'Status',
-    cell: ({ row }) => (
-      <Badge variant={row.original.is_active ? 'default' : 'secondary'}>
-        {row.original.is_active ? 'Active' : 'Inactive'}
-      </Badge>
-    ),
-  },
-];
+// supplierCodeColumns is defined inside the component to access handlers
 
 export default function SerializationPage() {
   const queryClient = useQueryClient();
@@ -362,6 +327,13 @@ export default function SerializationPage() {
     name: '',
     vendor_id: '',
     description: '',
+  });
+
+  // Link Vendor Dialog State
+  const [isLinkVendorDialogOpen, setIsLinkVendorDialogOpen] = useState(false);
+  const [linkVendorData, setLinkVendorData] = useState({
+    code: '',
+    vendor_id: '',
   });
 
   // Create Product Dialog State
@@ -471,6 +443,20 @@ export default function SerializationPage() {
     onError: (error: Error) => toast.error(error.message || 'Failed to create supplier code'),
   });
 
+  const linkVendorMutation = useMutation({
+    mutationFn: async ({ code, vendor_id }: { code: string; vendor_id: string }) => {
+      const { data } = await apiClient.put(`/serialization/suppliers/${code}/link-vendor?vendor_id=${vendor_id}`);
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['supplier-codes'] });
+      toast.success(data.message || 'Vendor linked successfully');
+      setIsLinkVendorDialogOpen(false);
+      setLinkVendorData({ code: '', vendor_id: '' });
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to link vendor'),
+  });
+
   const createProductMutation = useMutation({
     mutationFn: async (productData: CreateProductFormData) => {
       const { data } = await apiClient.post('/serialization/create-product', {
@@ -544,6 +530,89 @@ export default function SerializationPage() {
     }
     createSupplierCodeMutation.mutate(newSupplierCode);
   };
+
+  const handleLinkVendor = () => {
+    if (!linkVendorData.vendor_id) {
+      toast.error('Please select a vendor');
+      return;
+    }
+    linkVendorMutation.mutate(linkVendorData);
+  };
+
+  const openLinkVendorDialog = (code: string) => {
+    setLinkVendorData({ code, vendor_id: '' });
+    setIsLinkVendorDialogOpen(true);
+  };
+
+  // Supplier Code columns (defined here to access handlers)
+  const supplierCodeColumns: ColumnDef<SupplierCode>[] = [
+    {
+      accessorKey: 'code',
+      header: 'Supplier Code',
+      cell: ({ row }) => (
+        <Badge variant="secondary" className="font-mono text-base">
+          {row.original.code}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: 'name',
+      header: 'Supplier Name',
+      cell: ({ row }) => (
+        <span className="font-medium">{row.original.name}</span>
+      ),
+    },
+    {
+      accessorKey: 'vendor_id',
+      header: 'Linked Vendor',
+      cell: ({ row }) => {
+        const vendor = vendors.find((v: Vendor) => v.id === row.original.vendor_id);
+        return (
+          <span className={row.original.vendor_id ? 'text-green-600 font-medium' : 'text-amber-600'}>
+            {row.original.vendor_id ? (vendor?.name || 'Linked') : 'Not linked'}
+          </span>
+        );
+      },
+    },
+    {
+      accessorKey: 'is_active',
+      header: 'Status',
+      cell: ({ row }) => (
+        <Badge variant={row.original.is_active ? 'default' : 'secondary'}>
+          {row.original.is_active ? 'Active' : 'Inactive'}
+        </Badge>
+      ),
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      cell: ({ row }) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="h-8 w-8 p-0">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {!row.original.vendor_id && (
+              <DropdownMenuItem onClick={() => openLinkVendorDialog(row.original.code)}>
+                <Truck className="mr-2 h-4 w-4" />
+                Link Vendor
+              </DropdownMenuItem>
+            )}
+            {row.original.vendor_id && (
+              <DropdownMenuItem className="text-green-600">
+                <CheckCircle className="mr-2 h-4 w-4" />
+                Vendor Linked
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ];
 
   const resetCreateProductForm = () => {
     setNewProduct({
@@ -1002,6 +1071,61 @@ export default function SerializationPage() {
             <Button onClick={handleCreateSupplierCode} disabled={createSupplierCodeMutation.isPending}>
               {createSupplierCodeMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Link Vendor Dialog */}
+      <Dialog open={isLinkVendorDialogOpen} onOpenChange={setIsLinkVendorDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Link Vendor to Supplier Code</DialogTitle>
+            <DialogDescription>
+              Link a vendor to supplier code <strong>{linkVendorData.code}</strong>. This is required for barcode generation during PO approval.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Supplier Code</Label>
+              <Badge variant="secondary" className="font-mono text-lg">
+                {linkVendorData.code}
+              </Badge>
+            </div>
+            <div className="space-y-2">
+              <Label>Select Vendor *</Label>
+              <Select
+                value={linkVendorData.vendor_id || 'none'}
+                onValueChange={(value) => {
+                  if (value === 'none') {
+                    setLinkVendorData({ ...linkVendorData, vendor_id: '' });
+                    return;
+                  }
+                  setLinkVendorData({ ...linkVendorData, vendor_id: value });
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select vendor to link" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none" disabled>Select a vendor</SelectItem>
+                  {vendors.map((vendor: Vendor) => (
+                    <SelectItem key={vendor.id} value={vendor.id}>
+                      {vendor.name} ({vendor.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Choose the vendor/supplier to link to this code</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsLinkVendorDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleLinkVendor} disabled={linkVendorMutation.isPending}>
+              {linkVendorMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Link Vendor
             </Button>
           </DialogFooter>
         </DialogContent>
