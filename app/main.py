@@ -82,6 +82,8 @@ async def auto_link_vendors_to_supplier_codes():
     from app.models.serialization import SupplierCode
     import uuid
 
+    print("AUTO-LINK: Starting vendor-supplier code linking...")
+
     try:
         async with async_session_factory() as db:
             # Find vendors that match known supplier codes but aren't linked
@@ -90,14 +92,17 @@ async def auto_link_vendors_to_supplier_codes():
             ]
 
             for vendor_pattern, supplier_code in vendor_mappings:
+                print(f"AUTO-LINK: Checking {vendor_pattern} -> {supplier_code}")
+
                 # Check if supplier code exists and is linked
                 sc_result = await db.execute(
                     select(SupplierCode).where(SupplierCode.code == supplier_code)
                 )
                 sc = sc_result.scalar_one_or_none()
+                print(f"AUTO-LINK: Supplier code '{supplier_code}' exists: {sc is not None}, vendor_id: {sc.vendor_id if sc else 'N/A'}")
 
                 if sc and sc.vendor_id:
-                    # Already linked
+                    print(f"AUTO-LINK: '{supplier_code}' already linked to vendor_id={sc.vendor_id}")
                     continue
 
                 # Find vendor
@@ -105,21 +110,25 @@ async def auto_link_vendors_to_supplier_codes():
                     select(Vendor).where(Vendor.name.ilike(f"%{vendor_pattern}%"))
                 )
                 vendor = vendor_result.scalar_one_or_none()
+                print(f"AUTO-LINK: Vendor matching '{vendor_pattern}': {vendor.name if vendor else 'NOT FOUND'}")
 
                 if not vendor:
+                    print(f"AUTO-LINK: No vendor found matching '{vendor_pattern}', skipping")
                     continue
 
                 # Check if vendor already linked to another code
                 existing_link = await db.execute(
                     select(SupplierCode).where(SupplierCode.vendor_id == str(vendor.id))
                 )
-                if existing_link.scalar_one_or_none():
+                existing_sc = existing_link.scalar_one_or_none()
+                if existing_sc:
+                    print(f"AUTO-LINK: Vendor already linked to code '{existing_sc.code}', skipping")
                     continue
 
                 if sc:
                     # Link existing supplier code to vendor
                     sc.vendor_id = str(vendor.id)
-                    print(f"Linked vendor '{vendor.name}' to supplier code '{supplier_code}'")
+                    print(f"AUTO-LINK: SUCCESS - Linked vendor '{vendor.name}' to supplier code '{supplier_code}'")
                 else:
                     # Create new supplier code
                     new_sc = SupplierCode(
@@ -131,11 +140,14 @@ async def auto_link_vendors_to_supplier_codes():
                         is_active=True,
                     )
                     db.add(new_sc)
-                    print(f"Created supplier code '{supplier_code}' for vendor '{vendor.name}'")
+                    print(f"AUTO-LINK: SUCCESS - Created supplier code '{supplier_code}' for vendor '{vendor.name}'")
 
             await db.commit()
+            print("AUTO-LINK: Completed successfully")
     except Exception as e:
-        print(f"Warning: Auto-link vendors failed: {e}")
+        import traceback
+        print(f"AUTO-LINK ERROR: {type(e).__name__}: {e}")
+        print(f"AUTO-LINK TRACEBACK: {traceback.format_exc()}")
 
 
 @asynccontextmanager

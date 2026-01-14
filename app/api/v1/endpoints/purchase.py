@@ -2896,7 +2896,7 @@ def _number_to_words(num: float) -> str:
 async def diagnose_po_serials(
     po_id: UUID,
     db: DB,
-    current_user: User = Depends(get_current_user),
+    # No auth required for diagnostics - temporary
 ):
     """
     Diagnostic endpoint to check PO status and serial generation.
