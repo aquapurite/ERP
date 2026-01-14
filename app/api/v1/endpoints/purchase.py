@@ -3048,6 +3048,16 @@ async def fix_and_test_po(
     }
 
 
+# GET version so you can trigger from browser
+@router.get("/orders/{po_id}/fix-barcodes")
+async def fix_barcodes_get(po_id: UUID, db: DB):
+    """
+    Browser-friendly GET endpoint to fix barcode generation.
+    Just open this URL in your browser to fix the PO.
+    """
+    return await fix_and_test_po(po_id, db)
+
+
 @router.post("/orders/{po_id}/reset-to-draft")
 async def reset_po_to_draft(
     po_id: UUID,
