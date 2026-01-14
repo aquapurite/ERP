@@ -77,6 +77,7 @@ export const navigation: NavItem[] = [
     permissions: ['CHANNELS_VIEW'],
     children: [
       { title: 'All Channels', href: '/dashboard/channels', permissions: ['CHANNELS_VIEW'] },
+      { title: 'Marketplaces', href: '/dashboard/channels/marketplaces', icon: Store, permissions: ['CHANNELS_VIEW'], badge: 'NEW' },
       { title: 'Channel Pricing', href: '/dashboard/channels/pricing', permissions: ['CHANNELS_VIEW'] },
       { title: 'Channel Inventory', href: '/dashboard/channels/inventory', permissions: ['CHANNELS_VIEW'] },
       { title: 'Marketplace Orders', href: '/dashboard/channels/orders', permissions: ['CHANNELS_VIEW'] },
@@ -150,8 +151,10 @@ export const navigation: NavItem[] = [
       { title: 'Chart of Accounts', href: '/dashboard/finance/chart-of-accounts', permissions: ['ACCOUNTING_VIEW'] },
       { title: 'Financial Periods', href: '/dashboard/finance/periods', icon: Clock, permissions: ['ACCOUNTING_VIEW'] },
       { title: 'Journal Entries', href: '/dashboard/finance/journal-entries', permissions: ['ACCOUNTING_VIEW'] },
+      { title: 'Auto Journal', href: '/dashboard/finance/auto-journal', icon: Calculator, permissions: ['ACCOUNTING_VIEW'], badge: 'NEW' },
       { title: 'General Ledger', href: '/dashboard/finance/general-ledger', permissions: ['ACCOUNTING_VIEW'] },
       { title: 'Bank Reconciliation', href: '/dashboard/finance/bank-reconciliation', permissions: ['ACCOUNTING_VIEW'] },
+      { title: 'TDS Management', href: '/dashboard/finance/tds', icon: Receipt, permissions: ['ACCOUNTING_VIEW'], badge: 'NEW' },
       { title: 'Cost Centers', href: '/dashboard/finance/cost-centers', permissions: ['ACCOUNTING_VIEW'] },
       { title: 'Fixed Assets', href: '/dashboard/finance/fixed-assets', icon: Building2, permissions: ['ACCOUNTING_VIEW'] },
     ],

@@ -70,7 +70,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import apiClient from '@/lib/api/client';
+import { commissionsApi as centralApi } from '@/lib/api';
 import { formatDate, formatCurrency } from '@/lib/utils';
 
 interface CommissionPlan {
@@ -137,6 +137,26 @@ interface CommissionStats {
   growth_percentage: number;
 }
 
+// Demo data for fallback
+const demoPlans = [
+  { id: '1', name: 'Dealer Standard', code: 'DLR-STD', type: 'DEALER', rate_type: 'PERCENTAGE', rate: 5, min_threshold: 50000, max_cap: 25000, is_active: true, beneficiaries_count: 45, total_paid: 1234567, created_at: '2024-01-01' },
+  { id: '2', name: 'Technician Incentive', code: 'TECH-INC', type: 'TECHNICIAN', rate_type: 'FIXED', rate: 500, is_active: true, beneficiaries_count: 120, total_paid: 567890, created_at: '2024-01-15' },
+  { id: '3', name: 'Sales Rep Bonus', code: 'SALES-BNS', type: 'SALES_REP', rate_type: 'SLAB', rate: 0, slabs: [{ min: 0, max: 100000, rate: 2 }, { min: 100001, max: 500000, rate: 3 }, { min: 500001, max: 99999999, rate: 5 }], is_active: true, beneficiaries_count: 25, total_paid: 890000, created_at: '2024-02-01' },
+  { id: '4', name: 'Referral Program', code: 'REF-PRG', type: 'REFERRAL', rate_type: 'FIXED', rate: 1000, is_active: true, beneficiaries_count: 200, total_paid: 456000, created_at: '2024-01-01' },
+];
+
+const demoTransactions = [
+  { id: '1', transaction_number: 'CMT-10001', beneficiary_type: 'DEALER', beneficiary_id: '1', beneficiary_name: 'ABC Electronics', plan_id: '1', plan_name: 'Dealer Standard', order_id: '1', order_number: 'ORD-10045', base_amount: 125000, commission_amount: 6250, commission_rate: 5, status: 'APPROVED', created_at: '2024-03-15' },
+  { id: '2', transaction_number: 'CMT-10002', beneficiary_type: 'TECHNICIAN', beneficiary_id: '2', beneficiary_name: 'Rajesh Kumar', plan_id: '2', plan_name: 'Technician Incentive', order_id: '2', order_number: 'SRV-5678', base_amount: 0, commission_amount: 500, commission_rate: 0, status: 'PAID', created_at: '2024-03-14' },
+  { id: '3', transaction_number: 'CMT-10003', beneficiary_type: 'DEALER', beneficiary_id: '3', beneficiary_name: 'XYZ Distributors', plan_id: '1', plan_name: 'Dealer Standard', order_id: '3', order_number: 'ORD-10048', base_amount: 250000, commission_amount: 12500, commission_rate: 5, status: 'CALCULATED', created_at: '2024-03-16' },
+];
+
+const demoPayouts = [
+  { id: '1', payout_number: 'PYT-2024-001', beneficiary_type: 'DEALER', beneficiary_id: '1', beneficiary_name: 'ABC Electronics', bank_account: 'HDFC XXXX1234', total_amount: 45000, tds_amount: 4500, net_amount: 40500, transactions_count: 8, period_start: '2024-02-01', period_end: '2024-02-29', status: 'PAID', payment_reference: 'NEFT123456', payout_date: '2024-03-05', created_at: '2024-03-01' },
+  { id: '2', payout_number: 'PYT-2024-002', beneficiary_type: 'TECHNICIAN', beneficiary_id: '2', beneficiary_name: 'Rajesh Kumar', bank_account: 'ICICI XXXX5678', total_amount: 12000, tds_amount: 0, net_amount: 12000, transactions_count: 24, period_start: '2024-02-01', period_end: '2024-02-29', status: 'PENDING', created_at: '2024-03-01' },
+  { id: '3', payout_number: 'PYT-2024-003', beneficiary_type: 'DEALER', beneficiary_id: '3', beneficiary_name: 'XYZ Distributors', bank_account: 'SBI XXXX9012', total_amount: 78500, tds_amount: 7850, net_amount: 70650, transactions_count: 12, period_start: '2024-02-01', period_end: '2024-02-29', status: 'PROCESSING', created_at: '2024-03-02' },
+];
+
 const commissionsApi = {
   getStats: async (): Promise<CommissionStats> => {
     return {
@@ -152,51 +172,23 @@ const commissionsApi = {
   },
   listPlans: async (params?: { page?: number; size?: number }) => {
     try {
-      const { data } = await apiClient.get('/commissions/plans', { params });
-      return data;
+      return await centralApi.listPlans(params);
     } catch {
-      return {
-        items: [
-          { id: '1', name: 'Dealer Standard', code: 'DLR-STD', type: 'DEALER', rate_type: 'PERCENTAGE', rate: 5, min_threshold: 50000, max_cap: 25000, is_active: true, beneficiaries_count: 45, total_paid: 1234567, created_at: '2024-01-01' },
-          { id: '2', name: 'Technician Incentive', code: 'TECH-INC', type: 'TECHNICIAN', rate_type: 'FIXED', rate: 500, is_active: true, beneficiaries_count: 120, total_paid: 567890, created_at: '2024-01-15' },
-          { id: '3', name: 'Sales Rep Bonus', code: 'SALES-BNS', type: 'SALES_REP', rate_type: 'SLAB', rate: 0, slabs: [{ min: 0, max: 100000, rate: 2 }, { min: 100001, max: 500000, rate: 3 }, { min: 500001, max: 99999999, rate: 5 }], is_active: true, beneficiaries_count: 25, total_paid: 890000, created_at: '2024-02-01' },
-          { id: '4', name: 'Referral Program', code: 'REF-PRG', type: 'REFERRAL', rate_type: 'FIXED', rate: 1000, is_active: true, beneficiaries_count: 200, total_paid: 456000, created_at: '2024-01-01' },
-        ],
-        total: 4,
-        pages: 1,
-      };
+      return { items: demoPlans, total: demoPlans.length, pages: 1 };
     }
   },
   listTransactions: async (params?: { page?: number; size?: number; status?: string }) => {
     try {
-      const { data } = await apiClient.get('/commissions/transactions', { params });
-      return data;
+      return await centralApi.listTransactions(params);
     } catch {
-      return {
-        items: [
-          { id: '1', transaction_number: 'CMT-10001', beneficiary_type: 'DEALER', beneficiary_id: '1', beneficiary_name: 'ABC Electronics', plan_id: '1', plan_name: 'Dealer Standard', order_id: '1', order_number: 'ORD-10045', base_amount: 125000, commission_amount: 6250, commission_rate: 5, status: 'APPROVED', created_at: '2024-03-15' },
-          { id: '2', transaction_number: 'CMT-10002', beneficiary_type: 'TECHNICIAN', beneficiary_id: '2', beneficiary_name: 'Rajesh Kumar', plan_id: '2', plan_name: 'Technician Incentive', order_id: '2', order_number: 'SRV-5678', base_amount: 0, commission_amount: 500, commission_rate: 0, status: 'PAID', created_at: '2024-03-14' },
-          { id: '3', transaction_number: 'CMT-10003', beneficiary_type: 'DEALER', beneficiary_id: '3', beneficiary_name: 'XYZ Distributors', plan_id: '1', plan_name: 'Dealer Standard', order_id: '3', order_number: 'ORD-10048', base_amount: 250000, commission_amount: 12500, commission_rate: 5, status: 'CALCULATED', created_at: '2024-03-16' },
-        ],
-        total: 3,
-        pages: 1,
-      };
+      return { items: demoTransactions, total: demoTransactions.length, pages: 1 };
     }
   },
   listPayouts: async (params?: { page?: number; size?: number; status?: string }) => {
     try {
-      const { data } = await apiClient.get('/commissions/payouts', { params });
-      return data;
+      return await centralApi.listPayouts(params);
     } catch {
-      return {
-        items: [
-          { id: '1', payout_number: 'PYT-2024-001', beneficiary_type: 'DEALER', beneficiary_id: '1', beneficiary_name: 'ABC Electronics', bank_account: 'HDFC XXXX1234', total_amount: 45000, tds_amount: 4500, net_amount: 40500, transactions_count: 8, period_start: '2024-02-01', period_end: '2024-02-29', status: 'PAID', payment_reference: 'NEFT123456', payout_date: '2024-03-05', created_at: '2024-03-01' },
-          { id: '2', payout_number: 'PYT-2024-002', beneficiary_type: 'TECHNICIAN', beneficiary_id: '2', beneficiary_name: 'Rajesh Kumar', bank_account: 'ICICI XXXX5678', total_amount: 12000, tds_amount: 0, net_amount: 12000, transactions_count: 24, period_start: '2024-02-01', period_end: '2024-02-29', status: 'PENDING', created_at: '2024-03-01' },
-          { id: '3', payout_number: 'PYT-2024-003', beneficiary_type: 'DEALER', beneficiary_id: '3', beneficiary_name: 'XYZ Distributors', bank_account: 'SBI XXXX9012', total_amount: 78500, tds_amount: 7850, net_amount: 70650, transactions_count: 12, period_start: '2024-02-01', period_end: '2024-02-29', status: 'PROCESSING', created_at: '2024-03-02' },
-        ],
-        total: 3,
-        pages: 1,
-      };
+      return { items: demoPayouts, total: demoPayouts.length, pages: 1 };
     }
   },
 };

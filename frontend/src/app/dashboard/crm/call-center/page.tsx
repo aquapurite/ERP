@@ -16,7 +16,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
-import apiClient from '@/lib/api/client';
+import { callCenterApi } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 
 interface Call {
@@ -35,25 +35,6 @@ interface Call {
   created_at: string;
   ended_at?: string;
 }
-
-const callsApi = {
-  list: async (params?: { page?: number; size?: number; type?: string }) => {
-    try {
-      const { data } = await apiClient.get('/call-center/calls', { params });
-      return data;
-    } catch {
-      return { items: [], total: 0, pages: 0 };
-    }
-  },
-  getDashboard: async () => {
-    try {
-      const { data } = await apiClient.get('/call-center/dashboard/center');
-      return data;
-    } catch {
-      return { total_calls: 0, answered: 0, missed: 0, avg_wait_time: 0 };
-    }
-  },
-};
 
 const columns: ColumnDef<Call>[] = [
   {
@@ -155,12 +136,12 @@ export default function CallCenterPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['calls', page, pageSize],
-    queryFn: () => callsApi.list({ page: page + 1, size: pageSize }),
+    queryFn: () => callCenterApi.list({ page: page + 1, size: pageSize }),
   });
 
   const { data: dashboard } = useQuery({
     queryKey: ['call-center-dashboard'],
-    queryFn: callsApi.getDashboard,
+    queryFn: callCenterApi.getCenterDashboard,
   });
 
   return (

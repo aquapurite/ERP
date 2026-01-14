@@ -776,11 +776,11 @@ export const serviceRequestsApi = {
     const { data } = await apiClient.get<ServiceRequest>(`/service-requests/${id}`);
     return data;
   },
-  create: async (request: Partial<ServiceRequest>) => {
+  create: async (request: Record<string, unknown>) => {
     const { data } = await apiClient.post<ServiceRequest>('/service-requests', request);
     return data;
   },
-  update: async (id: string, request: Partial<ServiceRequest>) => {
+  update: async (id: string, request: Record<string, unknown>) => {
     const { data } = await apiClient.put<ServiceRequest>(`/service-requests/${id}`, request);
     return data;
   },
@@ -1067,7 +1067,7 @@ export const transportersApi = {
 
 // Shipments API
 export const shipmentsApi = {
-  list: async (params?: { page?: number; size?: number; status?: string; transporter_id?: string; warehouse_id?: string }) => {
+  list: async (params?: { page?: number; size?: number; status?: string; transporter_id?: string; warehouse_id?: string; order_id?: string }) => {
     const { data } = await apiClient.get('/shipments', { params });
     return data;
   },
@@ -3717,6 +3717,793 @@ export const insightsApi = {
 
   getHighValueCustomers: async (params?: { limit?: number }) => {
     const { data } = await apiClient.get<{ items: HighValueCustomer[]; total: number }>('/insights/customers/high-value', { params });
+    return data;
+  },
+};
+
+// ==================== LEADS API ====================
+
+export const leadsApi = {
+  list: async (params?: { page?: number; size?: number; search?: string; status?: string; source?: string; assigned_to?: string; temperature?: string }) => {
+    const { data } = await apiClient.get('/leads', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/leads/${id}`);
+    return data;
+  },
+  create: async (lead: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/leads', lead);
+    return data;
+  },
+  update: async (id: string, lead: Record<string, unknown>) => {
+    const { data } = await apiClient.put(`/leads/${id}`, lead);
+    return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/leads/${id}`);
+  },
+  convert: async (id: string, conversionData: Record<string, unknown>) => {
+    const { data } = await apiClient.post(`/leads/${id}/convert`, conversionData);
+    return data;
+  },
+  autoAssign: async (id: string, params?: { strategy?: string; team_id?: string }) => {
+    const { data } = await apiClient.post(`/leads/${id}/auto-assign`, null, { params });
+    return data;
+  },
+  bulkAutoAssign: async (leadIds: string[], strategy?: string, teamId?: string) => {
+    const { data } = await apiClient.post('/leads/auto-assign/bulk', {
+      lead_ids: leadIds,
+      strategy,
+      team_id: teamId
+    });
+    return data;
+  },
+  getUnassigned: async (params?: { limit?: number; source?: string }) => {
+    const { data } = await apiClient.get('/leads/unassigned', { params });
+    return data;
+  },
+  getAssignmentStats: async (params?: { start_date?: string; end_date?: string }) => {
+    const { data } = await apiClient.get('/leads/assignment-stats', { params });
+    return data;
+  },
+  getAgentWorkload: async () => {
+    const { data } = await apiClient.get('/leads/agents/workload');
+    return data;
+  },
+  getStats: async () => {
+    try {
+      const { data } = await apiClient.get('/leads/stats');
+      return data;
+    } catch {
+      return { total: 0, by_status: {}, by_source: {}, total_pipeline_value: 0, conversion_rate: 0 };
+    }
+  },
+  getPipeline: async () => {
+    try {
+      const { data } = await apiClient.get('/leads/pipeline');
+      return data;
+    } catch {
+      return {};
+    }
+  },
+};
+
+// ==================== CAMPAIGNS API ====================
+
+export const campaignsApi = {
+  list: async (params?: { page?: number; size?: number; search?: string; status?: string; type?: string }) => {
+    const { data } = await apiClient.get('/campaigns', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/campaigns/${id}`);
+    return data;
+  },
+  create: async (campaign: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/campaigns', campaign);
+    return data;
+  },
+  update: async (id: string, campaign: Record<string, unknown>) => {
+    const { data } = await apiClient.put(`/campaigns/${id}`, campaign);
+    return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/campaigns/${id}`);
+  },
+  launch: async (id: string) => {
+    const { data } = await apiClient.post(`/campaigns/${id}/launch`);
+    return data;
+  },
+  pause: async (id: string) => {
+    const { data } = await apiClient.post(`/campaigns/${id}/pause`);
+    return data;
+  },
+  getStats: async (id: string) => {
+    const { data } = await apiClient.get(`/campaigns/${id}/stats`);
+    return data;
+  },
+};
+
+// ==================== COMMISSIONS API ====================
+
+export const commissionsApi = {
+  list: async (params?: { page?: number; size?: number; agent_id?: string; status?: string; period?: string }) => {
+    const { data } = await apiClient.get('/commissions', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/commissions/${id}`);
+    return data;
+  },
+  create: async (commission: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/commissions', commission);
+    return data;
+  },
+  approve: async (id: string) => {
+    const { data } = await apiClient.post(`/commissions/${id}/approve`);
+    return data;
+  },
+  reject: async (id: string, reason: string) => {
+    const { data } = await apiClient.post(`/commissions/${id}/reject`, { reason });
+    return data;
+  },
+  getSlabs: async () => {
+    const { data } = await apiClient.get('/commissions/slabs');
+    return data;
+  },
+  createSlab: async (slab: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/commissions/slabs', slab);
+    return data;
+  },
+  getSummary: async (params?: { period?: string; agent_id?: string }) => {
+    const { data } = await apiClient.get('/commissions/summary', { params });
+    return data;
+  },
+  listPlans: async (params?: { page?: number; size?: number }) => {
+    const { data } = await apiClient.get('/commissions/plans', { params });
+    return data;
+  },
+  listTransactions: async (params?: { page?: number; size?: number; status?: string }) => {
+    const { data } = await apiClient.get('/commissions/transactions', { params });
+    return data;
+  },
+  listPayouts: async (params?: { page?: number; size?: number; status?: string }) => {
+    const { data } = await apiClient.get('/commissions/payouts', { params });
+    return data;
+  },
+  createPlan: async (plan: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/commissions/plans', plan);
+    return data;
+  },
+  processPayout: async (payoutId: string, reference: string) => {
+    const { data } = await apiClient.post(`/commissions/payouts/${payoutId}/process`, { payment_reference: reference });
+    return data;
+  },
+};
+
+// ==================== PROMOTIONS API ====================
+
+export const promotionsApi = {
+  list: async (params?: { page?: number; size?: number; search?: string; status?: string; type?: string }) => {
+    const { data } = await apiClient.get('/promotions', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/promotions/${id}`);
+    return data;
+  },
+  create: async (promotion: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/promotions', promotion);
+    return data;
+  },
+  update: async (id: string, promotion: Record<string, unknown>) => {
+    const { data } = await apiClient.put(`/promotions/${id}`, promotion);
+    return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/promotions/${id}`);
+  },
+  activate: async (id: string) => {
+    const { data } = await apiClient.post(`/promotions/${id}/activate`);
+    return data;
+  },
+  deactivate: async (id: string) => {
+    const { data } = await apiClient.post(`/promotions/${id}/deactivate`);
+    return data;
+  },
+  validateCode: async (code: string, orderValue?: number) => {
+    const { data } = await apiClient.post('/promotions/validate', { code, order_value: orderValue });
+    return data;
+  },
+};
+
+// ==================== CALL CENTER API ====================
+
+export const callCenterApi = {
+  list: async (params?: { page?: number; size?: number; search?: string; status?: string; agent_id?: string }) => {
+    const { data } = await apiClient.get('/call-center/calls', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/call-center/calls/${id}`);
+    return data;
+  },
+  create: async (call: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/call-center/calls', call);
+    return data;
+  },
+  update: async (id: string, call: Record<string, unknown>) => {
+    const { data } = await apiClient.put(`/call-center/calls/${id}`, call);
+    return data;
+  },
+  addNote: async (id: string, note: string) => {
+    const { data } = await apiClient.post(`/call-center/calls/${id}/notes`, { note });
+    return data;
+  },
+  getAgentStats: async (agentId: string, params?: { period?: string }) => {
+    const { data } = await apiClient.get(`/call-center/agents/${agentId}/stats`, { params });
+    return data;
+  },
+  getDashboard: async () => {
+    const { data } = await apiClient.get('/call-center/dashboard/agent');
+    return data;
+  },
+  getCenterDashboard: async () => {
+    try {
+      const { data } = await apiClient.get('/call-center/dashboard/center');
+      return data;
+    } catch {
+      return { total_calls: 0, answered: 0, missed: 0, avg_wait_time: 0 };
+    }
+  },
+};
+
+// ==================== ESCALATIONS API ====================
+
+export const escalationsApi = {
+  list: async (params?: { page?: number; size?: number; status?: string; priority?: string; assigned_to?: string }) => {
+    const { data } = await apiClient.get('/escalations', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/escalations/${id}`);
+    return data;
+  },
+  create: async (escalation: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/escalations', escalation);
+    return data;
+  },
+  update: async (id: string, escalation: Record<string, unknown>) => {
+    const { data } = await apiClient.put(`/escalations/${id}`, escalation);
+    return data;
+  },
+  assign: async (id: string, userId: string) => {
+    const { data } = await apiClient.post(`/escalations/${id}/assign`, { user_id: userId });
+    return data;
+  },
+  resolve: async (id: string, resolution: Record<string, unknown>) => {
+    const { data } = await apiClient.post(`/escalations/${id}/resolve`, resolution);
+    return data;
+  },
+  escalate: async (id: string, level: number) => {
+    const { data } = await apiClient.post(`/escalations/${id}/escalate`, { level });
+    return data;
+  },
+  getStats: async () => {
+    const { data } = await apiClient.get('/escalations/stats');
+    return data;
+  },
+};
+
+// ==================== TECHNICIANS API ====================
+
+export const techniciansApi = {
+  list: async (params?: { page?: number; size?: number; search?: string; status?: string; skill?: string }) => {
+    const { data } = await apiClient.get('/technicians', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/technicians/${id}`);
+    return data;
+  },
+  create: async (technician: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/technicians', technician);
+    return data;
+  },
+  update: async (id: string, technician: Record<string, unknown>) => {
+    const { data } = await apiClient.put(`/technicians/${id}`, technician);
+    return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/technicians/${id}`);
+  },
+  getSchedule: async (id: string, params?: { start_date?: string; end_date?: string }) => {
+    const { data } = await apiClient.get(`/technicians/${id}/schedule`, { params });
+    return data;
+  },
+  assignJob: async (id: string, jobId: string) => {
+    const { data } = await apiClient.post(`/technicians/${id}/assign`, { job_id: jobId });
+    return data;
+  },
+  getPerformance: async (id: string, params?: { period?: string }) => {
+    const { data } = await apiClient.get(`/technicians/${id}/performance`, { params });
+    return data;
+  },
+};
+
+// ==================== INSTALLATIONS API ====================
+
+export const installationsApi = {
+  list: async (params?: { page?: number; size?: number; status?: string; technician_id?: string; customer_id?: string }) => {
+    const { data } = await apiClient.get('/installations', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/installations/${id}`);
+    return data;
+  },
+  create: async (installation: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/installations', installation);
+    return data;
+  },
+  update: async (id: string, installation: Record<string, unknown>) => {
+    const { data } = await apiClient.put(`/installations/${id}`, installation);
+    return data;
+  },
+  schedule: async (id: string, scheduleData: Record<string, unknown>) => {
+    const { data } = await apiClient.post(`/installations/${id}/schedule`, scheduleData);
+    return data;
+  },
+  complete: async (id: string, completionData: Record<string, unknown>) => {
+    const { data } = await apiClient.post(`/installations/${id}/complete`, completionData);
+    return data;
+  },
+  activateWarranty: async (id: string, warrantyData: Record<string, unknown>) => {
+    const { data } = await apiClient.post(`/installations/${id}/warranty/activate`, warrantyData);
+    return data;
+  },
+  getWarranty: async (id: string) => {
+    const { data } = await apiClient.get(`/installations/${id}/warranty`);
+    return data;
+  },
+};
+
+// ==================== FRANCHISEES API ====================
+
+export const franchiseesApi = {
+  list: async (params?: { page?: number; size?: number; search?: string; status?: string; region?: string }) => {
+    const { data } = await apiClient.get('/franchisees', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/franchisees/${id}`);
+    return data;
+  },
+  create: async (franchisee: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/franchisees', franchisee);
+    return data;
+  },
+  update: async (id: string, franchisee: Record<string, unknown>) => {
+    const { data } = await apiClient.put(`/franchisees/${id}`, franchisee);
+    return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/franchisees/${id}`);
+  },
+  getPerformance: async (id: string, params?: { period?: string }) => {
+    const { data } = await apiClient.get(`/franchisees/${id}/performance`, { params });
+    return data;
+  },
+  getServiceability: async (id: string) => {
+    const { data } = await apiClient.get(`/franchisees/${id}/serviceability`);
+    return data;
+  },
+  updateServiceability: async (id: string, pincodes: string[]) => {
+    const { data } = await apiClient.put(`/franchisees/${id}/serviceability`, { pincodes });
+    return data;
+  },
+};
+
+// ==================== PICKLISTS API ====================
+
+export const picklistsApi = {
+  list: async (params?: { page?: number; size?: number; status?: string; warehouse_id?: string }) => {
+    const { data } = await apiClient.get('/picklists', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/picklists/${id}`);
+    return data;
+  },
+  create: async (picklist: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/picklists', picklist);
+    return data;
+  },
+  assign: async (id: string, pickerId: string) => {
+    const { data } = await apiClient.post(`/picklists/${id}/assign`, { picker_id: pickerId });
+    return data;
+  },
+  startPicking: async (id: string) => {
+    const { data } = await apiClient.post(`/picklists/${id}/start`);
+    return data;
+  },
+  pickItem: async (id: string, itemId: string, quantity: number) => {
+    const { data } = await apiClient.post(`/picklists/${id}/items/${itemId}/pick`, { quantity });
+    return data;
+  },
+  complete: async (id: string) => {
+    const { data } = await apiClient.post(`/picklists/${id}/complete`);
+    return data;
+  },
+  generateFromOrders: async (orderIds: string[]) => {
+    const { data } = await apiClient.post('/picklists/generate', { order_ids: orderIds });
+    return data;
+  },
+};
+
+// ==================== BANKING API ====================
+
+export const bankingApi = {
+  // Bank Accounts
+  listAccounts: async (params?: { page?: number; size?: number; is_active?: boolean }) => {
+    const { data } = await apiClient.get('/banking/accounts', { params });
+    return data;
+  },
+  getAccount: async (id: string) => {
+    const { data } = await apiClient.get(`/banking/accounts/${id}`);
+    return data;
+  },
+  createAccount: async (account: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/banking/accounts', account);
+    return data;
+  },
+  updateAccount: async (id: string, account: Record<string, unknown>) => {
+    const { data } = await apiClient.put(`/banking/accounts/${id}`, account);
+    return data;
+  },
+  // Statement Import
+  importStatement: async (accountId: string, formData: FormData) => {
+    const { data } = await apiClient.post(`/banking/accounts/${accountId}/import`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  },
+  // Transactions
+  listTransactions: async (accountId: string, params?: { page?: number; size?: number; status?: string; start_date?: string; end_date?: string }) => {
+    const { data } = await apiClient.get(`/banking/accounts/${accountId}/transactions`, { params });
+    return data;
+  },
+  getTransaction: async (id: string) => {
+    const { data } = await apiClient.get(`/banking/transactions/${id}`);
+    return data;
+  },
+  matchTransaction: async (id: string, matchData: Record<string, unknown>) => {
+    const { data } = await apiClient.post(`/banking/transactions/${id}/match`, matchData);
+    return data;
+  },
+  unmatchTransaction: async (id: string) => {
+    const { data } = await apiClient.post(`/banking/transactions/${id}/unmatch`);
+    return data;
+  },
+  getSuggestedMatches: async (id: string) => {
+    const { data } = await apiClient.get(`/banking/transactions/${id}/suggestions`);
+    return data;
+  },
+  // Reconciliation
+  getReconciliationSummary: async (accountId: string) => {
+    const { data } = await apiClient.get(`/banking/accounts/${accountId}/reconciliation`);
+    return data;
+  },
+  reconcile: async (accountId: string, reconcileDate: string) => {
+    const { data } = await apiClient.post(`/banking/accounts/${accountId}/reconcile`, { reconcile_date: reconcileDate });
+    return data;
+  },
+};
+
+// ==================== CREDENTIALS API ====================
+
+export const credentialsApi = {
+  getGSTCredentials: async () => {
+    const { data } = await apiClient.get('/credentials/gst');
+    return data;
+  },
+  saveGSTCredentials: async (credentials: { einvoice_username?: string; einvoice_password?: string; ewb_username?: string; ewb_password?: string }) => {
+    const { data } = await apiClient.post('/credentials/gst', credentials);
+    return data;
+  },
+  testGSTConnection: async (type: 'einvoice' | 'ewaybill') => {
+    const { data } = await apiClient.post(`/credentials/gst/test/${type}`);
+    return data;
+  },
+  rotateEncryptionKey: async () => {
+    const { data } = await apiClient.post('/credentials/rotate-key');
+    return data;
+  },
+};
+
+// ==================== MARKETPLACES API ====================
+
+export const marketplacesApi = {
+  list: async () => {
+    const { data } = await apiClient.get('/marketplaces/integrations');
+    return data;
+  },
+  listIntegrations: async () => {
+    const { data } = await apiClient.get('/marketplaces/integrations');
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/marketplaces/integrations/${id}`);
+    return data;
+  },
+  create: async (integration: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/marketplaces/integrations', integration);
+    return data;
+  },
+  createIntegration: async (integration: object) => {
+    const { data } = await apiClient.post('/marketplaces/integrations', integration);
+    return data;
+  },
+  update: async (id: string, integration: Record<string, unknown>) => {
+    const { data } = await apiClient.put(`/marketplaces/integrations/${id}`, integration);
+    return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/marketplaces/integrations/${id}`);
+  },
+  deleteIntegration: async (marketplaceType: string) => {
+    await apiClient.delete(`/marketplaces/integrations/${marketplaceType}`);
+  },
+  toggleIntegration: async (marketplaceType: string, isActive: boolean) => {
+    const { data } = await apiClient.patch(`/marketplaces/integrations/${marketplaceType}`, { is_active: isActive });
+    return data;
+  },
+  testConnection: async (id: string) => {
+    const { data } = await apiClient.post(`/marketplaces/integrations/${id}/test`);
+    return data;
+  },
+  syncOrders: async (id: string, params?: { from_date?: string }) => {
+    const { data } = await apiClient.post(`/marketplaces/integrations/${id}/sync/orders`, null, { params });
+    return data;
+  },
+  syncInventory: async (id: string) => {
+    const { data } = await apiClient.post(`/marketplaces/integrations/${id}/sync/inventory`);
+    return data;
+  },
+  getOrders: async (id: string, params?: { page?: number; size?: number; status?: string }) => {
+    const { data } = await apiClient.get(`/marketplaces/integrations/${id}/orders`, { params });
+    return data;
+  },
+  getSyncHistory: async (id: string) => {
+    const { data } = await apiClient.get(`/marketplaces/integrations/${id}/sync-history`);
+    return data;
+  },
+};
+
+// ==================== AUTO JOURNAL API ====================
+
+export const autoJournalApi = {
+  generateFromInvoice: async (invoiceId: string, autoPost?: boolean) => {
+    const { data } = await apiClient.post('/auto-journal/generate/from-invoice', {
+      invoice_id: invoiceId,
+      auto_post: autoPost
+    });
+    return data;
+  },
+  generateFromReceipt: async (receiptId: string, bankAccountCode?: string, autoPost?: boolean) => {
+    const { data } = await apiClient.post('/auto-journal/generate/from-receipt', {
+      receipt_id: receiptId,
+      bank_account_code: bankAccountCode,
+      auto_post: autoPost
+    });
+    return data;
+  },
+  generateFromBankTransaction: async (transactionId: string, contraAccountCode: string, autoPost?: boolean) => {
+    const { data } = await apiClient.post('/auto-journal/generate/from-bank-transaction', {
+      bank_transaction_id: transactionId,
+      contra_account_code: contraAccountCode,
+      auto_post: autoPost
+    });
+    return data;
+  },
+  generateBulk: async (invoiceIds?: string[], receiptIds?: string[], autoPost?: boolean) => {
+    const { data } = await apiClient.post('/auto-journal/generate/bulk', {
+      invoice_ids: invoiceIds,
+      receipt_ids: receiptIds,
+      auto_post: autoPost
+    });
+    return data;
+  },
+  bulkGenerate: async (invoiceIds?: string[], receiptIds?: string[], autoPost?: boolean) => {
+    const { data } = await apiClient.post('/auto-journal/generate/bulk', {
+      invoice_ids: invoiceIds,
+      receipt_ids: receiptIds,
+      auto_post: autoPost
+    });
+    return data;
+  },
+  postJournal: async (journalId: string) => {
+    const { data } = await apiClient.post(`/auto-journal/journals/${journalId}/post`);
+    return data;
+  },
+  listPending: async (params?: { skip?: number; limit?: number }) => {
+    const { data } = await apiClient.get('/auto-journal/journals/pending', { params });
+    return data;
+  },
+  listPendingJournals: async (params?: { skip?: number; limit?: number }) => {
+    const { data } = await apiClient.get('/auto-journal/journals/pending', { params });
+    return data;
+  },
+  postAllPending: async () => {
+    const { data } = await apiClient.post('/auto-journal/journals/post-all');
+    return data;
+  },
+};
+
+// ==================== TDS API ====================
+
+export const tdsApi = {
+  calculate: async (amount: number, section: string, panAvailable?: boolean, lowerDeductionRate?: number) => {
+    const { data } = await apiClient.post('/tds/calculate', {
+      amount,
+      section,
+      pan_available: panAvailable,
+      lower_deduction_rate: lowerDeductionRate
+    });
+    return data;
+  },
+  recordDeduction: async (deduction: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/tds/deductions', deduction);
+    return data;
+  },
+  listDeductions: async (params?: {
+    financial_year?: string;
+    quarter?: string;
+    status?: string;
+    section?: string;
+    deductee_pan?: string;
+    skip?: number;
+    limit?: number
+  }) => {
+    const { data } = await apiClient.get('/tds/deductions', { params });
+    return data;
+  },
+  getDeduction: async (id: string) => {
+    const { data } = await apiClient.get(`/tds/deductions/${id}`);
+    return data;
+  },
+  getPendingDeposits: async (financialYear?: string) => {
+    const { data } = await apiClient.get('/tds/pending-deposits', { params: { financial_year: financialYear } });
+    return data;
+  },
+  markDeposited: async (deductionIds: string[], depositDate: string, challanNumber: string, challanDate: string, bsrCode: string, cin?: string) => {
+    const { data } = await apiClient.post('/tds/mark-deposited', {
+      deduction_ids: deductionIds,
+      deposit_date: depositDate,
+      challan_number: challanNumber,
+      challan_date: challanDate,
+      bsr_code: bsrCode,
+      cin
+    });
+    return data;
+  },
+  generateForm16A: async (deducteePan: string, financialYear: string, quarter: string) => {
+    const { data } = await apiClient.post('/tds/form-16a/generate', {
+      deductee_pan: deducteePan,
+      financial_year: financialYear,
+      quarter
+    });
+    return data;
+  },
+  downloadForm16A: async (deducteePan: string, financialYear: string, quarter: string) => {
+    const { data } = await apiClient.post('/tds/form-16a/download', {
+      deductee_pan: deducteePan,
+      financial_year: financialYear,
+      quarter
+    });
+    return data;
+  },
+  getSummary: async (financialYear: string) => {
+    const { data } = await apiClient.get('/tds/summary', { params: { financial_year: financialYear } });
+    return data;
+  },
+  getSections: async () => {
+    const { data } = await apiClient.get('/tds/sections');
+    return data;
+  },
+};
+
+// ==================== PAYMENTS API (RAZORPAY) ====================
+
+export const paymentsApi = {
+  createOrder: async (amount: number, currency?: string, receipt?: string, notes?: Record<string, string>) => {
+    const { data } = await apiClient.post('/payments/create-order', { amount, currency, receipt, notes });
+    return data;
+  },
+  verifyPayment: async (razorpayOrderId: string, razorpayPaymentId: string, razorpaySignature: string) => {
+    const { data } = await apiClient.post('/payments/verify', {
+      razorpay_order_id: razorpayOrderId,
+      razorpay_payment_id: razorpayPaymentId,
+      razorpay_signature: razorpaySignature
+    });
+    return data;
+  },
+  getPayment: async (paymentId: string) => {
+    const { data } = await apiClient.get(`/payments/${paymentId}`);
+    return data;
+  },
+  listPayments: async (params?: { page?: number; size?: number; status?: string; customer_id?: string }) => {
+    const { data } = await apiClient.get('/payments', { params });
+    return data;
+  },
+  refund: async (paymentId: string, amount?: number, reason?: string) => {
+    const { data } = await apiClient.post(`/payments/${paymentId}/refund`, { amount, reason });
+    return data;
+  },
+};
+
+// ==================== CUSTOMER PORTAL API ====================
+
+export const portalApi = {
+  getDashboard: async (customerId: string) => {
+    const { data } = await apiClient.get('/portal/dashboard', { params: { customer_id: customerId } });
+    return data;
+  },
+  getProfile: async (customerId: string) => {
+    const { data } = await apiClient.get('/portal/profile', { params: { customer_id: customerId } });
+    return data;
+  },
+  updateProfile: async (customerId: string, profile: Record<string, unknown>) => {
+    const { data } = await apiClient.put('/portal/profile', profile, { params: { customer_id: customerId } });
+    return data;
+  },
+  getOrders: async (customerId: string, params?: { status?: string; skip?: number; limit?: number }) => {
+    const { data } = await apiClient.get('/portal/orders', { params: { customer_id: customerId, ...params } });
+    return data;
+  },
+  getOrderDetails: async (customerId: string, orderId: string) => {
+    const { data } = await apiClient.get(`/portal/orders/${orderId}`, { params: { customer_id: customerId } });
+    return data;
+  },
+  trackOrder: async (customerId: string, orderId: string) => {
+    const { data } = await apiClient.get(`/portal/orders/${orderId}/track`, { params: { customer_id: customerId } });
+    return data;
+  },
+  getInvoices: async (customerId: string, params?: { skip?: number; limit?: number }) => {
+    const { data } = await apiClient.get('/portal/invoices', { params: { customer_id: customerId, ...params } });
+    return data;
+  },
+  getInvoiceDetails: async (customerId: string, invoiceId: string) => {
+    const { data } = await apiClient.get(`/portal/invoices/${invoiceId}`, { params: { customer_id: customerId } });
+    return data;
+  },
+  downloadInvoice: async (customerId: string, invoiceId: string) => {
+    const { data } = await apiClient.get(`/portal/invoices/${invoiceId}/download`, { params: { customer_id: customerId } });
+    return data;
+  },
+  getServiceRequests: async (customerId: string, params?: { status?: string; skip?: number; limit?: number }) => {
+    const { data } = await apiClient.get('/portal/service-requests', { params: { customer_id: customerId, ...params } });
+    return data;
+  },
+  createServiceRequest: async (customerId: string, request: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/portal/service-requests', request, { params: { customer_id: customerId } });
+    return data;
+  },
+  getServiceRequestDetails: async (customerId: string, requestId: string) => {
+    const { data } = await apiClient.get(`/portal/service-requests/${requestId}`, { params: { customer_id: customerId } });
+    return data;
+  },
+  addServiceRequestComment: async (customerId: string, requestId: string, comment: string) => {
+    const { data } = await apiClient.post(`/portal/service-requests/${requestId}/comments`, { comment }, { params: { customer_id: customerId } });
+    return data;
+  },
+  submitFeedback: async (customerId: string, requestId: string, rating: number, comments?: string) => {
+    const { data } = await apiClient.post(`/portal/service-requests/${requestId}/feedback`, { rating, comments }, { params: { customer_id: customerId } });
+    return data;
+  },
+  getLoyaltySummary: async (customerId: string) => {
+    const { data } = await apiClient.get('/portal/loyalty', { params: { customer_id: customerId } });
     return data;
   },
 };

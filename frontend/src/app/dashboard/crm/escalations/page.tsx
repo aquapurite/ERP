@@ -34,7 +34,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
-import apiClient from '@/lib/api/client';
+import { escalationsApi } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 
 interface Escalation {
@@ -56,21 +56,6 @@ interface Escalation {
   resolved_at?: string;
   created_at: string;
 }
-
-const escalationsApi = {
-  list: async (params?: { page?: number; size?: number; status?: string; priority?: string }) => {
-    try {
-      const { data } = await apiClient.get('/escalations', { params });
-      return data;
-    } catch {
-      return { items: [], total: 0, pages: 0 };
-    }
-  },
-  create: async (escalation: Partial<Escalation>) => {
-    const { data } = await apiClient.post('/escalations', escalation);
-    return data;
-  },
-};
 
 interface EscalationFormData {
   type: 'SERVICE' | 'BILLING' | 'DELIVERY' | 'QUALITY' | 'OTHER';

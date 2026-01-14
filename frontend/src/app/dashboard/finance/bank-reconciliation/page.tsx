@@ -48,6 +48,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/common';
 import apiClient from '@/lib/api/client';
+import { bankingApi } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 
 interface BankAccount {

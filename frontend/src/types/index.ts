@@ -456,6 +456,11 @@ export interface ServiceRequest {
   created_at: string;
   customer?: Customer;
   product?: Product;
+  technician?: {
+    id?: string;
+    name: string;
+    phone?: string;
+  };
 }
 
 // Dealer Types

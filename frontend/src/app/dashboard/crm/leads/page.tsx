@@ -54,7 +54,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
-import apiClient from '@/lib/api/client';
+import { leadsApi } from '@/lib/api';
 import { formatDate, cn } from '@/lib/utils';
 
 interface Lead {
@@ -76,45 +76,6 @@ interface Lead {
   created_at: string;
   last_contacted_at?: string;
 }
-
-interface LeadStats {
-  total: number;
-  by_status: Record<string, number>;
-  by_source: Record<string, number>;
-  total_pipeline_value: number;
-  conversion_rate: number;
-}
-
-const leadsApi = {
-  list: async (params?: { page?: number; size?: number; status?: string; source?: string; temperature?: string }) => {
-    try {
-      const { data } = await apiClient.get('/leads', { params });
-      return data;
-    } catch {
-      return { items: [], total: 0, pages: 0 };
-    }
-  },
-  getStats: async (): Promise<LeadStats> => {
-    try {
-      const { data } = await apiClient.get('/leads/stats');
-      return data;
-    } catch {
-      return { total: 0, by_status: {}, by_source: {}, total_pipeline_value: 0, conversion_rate: 0 };
-    }
-  },
-  getPipeline: async (): Promise<Record<string, Lead[]>> => {
-    try {
-      const { data } = await apiClient.get('/leads/pipeline');
-      return data;
-    } catch {
-      return {};
-    }
-  },
-  create: async (lead: Partial<Lead>) => {
-    const { data } = await apiClient.post('/leads', lead);
-    return data;
-  },
-};
 
 const sourceColors: Record<string, string> = {
   WEBSITE: 'bg-blue-100 text-blue-800',
@@ -239,8 +200,8 @@ export default function LeadsPage() {
   };
 
   // Group leads by status for pipeline view
-  const pipelineGroups = useMemo(() => {
-    if (pipelineData) return pipelineData;
+  const pipelineGroups: Record<string, Lead[]> = useMemo(() => {
+    if (pipelineData) return pipelineData as Record<string, Lead[]>;
 
     // Fallback: group from list data
     const groups: Record<string, Lead[]> = {};
