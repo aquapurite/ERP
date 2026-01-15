@@ -3,86 +3,25 @@
 These endpoints are accessible without authentication for the D2C website.
 """
 from typing import Optional, List
-from decimal import Decimal
-from datetime import datetime
-from fastapi import APIRouter, HTTPException, status, Query
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
-from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel
 
 from app.api.deps import DB
 from app.models.company import Company
 from app.models.product import Product, ProductImage
 from app.models.category import Category
 from app.models.brand import Brand
+from app.schemas.storefront import (
+    StorefrontProductImage,
+    StorefrontProductResponse,
+    StorefrontCategoryResponse,
+    StorefrontBrandResponse,
+    PaginatedProductsResponse,
+    StorefrontCompanyInfo,
+)
 
 router = APIRouter()
-
-
-# ==================== Response Schemas ====================
-
-class StorefrontProductImage(BaseModel):
-    url: str
-    alt_text: Optional[str] = None
-    is_primary: bool = False
-
-    class Config:
-        from_attributes = True
-
-
-class StorefrontProductResponse(BaseModel):
-    id: str
-    name: str
-    slug: str
-    sku: str
-    short_description: Optional[str] = None
-    description: Optional[str] = None
-    mrp: float
-    selling_price: Optional[float] = None
-    category_id: Optional[str] = None
-    category_name: Optional[str] = None
-    brand_id: Optional[str] = None
-    brand_name: Optional[str] = None
-    warranty_months: int = 12
-    is_featured: bool = False
-    is_bestseller: bool = False
-    is_new_arrival: bool = False
-    images: List[StorefrontProductImage] = []
-
-    class Config:
-        from_attributes = True
-
-
-class StorefrontCategoryResponse(BaseModel):
-    id: str
-    name: str
-    slug: str
-    description: Optional[str] = None
-    image_url: Optional[str] = None
-    parent_id: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
-
-class StorefrontBrandResponse(BaseModel):
-    id: str
-    name: str
-    slug: str
-    description: Optional[str] = None
-    logo_url: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
-
-class PaginatedProductsResponse(BaseModel):
-    items: List[StorefrontProductResponse]
-    total: int
-    page: int
-    size: int
-    pages: int
 
 
 # ==================== Products Endpoints ====================
@@ -305,25 +244,6 @@ async def list_brands(db: DB):
         )
         for b in brands
     ]
-
-
-class StorefrontCompanyInfo(BaseModel):
-    """Public company info for storefront."""
-    name: str
-    trade_name: Optional[str] = None
-    logo_url: Optional[str] = None
-    logo_small_url: Optional[str] = None
-    favicon_url: Optional[str] = None
-    email: str
-    phone: str
-    website: Optional[str] = None
-    address: str
-    city: str
-    state: str
-    pincode: str
-
-    class Config:
-        from_attributes = True
 
 
 @router.get("/company", response_model=StorefrontCompanyInfo)

@@ -5,7 +5,6 @@ from math import ceil
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends, Body
-from pydantic import BaseModel
 
 from app.api.deps import DB, CurrentUser, require_permissions
 from app.models.inventory import StockItemStatus, StockMovementType
@@ -23,7 +22,12 @@ from app.schemas.inventory import (
     StockMovementDetail,
     StockMovementListResponse,
     BulkStockReceipt,
+    BulkStockReceiptResponse,
     InventoryStats,
+    StockVerificationRequest,
+    StockVerificationResponse,
+    BulkStockVerificationRequest,
+    BulkStockVerificationResponse,
 )
 from app.services.inventory_service import InventoryService
 
@@ -32,36 +36,6 @@ router = APIRouter(tags=["Inventory"])
 
 
 # ==================== PUBLIC STOCK VERIFICATION (Phase 2) ====================
-
-class StockVerificationRequest(BaseModel):
-    """Request model for stock verification."""
-    product_id: uuid.UUID
-    quantity: int = 1
-    pincode: Optional[str] = None
-    warehouse_id: Optional[uuid.UUID] = None
-
-
-class StockVerificationResponse(BaseModel):
-    """Response model for stock verification."""
-    product_id: uuid.UUID
-    in_stock: bool
-    available_quantity: int
-    requested_quantity: int
-    warehouse_id: Optional[uuid.UUID] = None
-    delivery_estimate: Optional[str] = None
-    message: Optional[str] = None
-
-
-class BulkStockVerificationRequest(BaseModel):
-    """Request for bulk stock verification."""
-    items: List[StockVerificationRequest]
-
-
-class BulkStockVerificationResponse(BaseModel):
-    """Response for bulk stock verification."""
-    all_in_stock: bool
-    items: List[StockVerificationResponse]
-
 
 @router.post(
     "/verify-stock",
@@ -324,7 +298,7 @@ async def create_stock_item(
 
 @router.post(
     "/stock-items/bulk-receive",
-    response_model=dict,
+    response_model=BulkStockReceiptResponse,
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_permissions("inventory:create"))]
 )
@@ -348,11 +322,11 @@ async def bulk_receive_stock(
         created_by=current_user.id,
     )
 
-    return {
-        "message": f"Successfully received {len(items)} stock items",
-        "grn_number": data.grn_number,
-        "items_count": len(items),
-    }
+    return BulkStockReceiptResponse(
+        message=f"Successfully received {len(items)} stock items",
+        grn_number=data.grn_number,
+        items_count=len(items),
+    )
 
 
 @router.put(

@@ -752,3 +752,15 @@ class FranchiseeLeaderboardResponse(BaseModel):
     period_end: date
 
     rankings: List[dict] = []  # [{rank, franchisee_id, name, revenue, orders, score}]
+
+
+# ==================== Serviceability Schemas ====================
+
+class ServiceabilityRequest(BaseModel):
+    """Request body for adding serviceability pincodes."""
+    pincodes: List[str] = Field(..., description="List of pincodes to add")
+    service_types: Optional[List[str]] = Field(None, description="Service types to enable")
+    priority: int = Field(1, ge=1, le=10, description="Priority level")
+    max_daily_capacity: int = Field(10, ge=1, description="Max daily service capacity")
+    expected_response_hours: int = Field(4, ge=1, description="Expected response time in hours")
+    expected_completion_hours: int = Field(48, ge=1, description="Expected completion time in hours")

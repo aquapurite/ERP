@@ -27,3 +27,20 @@ class TokenPayload(BaseModel):
     exp: int = Field(..., description="Expiration timestamp")
     iat: int = Field(..., description="Issued at timestamp")
     type: str = Field(..., description="Token type (access/refresh)")
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Forgot password request schema."""
+    email: EmailStr = Field(..., description="User email address")
+
+
+class ResetPasswordRequest(BaseModel):
+    """Reset password request schema."""
+    token: str = Field(..., description="Password reset token")
+    new_password: str = Field(..., min_length=6, description="New password")
+
+
+class AdminResetPasswordRequest(BaseModel):
+    """Admin reset password request schema."""
+    user_id: str = Field(..., description="User ID to reset password for")
+    new_password: str = Field(..., min_length=6, description="New password")

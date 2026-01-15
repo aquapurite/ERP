@@ -33,3 +33,24 @@ class ModuleListResponse(BaseModel):
     """Module list response."""
     items: List[ModuleResponse]
     total: int
+
+
+# Permission Check Schemas
+class PermissionCheckRequest(BaseModel):
+    """Request schema for permission check."""
+    permission_code: str
+
+
+class PermissionCheckResponse(BaseModel):
+    """Response schema for permission check."""
+    user_id: str
+    permission_code: str
+    has_permission: bool
+    is_super_admin: bool
+
+
+class MultiplePermissionCheckResponse(BaseModel):
+    """Response schema for checking multiple permissions."""
+    user_id: str
+    is_super_admin: bool
+    permissions: dict[str, bool]

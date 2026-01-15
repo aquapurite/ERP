@@ -5,78 +5,22 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
-from pydantic import BaseModel
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
 from app.models.banking import BankAccount, BankTransaction, TransactionType
 from app.api.deps import DB, get_current_user
+from app.schemas.banking import (
+    BankAccountCreate,
+    BankAccountResponse,
+    BankTransactionResponse,
+    ImportResult,
+    ReconciliationMatch,
+)
 from app.services.bank_import_service import BankImportService, BankImportError
 
 router = APIRouter()
-
-
-# ==================== Schemas ====================
-
-class BankAccountCreate(BaseModel):
-    """Create bank account request."""
-    account_name: str
-    account_number: str
-    bank_name: str
-    branch_name: Optional[str] = None
-    ifsc_code: Optional[str] = None
-    account_type: str = "CURRENT"  # CURRENT, SAVINGS, CASH_CREDIT, OVERDRAFT
-    opening_balance: Decimal = Decimal("0")
-    ledger_account_id: Optional[UUID] = None
-
-
-class BankAccountResponse(BaseModel):
-    """Bank account response."""
-    id: UUID
-    account_name: str
-    account_number: str
-    bank_name: str
-    branch_name: Optional[str]
-    ifsc_code: Optional[str]
-    account_type: str
-    current_balance: Decimal
-    is_active: bool
-
-    class Config:
-        from_attributes = True
-
-
-class BankTransactionResponse(BaseModel):
-    """Bank transaction response."""
-    id: UUID
-    transaction_date: date
-    description: str
-    reference_number: Optional[str]
-    transaction_type: str
-    amount: Decimal
-    debit_amount: Decimal
-    credit_amount: Decimal
-    running_balance: Optional[Decimal]
-    is_reconciled: bool
-
-    class Config:
-        from_attributes = True
-
-
-class ImportResult(BaseModel):
-    """Import result response."""
-    success: bool
-    bank_format: str
-    statistics: dict
-    transactions: List[dict]
-    errors: Optional[List[dict]]
-
-
-class ReconciliationMatch(BaseModel):
-    """Match bank transaction with journal entry."""
-    bank_transaction_id: UUID
-    journal_entry_id: UUID
 
 
 # ==================== Bank Accounts ====================

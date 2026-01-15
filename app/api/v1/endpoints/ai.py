@@ -12,10 +12,10 @@ from typing import Optional, List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, HTTPException
-from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.schemas.ai import ChatQuery, ForecastRequest
 from app.services.ai.demand_forecasting import DemandForecastingService
 from app.services.ai.payment_prediction import PaymentPredictionService
 from app.services.ai.predictive_maintenance import PredictiveMaintenanceService
@@ -23,19 +23,6 @@ from app.services.ai.chatbot import ERPChatbotService
 
 
 router = APIRouter()
-
-
-# ==================== Pydantic Models ====================
-
-class ChatQuery(BaseModel):
-    """Chat query request model."""
-    query: str = Field(..., min_length=2, max_length=500, description="Natural language query")
-
-
-class ForecastRequest(BaseModel):
-    """Forecast request model."""
-    days_ahead: int = Field(30, ge=1, le=90)
-    lookback_days: int = Field(90, ge=30, le=365)
 
 
 # ==================== AI Dashboard ====================

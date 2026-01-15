@@ -5,7 +5,6 @@ from uuid import UUID
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
 from sqlalchemy import select, func, and_, or_, Integer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,7 +22,8 @@ from app.schemas.lead import (
     LeadActivityCreate, LeadActivityResponse,
     LeadScoreRuleCreate, LeadScoreRuleResponse,
     LeadAssignmentRuleCreate, LeadAssignmentRuleResponse,
-    LeadDashboardResponse, LeadPipelineResponse, LeadSourceReportResponse
+    LeadDashboardResponse, LeadPipelineResponse, LeadSourceReportResponse,
+    AutoAssignRequest, BulkAutoAssignRequest,
 )
 from app.api.deps import get_current_user
 from app.services.lead_assignment_service import (
@@ -393,20 +393,6 @@ async def assign_lead(
 
 
 # ==================== Auto Assignment Endpoints ====================
-
-class AutoAssignRequest(BaseModel):
-    """Request for auto-assigning a lead."""
-    strategy: str = "ROUND_ROBIN"  # ROUND_ROBIN, LOAD_BALANCED, GEOGRAPHIC
-    team_id: Optional[UUID] = None
-
-
-class BulkAutoAssignRequest(BaseModel):
-    """Request for bulk auto-assignment."""
-    lead_ids: Optional[List[UUID]] = None
-    assign_all_unassigned: bool = False
-    strategy: str = "ROUND_ROBIN"
-    team_id: Optional[UUID] = None
-
 
 @router.post("/{lead_id}/auto-assign")
 async def auto_assign_lead(

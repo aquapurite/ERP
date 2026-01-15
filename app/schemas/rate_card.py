@@ -782,3 +782,46 @@ class TransporterRateCardSummary(BaseModel):
     active_d2c: int = 0
     active_b2b: int = 0
     active_ftl: int = 0
+
+
+# ==================== Rate Calculation & Allocation Schemas ====================
+
+class RateCalculationRequestSchema(BaseModel):
+    """Request schema for rate calculation."""
+    origin_pincode: str = Field(..., min_length=5, max_length=10, description="Origin pincode")
+    destination_pincode: str = Field(..., min_length=5, max_length=10, description="Destination pincode")
+    weight_kg: float = Field(..., gt=0, description="Weight in kg")
+    length_cm: Optional[float] = Field(None, gt=0, description="Length in cm")
+    width_cm: Optional[float] = Field(None, gt=0, description="Width in cm")
+    height_cm: Optional[float] = Field(None, gt=0, description="Height in cm")
+    payment_mode: str = Field("PREPAID", pattern="^(PREPAID|COD)$", description="Payment mode")
+    order_value: float = Field(0, ge=0, description="Order value")
+    channel: str = Field("D2C", description="Channel")
+    declared_value: Optional[float] = Field(None, ge=0, description="Declared value")
+    is_fragile: bool = Field(False, description="Whether item is fragile")
+    num_packages: int = Field(1, ge=1, description="Number of packages")
+    service_type: Optional[str] = Field(None, description="Service type filter")
+    transporter_ids: Optional[List[uuid.UUID]] = Field(None, description="Filter by transporter IDs")
+
+
+class AllocationRequestSchema(BaseModel):
+    """Request schema for carrier allocation."""
+    origin_pincode: str = Field(..., min_length=5, max_length=10, description="Origin pincode")
+    destination_pincode: str = Field(..., min_length=5, max_length=10, description="Destination pincode")
+    weight_kg: float = Field(..., gt=0, description="Weight in kg")
+    length_cm: Optional[float] = Field(None, gt=0, description="Length in cm")
+    width_cm: Optional[float] = Field(None, gt=0, description="Width in cm")
+    height_cm: Optional[float] = Field(None, gt=0, description="Height in cm")
+    payment_mode: str = Field("PREPAID", pattern="^(PREPAID|COD)$", description="Payment mode")
+    order_value: float = Field(0, ge=0, description="Order value")
+    channel: str = Field("D2C", description="Channel")
+    declared_value: Optional[float] = Field(None, ge=0, description="Declared value")
+    is_fragile: bool = Field(False, description="Whether item is fragile")
+    num_packages: int = Field(1, ge=1, description="Number of packages")
+    service_type: Optional[str] = Field(None, description="Service type filter")
+    transporter_ids: Optional[List[uuid.UUID]] = Field(None, description="Filter by transporter IDs")
+    strategy: str = Field(
+        "BALANCED",
+        pattern="^(CHEAPEST_FIRST|FASTEST_FIRST|BEST_SLA|BALANCED)$",
+        description="Allocation strategy"
+    )

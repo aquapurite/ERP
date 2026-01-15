@@ -7,7 +7,6 @@ from datetime import datetime, date, timedelta
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.orm import selectinload
-from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import DB, CurrentUser, require_permissions
 from app.models.installation import Installation, InstallationStatus, WarrantyClaim
@@ -16,137 +15,29 @@ from app.models.customer import Customer
 from app.models.product import Product
 from app.models.technician import Technician, TechnicianStatus
 from app.models.service_request import ServiceRequest, ServiceType, ServicePriority, ServiceStatus, ServiceSource
+from app.schemas.installation import (
+    InstallationBase,
+    InstallationScheduleRequest,
+    InstallationAssignRequest,
+    InstallationCompleteRequest,
+    InstallationEndpointResponse as InstallationResponse,
+    InstallationEndpointDetailResponse as InstallationDetailResponse,
+    InstallationEndpointListResponse as InstallationListResponse,
+    InstallationDashboardResponse,
+    InstallationWarrantyStatusResponse,
+    InstallationWarrantyExtendResponse,
+    InstallationWarrantyLookupResponse,
+    InstallationUpdate,
+)
 
 
 router = APIRouter()
 
 
-# ==================== SCHEMAS ====================
-
-class InstallationBase(BaseModel):
-    """Base installation schema."""
-    customer_id: uuid.UUID
-    order_id: Optional[uuid.UUID] = None
-    product_id: uuid.UUID
-    serial_number: Optional[str] = None
-    installation_pincode: str
-    installation_city: Optional[str] = None
-    installation_address: Optional[dict] = None
-    preferred_date: Optional[date] = None
-    preferred_time_slot: Optional[str] = None
-    notes: Optional[str] = None
-
-
+# Create schema inherits from base
 class InstallationCreate(InstallationBase):
     """Create installation schema."""
     pass
-
-
-class InstallationUpdate(BaseModel):
-    """Update installation schema."""
-    status: Optional[InstallationStatus] = None
-    technician_id: Optional[uuid.UUID] = None
-    scheduled_date: Optional[date] = None
-    scheduled_time_slot: Optional[str] = None
-    notes: Optional[str] = None
-    internal_notes: Optional[str] = None
-
-
-class InstallationScheduleRequest(BaseModel):
-    """Schedule installation request."""
-    scheduled_date: date
-    scheduled_time_slot: str
-    technician_id: Optional[uuid.UUID] = None
-    notes: Optional[str] = None
-
-
-class InstallationAssignRequest(BaseModel):
-    """Assign technician request."""
-    technician_id: uuid.UUID
-
-
-class InstallationCompleteRequest(BaseModel):
-    """Complete installation request."""
-    installation_notes: Optional[str] = None
-    pre_installation_checklist: Optional[dict] = None
-    post_installation_checklist: Optional[dict] = None
-    installation_photos: Optional[list] = None
-    accessories_used: Optional[list] = None
-    input_tds: Optional[int] = None
-    output_tds: Optional[int] = None
-    customer_signature_url: Optional[str] = None
-    customer_feedback: Optional[str] = None
-    customer_rating: Optional[int] = Field(None, ge=1, le=5)
-    demo_given: bool = True
-    demo_notes: Optional[str] = None
-    warranty_months: int = 12
-
-
-class InstallationResponse(BaseModel):
-    """Installation response schema."""
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    installation_number: str
-    status: InstallationStatus
-    customer_id: uuid.UUID
-    order_id: Optional[uuid.UUID]
-    product_id: uuid.UUID
-    serial_number: Optional[str]
-    installation_pincode: Optional[str]
-    installation_city: Optional[str]
-    installation_address: Optional[dict]
-    preferred_date: Optional[date]
-    preferred_time_slot: Optional[str]
-    scheduled_date: Optional[date]
-    scheduled_time_slot: Optional[str]
-    technician_id: Optional[uuid.UUID]
-    assigned_at: Optional[datetime]
-    started_at: Optional[datetime]
-    completed_at: Optional[datetime]
-    installation_date: Optional[date]
-    warranty_start_date: Optional[date]
-    warranty_end_date: Optional[date]
-    warranty_card_number: Optional[str]
-    customer_rating: Optional[int]
-    notes: Optional[str]
-    created_at: Optional[datetime]
-
-
-class InstallationDetailResponse(InstallationResponse):
-    """Detailed installation response."""
-    customer_name: Optional[str] = None
-    product_name: Optional[str] = None
-    technician_name: Optional[str] = None
-    order_number: Optional[str] = None
-    installation_notes: Optional[str] = None
-    input_tds: Optional[int] = None
-    output_tds: Optional[int] = None
-    demo_given: Optional[bool] = None
-    demo_notes: Optional[str] = None
-    customer_feedback: Optional[str] = None
-
-
-class InstallationListResponse(BaseModel):
-    """Paginated installation list."""
-    items: list[InstallationResponse]
-    total: int
-    page: int
-    size: int
-    pages: int
-
-
-class InstallationDashboardResponse(BaseModel):
-    """Installation dashboard stats."""
-    total_pending: int
-    total_scheduled: int
-    total_in_progress: int
-    total_completed_today: int
-    total_completed_week: int
-    total_completed_month: int
-    avg_completion_days: float
-    avg_customer_rating: float
-    pending_assignments: int
 
 
 # ==================== HELPERS ====================

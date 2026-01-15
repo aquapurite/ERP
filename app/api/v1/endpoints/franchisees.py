@@ -49,6 +49,7 @@ from app.schemas.franchisee import (
     FranchiseeAuditCreate, FranchiseeAuditUpdate, FranchiseeAuditResponse,
     AuditCompleteRequest,
     FranchiseeDashboardResponse, FranchiseeLeaderboardResponse,
+    ServiceabilityRequest,
 )
 
 
@@ -1236,19 +1237,6 @@ async def close_audit(
 
 
 # ==================== Serviceability (Pincode-based Allocation) ====================
-
-from pydantic import BaseModel
-
-
-class ServiceabilityRequest(BaseModel):
-    """Request body for adding serviceability pincodes."""
-    pincodes: List[str]
-    service_types: Optional[List[str]] = None
-    priority: int = 1
-    max_daily_capacity: int = 10
-    expected_response_hours: int = 4
-    expected_completion_hours: int = 48
-
 
 @router.post("/{franchisee_id}/serviceability", status_code=status.HTTP_201_CREATED)
 async def add_serviceability(

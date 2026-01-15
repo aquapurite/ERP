@@ -4,13 +4,19 @@ from uuid import UUID
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
 from app.models.company import Company
 from app.api.deps import DB, get_current_user
+from app.schemas.credentials import (
+    GSTCredentialsUpdate,
+    GSTCredentialsResponse,
+    EncryptRequest,
+    EncryptResponse,
+    TestConnectionRequest,
+)
 from app.services.encryption_service import (
     EncryptionService,
     CredentialManager,
@@ -20,55 +26,6 @@ from app.services.encryption_service import (
 )
 
 router = APIRouter()
-
-
-# ==================== Schemas ====================
-
-class GSTCredentialsUpdate(BaseModel):
-    """Update GST E-Invoice/E-Way Bill credentials."""
-    einvoice_username: Optional[str] = None
-    einvoice_password: Optional[str] = Field(None, description="Will be encrypted before storage")
-    einvoice_api_key: Optional[str] = Field(None, description="Will be encrypted before storage")
-    einvoice_enabled: Optional[bool] = None
-    einvoice_api_mode: Optional[str] = Field(None, description="SANDBOX or PRODUCTION")
-
-    ewaybill_username: Optional[str] = None
-    ewaybill_password: Optional[str] = Field(None, description="Will be encrypted before storage")
-    ewaybill_app_key: Optional[str] = Field(None, description="Will be encrypted before storage")
-    ewaybill_enabled: Optional[bool] = None
-    ewaybill_api_mode: Optional[str] = Field(None, description="SANDBOX or PRODUCTION")
-
-
-class GSTCredentialsResponse(BaseModel):
-    """Response with masked credentials."""
-    company_id: UUID
-    einvoice_username: Optional[str]
-    einvoice_password_set: bool
-    einvoice_enabled: bool
-    einvoice_api_mode: str
-
-    ewaybill_username: Optional[str]
-    ewaybill_password_set: bool
-    ewaybill_enabled: bool
-    ewaybill_api_mode: str
-
-    updated_at: Optional[datetime]
-
-
-class EncryptRequest(BaseModel):
-    """Request to encrypt a value (for testing/admin)."""
-    value: str
-
-
-class EncryptResponse(BaseModel):
-    """Encrypted value response."""
-    encrypted: str
-    is_encrypted: bool
-
-
-class TestConnectionRequest(BaseModel):
-    """Request to test GST portal connection."""
-    portal_type: str = Field(..., description="EINVOICE or EWAYBILL")
 
 
 # ==================== GST Credentials ====================

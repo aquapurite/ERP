@@ -57,6 +57,9 @@ from app.schemas.rate_card import (
     # Summary
     RateCardBrief,
     TransporterRateCardSummary,
+    # Rate Calculation & Allocation
+    RateCalculationRequestSchema,
+    AllocationRequestSchema,
 )
 
 
@@ -1293,68 +1296,11 @@ async def get_rate_cards_dropdown(
 # PRICING ENGINE ENDPOINTS
 # ============================================
 
-from typing import List as TypingList
-from pydantic import BaseModel, Field
 from app.services.pricing_engine import (
     PricingEngine,
     RateCalculationRequest,
     AllocationStrategy,
 )
-
-
-class RateCalculationRequestSchema(BaseModel):
-    """Request schema for rate calculation."""
-    origin_pincode: str = Field(..., min_length=5, max_length=10)
-    destination_pincode: str = Field(..., min_length=5, max_length=10)
-    weight_kg: float = Field(..., gt=0)
-    length_cm: Optional[float] = Field(None, gt=0)
-    width_cm: Optional[float] = Field(None, gt=0)
-    height_cm: Optional[float] = Field(None, gt=0)
-    payment_mode: str = Field("PREPAID", pattern="^(PREPAID|COD)$")
-    order_value: float = Field(0, ge=0)
-    channel: str = Field("D2C")
-    declared_value: Optional[float] = Field(None, ge=0)
-    is_fragile: bool = Field(False)
-    num_packages: int = Field(1, ge=1)
-    service_type: Optional[str] = None
-    transporter_ids: Optional[TypingList[uuid.UUID]] = None
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "origin_pincode": "400001",
-                "destination_pincode": "110001",
-                "weight_kg": 2.5,
-                "length_cm": 30,
-                "width_cm": 20,
-                "height_cm": 15,
-                "payment_mode": "PREPAID",
-                "order_value": 5000,
-                "channel": "D2C",
-            }
-        }
-
-
-class AllocationRequestSchema(BaseModel):
-    """Request schema for carrier allocation."""
-    origin_pincode: str = Field(..., min_length=5, max_length=10)
-    destination_pincode: str = Field(..., min_length=5, max_length=10)
-    weight_kg: float = Field(..., gt=0)
-    length_cm: Optional[float] = Field(None, gt=0)
-    width_cm: Optional[float] = Field(None, gt=0)
-    height_cm: Optional[float] = Field(None, gt=0)
-    payment_mode: str = Field("PREPAID", pattern="^(PREPAID|COD)$")
-    order_value: float = Field(0, ge=0)
-    channel: str = Field("D2C")
-    declared_value: Optional[float] = Field(None, ge=0)
-    is_fragile: bool = Field(False)
-    num_packages: int = Field(1, ge=1)
-    service_type: Optional[str] = None
-    transporter_ids: Optional[TypingList[uuid.UUID]] = None
-    strategy: str = Field(
-        "BALANCED",
-        pattern="^(CHEAPEST_FIRST|FASTEST_FIRST|BEST_SLA|BALANCED)$"
-    )
 
 
 @router.post(

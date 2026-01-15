@@ -133,6 +133,155 @@ class InstallationListResponse(BaseModel):
     pages: int
 
 
+# ==================== ENDPOINT-SPECIFIC SCHEMAS ====================
+
+class InstallationBase(BaseModel):
+    """Base installation schema for endpoint."""
+    customer_id: uuid.UUID
+    order_id: Optional[uuid.UUID] = None
+    product_id: uuid.UUID
+    serial_number: Optional[str] = None
+    installation_pincode: str
+    installation_city: Optional[str] = None
+    installation_address: Optional[dict] = None
+    preferred_date: Optional[date] = None
+    preferred_time_slot: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class InstallationScheduleRequest(BaseModel):
+    """Schedule installation request."""
+    scheduled_date: date
+    scheduled_time_slot: str
+    technician_id: Optional[uuid.UUID] = None
+    notes: Optional[str] = None
+
+
+class InstallationAssignRequest(BaseModel):
+    """Assign technician request."""
+    technician_id: uuid.UUID
+
+
+class InstallationCompleteRequest(BaseModel):
+    """Complete installation request."""
+    installation_notes: Optional[str] = None
+    pre_installation_checklist: Optional[dict] = None
+    post_installation_checklist: Optional[dict] = None
+    installation_photos: Optional[list] = None
+    accessories_used: Optional[list] = None
+    input_tds: Optional[int] = None
+    output_tds: Optional[int] = None
+    customer_signature_url: Optional[str] = None
+    customer_feedback: Optional[str] = None
+    customer_rating: Optional[int] = Field(None, ge=1, le=5)
+    demo_given: bool = True
+    demo_notes: Optional[str] = None
+    warranty_months: int = 12
+
+
+class InstallationEndpointResponse(BaseModel):
+    """Installation response schema for endpoint."""
+    model_config = {"from_attributes": True}
+
+    id: uuid.UUID
+    installation_number: str
+    status: InstallationStatus
+    customer_id: uuid.UUID
+    order_id: Optional[uuid.UUID] = None
+    product_id: uuid.UUID
+    serial_number: Optional[str] = None
+    installation_pincode: Optional[str] = None
+    installation_city: Optional[str] = None
+    installation_address: Optional[dict] = None
+    preferred_date: Optional[date] = None
+    preferred_time_slot: Optional[str] = None
+    scheduled_date: Optional[date] = None
+    scheduled_time_slot: Optional[str] = None
+    technician_id: Optional[uuid.UUID] = None
+    assigned_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    installation_date: Optional[date] = None
+    warranty_start_date: Optional[date] = None
+    warranty_end_date: Optional[date] = None
+    warranty_card_number: Optional[str] = None
+    customer_rating: Optional[int] = None
+    notes: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class InstallationEndpointDetailResponse(InstallationEndpointResponse):
+    """Detailed installation response for endpoint."""
+    customer_name: Optional[str] = None
+    product_name: Optional[str] = None
+    technician_name: Optional[str] = None
+    order_number: Optional[str] = None
+    installation_notes: Optional[str] = None
+    input_tds: Optional[int] = None
+    output_tds: Optional[int] = None
+    demo_given: Optional[bool] = None
+    demo_notes: Optional[str] = None
+    customer_feedback: Optional[str] = None
+
+
+class InstallationEndpointListResponse(BaseModel):
+    """Paginated installation list for endpoint."""
+    items: List[InstallationEndpointResponse]
+    total: int
+    page: int
+    size: int
+    pages: int
+
+
+class InstallationDashboardResponse(BaseModel):
+    """Installation dashboard stats."""
+    total_pending: int
+    total_scheduled: int
+    total_in_progress: int
+    total_completed_today: int
+    total_completed_week: int
+    total_completed_month: int
+    avg_completion_days: float
+    avg_customer_rating: float
+    pending_assignments: int
+
+
+class InstallationWarrantyStatusResponse(BaseModel):
+    """Warranty status response."""
+    installation_id: uuid.UUID
+    installation_number: str
+    serial_number: Optional[str] = None
+    warranty_card_number: Optional[str] = None
+    warranty_start_date: Optional[date] = None
+    warranty_end_date: Optional[date] = None
+    warranty_months: Optional[int] = None
+    extended_warranty_months: Optional[int] = None
+    is_under_warranty: bool
+    days_remaining: int
+
+
+class InstallationWarrantyExtendResponse(BaseModel):
+    """Warranty extension response."""
+    success: bool
+    installation_id: uuid.UUID
+    new_warranty_end_date: date
+    total_warranty_months: int
+    message: str
+
+
+class InstallationWarrantyLookupResponse(BaseModel):
+    """Warranty lookup response."""
+    installation_id: uuid.UUID
+    installation_number: str
+    serial_number: Optional[str] = None
+    product_name: Optional[str] = None
+    customer_name: Optional[str] = None
+    warranty_start_date: Optional[date] = None
+    warranty_end_date: Optional[date] = None
+    is_under_warranty: bool
+    days_remaining: int
+
+
 # ==================== WARRANTY CLAIM SCHEMAS ====================
 
 class WarrantyClaimCreate(BaseModel):

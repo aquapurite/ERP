@@ -441,5 +441,21 @@ class LeadAgentReportResponse(BaseModel):
     top_performer: Optional[dict] = None
 
 
+# ==================== Auto Assignment Schemas ====================
+
+class AutoAssignRequest(BaseModel):
+    """Request for auto-assigning a lead."""
+    strategy: str = Field("ROUND_ROBIN", description="Assignment strategy: ROUND_ROBIN, LOAD_BALANCED, GEOGRAPHIC")
+    team_id: Optional[UUID] = Field(None, description="Team ID to assign within")
+
+
+class BulkAutoAssignRequest(BaseModel):
+    """Request for bulk auto-assignment."""
+    lead_ids: Optional[List[UUID]] = Field(None, description="Specific lead IDs to assign")
+    assign_all_unassigned: bool = Field(False, description="Assign all unassigned leads")
+    strategy: str = Field("ROUND_ROBIN", description="Assignment strategy")
+    team_id: Optional[UUID] = Field(None, description="Team ID to assign within")
+
+
 # Update forward references
 LeadDetailResponse.model_rebuild()

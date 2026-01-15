@@ -2,27 +2,19 @@ from typing import Optional
 import uuid
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
 
 from app.api.deps import DB, CurrentUser, Permissions
-from app.schemas.module import ModuleResponse, ModuleListResponse
+from app.schemas.module import (
+    ModuleResponse,
+    ModuleListResponse,
+    PermissionCheckRequest,
+    PermissionCheckResponse,
+    MultiplePermissionCheckResponse,
+)
 from app.services.rbac_service import RBACService
 
 
 router = APIRouter(prefix="/access", tags=["Access Control"])
-
-
-class PermissionCheckRequest(BaseModel):
-    """Request schema for permission check."""
-    permission_code: str
-
-
-class PermissionCheckResponse(BaseModel):
-    """Response schema for permission check."""
-    user_id: str
-    permission_code: str
-    has_permission: bool
-    is_super_admin: bool
 
 
 @router.post("/check", response_model=PermissionCheckResponse)
@@ -45,7 +37,7 @@ async def check_permission(
     )
 
 
-@router.post("/check-multiple")
+@router.post("/check-multiple", response_model=MultiplePermissionCheckResponse)
 async def check_multiple_permissions(
     permission_codes: list[str],
     current_user: CurrentUser,
@@ -59,11 +51,11 @@ async def check_multiple_permissions(
     for code in permission_codes:
         results[code] = permission_checker.has_permission(code)
 
-    return {
-        "user_id": str(current_user.id),
-        "is_super_admin": permission_checker.is_super_admin(),
-        "permissions": results,
-    }
+    return MultiplePermissionCheckResponse(
+        user_id=str(current_user.id),
+        is_super_admin=permission_checker.is_super_admin(),
+        permissions=results,
+    )
 
 
 @router.get("/modules", response_model=ModuleListResponse)

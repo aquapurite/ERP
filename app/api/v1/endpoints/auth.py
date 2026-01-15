@@ -2,11 +2,17 @@ import secrets
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, status, Request
-from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser
-from app.schemas.auth import LoginRequest, RefreshTokenRequest, TokenResponse
+from app.schemas.auth import (
+    LoginRequest,
+    RefreshTokenRequest,
+    TokenResponse,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+    AdminResetPasswordRequest,
+)
 from app.services.auth_service import AuthService
 from app.services.audit_service import AuditService
 from app.models.user import User
@@ -16,15 +22,6 @@ from app.config import settings
 
 
 router = APIRouter(tags=["Authentication"])
-
-
-class ForgotPasswordRequest(BaseModel):
-    email: EmailStr
-
-
-class ResetPasswordRequest(BaseModel):
-    token: str
-    new_password: str
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -261,11 +258,6 @@ async def reset_password(
     del password_reset_tokens[data.token]
 
     return {"message": "Password has been reset successfully. You can now login with your new password."}
-
-
-class AdminResetPasswordRequest(BaseModel):
-    user_id: str
-    new_password: str
 
 
 @router.post("/admin-reset-password")

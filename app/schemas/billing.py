@@ -585,3 +585,47 @@ class GSTR3BResponse(BaseModel):
     ineligible_itc: dict = {}
     tax_payable: dict = {}
     paid_details: dict = {}
+
+
+# ==================== E-Invoice/E-Way Bill Operation Schemas ====================
+
+class IRNCancelRequest(BaseModel):
+    """Request body for IRN cancellation."""
+    reason: str = Field(
+        ...,
+        description="Reason code: 1=Duplicate, 2=Data Entry Mistake, 3=Order Cancelled, 4=Others"
+    )
+    remarks: str = Field("", description="Additional remarks")
+
+
+class PartBUpdateRequest(BaseModel):
+    """Request body for Part-B (vehicle) update on E-Way Bill."""
+    vehicle_number: str = Field(..., description="Vehicle registration number")
+    transport_mode: str = Field("1", description="1=Road, 2=Rail, 3=Air, 4=Ship")
+    reason_code: str = Field("4", description="1=Breakdown, 2=Transshipment, 3=Others, 4=First time")
+    reason_remarks: str = Field("", description="Reason remarks")
+    from_place: str = Field("", description="From place")
+    from_state: str = Field("", description="From state")
+
+
+class EWBCancelRequest(BaseModel):
+    """Request body for E-Way Bill cancellation."""
+    reason_code: str = Field(
+        ...,
+        description="Cancel reason: 1=Duplicate, 2=Order Cancelled, 3=Data Entry Mistake, 4=Others"
+    )
+    remarks: str = Field("", description="Cancellation remarks")
+
+
+class EWBExtendRequest(BaseModel):
+    """Request body for E-Way Bill validity extension."""
+    from_place: str = Field(..., description="Current location")
+    from_state: int = Field(..., description="State code")
+    remaining_distance: int = Field(..., description="Remaining distance in km")
+    reason_code: str = Field(
+        "99",
+        description="1=Natural calamity, 2=Law and order, 3=Transshipment, 4=Accident, 99=Others"
+    )
+    reason_remarks: str = Field("", description="Extension reason remarks")
+    transit_type: str = Field("C", description="C=In-transit, R=Reached destination")
+    vehicle_number: str = Field("", description="Current vehicle number")

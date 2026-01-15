@@ -4,7 +4,6 @@ from uuid import UUID
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from pydantic import BaseModel
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -12,61 +11,17 @@ from sqlalchemy.orm import selectinload
 from app.models.user import User
 from app.models.accounting import JournalEntry, JournalEntryStatus
 from app.api.deps import DB, get_current_user
+from app.schemas.auto_journal import (
+    GenerateFromInvoiceRequest,
+    GenerateFromReceiptRequest,
+    GenerateFromBankTxnRequest,
+    BulkGenerateRequest,
+    JournalEntryResponse,
+    GenerationResult,
+)
 from app.services.auto_journal_service import AutoJournalService, AutoJournalError
 
 router = APIRouter()
-
-
-# ==================== Schemas ====================
-
-class GenerateFromInvoiceRequest(BaseModel):
-    """Request to generate journal from invoice."""
-    invoice_id: UUID
-    auto_post: bool = False
-
-
-class GenerateFromReceiptRequest(BaseModel):
-    """Request to generate journal from payment receipt."""
-    receipt_id: UUID
-    bank_account_code: Optional[str] = None
-    auto_post: bool = False
-
-
-class GenerateFromBankTxnRequest(BaseModel):
-    """Request to generate journal from bank transaction."""
-    bank_transaction_id: UUID
-    contra_account_code: str
-    auto_post: bool = False
-
-
-class BulkGenerateRequest(BaseModel):
-    """Request for bulk journal generation."""
-    invoice_ids: Optional[List[UUID]] = None
-    receipt_ids: Optional[List[UUID]] = None
-    auto_post: bool = False
-
-
-class JournalEntryResponse(BaseModel):
-    """Response for journal entry."""
-    id: UUID
-    entry_number: str
-    entry_date: date
-    journal_type: str
-    narration: str
-    total_debit: float
-    total_credit: float
-    status: str
-    reference_type: Optional[str]
-    reference_id: Optional[UUID]
-
-
-class GenerationResult(BaseModel):
-    """Result of journal generation."""
-    success: bool
-    journal_id: Optional[UUID] = None
-    entry_number: Optional[str] = None
-    message: str
-    error: Optional[str] = None
 
 
 # ==================== Auto Generate Endpoints ====================

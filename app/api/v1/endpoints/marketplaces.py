@@ -5,12 +5,19 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
-from pydantic import BaseModel, Field
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
 from app.api.deps import DB, get_current_user
+from app.schemas.marketplace import (
+    MarketplaceCredentials,
+    MarketplaceIntegrationResponse,
+    SyncOrdersRequest,
+    SyncInventoryRequest,
+    ShipmentUpdateRequest,
+    SyncResult,
+)
 from app.services.marketplace_service import (
     MarketplaceService,
     MarketplaceType,
@@ -19,57 +26,6 @@ from app.services.marketplace_service import (
 from app.services.encryption_service import encrypt_value
 
 router = APIRouter()
-
-
-# ==================== Schemas ====================
-
-class MarketplaceCredentials(BaseModel):
-    """Marketplace credentials for setup."""
-    marketplace_type: str = Field(..., description="AMAZON, FLIPKART, MEESHO, SNAPDEAL")
-    client_id: str
-    client_secret: str = Field(..., description="Will be encrypted")
-    refresh_token: Optional[str] = Field(None, description="For Amazon, will be encrypted")
-    api_key: Optional[str] = Field(None, description="Will be encrypted")
-    seller_id: Optional[str] = None
-    is_sandbox: bool = True
-
-
-class MarketplaceIntegrationResponse(BaseModel):
-    """Response for marketplace integration."""
-    id: UUID
-    marketplace_type: str
-    client_id: str
-    seller_id: Optional[str]
-    is_sandbox: bool
-    is_active: bool
-    last_sync_at: Optional[datetime]
-    created_at: datetime
-
-
-class SyncOrdersRequest(BaseModel):
-    """Request for syncing orders."""
-    from_date: Optional[datetime] = None
-    order_statuses: Optional[List[str]] = None
-
-
-class SyncInventoryRequest(BaseModel):
-    """Request for syncing inventory."""
-    products: List[dict] = Field(..., description="List of {sku, quantity}")
-
-
-class ShipmentUpdateRequest(BaseModel):
-    """Request for updating shipment."""
-    order_id: str
-    tracking_id: str
-    courier: str
-
-
-class SyncResult(BaseModel):
-    """Result of sync operation."""
-    success: bool
-    marketplace: str
-    message: str
-    details: Optional[dict] = None
 
 
 # ==================== Marketplace Configuration ====================

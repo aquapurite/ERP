@@ -9,13 +9,16 @@ Handles:
 """
 
 import uuid
-from typing import Optional
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, status, Depends, Body
-from pydantic import BaseModel, EmailStr
+from fastapi import APIRouter, HTTPException, status, Depends
 
 from app.api.deps import DB, CurrentUser, require_permissions
+from app.schemas.payment import (
+    CreatePaymentOrderRequest,
+    VerifyPaymentRequest,
+    InitiateRefundRequest,
+)
 from app.services.payment_service import (
     PaymentService,
     PaymentOrderRequest,
@@ -28,34 +31,6 @@ from app.services.payment_service import (
 
 
 router = APIRouter(tags=["Payments"])
-
-
-# ==================== REQUEST/RESPONSE MODELS ====================
-
-class CreatePaymentOrderRequest(BaseModel):
-    """API request to create a payment order."""
-    order_id: uuid.UUID
-    amount: float
-    customer_name: str
-    customer_email: EmailStr
-    customer_phone: str
-    notes: Optional[dict] = None
-
-
-class VerifyPaymentRequest(BaseModel):
-    """API request to verify payment."""
-    razorpay_order_id: str
-    razorpay_payment_id: str
-    razorpay_signature: str
-    order_id: uuid.UUID
-
-
-class InitiateRefundRequest(BaseModel):
-    """API request to initiate a refund."""
-    payment_id: str
-    order_id: uuid.UUID
-    amount: Optional[float] = None  # For partial refund
-    reason: Optional[str] = None
 
 
 # ==================== PUBLIC ENDPOINTS ====================

@@ -212,3 +212,57 @@ class OrderSummary(BaseModel):
     cancelled_orders: int
     total_revenue: Decimal
     average_order_value: Decimal
+
+
+# ==================== D2C ORDER SCHEMAS ====================
+
+class D2CCustomerInfo(BaseModel):
+    """Customer info for D2C orders."""
+    name: str = Field(..., min_length=2, description="Customer full name")
+    phone: str = Field(..., pattern=r"^\d{10}$", description="10-digit phone number")
+    email: str = Field(..., description="Customer email")
+
+
+class D2CAddressInfo(BaseModel):
+    """Address info for D2C orders."""
+    name: str = Field(..., description="Contact name")
+    phone: str = Field(..., description="Contact phone")
+    address_line_1: str = Field(..., description="Address line 1")
+    address_line_2: Optional[str] = Field(None, description="Address line 2")
+    city: str = Field(..., description="City")
+    state: str = Field(..., description="State")
+    pincode: str = Field(..., pattern=r"^\d{6}$", description="6-digit pincode")
+    landmark: Optional[str] = Field(None, description="Landmark")
+    country: str = Field("India", description="Country")
+
+
+class D2COrderItem(BaseModel):
+    """Item for D2C order."""
+    product_id: uuid.UUID = Field(..., description="Product ID")
+    sku: str = Field(..., description="Product SKU")
+    name: str = Field(..., description="Product name")
+    quantity: int = Field(..., ge=1, description="Quantity")
+    unit_price: Decimal = Field(..., ge=0, description="Unit price")
+    mrp: Decimal = Field(..., ge=0, description="MRP")
+
+
+class D2COrderCreate(BaseModel):
+    """D2C order creation - no authentication required."""
+    channel: str = Field("D2C", description="Sales channel")
+    customer: D2CCustomerInfo = Field(..., description="Customer information")
+    shipping_address: D2CAddressInfo = Field(..., description="Shipping address")
+    billing_address: Optional[D2CAddressInfo] = Field(None, description="Billing address")
+    items: List[D2COrderItem] = Field(..., min_length=1, description="Order items")
+    payment_method: str = Field("cod", description="Payment method")
+    subtotal: Decimal = Field(..., description="Subtotal")
+    discount_amount: Decimal = Field(Decimal("0"), description="Discount amount")
+    shipping_amount: Decimal = Field(Decimal("0"), description="Shipping amount")
+    total_amount: Decimal = Field(..., description="Total amount")
+
+
+class D2COrderResponse(BaseModel):
+    """Simple response for D2C order."""
+    id: uuid.UUID = Field(..., description="Order ID")
+    order_number: str = Field(..., description="Order number")
+    total_amount: Decimal = Field(..., description="Total amount")
+    status: str = Field(..., description="Order status")

@@ -5,7 +5,6 @@ from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends
-from pydantic import BaseModel, Field, EmailStr
 
 from app.api.deps import DB, CurrentUser, Permissions, require_permissions
 from app.models.order import OrderStatus, PaymentStatus, PaymentMethod, OrderSource
@@ -22,63 +21,14 @@ from app.schemas.order import (
     StatusHistoryResponse,
     InvoiceResponse,
     OrderSummary,
+    D2CCustomerInfo,
+    D2CAddressInfo,
+    D2COrderItem,
+    D2COrderCreate,
+    D2COrderResponse,
 )
 from app.schemas.customer import CustomerBrief
 from app.services.order_service import OrderService
-
-
-# ==================== D2C ORDER SCHEMAS ====================
-
-class D2CCustomerInfo(BaseModel):
-    """Customer info for D2C orders."""
-    name: str = Field(..., min_length=2)
-    phone: str = Field(..., pattern=r"^\d{10}$")
-    email: EmailStr
-
-
-class D2CAddressInfo(BaseModel):
-    """Address info for D2C orders."""
-    name: str
-    phone: str
-    address_line_1: str
-    address_line_2: Optional[str] = None
-    city: str
-    state: str
-    pincode: str = Field(..., pattern=r"^\d{6}$")
-    landmark: Optional[str] = None
-    country: str = "India"
-
-
-class D2COrderItem(BaseModel):
-    """Item for D2C order."""
-    product_id: uuid.UUID
-    sku: str
-    name: str
-    quantity: int = Field(..., ge=1)
-    unit_price: Decimal = Field(..., ge=0)
-    mrp: Decimal = Field(..., ge=0)
-
-
-class D2COrderCreate(BaseModel):
-    """D2C order creation - no authentication required."""
-    channel: str = "D2C"
-    customer: D2CCustomerInfo
-    shipping_address: D2CAddressInfo
-    billing_address: Optional[D2CAddressInfo] = None
-    items: List[D2COrderItem] = Field(..., min_length=1)
-    payment_method: str = "cod"
-    subtotal: Decimal
-    discount_amount: Decimal = Decimal("0")
-    shipping_amount: Decimal = Decimal("0")
-    total_amount: Decimal
-
-
-class D2COrderResponse(BaseModel):
-    """Simple response for D2C order."""
-    id: uuid.UUID
-    order_number: str
-    total_amount: Decimal
-    status: str
 
 
 router = APIRouter(tags=["Orders"])

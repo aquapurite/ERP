@@ -5,7 +5,6 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from pydantic import BaseModel
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -33,6 +32,8 @@ from app.schemas.billing import (
     PaymentReceiptCreate, PaymentReceiptResponse, PaymentReceiptListResponse,
     # Reports
     GSTReportRequest, GSTR1Response, GSTR3BResponse,
+    # E-Invoice/E-Way Bill Operations
+    IRNCancelRequest, PartBUpdateRequest, EWBCancelRequest, EWBExtendRequest,
 )
 from app.api.deps import DB, CurrentUser, get_current_user, require_permissions
 from app.services.audit_service import AuditService
@@ -467,12 +468,6 @@ async def generate_einvoice_irn(
             detail=f"E-Invoice generation failed: {e.message}",
             headers={"X-Error-Code": e.error_code or "EINVOICE_ERROR"}
         )
-
-
-class IRNCancelRequest(BaseModel):
-    """Request body for IRN cancellation."""
-    reason: str  # Reason code: "1" = Duplicate, "2" = Data Entry Mistake, "3" = Order Cancelled, "4" = Others
-    remarks: str = ""  # Additional remarks (optional)
 
 
 @router.post("/invoices/{invoice_id}/cancel-irn", response_model=InvoiceResponse)
@@ -1073,16 +1068,6 @@ async def generate_eway_bill_number(
         )
 
 
-class PartBUpdateRequest(BaseModel):
-    """Request body for Part-B (vehicle) update."""
-    vehicle_number: str
-    transport_mode: str = "1"  # 1=Road, 2=Rail, 3=Air, 4=Ship
-    reason_code: str = "4"  # 1=Breakdown, 2=Transshipment, 3=Others, 4=First time
-    reason_remarks: str = ""
-    from_place: str = ""
-    from_state: str = ""
-
-
 @router.put("/eway-bills/{ewb_id}/vehicle", response_model=EWayBillResponse)
 async def update_eway_bill_vehicle(
     ewb_id: UUID,
@@ -1156,12 +1141,6 @@ async def update_eway_bill_vehicle(
             detail=f"Part-B update failed: {e.message}",
             headers={"X-Error-Code": e.error_code or "EWAYBILL_ERROR"}
         )
-
-
-class EWBCancelRequest(BaseModel):
-    """Request body for E-Way Bill cancellation."""
-    reason_code: str  # 1=Duplicate, 2=Order Cancelled, 3=Data Entry Mistake, 4=Others
-    remarks: str = ""
 
 
 @router.post("/eway-bills/{ewb_id}/cancel", response_model=EWayBillResponse)
@@ -1265,17 +1244,6 @@ async def cancel_eway_bill(
             detail=f"E-Way Bill cancellation failed: {e.message}",
             headers={"X-Error-Code": e.error_code or "EWAYBILL_ERROR"}
         )
-
-
-class EWBExtendRequest(BaseModel):
-    """Request body for E-Way Bill validity extension."""
-    from_place: str
-    from_state: int
-    remaining_distance: int
-    reason_code: str = "99"  # 1=Natural calamity, 2=Law and order, 3=Transshipment, 4=Accident, 99=Others
-    reason_remarks: str = ""
-    transit_type: str = "C"  # C=In-transit, R=Reached destination
-    vehicle_number: str = ""
 
 
 @router.post("/eway-bills/{ewb_id}/extend", response_model=EWayBillResponse)

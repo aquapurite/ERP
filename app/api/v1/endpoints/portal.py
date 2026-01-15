@@ -13,56 +13,19 @@ from uuid import UUID
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import DB
+from app.schemas.portal import (
+    CustomerAuth,
+    ProfileUpdateRequest,
+    ServiceRequestCreate,
+    ServiceRequestComment,
+    FeedbackSubmit,
+)
 from app.services.customer_portal_service import CustomerPortalService, CustomerPortalError
 
 router = APIRouter()
-
-
-# ==================== Schemas ====================
-
-class CustomerAuth(BaseModel):
-    """Customer authentication (for demo - in production use proper auth)."""
-    customer_id: UUID
-
-
-class ProfileUpdateRequest(BaseModel):
-    """Request to update customer profile."""
-    name: Optional[str] = None
-    email: Optional[EmailStr] = None
-    phone: Optional[str] = None
-    mobile: Optional[str] = None
-    address_line1: Optional[str] = None
-    address_line2: Optional[str] = None
-    city: Optional[str] = None
-    state: Optional[str] = None
-    pincode: Optional[str] = None
-
-
-class ServiceRequestCreate(BaseModel):
-    """Request to create a service request."""
-    request_type: str = Field(..., description="REPAIR, INSTALLATION, WARRANTY, GENERAL, COMPLAINT")
-    subject: str = Field(..., min_length=5, max_length=200)
-    description: str = Field(..., min_length=10, max_length=2000)
-    product_id: Optional[UUID] = None
-    order_id: Optional[UUID] = None
-    priority: str = Field(default="NORMAL", description="LOW, NORMAL, HIGH, URGENT")
-    attachments: Optional[List[str]] = None
-
-
-class ServiceRequestComment(BaseModel):
-    """Request to add a comment."""
-    comment: str = Field(..., min_length=1, max_length=1000)
-
-
-class FeedbackSubmit(BaseModel):
-    """Request to submit feedback."""
-    rating: int = Field(..., ge=1, le=5)
-    comments: Optional[str] = None
 
 
 # ==================== Helper ====================

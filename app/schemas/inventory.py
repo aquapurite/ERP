@@ -8,6 +8,38 @@ import uuid
 from app.models.inventory import StockItemStatus, StockMovementType
 
 
+# ==================== STOCK VERIFICATION SCHEMAS (Phase 2) ====================
+
+class StockVerificationRequest(BaseModel):
+    """Request model for stock verification."""
+    product_id: uuid.UUID
+    quantity: int = 1
+    pincode: Optional[str] = None
+    warehouse_id: Optional[uuid.UUID] = None
+
+
+class StockVerificationResponse(BaseModel):
+    """Response model for stock verification."""
+    product_id: uuid.UUID
+    in_stock: bool
+    available_quantity: int
+    requested_quantity: int
+    warehouse_id: Optional[uuid.UUID] = None
+    delivery_estimate: Optional[str] = None
+    message: Optional[str] = None
+
+
+class BulkStockVerificationRequest(BaseModel):
+    """Request for bulk stock verification."""
+    items: List[StockVerificationRequest]
+
+
+class BulkStockVerificationResponse(BaseModel):
+    """Response for bulk stock verification."""
+    all_in_stock: bool
+    items: List[StockVerificationResponse]
+
+
 # ==================== STOCK ITEM SCHEMAS ====================
 
 class StockItemCreate(BaseModel):
@@ -256,3 +288,10 @@ class WarehouseStock(BaseModel):
     total_items: int
     total_value: float
     utilization_percent: float
+
+
+class BulkStockReceiptResponse(BaseModel):
+    """Response for bulk stock receipt (GRN)."""
+    message: str
+    grn_number: str
+    items_count: int

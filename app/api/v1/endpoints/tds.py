@@ -5,100 +5,24 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from pydantic import BaseModel, Field
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
 from app.models.tds import TDSDeduction, TDSDeductionStatus, TDSSection
 from app.api.deps import DB, get_current_user
+from app.schemas.tds import (
+    TDSCalculationRequest,
+    TDSCalculationResponse,
+    RecordTDSRequest,
+    TDSDeductionResponse,
+    MarkDepositedRequest,
+    Form16ARequest,
+    PendingDepositSummary,
+)
 from app.services.tds_service import TDSService, TDSError
 
 router = APIRouter()
-
-
-# ==================== Schemas ====================
-
-class TDSCalculationRequest(BaseModel):
-    """Request for TDS calculation."""
-    amount: Decimal = Field(..., gt=0)
-    section: str = Field(..., description="TDS Section like 194C, 194J")
-    pan_available: bool = True
-    lower_deduction_rate: Optional[Decimal] = None
-
-
-class TDSCalculationResponse(BaseModel):
-    """Response for TDS calculation."""
-    gross_amount: Decimal
-    section: str
-    tds_rate: float
-    tds_amount: Decimal
-    surcharge: Decimal
-    education_cess: Decimal
-    total_tds: Decimal
-    pan_available: bool
-    lower_deduction_applied: bool
-
-
-class RecordTDSRequest(BaseModel):
-    """Request to record a TDS deduction."""
-    deductee_id: Optional[UUID] = None
-    deductee_type: str = Field(..., description="VENDOR, CUSTOMER, EMPLOYEE")
-    deductee_name: str
-    deductee_pan: str = Field(..., min_length=10, max_length=10)
-    deductee_address: Optional[str] = None
-    section: str
-    deduction_date: date
-    gross_amount: Decimal = Field(..., gt=0)
-    pan_available: bool = True
-    lower_deduction_cert_no: Optional[str] = None
-    lower_deduction_rate: Optional[Decimal] = None
-    reference_type: Optional[str] = None
-    reference_id: Optional[UUID] = None
-    reference_number: Optional[str] = None
-    narration: Optional[str] = None
-
-
-class TDSDeductionResponse(BaseModel):
-    """Response for TDS deduction."""
-    id: UUID
-    deductee_name: str
-    deductee_pan: str
-    section: str
-    deduction_date: date
-    financial_year: str
-    quarter: str
-    gross_amount: Decimal
-    tds_rate: float
-    total_tds: Decimal
-    status: str
-    challan_number: Optional[str]
-    certificate_issued: bool
-
-
-class MarkDepositedRequest(BaseModel):
-    """Request to mark TDS as deposited."""
-    deduction_ids: List[UUID]
-    deposit_date: date
-    challan_number: str
-    challan_date: date
-    bsr_code: str
-    cin: Optional[str] = None
-
-
-class Form16ARequest(BaseModel):
-    """Request for Form 16A generation."""
-    deductee_pan: str = Field(..., min_length=10, max_length=10)
-    financial_year: str = Field(..., pattern=r"^\d{4}-\d{2}$")
-    quarter: str = Field(..., pattern=r"^Q[1-4]$")
-
-
-class PendingDepositSummary(BaseModel):
-    """Summary of pending TDS deposits."""
-    section: str
-    count: int
-    total_amount: Decimal
-    earliest_date: date
 
 
 # ==================== TDS Calculation ====================
