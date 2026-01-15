@@ -4025,6 +4025,95 @@ export const insightsApi = {
   },
 };
 
+// ==================== AI SERVICES API (Advanced) ====================
+
+export const aiApi = {
+  // Dashboard
+  getDashboard: async () => {
+    const { data } = await apiClient.get('/ai/dashboard');
+    return data;
+  },
+
+  getCapabilities: async () => {
+    const { data } = await apiClient.get('/ai/capabilities');
+    return data;
+  },
+
+  // Demand Forecasting
+  getDemandDashboard: async () => {
+    const { data } = await apiClient.get('/ai/forecast/demand/dashboard');
+    return data;
+  },
+
+  getProductForecast: async (productId: string, params?: { days_ahead?: number; lookback_days?: number }) => {
+    const { data } = await apiClient.get(`/ai/forecast/demand/product/${productId}`, { params });
+    return data;
+  },
+
+  getCategoryForecast: async (categoryId: string, params?: { days_ahead?: number; lookback_days?: number }) => {
+    const { data } = await apiClient.get(`/ai/forecast/demand/category/${categoryId}`, { params });
+    return data;
+  },
+
+  getAllProductForecasts: async (params?: { days_ahead?: number; min_sales?: number }) => {
+    const { data } = await apiClient.get('/ai/forecast/demand/all', { params });
+    return data;
+  },
+
+  // Payment Prediction
+  predictInvoicePayment: async (invoiceId: string) => {
+    const { data } = await apiClient.get(`/ai/predict/payment/invoice/${invoiceId}`);
+    return data;
+  },
+
+  getCollectionPriority: async (params?: { limit?: number }) => {
+    const { data } = await apiClient.get('/ai/predict/payment/collection-priority', { params });
+    return data;
+  },
+
+  getCashFlowPrediction: async (params?: { days_ahead?: number }) => {
+    const { data } = await apiClient.get('/ai/predict/payment/cash-flow', { params });
+    return data;
+  },
+
+  getCustomerCreditScore: async (customerId: string) => {
+    const { data } = await apiClient.get(`/ai/predict/payment/customer-credit/${customerId}`);
+    return data;
+  },
+
+  // Predictive Maintenance
+  getMaintenanceDashboard: async () => {
+    const { data } = await apiClient.get('/ai/predict/maintenance/dashboard');
+    return data;
+  },
+
+  getInstallationHealth: async (installationId: string) => {
+    const { data } = await apiClient.get(`/ai/predict/maintenance/installation/${installationId}`);
+    return data;
+  },
+
+  getProactiveServiceList: async (params?: { health_threshold?: number; limit?: number }) => {
+    const { data } = await apiClient.get('/ai/predict/maintenance/proactive-list', { params });
+    return data;
+  },
+
+  getFailureAnalysis: async (params?: { days_back?: number }) => {
+    const { data } = await apiClient.get('/ai/predict/maintenance/failure-analysis', { params });
+    return data;
+  },
+
+  // AI Chatbot
+  chat: async (query: string) => {
+    const { data } = await apiClient.post('/ai/chat', { query });
+    return data;
+  },
+
+  getChatQuickStats: async () => {
+    const { data } = await apiClient.get('/ai/chat/quick-stats');
+    return data;
+  },
+};
+
 // ==================== LEADS API ====================
 
 export const leadsApi = {

@@ -15,6 +15,8 @@ from app.api.v1.endpoints import (
     notifications,
     # AI Insights
     insights,
+    # AI Services (Advanced)
+    ai,
     # Product Catalog
     categories,
     brands,
@@ -390,4 +392,11 @@ api_router.include_router(
     insights.router,
     prefix="/insights",
     tags=["AI Insights"]
+)
+
+# ==================== AI Services (Advanced) ====================
+api_router.include_router(
+    ai.router,
+    prefix="/ai",
+    tags=["AI Services"]
 )

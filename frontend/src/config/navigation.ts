@@ -60,12 +60,13 @@ export const navigation: NavItem[] = [
     permissions: [],
   },
   {
-    title: 'AI Insights',
+    title: 'AI Intelligence',
     icon: Brain,
     permissions: [],
-    badge: 'NEW',
+    badge: 'AI',
     children: [
-      { title: 'Overview', href: '/dashboard/insights', icon: Lightbulb, permissions: [] },
+      { title: 'AI Hub', href: '/dashboard/ai', icon: Lightbulb, permissions: [], badge: 'NEW' },
+      { title: 'Insights Overview', href: '/dashboard/insights', permissions: [] },
       { title: 'Reorder Suggestions', href: '/dashboard/insights/reorder', permissions: [] },
       { title: 'Churn Risk', href: '/dashboard/insights/churn-risk', permissions: [] },
       { title: 'Slow Moving Stock', href: '/dashboard/insights/slow-moving', permissions: [] },
