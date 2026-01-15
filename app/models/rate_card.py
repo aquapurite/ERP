@@ -23,13 +23,17 @@ if TYPE_CHECKING:
 # ENUMS
 # ============================================
 
-class ServiceType(str, Enum):
+class D2CServiceType(str, Enum):
     """D2C service type enumeration."""
     STANDARD = "STANDARD"
     EXPRESS = "EXPRESS"
     ECONOMY = "ECONOMY"
     SAME_DAY = "SAME_DAY"
     NEXT_DAY = "NEXT_DAY"
+
+
+# Alias for backward compatibility
+ServiceType = D2CServiceType
 
 
 class ZoneCode(str, Enum):
@@ -149,9 +153,9 @@ class D2CRateCard(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Service Type
-    service_type: Mapped[ServiceType] = mapped_column(
-        SQLEnum(ServiceType),
-        default=ServiceType.STANDARD,
+    service_type: Mapped[D2CServiceType] = mapped_column(
+        SQLEnum(D2CServiceType, name="d2cservicetype", create_type=False),
+        default=D2CServiceType.STANDARD,
         nullable=False
     )
 

@@ -43,7 +43,7 @@ async def get_redis_client():
     """Get Redis client with fallback handling."""
     try:
         import redis.asyncio as redis
-        from app.core.config import settings
+        from app.config import settings
 
         client = redis.from_url(
             settings.REDIS_URL if hasattr(settings, 'REDIS_URL') else "redis://localhost:6379",

@@ -39,7 +39,7 @@ async def check_pending_payments():
         from app.database import get_db_session
         from sqlalchemy import text
         import razorpay
-        from app.core.config import settings
+        from app.config import settings
 
         # Initialize Razorpay client
         razorpay_client = razorpay.Client(

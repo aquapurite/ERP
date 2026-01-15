@@ -119,17 +119,17 @@ class AuthService:
         except ValueError:
             return None
 
-        # Get user
+        # Get user - use joinedload instead of selectinload to avoid psycopg3 UUID type casting issues
         stmt = (
             select(User)
             .options(
-                selectinload(User.user_roles).selectinload(UserRole.role),
-                selectinload(User.region)
+                joinedload(User.user_roles).joinedload(UserRole.role),
+                joinedload(User.region)
             )
             .where(User.id == user_uuid)
         )
         result = await self.db.execute(stmt)
-        user = result.scalar_one_or_none()
+        user = result.unique().scalar_one_or_none()
 
         if user is None or not user.is_active:
             return None

@@ -4,7 +4,7 @@ import uuid
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -44,17 +44,17 @@ async def get_current_user(
     except ValueError:
         raise credentials_exception
 
-    # Query user with roles eagerly loaded
+    # Query user with roles eagerly loaded - use joinedload to avoid psycopg3 UUID type casting issues
     stmt = (
         select(User)
         .options(
-            selectinload(User.user_roles).selectinload(UserRole.role),
-            selectinload(User.region)
+            joinedload(User.user_roles).joinedload(UserRole.role),
+            joinedload(User.region)
         )
         .where(User.id == user_uuid)
     )
     result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
+    user = result.unique().scalar_one_or_none()
 
     if user is None:
         raise credentials_exception
