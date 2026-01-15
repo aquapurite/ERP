@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user import User, UserRole
 from app.core.security import (
     verify_password,
+    verify_and_check_needs_rehash,
     get_password_hash,
     create_access_token,
     create_refresh_token,
@@ -30,6 +31,10 @@ class AuthService:
     ) -> Optional[User]:
         """
         Authenticate a user by email and password.
+
+        Supports both argon2 and bcrypt password hashes. If the password
+        is verified using a deprecated algorithm (bcrypt), it will be
+        automatically migrated to argon2 for improved security.
 
         Args:
             email: User's email address
@@ -53,11 +58,19 @@ class AuthService:
         if user is None:
             return None
 
-        if not verify_password(password, user.password_hash):
+        # Verify password and check if hash needs to be upgraded
+        is_valid, needs_rehash = verify_and_check_needs_rehash(password, user.password_hash)
+
+        if not is_valid:
             return None
 
         if not user.is_active:
             return None
+
+        # Transparently migrate old bcrypt hashes to argon2
+        if needs_rehash:
+            user.password_hash = get_password_hash(password)
+            await self.db.commit()
 
         return user
 
