@@ -22,7 +22,7 @@ from sqlalchemy.orm import joinedload
 
 from app.models.order import Order, OrderStatus
 from app.models.customer import Customer
-from app.models.billing import Invoice, InvoiceStatus, Receipt
+from app.models.billing import Invoice, InvoiceStatus, PaymentReceipt
 
 
 class PaymentPredictionService:
@@ -49,10 +49,10 @@ class PaymentPredictionService:
             Invoice.due_date,
             Invoice.total_amount,
             Invoice.status,
-            Receipt.receipt_date,
-            Receipt.amount
+            PaymentReceipt.receipt_date,
+            PaymentReceipt.amount
         ).outerjoin(
-            Receipt, Receipt.invoice_id == Invoice.id
+            Receipt, PaymentReceipt.invoice_id == Invoice.id
         ).where(
             Invoice.customer_id == customer_id
         ).order_by(
