@@ -24,7 +24,7 @@ from app.models.order import Order, OrderItem, OrderStatus
 from app.models.product import Product
 from app.models.customer import Customer
 from app.models.inventory import InventorySummary
-from app.models.billing import Invoice, InvoiceStatus, Receipt
+from app.models.billing import TaxInvoice as Invoice, InvoiceStatus
 from app.models.service_request import ServiceRequest, ServiceStatus
 from app.models.installation import Installation
 

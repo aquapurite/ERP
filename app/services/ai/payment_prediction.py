@@ -22,7 +22,7 @@ from sqlalchemy.orm import joinedload
 
 from app.models.order import Order, OrderStatus
 from app.models.customer import Customer
-from app.models.billing import Invoice, InvoiceStatus, PaymentReceipt
+from app.models.billing import TaxInvoice as Invoice, InvoiceStatus, PaymentReceipt
 
 
 class PaymentPredictionService:
