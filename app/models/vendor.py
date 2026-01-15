@@ -90,10 +90,7 @@ class Vendor(Base):
     Central repository for all supplier information.
     """
     __tablename__ = "vendors"
-    __table_args__ = (
-        Index("ix_vendors_gstin", "gstin"),
-        Index("ix_vendors_state", "state"),
-    )
+    # Note: gstin and state columns already have index=True on them
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

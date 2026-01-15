@@ -168,15 +168,27 @@ async def create_purchase_requisition(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new Purchase Requisition."""
-    # Generate PR number
+    # Generate PR number - find highest existing and increment
     today = date.today()
-    count_result = await db.execute(
-        select(func.count(PurchaseRequisition.id)).where(
-            func.date(PurchaseRequisition.created_at) == today
-        )
+    result = await db.execute(
+        select(PurchaseRequisition.requisition_number)
+        .where(func.date(PurchaseRequisition.created_at) == today)
+        .order_by(PurchaseRequisition.requisition_number.desc())
+        .limit(1)
     )
-    count = count_result.scalar() or 0
-    pr_number = f"PR-{today.strftime('%Y%m%d')}-{str(count + 1).zfill(4)}"
+    last_pr = result.scalar_one_or_none()
+
+    if last_pr:
+        try:
+            # Extract the sequence number from PR-YYYYMMDD-XXXX
+            last_num = int(last_pr.split("-")[-1])
+            next_num = last_num + 1
+        except (IndexError, ValueError):
+            next_num = 1
+    else:
+        next_num = 1
+
+    pr_number = f"PR-{today.strftime('%Y%m%d')}-{str(next_num).zfill(4)}"
 
     # Calculate estimated total
     estimated_total = sum(
@@ -637,15 +649,29 @@ async def convert_requisition_to_po(
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
 
-    # Generate PO number
+    # Generate PO number - using financial year format PO/APL/YY-YY/XXXX
     today = date.today()
-    count_result = await db.execute(
-        select(func.count(PurchaseOrder.id)).where(
-            func.date(PurchaseOrder.created_at) == today
-        )
+    fy_year = today.year if today.month >= 4 else today.year - 1
+    fy_suffix = f"{str(fy_year)[-2:]}-{str(fy_year + 1)[-2:]}"
+
+    result = await db.execute(
+        select(PurchaseOrder.po_number)
+        .where(PurchaseOrder.po_number.like(f"PO/APL/{fy_suffix}/%"))
+        .order_by(PurchaseOrder.po_number.desc())
+        .limit(1)
     )
-    count = count_result.scalar() or 0
-    po_number = f"PO-{today.strftime('%Y%m%d')}-{str(count + 1).zfill(4)}"
+    last_po = result.scalar_one_or_none()
+
+    if last_po:
+        try:
+            last_num = int(last_po.split("/")[-1])
+            next_num = last_num + 1
+        except (IndexError, ValueError):
+            next_num = 1
+    else:
+        next_num = 1
+
+    po_number = f"PO/APL/{fy_suffix}/{str(next_num).zfill(4)}"
 
     # Get warehouse
     wh_result = await db.execute(
@@ -844,6 +870,263 @@ async def convert_requisition_to_po(
     return po
 
 
+# ==================== PR Download ====================
+
+@router.get("/requisitions/{pr_id}/download")
+async def download_purchase_requisition(
+    pr_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Download Purchase Requisition as printable HTML."""
+    from fastapi.responses import HTMLResponse
+    from app.models.company import Company
+
+    result = await db.execute(
+        select(PurchaseRequisition)
+        .options(selectinload(PurchaseRequisition.items))
+        .where(PurchaseRequisition.id == pr_id)
+    )
+    pr = result.scalar_one_or_none()
+
+    if not pr:
+        raise HTTPException(status_code=404, detail="Purchase Requisition not found")
+
+    # Get company details
+    company_result = await db.execute(select(Company).limit(1))
+    company = company_result.scalar_one_or_none()
+
+    # Get warehouse details
+    warehouse = None
+    if pr.delivery_warehouse_id:
+        warehouse_result = await db.execute(
+            select(Warehouse).where(Warehouse.id == pr.delivery_warehouse_id)
+        )
+        warehouse = warehouse_result.scalar_one_or_none()
+
+    # Get requester details
+    requester_result = await db.execute(
+        select(User).where(User.id == pr.requested_by)
+    )
+    requester = requester_result.scalar_one_or_none()
+
+    # Company info
+    company_name = company.legal_name if company else "AQUAPURITE INDIA PRIVATE LIMITED"
+    company_address = f"{company.address_line1 if company else 'Plot No. 123, Sector 5'}, {company.city if company else 'New Delhi'}, {company.state if company else 'Delhi'} - {company.pincode if company else '110001'}"
+    company_phone = company.phone if company else "+91-11-12345678"
+    company_email = company.email if company else "info@aquapurite.com"
+
+    # Warehouse info
+    warehouse_name = warehouse.name if warehouse else "Not Specified"
+    warehouse_address = f"{warehouse.address_line1 if warehouse else ''}, {warehouse.city if warehouse else ''}, {warehouse.state if warehouse else ''}" if warehouse else "N/A"
+
+    # Requester info
+    requester_name = f"{requester.first_name or ''} {requester.last_name or ''}".strip() if requester else "N/A"
+    requester_email = requester.email if requester else "N/A"
+
+    # PR details
+    pr_date_str = pr.created_at.strftime('%d.%m.%Y') if pr.created_at else datetime.now().strftime('%d.%m.%Y')
+    required_by_str = pr.required_by_date.strftime('%d.%m.%Y') if pr.required_by_date else "TBD"
+
+    # Status styling
+    status_colors = {
+        "DRAFT": "#6c757d",
+        "SUBMITTED": "#17a2b8",
+        "APPROVED": "#28a745",
+        "REJECTED": "#dc3545",
+        "CONVERTED": "#007bff",
+        "CANCELLED": "#6c757d"
+    }
+    status_value = pr.status.value if pr.status else "DRAFT"
+    status_color = status_colors.get(status_value, "#6c757d")
+
+    # Build items table
+    items_html = ""
+    total_items = 0
+    for idx, item in enumerate(pr.items, 1):
+        total_items += item.quantity_requested
+        items_html += f"""
+            <tr>
+                <td class="text-center">{idx}</td>
+                <td class="item-code">{item.sku or '-'}</td>
+                <td><strong>{item.product_name or '-'}</strong></td>
+                <td class="text-center"><strong>{item.quantity_requested}</strong></td>
+                <td class="text-center">{item.uom or 'PCS'}</td>
+                <td>{getattr(item, 'notes', '') or '-'}</td>
+            </tr>"""
+
+    html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Purchase Requisition - {pr.requisition_number}</title>
+    <style>
+        @page {{ size: A4; margin: 15mm; }}
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: Arial, sans-serif; font-size: 11px; line-height: 1.4; padding: 15px; background: #fff; }}
+        .document {{ max-width: 210mm; margin: 0 auto; border: 2px solid #000; }}
+
+        /* Header */
+        .header {{ background: linear-gradient(135deg, #2c5282 0%, #1a365d 100%); color: white; padding: 15px; text-align: center; }}
+        .header h1 {{ font-size: 22px; margin-bottom: 6px; letter-spacing: 2px; }}
+        .header .contact {{ font-size: 9px; }}
+
+        /* Document Title */
+        .doc-title {{ background: #e2e8f0; padding: 12px; text-align: center; border-bottom: 2px solid #000; }}
+        .doc-title h2 {{ font-size: 18px; color: #2c5282; }}
+
+        /* Info Grid */
+        .info-grid {{ display: flex; flex-wrap: wrap; border-bottom: 1px solid #000; }}
+        .info-box {{ flex: 1; min-width: 25%; padding: 8px 10px; border-right: 1px solid #000; }}
+        .info-box:last-child {{ border-right: none; }}
+        .info-box label {{ display: block; font-size: 9px; color: #666; text-transform: uppercase; margin-bottom: 3px; }}
+        .info-box value {{ display: block; font-weight: bold; font-size: 11px; }}
+
+        /* Status Badge */
+        .status-badge {{ display: inline-block; padding: 3px 10px; border-radius: 3px; color: white; font-weight: bold; font-size: 10px; }}
+
+        /* Table */
+        table {{ width: 100%; border-collapse: collapse; }}
+        th {{ background: #2c5282; color: white; padding: 10px 5px; font-size: 10px; text-align: center; border: 1px solid #000; }}
+        td {{ padding: 8px 5px; border: 1px solid #000; font-size: 10px; }}
+        .text-center {{ text-align: center; }}
+        .text-right {{ text-align: right; }}
+        .item-code {{ font-family: 'Courier New', monospace; font-weight: bold; color: #2c5282; font-size: 9px; }}
+
+        /* Party Section */
+        .party-section {{ display: flex; border-bottom: 1px solid #000; }}
+        .party-box {{ flex: 1; padding: 10px; border-right: 1px solid #000; }}
+        .party-box:last-child {{ border-right: none; }}
+        .party-header {{ background: #2c5282; color: white; padding: 5px 8px; margin: -10px -10px 10px -10px; font-size: 10px; font-weight: bold; }}
+        .party-box p {{ margin-bottom: 3px; }}
+
+        /* Footer */
+        .footer {{ padding: 15px; border-top: 2px solid #000; }}
+        .signature-section {{ display: flex; margin-top: 30px; }}
+        .signature-box {{ flex: 1; text-align: center; }}
+        .signature-line {{ border-top: 1px solid #000; width: 150px; margin: 40px auto 5px; }}
+
+        /* Print */
+        .print-btn {{ position: fixed; top: 10px; right: 10px; padding: 10px 20px; background: #2c5282; color: white; border: none; cursor: pointer; border-radius: 5px; font-size: 14px; }}
+        @media print {{
+            .print-btn {{ display: none; }}
+            body {{ padding: 0; }}
+        }}
+    </style>
+</head>
+<body>
+    <button class="print-btn" onclick="window.print()">Print / Save PDF</button>
+
+    <div class="document">
+        <!-- Header -->
+        <div class="header">
+            <h1>{company_name}</h1>
+            <p class="contact">{company_address} | Phone: {company_phone} | Email: {company_email}</p>
+        </div>
+
+        <!-- Document Title -->
+        <div class="doc-title">
+            <h2>PURCHASE REQUISITION</h2>
+        </div>
+
+        <!-- PR Info -->
+        <div class="info-grid">
+            <div class="info-box">
+                <label>PR Number</label>
+                <value style="color: #2c5282; font-size: 13px;">{pr.requisition_number}</value>
+            </div>
+            <div class="info-box">
+                <label>PR Date</label>
+                <value>{pr_date_str}</value>
+            </div>
+            <div class="info-box">
+                <label>Required By</label>
+                <value>{required_by_str}</value>
+            </div>
+            <div class="info-box">
+                <label>Status</label>
+                <value><span class="status-badge" style="background: {status_color};">{status_value}</span></value>
+            </div>
+        </div>
+
+        <!-- Department & Requester Info -->
+        <div class="party-section">
+            <div class="party-box">
+                <div class="party-header">REQUESTED BY</div>
+                <p><strong>{requester_name}</strong></p>
+                <p>Email: {requester_email}</p>
+                <p>Department: <strong>{pr.requesting_department or 'N/A'}</strong></p>
+            </div>
+            <div class="party-box">
+                <div class="party-header">DELIVERY WAREHOUSE</div>
+                <p><strong>{warehouse_name}</strong></p>
+                <p>{warehouse_address}</p>
+            </div>
+        </div>
+
+        <!-- Priority -->
+        <div class="info-grid">
+            <div class="info-box" style="flex: 0.5;">
+                <label>Priority</label>
+                <value>{'Urgent' if pr.priority == 1 else 'Normal' if pr.priority == 5 else 'Low' if pr.priority == 10 else f'Level {pr.priority}'}</value>
+            </div>
+            <div class="info-box" style="flex: 1.5;">
+                <label>Reason / Notes</label>
+                <value>{pr.reason or pr.notes or 'N/A'}</value>
+            </div>
+        </div>
+
+        <!-- Items Table -->
+        <table style="margin-top: 15px;">
+            <thead>
+                <tr>
+                    <th style="width: 5%;">S.No</th>
+                    <th style="width: 15%;">SKU / Code</th>
+                    <th style="width: 40%;">Item Description</th>
+                    <th style="width: 10%;">Qty</th>
+                    <th style="width: 10%;">UOM</th>
+                    <th style="width: 20%;">Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {items_html}
+            </tbody>
+            <tfoot>
+                <tr style="background: #e2e8f0; font-weight: bold;">
+                    <td colspan="3" class="text-right">Total Items:</td>
+                    <td class="text-center">{total_items}</td>
+                    <td colspan="2"></td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <!-- Footer -->
+        <div class="footer">
+            <div class="signature-section">
+                <div class="signature-box">
+                    <div class="signature-line"></div>
+                    <p><strong>Requested By</strong></p>
+                    <p style="font-size: 9px;">{requester_name}</p>
+                </div>
+                <div class="signature-box">
+                    <div class="signature-line"></div>
+                    <p><strong>Approved By</strong></p>
+                    <p style="font-size: 9px;">Authorized Signatory</p>
+                </div>
+            </div>
+            <p style="text-align: center; margin-top: 20px; font-size: 9px; color: #666;">
+                Generated on {datetime.now().strftime('%d %b %Y at %H:%M')} | Document ID: {str(pr.id)[:8]}
+            </p>
+        </div>
+    </div>
+</body>
+</html>
+    """
+
+    return HTMLResponse(content=html_content, status_code=200)
+
+
 # ==================== Purchase Order (PO) ====================
 
 @router.post("/orders", response_model=PurchaseOrderResponse, status_code=status.HTTP_201_CREATED)
@@ -861,15 +1144,29 @@ async def create_purchase_order(
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
 
-    # Generate PO number
+    # Generate PO number - using financial year format PO/APL/YY-YY/XXXX
     today = date.today()
-    count_result = await db.execute(
-        select(func.count(PurchaseOrder.id)).where(
-            func.date(PurchaseOrder.created_at) == today
-        )
+    fy_year = today.year if today.month >= 4 else today.year - 1
+    fy_suffix = f"{str(fy_year)[-2:]}-{str(fy_year + 1)[-2:]}"
+
+    result = await db.execute(
+        select(PurchaseOrder.po_number)
+        .where(PurchaseOrder.po_number.like(f"PO/APL/{fy_suffix}/%"))
+        .order_by(PurchaseOrder.po_number.desc())
+        .limit(1)
     )
-    count = count_result.scalar() or 0
-    po_number = f"PO-{today.strftime('%Y%m%d')}-{str(count + 1).zfill(4)}"
+    last_po = result.scalar_one_or_none()
+
+    if last_po:
+        try:
+            last_num = int(last_po.split("/")[-1])
+            next_num = last_num + 1
+        except (IndexError, ValueError):
+            next_num = 1
+    else:
+        next_num = 1
+
+    po_number = f"PO/APL/{fy_suffix}/{str(next_num).zfill(4)}"
 
     # Determine if inter-state (for IGST)
     # Get warehouse state
@@ -1494,7 +1791,7 @@ async def approve_purchase_order(
             # Use raw SQL to avoid UUID/VARCHAR type mismatch issues
             existing_serials = await db.execute(
                 text("SELECT COUNT(*) FROM po_serials WHERE po_id = :po_id"),
-                {"po_id": str(po.id)}
+                {"po_id": po.id}
             )
             existing_count = existing_serials.scalar() or 0
             logging.info(f"Existing serials for PO {po.po_number}: {existing_count}")
@@ -1701,10 +1998,10 @@ async def send_po_to_vendor(
     supplier_code = "AP"  # Default to Aquapurite
 
     if vendor:
-        # Try to find supplier code for this vendor - use raw SQL for VARCHAR/UUID mismatch
+        # Find supplier code for this vendor
         supplier_code_result = await db.execute(
             text("SELECT code FROM supplier_codes WHERE vendor_id = :vendor_id LIMIT 1"),
-            {"vendor_id": str(vendor.id)}
+            {"vendor_id": vendor.id}
         )
         supplier_code_row = supplier_code_result.first()
         if supplier_code_row:
@@ -1713,7 +2010,7 @@ async def send_po_to_vendor(
     # Check if serials already exist for this PO - use raw SQL for VARCHAR/UUID mismatch
     existing_serials = await db.execute(
         text("SELECT COUNT(*) FROM po_serials WHERE po_id = :po_id"),
-        {"po_id": str(po.id)}
+        {"po_id": po.id}
     )
     existing_count = existing_serials.scalar() or 0
 
@@ -2929,7 +3226,7 @@ async def fix_and_test_po(
     # Step 2: Delete existing serials
     delete_result = await db.execute(
         text("DELETE FROM po_serials WHERE po_id = :po_id"),
-        {"po_id": str(po.id)}
+        {"po_id": po.id}
     )
     steps.append({"step": 2, "action": "Deleted existing serials", "result": "Done"})
 
@@ -3025,7 +3322,7 @@ async def fix_and_test_po(
     # Step 7: Verify serials in database
     verify_result = await db.execute(
         text("SELECT COUNT(*) FROM po_serials WHERE po_id = :po_id"),
-        {"po_id": str(po.id)}
+        {"po_id": po.id}
     )
     final_count = verify_result.scalar() or 0
     steps.append({"step": 7, "action": "Verified serials in DB", "result": f"{final_count} serials"})
@@ -3033,7 +3330,7 @@ async def fix_and_test_po(
     # Step 8: Get sample barcodes
     sample_result = await db.execute(
         text("SELECT barcode, model_code FROM po_serials WHERE po_id = :po_id LIMIT 5"),
-        {"po_id": str(po.id)}
+        {"po_id": po.id}
     )
     samples = [{"barcode": r[0], "model_code": r[1]} for r in sample_result.all()]
     steps.append({"step": 8, "action": "Sample barcodes", "result": samples})
@@ -3078,14 +3375,14 @@ async def verify_serials(po_id: UUID, db: DB):
     # Count serials
     count_result = await db.execute(
         text("SELECT COUNT(*) FROM po_serials WHERE po_id = :po_id"),
-        {"po_id": str(po.id)}
+        {"po_id": po.id}
     )
     count = count_result.scalar() or 0
 
     # Get sample barcodes
     samples_result = await db.execute(
         text("SELECT barcode, model_code, supplier_code FROM po_serials WHERE po_id = :po_id ORDER BY serial_number LIMIT 10"),
-        {"po_id": str(po.id)}
+        {"po_id": po.id}
     )
     samples = [{"barcode": r[0], "model_code": r[1], "supplier_code": r[2]} for r in samples_result.all()]
 
@@ -3120,7 +3417,7 @@ async def reset_po_to_draft(
     # Delete any existing serials for this PO
     await db.execute(
         text("DELETE FROM po_serials WHERE po_id = :po_id"),
-        {"po_id": str(po.id)}
+        {"po_id": po.id}
     )
 
     # Reset PO to DRAFT
@@ -3170,7 +3467,7 @@ async def manually_generate_serials(
     # Check if serials already exist
     existing_result = await db.execute(
         text("SELECT COUNT(*) FROM po_serials WHERE po_id = :po_id"),
-        {"po_id": str(po.id)}
+        {"po_id": po.id}
     )
     existing_count = existing_result.scalar() or 0
 
@@ -3288,7 +3585,7 @@ async def diagnose_po_serials(
     # Check serials
     serials_result = await db.execute(
         text("SELECT COUNT(*) as count FROM po_serials WHERE po_id = :po_id"),
-        {"po_id": str(po.id)}
+        {"po_id": po.id}
     )
     serial_count = serials_result.scalar() or 0
 
@@ -3297,7 +3594,7 @@ async def diagnose_po_serials(
     if serial_count > 0:
         sample_result = await db.execute(
             text("SELECT barcode, model_code, item_type FROM po_serials WHERE po_id = :po_id LIMIT 5"),
-            {"po_id": str(po.id)}
+            {"po_id": po.id}
         )
         sample_serials = [{"barcode": r[0], "model_code": r[1], "item_type": r[2]} for r in sample_result.all()]
 
@@ -3349,11 +3646,12 @@ async def download_purchase_order(
     from fastapi.responses import HTMLResponse
     from app.models.serialization import POSerial
     from app.models.company import Company
+    from app.models.purchase import PurchaseOrderItem
 
     result = await db.execute(
         select(PurchaseOrder)
         .options(
-            selectinload(PurchaseOrder.items),
+            selectinload(PurchaseOrder.items).selectinload(PurchaseOrderItem.product),
             selectinload(PurchaseOrder.delivery_schedules)
         )
         .where(PurchaseOrder.id == po_id)
@@ -3381,21 +3679,22 @@ async def download_purchase_order(
 
     # Get PO serials - grouped by model code for summary
     # Use text query to handle VARCHAR/UUID type mismatch in po_id column
+    # Include product_sku to help match with PO items for displaying product name
     import logging
     try:
         from sqlalchemy import text
         logging.info(f"PDF DOWNLOAD: Fetching serials for PO {po.po_number} (id={po.id})")
         serials_result = await db.execute(
             text("""
-                SELECT model_code, item_type, count(id) as quantity,
+                SELECT model_code, item_type, product_sku, count(id) as quantity,
                        min(serial_number) as start_serial, max(serial_number) as end_serial,
                        min(barcode) as start_barcode, max(barcode) as end_barcode
                 FROM po_serials
                 WHERE po_id = :po_id
-                GROUP BY model_code, item_type
+                GROUP BY model_code, item_type, product_sku
                 ORDER BY model_code
             """),
-            {"po_id": str(po.id)}
+            {"po_id": po.id}
         )
         serial_groups = serials_result.all()
         total_serials = sum(sg.quantity for sg in serial_groups) if serial_groups else 0
@@ -3480,9 +3779,23 @@ async def download_purchase_order(
     # Build delivery schedule section HTML
     delivery_schedule_html = ""
     # First lot values for Advance Payment Details section
+    # Default to 25% advance if no delivery schedules
     first_lot_advance = Decimal("0")
     first_lot_balance = Decimal("0")
     first_lot_advance_percentage = Decimal("25")
+
+    # Calculate default advance/balance if no delivery schedules exist
+    # Use grand_total which is already calculated above
+    grand_total_for_calc = Decimal(str(po.grand_total or 0))
+    if not delivery_schedules and grand_total_for_calc > 0:
+        # If advance_required is set on PO, use that; otherwise use 25%
+        if po.advance_required and po.advance_required > 0:
+            first_lot_advance = Decimal(str(po.advance_required))
+            first_lot_advance_percentage = (first_lot_advance / grand_total_for_calc * Decimal("100")).quantize(Decimal("0.01"))
+        else:
+            first_lot_advance_percentage = Decimal("25")
+            first_lot_advance = (grand_total_for_calc * first_lot_advance_percentage / Decimal("100")).quantize(Decimal("0.01"))
+        first_lot_balance = (grand_total_for_calc - first_lot_advance).quantize(Decimal("0.01"))
 
     if delivery_schedules:
         schedule_rows = ""
@@ -3493,20 +3806,33 @@ async def download_purchase_order(
 
         # Get first lot's advance/balance values
         first_lot = delivery_schedules[0]
-        first_lot_advance = Decimal(str(first_lot.advance_amount))
-        first_lot_balance = Decimal(str(first_lot.balance_amount))
+        first_lot_total = Decimal(str(first_lot.lot_total or 0))
 
         # Get advance percentage from first delivery schedule
         # Note: po.advance_required is an AMOUNT, not percentage, so calculate percentage if needed
         if delivery_schedules and delivery_schedules[0].advance_percentage:
             lot_advance_percentage = Decimal(str(delivery_schedules[0].advance_percentage))
             first_lot_advance_percentage = lot_advance_percentage
-        elif po.advance_required and grand_total > 0:
+        elif po.advance_required and grand_total_for_calc > 0:
             # Calculate percentage from advance amount
-            lot_advance_percentage = (Decimal(str(po.advance_required)) / grand_total * Decimal("100")).quantize(Decimal("0.01"))
+            lot_advance_percentage = (Decimal(str(po.advance_required)) / grand_total_for_calc * Decimal("100")).quantize(Decimal("0.01"))
+            first_lot_advance_percentage = lot_advance_percentage
         else:
             lot_advance_percentage = Decimal("25")  # Default 25%
+            first_lot_advance_percentage = lot_advance_percentage
         lot_balance_percentage = (Decimal("100") - lot_advance_percentage).quantize(Decimal("0.01"))
+
+        # Get stored advance/balance values from first lot
+        stored_advance = Decimal(str(first_lot.advance_amount or 0))
+        stored_balance = Decimal(str(first_lot.balance_amount or 0))
+
+        # If stored values are 0, calculate from lot total using the percentage
+        if stored_advance == 0 and first_lot_total > 0:
+            first_lot_advance = (first_lot_total * first_lot_advance_percentage / Decimal("100")).quantize(Decimal("0.01"))
+            first_lot_balance = (first_lot_total - first_lot_advance).quantize(Decimal("0.01"))
+        else:
+            first_lot_advance = stored_advance
+            first_lot_balance = stored_balance
 
         # Track total serial range
         first_serial = None
@@ -3712,21 +4038,59 @@ async def download_purchase_order(
         serial_rows = ""
         for sg in serial_groups:
             item_type = sg.item_type.value if hasattr(sg.item_type, 'value') else str(sg.item_type)
-            # Handle both short codes (FG, SP) and full names (FINISHED_GOODS, SPARE_PART)
+
+            # Get product name using product_sku from serials (more reliable than model_code matching)
+            product_name = "-"
+            serial_product_sku = sg.product_sku if hasattr(sg, 'product_sku') else None
+            matched_item = None
+
+            for item in po.items:
+                # First try exact SKU match from serial record
+                if serial_product_sku and item.sku and item.sku.upper() == serial_product_sku.upper():
+                    product_name = item.product_name or item.sku
+                    matched_item = item
+                    break
+                # Fallback: Check if this item's SKU contains the model code
+                elif item.sku and sg.model_code.upper() in item.sku.upper():
+                    product_name = item.product_name or item.sku
+                    matched_item = item
+                    # Don't break here - keep looking for exact SKU match
+
+            # If still no match, use product_sku as a fallback display
+            if product_name == "-" and serial_product_sku:
+                product_name = serial_product_sku
+
+            # Override item_type if matched PO item has product with item_type info
+            # This fixes incorrect item_type stored in po_serials
+            if matched_item:
+                # Check product relationship for item_type (Product.item_type)
+                product = getattr(matched_item, 'product', None)
+                if product:
+                    product_item_type = getattr(product, 'item_type', None)
+                    if product_item_type:
+                        pt_value = product_item_type.value if hasattr(product_item_type, 'value') else str(product_item_type)
+                        if pt_value in ("SP", "SPARE_PART"):
+                            item_type = "SP"
+                        elif pt_value in ("FG", "FINISHED_GOODS"):
+                            item_type = "FG"
+                        elif pt_value in ("CO", "COMPONENT"):
+                            item_type = "CO"
+                        elif pt_value in ("CN", "CONSUMABLE"):
+                            item_type = "CN"
+
+            # Handle both short codes (FG, SP, CO, CN) and full names
             if item_type in ("FG", "FINISHED_GOODS"):
                 item_type_label = "Finished Goods"
             elif item_type in ("SP", "SPARE_PART"):
                 item_type_label = "Spare Part"
+            elif item_type in ("CO", "COMPONENT"):
+                item_type_label = "Component"
+            elif item_type in ("CN", "CONSUMABLE"):
+                item_type_label = "Consumable"
+            elif item_type in ("AC", "ACCESSORY"):
+                item_type_label = "Accessory"
             else:
                 item_type_label = item_type
-
-            # Get product name for this model code from PO items
-            product_name = "-"
-            for item in po.items:
-                # Check if this item's SKU or product matches the model code
-                if item.sku and sg.model_code.upper() in item.sku.upper():
-                    product_name = item.product_name or item.sku
-                    break
 
             serial_rows += f"""
                     <tr>
@@ -5107,15 +5471,29 @@ async def convert_proforma_to_po(
             detail="Only approved proformas can be converted to PO"
         )
 
-    # Generate PO number
+    # Generate PO number - using financial year format PO/APL/YY-YY/XXXX
     today = date.today()
-    count_result = await db.execute(
-        select(func.count(PurchaseOrder.id)).where(
-            func.date(PurchaseOrder.created_at) == today
-        )
+    fy_year = today.year if today.month >= 4 else today.year - 1
+    fy_suffix = f"{str(fy_year)[-2:]}-{str(fy_year + 1)[-2:]}"
+
+    result = await db.execute(
+        select(PurchaseOrder.po_number)
+        .where(PurchaseOrder.po_number.like(f"PO/APL/{fy_suffix}/%"))
+        .order_by(PurchaseOrder.po_number.desc())
+        .limit(1)
     )
-    count = count_result.scalar() or 0
-    po_number = f"PO-{today.strftime('%Y%m%d')}-{str(count + 1).zfill(4)}"
+    last_po = result.scalar_one_or_none()
+
+    if last_po:
+        try:
+            last_num = int(last_po.split("/")[-1])
+            next_num = last_num + 1
+        except (IndexError, ValueError):
+            next_num = 1
+    else:
+        next_num = 1
+
+    po_number = f"PO/APL/{fy_suffix}/{str(next_num).zfill(4)}"
 
     # Get vendor
     vendor = await db.get(Vendor, proforma.vendor_id)

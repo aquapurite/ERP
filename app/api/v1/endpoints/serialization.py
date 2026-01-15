@@ -1050,10 +1050,10 @@ async def seed_serialization_codes(
     for data in water_purifier_codes:
         # Try to find matching product by SKU
         product = all_products.get(data["product_sku"])
-        product_id = str(product.id) if product else None
+        product_id = product.id if product else None
 
         model_ref = ModelCodeReference(
-            id=str(uuid.uuid4()).replace("-", ""),
+            id=uuid.uuid4(),
             product_id=product_id,  # Link to actual product
             fg_code=data["fg_code"],
             model_code=data["model_code"],
@@ -1075,10 +1075,10 @@ async def seed_serialization_codes(
     for data in spare_parts_codes:
         # Try to find matching product by SKU
         product = all_products.get(data["product_sku"])
-        product_id = str(product.id) if product else None
+        product_id = product.id if product else None
 
         model_ref = ModelCodeReference(
-            id=str(uuid.uuid4()).replace("-", ""),
+            id=uuid.uuid4(),
             product_id=product_id,  # Link to actual product
             fg_code=data["fg_code"],
             model_code=data["model_code"],
@@ -1168,7 +1168,7 @@ async def auto_link_products_to_model_codes(
         product = all_products.get(mc.product_sku)
 
         if product:
-            mc.product_id = str(product.id)
+            mc.product_id = product.id
             linked_count += 1
         else:
             not_found.append({"fg_code": mc.fg_code, "product_sku": mc.product_sku})
@@ -1296,10 +1296,8 @@ async def sync_products_to_model_codes(
     created_codes = []
 
     for product in all_products:
-        product_id_str = str(product.id)
-
         # Skip if already has a model code
-        if product_id_str in existing_model_codes or product.sku in existing_skus:
+        if product.id in existing_model_codes or product.sku in existing_skus:
             skipped_count += 1
             continue
 
@@ -1322,8 +1320,8 @@ async def sync_products_to_model_codes(
 
         # Create model code reference
         model_ref = ModelCodeReference(
-            id=str(uuid.uuid4()).replace("-", ""),
-            product_id=product_id_str,
+            id=uuid.uuid4(),
+            product_id=product.id,
             product_sku=product.sku,
             fg_code=product.fg_code or product.sku,  # Use fg_code if available, else sku
             model_code=model_code,

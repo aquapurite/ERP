@@ -329,7 +329,7 @@ async def create_spare_parts_master():
                     INSERT INTO model_code_references
                     (id, product_id, product_sku, fg_code, model_code, item_type, description, is_active, created_at, updated_at)
                     VALUES
-                    (:id, :product_id, :product_sku, :fg_code, :model_code, :item_type, :description, 1, :now, :now)
+                    (:id, :product_id, :product_sku, :fg_code, :model_code, :item_type, :description, TRUE, :now, :now)
                 """),
                 {
                     "id": str(__import__('uuid').uuid4()),

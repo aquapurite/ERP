@@ -11,7 +11,8 @@ Barcode Structure: APFSZAIEL000001 (15 characters)
 """
 
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Union
+from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 
@@ -116,7 +117,7 @@ class ModelCodeResponse(BaseModel):
 
 class GenerateSerialsRequest(BaseModel):
     """Request to generate serial numbers for a PO"""
-    po_id: str = Field(..., description="Purchase Order ID")
+    po_id: Union[UUID, str] = Field(..., description="Purchase Order ID")
     supplier_code: str = Field(..., min_length=2, max_length=2, description="2-letter supplier code")
     items: List["GenerateSerialItem"] = Field(..., description="Items to generate serials for")
 
@@ -128,8 +129,8 @@ class GenerateSerialsRequest(BaseModel):
 
 class GenerateSerialItem(BaseModel):
     """Individual item in serial generation request"""
-    po_item_id: Optional[str] = None
-    product_id: Optional[str] = None
+    po_item_id: Optional[Union[UUID, str]] = None
+    product_id: Optional[Union[UUID, str]] = None
     product_sku: Optional[str] = None
     model_code: str = Field(..., description="3-letter model code")
     quantity: int = Field(..., ge=1, le=10000, description="Number of serials to generate")

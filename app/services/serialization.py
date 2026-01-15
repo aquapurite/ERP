@@ -201,21 +201,21 @@ class SerializationService:
         supplier_code: str,
         year_code: str,
         month_code: str,
-        channel_code: str,
+        model_code: str,
         serial_number: int
     ) -> str:
         """
-        Generate a SPARE PARTS barcode (16 chars).
+        Generate a SPARE PARTS barcode (17 chars - same as FG).
 
-        Format: APFSAAEC00000001
+        Format: APFSAABDV00000001
         - AP: Brand prefix (2)
         - FS: Supplier code (2)
         - A: Year code (1 char - single letter)
         - A: Month code (1)
-        - EC: Channel code (2)
+        - BDV: Model code (3) - unique per product for unique barcodes
         - 00000001: Serial number (8 digits)
         """
-        return f"{self.BRAND_PREFIX}{supplier_code.upper()}{year_code}{month_code}{channel_code.upper()}{serial_number:08d}"
+        return f"{self.BRAND_PREFIX}{supplier_code.upper()}{year_code}{month_code}{model_code.upper()}{serial_number:08d}"
 
     def generate_barcode(
         self,
@@ -229,19 +229,17 @@ class SerializationService:
         """
         Generate a barcode based on item type.
 
-        For FG: Uses model_code, no supplier
-        For Spare: Uses channel_code (derived from supplier), includes supplier
+        For FG: Uses model_code, no supplier code in barcode
+        For Spare: Uses model_code AND supplier code in barcode for uniqueness
         """
         if item_type == ItemType.SPARE_PART:
-            # Get channel code from supplier
-            channel_code = self.get_channel_from_supplier(supplier_code)
             # Use single-char year for spare parts
             year_single = year_code[0] if len(year_code) > 1 else year_code
             return self.generate_spare_barcode(
                 supplier_code=supplier_code,
                 year_code=year_single,
                 month_code=month_code,
-                channel_code=channel_code,
+                model_code=model_code,  # Use model_code for uniqueness per product
                 serial_number=serial_number
             )
         else:
@@ -271,13 +269,13 @@ class SerializationService:
 
     def parse_spare_barcode(self, barcode: str) -> Dict:
         """
-        Parse a Spare Parts barcode (16 chars): APFSAAEC00000001
+        Parse a Spare Parts barcode (17 chars): APFSAABDV00000001
         """
-        if len(barcode) != 16:
-            raise ValueError(f"Invalid Spare barcode length: {len(barcode)}, expected 16")
+        if len(barcode) != 17:
+            raise ValueError(f"Invalid Spare barcode length: {len(barcode)}, expected 17")
 
         supplier_code = barcode[2:4]
-        channel_code = barcode[6:8]
+        model_code = barcode[6:9]
 
         return {
             "barcode_type": "SPARE",
@@ -285,32 +283,25 @@ class SerializationService:
             "supplier_code": supplier_code,    # FS or ST
             "year_code": barcode[4],           # A (single char)
             "month_code": barcode[5],          # A
-            "channel_code": channel_code,      # EC or PR
-            "serial_number": int(barcode[8:]),  # 00000001
-            "category": "Economical" if channel_code == "EC" else "Premium",
+            "model_code": model_code,          # BDV, PRV, etc. (3 chars)
+            "serial_number": int(barcode[9:]),  # 00000001
         }
 
     def parse_barcode(self, barcode: str) -> Dict:
         """
         Parse a barcode and auto-detect type (FG or Spare).
 
-        FG format: APAAAIIEL00000001 (year is 2 chars at position 2-4)
-        Spare format: APFSAAEC00000001 (supplier at 2-4, year is 1 char at 4)
+        FG format: APAAAIIEL00000001 (16 chars - no supplier code)
+        Spare format: APFSAABDV00000001 (17 chars - includes supplier code)
         """
-        if len(barcode) != 16:
-            raise ValueError(f"Invalid barcode length: {len(barcode)}, expected 16")
-
-        # Detect type: Check if position 2-4 looks like year code or supplier code
-        # Supplier codes are FS, ST (consonant patterns)
-        # Year codes are AA, AB, etc. or single letters
-        potential_supplier = barcode[2:4]
-
-        if potential_supplier in self.SUPPLIER_CHANNEL_MAP:
-            # It's a spare parts barcode
+        if len(barcode) == 17:
+            # 17 chars = Spare parts barcode (has supplier code)
             return self.parse_spare_barcode(barcode)
-        else:
-            # It's a FG barcode
+        elif len(barcode) == 16:
+            # 16 chars = FG barcode (no supplier code)
             return self.parse_fg_barcode(barcode)
+        else:
+            raise ValueError(f"Invalid barcode length: {len(barcode)}, expected 16 (FG) or 17 (Spare)")
 
     # ==================== Sequence Management ====================
 
@@ -580,12 +571,12 @@ class SerializationService:
                     item_type=item.item_type,
                 )
 
-                # Use string UUIDs - database columns are VARCHAR despite model declaring UUID
+                # Use native UUIDs - database columns are now native PostgreSQL UUID type
                 po_serial = POSerial(
-                    id=str(uuid.uuid4()),
-                    po_id=str(request.po_id),
-                    po_item_id=str(item.po_item_id) if item.po_item_id else None,
-                    product_id=str(item.product_id) if item.product_id else None,
+                    id=uuid.uuid4(),
+                    po_id=request.po_id if isinstance(request.po_id, uuid.UUID) else uuid.UUID(str(request.po_id)),
+                    po_item_id=item.po_item_id if isinstance(item.po_item_id, uuid.UUID) else uuid.UUID(str(item.po_item_id)) if item.po_item_id else None,
+                    product_id=item.product_id if isinstance(item.product_id, uuid.UUID) else uuid.UUID(str(item.product_id)) if item.product_id else None,
                     product_sku=item.product_sku,
                     model_code=item.model_code.upper(),
                     item_type=item.item_type,
@@ -634,13 +625,12 @@ class SerializationService:
         offset: int = 0
     ) -> List[POSerial]:
         """Get all serials for a PO"""
-        from sqlalchemy import text, cast, String
+        from uuid import UUID as PyUUID
 
-        # Use text() to avoid UUID type casting issues between model and actual database column
-        # The database column is VARCHAR but model declares UUID
-        query = select(POSerial).where(
-            cast(POSerial.po_id, String) == str(po_id)
-        )
+        # Convert string to UUID if needed
+        po_uuid = PyUUID(po_id) if isinstance(po_id, str) else po_id
+
+        query = select(POSerial).where(POSerial.po_id == po_uuid)
 
         if status:
             query = query.where(POSerial.status == status)
@@ -659,13 +649,15 @@ class SerializationService:
 
     async def get_serials_count_by_po(self, po_id: str) -> Dict[str, int]:
         """Get count of serials by status for a PO"""
-        from sqlalchemy import cast, String
+        from uuid import UUID as PyUUID
+
+        po_uuid = PyUUID(po_id) if isinstance(po_id, str) else po_id
 
         result = await self.db.execute(
             select(
                 POSerial.status,
                 func.count(POSerial.id).label("count")
-            ).where(cast(POSerial.po_id, String) == str(po_id))
+            ).where(POSerial.po_id == po_uuid)
             .group_by(POSerial.status)
         )
 
@@ -1041,11 +1033,14 @@ class SerializationService:
 
     async def mark_serials_sent_to_vendor(self, po_id: str) -> int:
         """Mark all serials for a PO as sent to vendor"""
-        from sqlalchemy import cast, String
+        from uuid import UUID as PyUUID
+
+        po_uuid = PyUUID(po_id) if isinstance(po_id, str) else po_id
+
         result = await self.db.execute(
             select(POSerial).where(
                 and_(
-                    cast(POSerial.po_id, String) == str(po_id),
+                    POSerial.po_id == po_uuid,
                     POSerial.status == SerialStatus.GENERATED
                 )
             )
@@ -1063,11 +1058,14 @@ class SerializationService:
 
     async def cancel_serials(self, po_id: str, reason: str = None) -> int:
         """Cancel all unreceived serials for a PO"""
-        from sqlalchemy import cast, String
+        from uuid import UUID as PyUUID
+
+        po_uuid = PyUUID(po_id) if isinstance(po_id, str) else po_id
+
         result = await self.db.execute(
             select(POSerial).where(
                 and_(
-                    cast(POSerial.po_id, String) == str(po_id),
+                    POSerial.po_id == po_uuid,
                     POSerial.status.in_([
                         SerialStatus.GENERATED,
                         SerialStatus.PRINTED,

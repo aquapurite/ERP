@@ -13,9 +13,10 @@ Barcode Structure: APFSZAIEL000001 (15 characters)
 import enum
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, ForeignKey, Text, Enum, JSON, UniqueConstraint
+from typing import Optional
+from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, Text, Enum, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 from app.database import Base
 
 
@@ -47,26 +48,33 @@ class SerialSequence(Base):
     """
     __tablename__ = "serial_sequences"
 
-    # Use String to avoid UUID type casting issues
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
 
     # Product identification
-    product_id = Column(String(36), ForeignKey("products.id"), nullable=True)
-    model_code = Column(String(10), nullable=False, index=True)  # IEL, IPR, PRG, etc.
-    item_type = Column(Enum(ItemType), default=ItemType.FINISHED_GOODS)
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id"),
+        nullable=True
+    )
+    model_code: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    item_type = mapped_column(Enum(ItemType), default=ItemType.FINISHED_GOODS)
 
     # Sequence key components
-    supplier_code = Column(String(2), nullable=False, index=True)  # FS, AB, TC, etc.
-    year_code = Column(String(2), nullable=False)  # A-Z, then AA, AB...
-    month_code = Column(String(1), nullable=False)  # A-L
+    supplier_code: Mapped[str] = mapped_column(String(2), nullable=False, index=True)
+    year_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    month_code: Mapped[str] = mapped_column(String(1), nullable=False)
 
     # Sequence tracking
-    last_serial = Column(Integer, default=0, nullable=False)
-    total_generated = Column(Integer, default=0)
+    last_serial: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_generated: Mapped[int] = mapped_column(Integer, default=0)
 
     # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     product = relationship("Product", backref="serial_sequences")
@@ -94,13 +102,20 @@ class ProductSerialSequence(Base):
     """
     __tablename__ = "product_serial_sequences"
 
-    # Use String to avoid UUID type casting issues with VARCHAR columns
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
 
     # Product identification - unique per (model_code + item_type) combination
-    product_id = Column(String(36), ForeignKey("products.id"), nullable=True)
-    model_code = Column(String(10), nullable=False, index=True)  # IEL, ELG, AUR, MTR, etc.
-    item_type = Column(Enum(ItemType), nullable=False, default=ItemType.FINISHED_GOODS)
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id"),
+        nullable=True
+    )
+    model_code: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    item_type = mapped_column(Enum(ItemType), nullable=False, default=ItemType.FINISHED_GOODS)
 
     # Unique constraint on model_code + item_type (FG and SP can have same model_code)
     __table_args__ = (
@@ -108,17 +123,17 @@ class ProductSerialSequence(Base):
     )
 
     # Product info (denormalized for quick access)
-    product_name = Column(String(255), nullable=True)
-    product_sku = Column(String(50), nullable=True)
+    product_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    product_sku: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     # Sequence tracking - continuous across all time
-    last_serial = Column(Integer, default=0, nullable=False)
-    total_generated = Column(Integer, default=0)
-    max_serial = Column(Integer, default=99999999)  # Default 1 lakh = 100000, can be extended
+    last_serial: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_generated: Mapped[int] = mapped_column(Integer, default=0)
+    max_serial: Mapped[int] = mapped_column(Integer, default=99999999)
 
     # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     product = relationship("Product", backref="product_serial_sequence")
@@ -146,56 +161,80 @@ class POSerial(Base):
     """
     __tablename__ = "po_serials"
 
-    # Use String to avoid UUID type casting issues with VARCHAR columns
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
 
     # PO linkage
-    po_id = Column(String(36), ForeignKey("purchase_orders.id"), nullable=False, index=True)
-    po_item_id = Column(String(36), ForeignKey("purchase_order_items.id"), nullable=True)
+    po_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("purchase_orders.id"),
+        nullable=False,
+        index=True
+    )
+    po_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("purchase_order_items.id"),
+        nullable=True
+    )
 
     # Product identification
-    product_id = Column(String(36), ForeignKey("products.id"), nullable=True)
-    product_sku = Column(String(50), nullable=True)
-    model_code = Column(String(10), nullable=False)
-    item_type = Column(Enum(ItemType), default=ItemType.FINISHED_GOODS)
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id"),
+        nullable=True
+    )
+    product_sku: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    model_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    item_type = mapped_column(Enum(ItemType), default=ItemType.FINISHED_GOODS)
 
     # Barcode components
-    brand_prefix = Column(String(2), default="AP")  # AP for Aquapurite
-    supplier_code = Column(String(2), nullable=False)
-    year_code = Column(String(2), nullable=False)
-    month_code = Column(String(1), nullable=False)
-    serial_number = Column(Integer, nullable=False)  # 1-999999
+    brand_prefix: Mapped[str] = mapped_column(String(2), default="AP")
+    supplier_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    year_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    month_code: Mapped[str] = mapped_column(String(1), nullable=False)
+    serial_number: Mapped[int] = mapped_column(Integer, nullable=False)
 
     # Full barcode (computed: APFSZAIEL000001)
-    barcode = Column(String(20), unique=True, nullable=False, index=True)
+    barcode: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
 
     # Status tracking
-    status = Column(Enum(SerialStatus), default=SerialStatus.GENERATED)
+    status = mapped_column(Enum(SerialStatus), default=SerialStatus.GENERATED)
 
     # GRN linkage (when received)
-    grn_id = Column(String(36), ForeignKey("goods_receipt_notes.id"), nullable=True)
-    grn_item_id = Column(String(36), nullable=True)
-    received_at = Column(DateTime, nullable=True)
-    received_by = Column(String(36), nullable=True)
+    grn_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("goods_receipt_notes.id"),
+        nullable=True
+    )
+    grn_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    received_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    received_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     # Stock item linkage (when assigned to inventory)
-    stock_item_id = Column(String(36), ForeignKey("stock_items.id"), nullable=True)
-    assigned_at = Column(DateTime, nullable=True)
+    stock_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("stock_items.id"),
+        nullable=True
+    )
+    assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Sale linkage (when sold)
-    order_id = Column(String(36), nullable=True)
-    order_item_id = Column(String(36), nullable=True)
-    sold_at = Column(DateTime, nullable=True)
-    customer_id = Column(String(36), nullable=True)
+    order_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    order_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    sold_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     # Warranty tracking
-    warranty_start_date = Column(DateTime, nullable=True)
-    warranty_end_date = Column(DateTime, nullable=True)
+    warranty_start_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    warranty_end_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    notes = Column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Relationships
     purchase_order = relationship("PurchaseOrder", backref="serials")
@@ -214,31 +253,39 @@ class ModelCodeReference(Base):
     """
     __tablename__ = "model_code_references"
 
-    # Use String to avoid UUID type casting issues
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
 
     # Product linkage
-    product_id = Column(String(36), ForeignKey("products.id"), nullable=True, unique=True)
-    product_sku = Column(String(50), nullable=True, index=True)
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id"),
+        nullable=True,
+        unique=True
+    )
+    product_sku: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
 
     # FG/Item Code (full code like WPRAIEL001)
-    fg_code = Column(String(20), nullable=True, unique=True, index=True)
+    fg_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, unique=True, index=True)
 
     # Model code for barcode (3 letters: IEL, IPR, PRG)
-    model_code = Column(String(10), nullable=False, index=True)
+    model_code: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
 
     # Item type
-    item_type = Column(Enum(ItemType), default=ItemType.FINISHED_GOODS)
+    item_type = mapped_column(Enum(ItemType), default=ItemType.FINISHED_GOODS)
 
     # Description
-    description = Column(String(255), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     # Active flag
-    is_active = Column(Boolean, default=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationship
     product = relationship("Product", backref="model_code_ref")
@@ -254,27 +301,35 @@ class SupplierCode(Base):
     """
     __tablename__ = "supplier_codes"
 
-    # Use String to avoid UUID type casting issues
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
 
     # Vendor linkage
-    vendor_id = Column(String(36), ForeignKey("vendors.id"), nullable=True, unique=True)
+    vendor_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("vendors.id"),
+        nullable=True,
+        unique=True
+    )
 
     # 2-letter supplier code
-    code = Column(String(2), unique=True, nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(2), unique=True, nullable=False, index=True)
 
     # Supplier name
-    name = Column(String(100), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
 
     # Description
-    description = Column(String(255), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     # Active flag
-    is_active = Column(Boolean, default=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationship
     vendor = relationship("Vendor", backref="supplier_code_ref")

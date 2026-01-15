@@ -165,6 +165,14 @@ from app.models.billing import (
     PaymentMode as BillingPaymentMode,
     InvoiceNumberSequence,
 )
+# TDS (Tax Deducted at Source)
+from app.models.tds import (
+    TDSDeduction,
+    TDSRate,
+    Form16ACertificate,
+    TDSSection,
+    TDSDeductionStatus,
+)
 # Dealer/Distributor
 from app.models.dealer import (
     Dealer,
@@ -303,6 +311,16 @@ from app.models.escalation import (
     EscalationSource,
     EscalationReason,
     NotificationChannel,
+)
+# Notifications
+from app.models.notifications import (
+    Notification,
+    NotificationPreference,
+    NotificationTemplate,
+    Announcement,
+    AnnouncementDismissal,
+    NotificationType,
+    NotificationPriority,
 )
 # Campaign Management
 from app.models.campaign import (
@@ -553,6 +571,12 @@ __all__ = [
     "PaymentReceipt",
     "BillingPaymentMode",
     "InvoiceNumberSequence",
+    # TDS (Tax Deducted at Source)
+    "TDSDeduction",
+    "TDSRate",
+    "Form16ACertificate",
+    "TDSSection",
+    "TDSDeductionStatus",
     # Dealer/Distributor
     "Dealer",
     "DealerType",
@@ -663,6 +687,14 @@ __all__ = [
     "EscalationSource",
     "EscalationReason",
     "NotificationChannel",
+    # Notifications
+    "Notification",
+    "NotificationPreference",
+    "NotificationTemplate",
+    "Announcement",
+    "AnnouncementDismissal",
+    "NotificationType",
+    "NotificationPriority",
     # Franchisee CRM
     "Franchisee",
     "FranchiseeContract",

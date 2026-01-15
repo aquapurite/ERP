@@ -118,7 +118,7 @@ async def auto_link_vendors_to_supplier_codes():
 
                 # Check if vendor already linked to another code
                 existing_link = await db.execute(
-                    select(SupplierCode).where(SupplierCode.vendor_id == str(vendor.id))
+                    select(SupplierCode).where(SupplierCode.vendor_id == vendor.id)
                 )
                 existing_sc = existing_link.scalar_one_or_none()
                 if existing_sc:
@@ -127,15 +127,15 @@ async def auto_link_vendors_to_supplier_codes():
 
                 if sc:
                     # Link existing supplier code to vendor
-                    sc.vendor_id = str(vendor.id)
+                    sc.vendor_id = vendor.id
                     print(f"AUTO-LINK: SUCCESS - Linked vendor '{vendor.name}' to supplier code '{supplier_code}'")
                 else:
                     # Create new supplier code
                     new_sc = SupplierCode(
-                        id=str(uuid.uuid4()),
+                        id=uuid.uuid4(),
                         code=supplier_code,
                         name=vendor.name,
-                        vendor_id=str(vendor.id),
+                        vendor_id=vendor.id,
                         description=f"Auto-linked to {vendor.name}",
                         is_active=True,
                     )
