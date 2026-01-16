@@ -714,7 +714,7 @@ class SerializationService:
             )
 
         # Mark as received
-        serial.status = SerialStatus.RECEIVED
+        serial.status = SerialStatus.RECEIVED.value
         serial.grn_id = grn_id
         serial.grn_item_id = grn_item_id
         serial.received_at = datetime.utcnow()
@@ -762,7 +762,7 @@ class SerializationService:
                 f"Serial must be in RECEIVED status to assign. Current: {serial.status}"
             )
 
-        serial.status = SerialStatus.ASSIGNED
+        serial.status = SerialStatus.ASSIGNED.value
         serial.stock_item_id = stock_item_id
         serial.assigned_at = datetime.utcnow()
         serial.updated_at = datetime.utcnow()
@@ -792,7 +792,7 @@ class SerializationService:
             )
 
         now = datetime.utcnow()
-        serial.status = SerialStatus.SOLD
+        serial.status = SerialStatus.SOLD.value
         serial.order_id = order_id
         serial.order_item_id = order_item_id
         serial.customer_id = customer_id
@@ -1049,7 +1049,7 @@ class SerializationService:
 
         count = 0
         for serial in serials:
-            serial.status = SerialStatus.SENT_TO_VENDOR
+            serial.status = SerialStatus.SENT_TO_VENDOR.value
             serial.updated_at = datetime.utcnow()
             count += 1
 
@@ -1078,7 +1078,7 @@ class SerializationService:
 
         count = 0
         for serial in serials:
-            serial.status = SerialStatus.CANCELLED
+            serial.status = SerialStatus.CANCELLED.value
             serial.notes = reason
             serial.updated_at = datetime.utcnow()
             count += 1

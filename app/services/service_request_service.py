@@ -247,7 +247,7 @@ class ServiceRequestService:
 
         # Update status
         if service_request.status == ServiceStatus.PENDING:
-            service_request.status = ServiceStatus.ASSIGNED
+            service_request.status = ServiceStatus.ASSIGNED.value
 
         # Create job history
         job_history = TechnicianJobHistory(
@@ -305,7 +305,7 @@ class ServiceRequestService:
         service_request.images_before = completion_data.get("images_before")
         service_request.images_after = completion_data.get("images_after")
         service_request.customer_signature_url = completion_data.get("customer_signature_url")
-        service_request.status = ServiceStatus.COMPLETED
+        service_request.status = ServiceStatus.COMPLETED.value
         service_request.completed_at = datetime.utcnow()
 
         # Update technician job history

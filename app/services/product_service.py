@@ -392,7 +392,7 @@ class ProductService:
             return False
 
         product.is_active = False
-        product.status = ProductStatus.INACTIVE
+        product.status = ProductStatus.INACTIVE.value
         await self.db.commit()
         return True
 

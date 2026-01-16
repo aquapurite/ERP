@@ -488,7 +488,7 @@ async def delete_campaign(
     if campaign.status == CampaignStatus.RUNNING:
         raise HTTPException(status_code=400, detail="Cannot delete running campaign. Pause it first.")
 
-    campaign.status = CampaignStatus.CANCELLED
+    campaign.status = CampaignStatus.CANCELLED.value
     campaign.updated_at = datetime.utcnow()
     await db.commit()
 
@@ -517,7 +517,7 @@ async def schedule_campaign(
         raise HTTPException(status_code=400, detail="Scheduled time must be in the future")
 
     campaign.scheduled_at = data.scheduled_at
-    campaign.status = CampaignStatus.SCHEDULED
+    campaign.status = CampaignStatus.SCHEDULED.value
     campaign.updated_at = datetime.utcnow()
 
     await db.commit()
@@ -542,7 +542,7 @@ async def start_campaign(
     if campaign.status not in [CampaignStatus.DRAFT, CampaignStatus.SCHEDULED]:
         raise HTTPException(status_code=400, detail="Can only start draft or scheduled campaigns")
 
-    campaign.status = CampaignStatus.RUNNING
+    campaign.status = CampaignStatus.RUNNING.value
     campaign.started_at = datetime.utcnow()
     campaign.updated_at = datetime.utcnow()
 
@@ -568,7 +568,7 @@ async def pause_campaign(
     if campaign.status != CampaignStatus.RUNNING:
         raise HTTPException(status_code=400, detail="Can only pause running campaigns")
 
-    campaign.status = CampaignStatus.PAUSED
+    campaign.status = CampaignStatus.PAUSED.value
     campaign.updated_at = datetime.utcnow()
 
     await db.commit()
@@ -593,7 +593,7 @@ async def resume_campaign(
     if campaign.status != CampaignStatus.PAUSED:
         raise HTTPException(status_code=400, detail="Can only resume paused campaigns")
 
-    campaign.status = CampaignStatus.RUNNING
+    campaign.status = CampaignStatus.RUNNING.value
     campaign.updated_at = datetime.utcnow()
 
     await db.commit()
@@ -618,7 +618,7 @@ async def complete_campaign(
     if campaign.status not in [CampaignStatus.RUNNING, CampaignStatus.PAUSED]:
         raise HTTPException(status_code=400, detail="Can only complete running or paused campaigns")
 
-    campaign.status = CampaignStatus.COMPLETED
+    campaign.status = CampaignStatus.COMPLETED.value
     campaign.completed_at = datetime.utcnow()
     campaign.updated_at = datetime.utcnow()
 

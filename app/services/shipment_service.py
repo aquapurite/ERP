@@ -248,7 +248,7 @@ class ShipmentService:
                 shipment.weight_kg, shipment.volumetric_weight_kg
             )
 
-        shipment.status = ShipmentStatus.PACKED
+        shipment.status = ShipmentStatus.PACKED.value
         shipment.packed_at = datetime.utcnow()
         shipment.packed_by = packed_by
 
@@ -267,7 +267,7 @@ class ShipmentService:
         result = await self.db.execute(stmt)
         order = result.scalar_one_or_none()
         if order:
-            order.status = OrderStatus.PACKED
+            order.status = OrderStatus.PACKED.value
             order.packed_at = datetime.utcnow()
 
         await self.db.commit()
@@ -368,7 +368,7 @@ class ShipmentService:
         if shipment.status not in [ShipmentStatus.IN_TRANSIT, ShipmentStatus.DELIVERY_FAILED]:
             raise ValueError(f"Cannot mark as out for delivery from {shipment.status} status")
 
-        shipment.status = ShipmentStatus.OUT_FOR_DELIVERY
+        shipment.status = ShipmentStatus.OUT_FOR_DELIVERY.value
         shipment.delivery_attempts += 1
 
         # Add tracking
@@ -385,7 +385,7 @@ class ShipmentService:
         result = await self.db.execute(stmt)
         order = result.scalar_one_or_none()
         if order:
-            order.status = OrderStatus.OUT_FOR_DELIVERY
+            order.status = OrderStatus.OUT_FOR_DELIVERY.value
 
         await self.db.commit()
         await self.db.refresh(shipment)
@@ -413,7 +413,7 @@ class ShipmentService:
 
         now = datetime.utcnow()
 
-        shipment.status = ShipmentStatus.DELIVERED
+        shipment.status = ShipmentStatus.DELIVERED.value
         shipment.delivered_at = now
         shipment.actual_delivery_date = now.date()
         shipment.delivered_to = delivered_to
@@ -443,7 +443,7 @@ class ShipmentService:
         result = await self.db.execute(stmt)
         order = result.scalar_one_or_none()
         if order:
-            order.status = OrderStatus.DELIVERED
+            order.status = OrderStatus.DELIVERED.value
             order.delivered_at = now
 
         await self.db.commit()
@@ -463,7 +463,7 @@ class ShipmentService:
         if shipment.status != ShipmentStatus.OUT_FOR_DELIVERY:
             raise ValueError(f"Cannot mark delivery failed from {shipment.status} status")
 
-        shipment.status = ShipmentStatus.DELIVERY_FAILED
+        shipment.status = ShipmentStatus.DELIVERY_FAILED.value
 
         # Add tracking
         tracking = ShipmentTracking(
@@ -496,7 +496,7 @@ class ShipmentService:
         if shipment.delivery_attempts < shipment.max_delivery_attempts:
             raise ValueError(f"RTO requires {shipment.max_delivery_attempts} failed attempts. Current: {shipment.delivery_attempts}")
 
-        shipment.status = ShipmentStatus.RTO_INITIATED
+        shipment.status = ShipmentStatus.RTO_INITIATED.value
         shipment.rto_reason = reason
         shipment.rto_initiated_at = datetime.utcnow()
 
@@ -514,7 +514,7 @@ class ShipmentService:
         result = await self.db.execute(stmt)
         order = result.scalar_one_or_none()
         if order:
-            order.status = OrderStatus.RTO_INITIATED
+            order.status = OrderStatus.RTO_INITIATED.value
 
         await self.db.commit()
         await self.db.refresh(shipment)
@@ -533,7 +533,7 @@ class ShipmentService:
         if shipment.status not in [ShipmentStatus.RTO_INITIATED, ShipmentStatus.RTO_IN_TRANSIT]:
             raise ValueError(f"Cannot complete RTO from {shipment.status} status")
 
-        shipment.status = ShipmentStatus.RTO_DELIVERED
+        shipment.status = ShipmentStatus.RTO_DELIVERED.value
         shipment.rto_delivered_at = datetime.utcnow()
 
         # Add tracking
@@ -550,7 +550,7 @@ class ShipmentService:
         result = await self.db.execute(stmt)
         order = result.scalar_one_or_none()
         if order:
-            order.status = OrderStatus.RTO_DELIVERED
+            order.status = OrderStatus.RTO_DELIVERED.value
 
         await self.db.commit()
         await self.db.refresh(shipment)
@@ -571,7 +571,7 @@ class ShipmentService:
         if shipment.status in [ShipmentStatus.DELIVERED, ShipmentStatus.RTO_DELIVERED, ShipmentStatus.CANCELLED]:
             raise ValueError(f"Cannot cancel shipment in {shipment.status} status")
 
-        shipment.status = ShipmentStatus.CANCELLED
+        shipment.status = ShipmentStatus.CANCELLED.value
         shipment.cancelled_at = datetime.utcnow()
         shipment.cancellation_reason = reason
 

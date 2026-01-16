@@ -168,7 +168,7 @@ class TransferService:
         if transfer.status != TransferStatus.DRAFT:
             raise ValueError("Only draft transfers can be submitted")
 
-        transfer.status = TransferStatus.PENDING_APPROVAL
+        transfer.status = TransferStatus.PENDING_APPROVAL.value
         await self.db.commit()
         await self.db.refresh(transfer)
         return transfer
@@ -200,7 +200,7 @@ class TransferService:
             for item in transfer.items:
                 item.approved_quantity = item.requested_quantity
 
-        transfer.status = TransferStatus.APPROVED
+        transfer.status = TransferStatus.APPROVED.value
         transfer.approved_by = approved_by
         transfer.approved_at = datetime.utcnow()
         if notes:
@@ -224,7 +224,7 @@ class TransferService:
         if transfer.status != TransferStatus.PENDING_APPROVAL:
             raise ValueError("Transfer is not pending approval")
 
-        transfer.status = TransferStatus.REJECTED
+        transfer.status = TransferStatus.REJECTED.value
         transfer.approved_by = rejected_by
         transfer.approved_at = datetime.utcnow()
         transfer.rejection_reason = reason
@@ -275,7 +275,7 @@ class TransferService:
 
             # Update stock items
             for stock_item in stock_items:
-                stock_item.status = StockItemStatus.IN_TRANSIT
+                stock_item.status = StockItemStatus.IN_TRANSIT.value
                 stock_item.last_movement_date = datetime.utcnow()
 
                 # Create serial tracking
@@ -309,7 +309,7 @@ class TransferService:
             )
 
         # Update transfer
-        transfer.status = TransferStatus.IN_TRANSIT
+        transfer.status = TransferStatus.IN_TRANSIT.value
         transfer.dispatch_date = datetime.utcnow()
         transfer.dispatched_by = dispatched_by
         transfer.vehicle_number = vehicle_number
@@ -379,9 +379,9 @@ class TransferService:
                             if i < damaged_qty:
                                 serial.is_damaged = True
                                 serial.damage_notes = receipt.get("damage_notes")
-                                stock_item.status = StockItemStatus.DAMAGED
+                                stock_item.status = StockItemStatus.DAMAGED.value
                             else:
-                                stock_item.status = StockItemStatus.AVAILABLE
+                                stock_item.status = StockItemStatus.AVAILABLE.value
 
                     # Update inventory at destination
                     await self.inventory_service._update_inventory_summary(
@@ -428,10 +428,10 @@ class TransferService:
         )
 
         if all_received:
-            transfer.status = TransferStatus.RECEIVED
+            transfer.status = TransferStatus.RECEIVED.value
             transfer.received_date = datetime.utcnow()
         else:
-            transfer.status = TransferStatus.PARTIALLY_RECEIVED
+            transfer.status = TransferStatus.PARTIALLY_RECEIVED.value
 
         await self.db.commit()
         await self.db.refresh(transfer)
@@ -451,7 +451,7 @@ class TransferService:
         if transfer.status in [TransferStatus.IN_TRANSIT, TransferStatus.RECEIVED, TransferStatus.PARTIALLY_RECEIVED]:
             raise ValueError("Cannot cancel a transfer that is in transit or already received")
 
-        transfer.status = TransferStatus.CANCELLED
+        transfer.status = TransferStatus.CANCELLED.value
         transfer.rejection_reason = reason
         transfer.approved_by = cancelled_by
         transfer.approved_at = datetime.utcnow()

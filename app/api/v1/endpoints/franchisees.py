@@ -450,7 +450,7 @@ async def approve_franchisee(
             detail=f"Cannot approve franchisee with status {franchisee.status}"
         )
 
-    franchisee.status = FranchiseeStatus.APPROVED
+    franchisee.status = FranchiseeStatus.APPROVED.value
     franchisee.approval_date = date.today()
     franchisee.approved_by_id = str(current_user.id)
 
@@ -557,7 +557,7 @@ async def approve_contract(
     if contract.status != ContractStatus.PENDING_APPROVAL:
         raise HTTPException(status_code=400, detail="Contract is not pending approval")
 
-    contract.status = ContractStatus.ACTIVE
+    contract.status = ContractStatus.ACTIVE.value
     contract.approved_by_id = str(current_user.id)
     contract.approved_at = datetime.utcnow()
 
@@ -587,7 +587,7 @@ async def terminate_contract(
     if contract.status != ContractStatus.ACTIVE:
         raise HTTPException(status_code=400, detail="Contract is not active")
 
-    contract.status = ContractStatus.TERMINATED
+    contract.status = ContractStatus.TERMINATED.value
     contract.terminated_by_id = str(current_user.id)
     contract.terminated_at = datetime.utcnow()
     contract.termination_reason = data.reason
@@ -789,9 +789,9 @@ async def complete_training(
         training.assessment_score = data.assessment_score
         training.attempts += 1
         training.passed = data.assessment_score >= training.passing_score
-        training.status = TrainingStatus.COMPLETED if training.passed else TrainingStatus.FAILED
+        training.status = TrainingStatus.COMPLETED.value.value if training.passed else TrainingStatus.FAILED.value
     else:
-        training.status = TrainingStatus.COMPLETED
+        training.status = TrainingStatus.COMPLETED.value
 
     if data.feedback:
         training.feedback = data.feedback
@@ -932,7 +932,7 @@ async def assign_support_ticket(
 
     ticket.assigned_to_id = str(data.assigned_to_id)
     ticket.assigned_at = datetime.utcnow()
-    ticket.status = SupportTicketStatus.IN_PROGRESS
+    ticket.status = SupportTicketStatus.IN_PROGRESS.value
 
     if not ticket.first_response_at:
         ticket.first_response_at = datetime.utcnow()
@@ -957,7 +957,7 @@ async def resolve_support_ticket(
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
-    ticket.status = SupportTicketStatus.RESOLVED
+    ticket.status = SupportTicketStatus.RESOLVED.value
     ticket.resolution = data.resolution
     ticket.resolved_by_id = str(current_user.id)
     ticket.resolved_at = datetime.utcnow()
@@ -986,7 +986,7 @@ async def escalate_support_ticket(
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
-    ticket.status = SupportTicketStatus.ESCALATED
+    ticket.status = SupportTicketStatus.ESCALATED.value
     ticket.is_escalated = True
     ticket.escalated_to_id = str(data.escalated_to_id)
     ticket.escalated_at = datetime.utcnow()
@@ -1011,7 +1011,7 @@ async def close_support_ticket(
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
-    ticket.status = SupportTicketStatus.CLOSED
+    ticket.status = SupportTicketStatus.CLOSED.value
     ticket.closed_at = datetime.utcnow()
 
     await db.commit()
@@ -1086,7 +1086,7 @@ async def add_ticket_comment(
 
     # Update ticket status if waiting on franchisee
     if ticket.status == SupportTicketStatus.WAITING_ON_FRANCHISEE:
-        ticket.status = SupportTicketStatus.IN_PROGRESS
+        ticket.status = SupportTicketStatus.IN_PROGRESS.value
 
     await db.commit()
     await db.refresh(comment)
@@ -1175,7 +1175,7 @@ async def complete_audit(
     if not audit:
         raise HTTPException(status_code=404, detail="Audit not found")
 
-    audit.status = AuditStatus.COMPLETED
+    audit.status = AuditStatus.COMPLETED.value
     audit.actual_date = data.actual_date
     audit.checklist = data.checklist
     audit.findings = data.findings
@@ -1207,7 +1207,7 @@ async def complete_audit(
 
     # Set to ACTION_REQUIRED if there are corrective actions
     if data.corrective_actions and len(data.corrective_actions) > 0:
-        audit.status = AuditStatus.ACTION_REQUIRED
+        audit.status = AuditStatus.ACTION_REQUIRED.value
 
     await db.commit()
     await db.refresh(audit)
@@ -1228,7 +1228,7 @@ async def close_audit(
     if not audit:
         raise HTTPException(status_code=404, detail="Audit not found")
 
-    audit.status = AuditStatus.CLOSED
+    audit.status = AuditStatus.CLOSED.value
     audit.closed_at = datetime.utcnow()
 
     await db.commit()

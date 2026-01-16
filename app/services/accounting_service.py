@@ -254,7 +254,7 @@ class AccountingService:
             account.current_balance = new_balance
 
         # Update journal entry status
-        journal_entry.status = JournalEntryStatus.POSTED
+        journal_entry.status = JournalEntryStatus.POSTED.value
 
     # ==================== Business Event Handlers ====================
 

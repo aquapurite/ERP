@@ -549,7 +549,7 @@ class AutoJournalService:
                 {"debit": float(total_debit), "credit": float(total_credit)}
             )
 
-        journal.status = JournalEntryStatus.POSTED
+        journal.status = JournalEntryStatus.POSTED.value
         journal.posted_at = datetime.utcnow()
 
         await self.db.commit()

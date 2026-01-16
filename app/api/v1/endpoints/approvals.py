@@ -746,7 +746,7 @@ async def submit_po_for_approval(
     )
 
     # Update PO
-    po.status = POStatus.PENDING_APPROVAL
+    po.status = POStatus.PENDING_APPROVAL.value
     po.approval_request_id = approval.id
     po.approval_level = approval.approval_level
     po.submitted_for_approval_at = datetime.utcnow()
@@ -807,7 +807,7 @@ async def approve_request(
 
     # Update approval request
     old_status = approval.status
-    approval.status = ApprovalStatus.APPROVED
+    approval.status = ApprovalStatus.APPROVED.value
     approval.approved_by = current_user.id
     approval.approved_at = datetime.utcnow()
     # Accept either 'comments' or 'notes' from frontend
@@ -831,7 +831,7 @@ async def approve_request(
         )
         po = po_result.scalar_one_or_none()
         if po:
-            po.status = POStatus.APPROVED
+            po.status = POStatus.APPROVED.value
             po.approved_by = current_user.id
             po.approved_at = datetime.utcnow()
     elif approval.entity_type == ApprovalEntityType.PURCHASE_REQUISITION:
@@ -840,7 +840,7 @@ async def approve_request(
         )
         pr = pr_result.scalar_one_or_none()
         if pr:
-            pr.status = RequisitionStatus.APPROVED
+            pr.status = RequisitionStatus.APPROVED.value
             pr.approved_by = current_user.id
             pr.approved_at = datetime.utcnow()
 
@@ -890,7 +890,7 @@ async def reject_request(
 
     # Update approval request
     old_status = approval.status
-    approval.status = ApprovalStatus.REJECTED
+    approval.status = ApprovalStatus.REJECTED.value
     approval.rejected_by = current_user.id
     approval.rejected_at = datetime.utcnow()
     approval.rejection_reason = request.reason
@@ -913,7 +913,7 @@ async def reject_request(
         )
         po = po_result.scalar_one_or_none()
         if po:
-            po.status = POStatus.DRAFT  # Back to draft for revision
+            po.status = POStatus.DRAFT.value  # Back to draft for revision
             po.rejection_reason = request.reason
     elif approval.entity_type == ApprovalEntityType.PURCHASE_REQUISITION:
         pr_result = await db.execute(
@@ -921,7 +921,7 @@ async def reject_request(
         )
         pr = pr_result.scalar_one_or_none()
         if pr:
-            pr.status = RequisitionStatus.REJECTED
+            pr.status = RequisitionStatus.REJECTED.value
             pr.rejection_reason = request.reason
 
     await db.commit()
@@ -963,7 +963,7 @@ async def escalate_request(
 
     # Update approval
     old_status = approval.status
-    approval.status = ApprovalStatus.ESCALATED
+    approval.status = ApprovalStatus.ESCALATED.value
     approval.escalated_at = datetime.utcnow()
     approval.escalated_to = request.escalate_to
     approval.escalation_reason = request.reason
@@ -1019,7 +1019,7 @@ async def bulk_approve(
                 continue
 
             # Approve
-            approval.status = ApprovalStatus.APPROVED
+            approval.status = ApprovalStatus.APPROVED.value
             approval.approved_by = current_user.id
             approval.approved_at = datetime.utcnow()
             approval.approval_comments = request.comments
@@ -1031,7 +1031,7 @@ async def bulk_approve(
                 )
                 po = po_result.scalar_one_or_none()
                 if po:
-                    po.status = POStatus.APPROVED
+                    po.status = POStatus.APPROVED.value
                     po.approved_by = current_user.id
                     po.approved_at = datetime.utcnow()
 

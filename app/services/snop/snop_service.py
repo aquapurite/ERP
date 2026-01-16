@@ -547,7 +547,7 @@ class SNOPService:
         if not scenario:
             raise ValueError(f"Scenario {scenario_id} not found")
 
-        scenario.status = ScenarioStatus.RUNNING
+        scenario.status = ScenarioStatus.RUNNING.value
         await self.db.commit()
 
         try:
@@ -594,11 +594,11 @@ class SNOPService:
             scenario.projected_margin = projected_margin
             scenario.stockout_probability = stockout_probability
             scenario.service_level_pct = service_level * 100
-            scenario.status = ScenarioStatus.COMPLETED
+            scenario.status = ScenarioStatus.COMPLETED.value
             scenario.completed_at = datetime.utcnow()
 
         except Exception as e:
-            scenario.status = ScenarioStatus.FAILED
+            scenario.status = ScenarioStatus.FAILED.value
             scenario.results = {"error": str(e)}
 
         await self.db.commit()

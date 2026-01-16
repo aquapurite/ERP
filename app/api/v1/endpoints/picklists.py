@@ -236,7 +236,7 @@ async def generate_picklist(
             pick_sequence += 1
 
         # Update order status
-        order.status = OrderStatus.PICKLIST_CREATED
+        order.status = OrderStatus.PICKLIST_CREATED.value
 
     picklist.total_items = total_items
     picklist.total_quantity = total_quantity
@@ -289,7 +289,7 @@ async def assign_picklist(
 
     picklist.assigned_to = data.assigned_to
     picklist.assigned_at = datetime.utcnow()
-    picklist.status = PicklistStatus.ASSIGNED
+    picklist.status = PicklistStatus.ASSIGNED.value
 
     await db.commit()
     await db.refresh(picklist)
@@ -324,7 +324,7 @@ async def start_picking(
             detail="Picklist cannot be started in current status"
         )
 
-    picklist.status = PicklistStatus.IN_PROGRESS
+    picklist.status = PicklistStatus.IN_PROGRESS.value
     picklist.started_at = datetime.utcnow()
     if not picklist.assigned_to:
         picklist.assigned_to = current_user.id
@@ -588,7 +588,7 @@ async def complete_picklist(
     total_short = sum(i.quantity_short for i in picklist.items)
 
     # Update picklist
-    picklist.status = PicklistStatus.COMPLETED
+    picklist.status = PicklistStatus.COMPLETED.value
     picklist.completed_at = datetime.utcnow()
     picklist.picked_quantity = total_picked
     if notes:
@@ -601,7 +601,7 @@ async def complete_picklist(
         order_result = await db.execute(order_query)
         order = order_result.scalar_one_or_none()
         if order:
-            order.status = OrderStatus.PICKED
+            order.status = OrderStatus.PICKED.value
 
     await db.commit()
     await db.refresh(picklist)
@@ -645,7 +645,7 @@ async def cancel_picklist(
             detail="Picklist cannot be cancelled"
         )
 
-    picklist.status = PicklistStatus.CANCELLED
+    picklist.status = PicklistStatus.CANCELLED.value
     picklist.cancelled_at = datetime.utcnow()
     picklist.cancellation_reason = reason
 

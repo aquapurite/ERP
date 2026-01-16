@@ -2313,7 +2313,7 @@ async def create_grn(
     # Skip QC if not required
     if not grn_in.qc_required:
         grn.status = GRNStatus.PENDING_PUTAWAY.value
-        grn.qc_status = QualityCheckResult.ACCEPTED
+        grn.qc_status = QualityCheckResult.ACCEPTED.value
 
     await db.commit()
 
@@ -2483,11 +2483,11 @@ async def process_grn_quality_check(
 
     # Set overall QC status
     if all_accepted:
-        grn.qc_status = QualityCheckResult.ACCEPTED
+        grn.qc_status = QualityCheckResult.ACCEPTED.value
     elif all_rejected:
-        grn.qc_status = QualityCheckResult.REJECTED
+        grn.qc_status = QualityCheckResult.REJECTED.value
     else:
-        grn.qc_status = QualityCheckResult.PARTIAL
+        grn.qc_status = QualityCheckResult.PARTIAL.value
 
     grn.qc_done_by = current_user.id
     grn.qc_done_at = datetime.utcnow()
@@ -6366,7 +6366,7 @@ async def receive_srn(
         # If no QC required, accept all quantities
         for item in srn.items:
             item.quantity_accepted = item.quantity_returned
-            item.qc_result = QualityCheckResult.ACCEPTED
+            item.qc_result = QualityCheckResult.ACCEPTED.value
         srn.total_quantity_accepted = srn.total_quantity_returned
 
     await db.commit()
@@ -6447,11 +6447,11 @@ async def process_srn_quality_check(
 
     # Set overall QC status
     if all_accepted:
-        srn.qc_status = QualityCheckResult.ACCEPTED
+        srn.qc_status = QualityCheckResult.ACCEPTED.value
     elif all_rejected:
-        srn.qc_status = QualityCheckResult.REJECTED
+        srn.qc_status = QualityCheckResult.REJECTED.value
     else:
-        srn.qc_status = QualityCheckResult.PARTIAL
+        srn.qc_status = QualityCheckResult.PARTIAL.value
 
     # Update SRN totals
     srn.total_quantity_accepted = total_accepted
@@ -6512,24 +6512,24 @@ async def process_srn_putaway(
             item.bin_location = bin_location
 
             # Determine stock status based on restock decision
-            stock_status = StockItemStatus.AVAILABLE
+            stock_status = StockItemStatus.AVAILABLE.value
             quality_grade = "A"
 
             if item.restock_decision:
                 if item.restock_decision == RestockDecision.RESTOCK_AS_NEW:
-                    stock_status = StockItemStatus.AVAILABLE
+                    stock_status = StockItemStatus.AVAILABLE.value
                     quality_grade = "A"
                 elif item.restock_decision == RestockDecision.RESTOCK_AS_REFURB:
-                    stock_status = StockItemStatus.AVAILABLE
+                    stock_status = StockItemStatus.AVAILABLE.value
                     quality_grade = "REFURBISHED"
                 elif item.restock_decision == RestockDecision.SEND_FOR_REPAIR:
-                    stock_status = StockItemStatus.DAMAGED
+                    stock_status = StockItemStatus.DAMAGED.value
                     quality_grade = "REPAIR"
                 elif item.restock_decision == RestockDecision.RETURN_TO_VENDOR:
-                    stock_status = StockItemStatus.QUARANTINE
+                    stock_status = StockItemStatus.QUARANTINE.value
                     quality_grade = "RTV"
                 elif item.restock_decision == RestockDecision.SCRAP:
-                    stock_status = StockItemStatus.SCRAPPED
+                    stock_status = StockItemStatus.SCRAPPED.value
                     quality_grade = "SCRAP"
 
             # Create stock items for accepted quantity (only for restockable items)

@@ -481,9 +481,9 @@ class OrderService:
         # Update order payment status
         order.amount_paid += amount
         if order.amount_paid >= order.total_amount:
-            order.payment_status = PaymentStatus.PAID
+            order.payment_status = PaymentStatus.PAID.value
         elif order.amount_paid > 0:
-            order.payment_status = PaymentStatus.PARTIALLY_PAID
+            order.payment_status = PaymentStatus.PARTIALLY_PAID.value
 
         await self.db.commit()
         await self.db.refresh(payment)

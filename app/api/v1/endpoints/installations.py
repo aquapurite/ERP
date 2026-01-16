@@ -384,7 +384,7 @@ async def schedule_installation(
 
     installation.scheduled_date = data.scheduled_date
     installation.scheduled_time_slot = data.scheduled_time_slot
-    installation.status = InstallationStatus.SCHEDULED
+    installation.status = InstallationStatus.SCHEDULED.value
 
     if data.technician_id:
         # Verify technician exists and is active
@@ -475,7 +475,7 @@ async def start_installation(
             detail=f"Cannot start installation in {installation.status} status"
         )
 
-    installation.status = InstallationStatus.IN_PROGRESS
+    installation.status = InstallationStatus.IN_PROGRESS.value
     installation.started_at = datetime.utcnow()
 
     await db.commit()
@@ -510,7 +510,7 @@ async def complete_installation(
     today = date.today()
 
     # Update installation details
-    installation.status = InstallationStatus.COMPLETED
+    installation.status = InstallationStatus.COMPLETED.value
     installation.completed_at = now
     installation.installation_date = today
     installation.installation_notes = data.installation_notes
@@ -561,7 +561,7 @@ async def cancel_installation(
     if installation.status == InstallationStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Cannot cancel completed installation")
 
-    installation.status = InstallationStatus.CANCELLED
+    installation.status = InstallationStatus.CANCELLED.value
     installation.notes = f"{installation.notes or ''}\n[Cancelled] {reason}".strip()
 
     await db.commit()

@@ -323,7 +323,7 @@ async def add_shipments_to_manifest(
 
         # Update shipment
         shipment.manifest_id = manifest.id
-        shipment.status = ShipmentStatus.MANIFESTED
+        shipment.status = ShipmentStatus.MANIFESTED.value
 
         total_weight += shipment.weight_kg
         total_boxes += shipment.no_of_boxes
@@ -332,7 +332,7 @@ async def add_shipments_to_manifest(
     manifest.total_shipments += len(shipments)
     manifest.total_weight_kg = total_weight
     manifest.total_boxes = total_boxes
-    manifest.status = ManifestStatus.PENDING
+    manifest.status = ManifestStatus.PENDING.value
 
     await db.commit()
 
@@ -400,7 +400,7 @@ async def remove_shipments_from_manifest(
         shipment = shipment_result.scalar_one_or_none()
         if shipment:
             shipment.manifest_id = None
-            shipment.status = ShipmentStatus.READY_FOR_PICKUP
+            shipment.status = ShipmentStatus.READY_FOR_PICKUP.value
 
         # Update manifest totals
         manifest.total_shipments -= 1
@@ -410,7 +410,7 @@ async def remove_shipments_from_manifest(
         await db.delete(item)
 
     if manifest.total_shipments == 0:
-        manifest.status = ManifestStatus.DRAFT
+        manifest.status = ManifestStatus.DRAFT.value
 
     await db.commit()
 
@@ -571,7 +571,7 @@ async def confirm_manifest(
         )
 
     # Update manifest
-    manifest.status = ManifestStatus.CONFIRMED
+    manifest.status = ManifestStatus.CONFIRMED.value
     manifest.confirmed_at = datetime.utcnow()
     manifest.confirmed_by = current_user.id
 
@@ -646,7 +646,7 @@ async def complete_handover(
         shipment = shipment_result.scalar_one_or_none()
 
         if shipment:
-            shipment.status = ShipmentStatus.PICKED_UP
+            shipment.status = ShipmentStatus.PICKED_UP.value
             shipment.shipped_at = now
 
             # Add tracking
@@ -665,12 +665,12 @@ async def complete_handover(
             order_result = await db.execute(order_query)
             order = order_result.scalar_one_or_none()
             if order:
-                order.status = OrderStatus.SHIPPED
+                order.status = OrderStatus.SHIPPED.value
 
             shipped_count += 1
 
     # Update manifest
-    manifest.status = ManifestStatus.HANDED_OVER
+    manifest.status = ManifestStatus.HANDED_OVER.value
     manifest.handover_at = now
     manifest.handover_by = current_user.id
     if data.handover_remarks:
@@ -728,11 +728,11 @@ async def cancel_manifest(
         shipment = shipment_result.scalar_one_or_none()
         if shipment:
             shipment.manifest_id = None
-            shipment.status = ShipmentStatus.READY_FOR_PICKUP
+            shipment.status = ShipmentStatus.READY_FOR_PICKUP.value
 
         await db.delete(item)
 
-    manifest.status = ManifestStatus.CANCELLED
+    manifest.status = ManifestStatus.CANCELLED.value
     manifest.cancelled_at = datetime.utcnow()
     manifest.cancellation_reason = data.reason
     manifest.total_shipments = 0

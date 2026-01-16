@@ -346,7 +346,7 @@ async def pack_shipment(
         )
 
     # Update shipment
-    shipment.status = ShipmentStatus.PACKED
+    shipment.status = ShipmentStatus.PACKED.value
     shipment.packed_at = datetime.utcnow()
     shipment.packaging_type = data.packaging_type
     shipment.no_of_boxes = data.no_of_boxes
@@ -437,7 +437,7 @@ async def generate_awb(
 
     shipment.awb_number = awb_number
     shipment.tracking_number = awb_number
-    shipment.status = ShipmentStatus.READY_FOR_PICKUP
+    shipment.status = ShipmentStatus.READY_FOR_PICKUP.value
 
     # Add tracking
     tracking = ShipmentTracking(
@@ -548,7 +548,7 @@ async def mark_delivered(
 
     # Update shipment
     now = datetime.utcnow()
-    shipment.status = ShipmentStatus.DELIVERED
+    shipment.status = ShipmentStatus.DELIVERED.value
     shipment.delivered_at = now
     shipment.actual_delivery_date = now.date()
     shipment.delivered_to = data.delivered_to
@@ -578,7 +578,7 @@ async def mark_delivered(
     order_result = await db.execute(order_query)
     order = order_result.scalar_one_or_none()
     if order:
-        order.status = OrderStatus.DELIVERED
+        order.status = OrderStatus.DELIVERED.value
         order.delivered_at = now
 
     await db.commit()
@@ -698,7 +698,7 @@ async def initiate_rto(
             detail="Cannot initiate RTO for delivered shipment"
         )
 
-    shipment.status = ShipmentStatus.RTO_INITIATED
+    shipment.status = ShipmentStatus.RTO_INITIATED.value
     shipment.rto_reason = data.reason
     shipment.rto_initiated_at = datetime.utcnow()
 
@@ -754,7 +754,7 @@ async def cancel_shipment(
             detail="Cannot cancel shipped/delivered shipment"
         )
 
-    shipment.status = ShipmentStatus.CANCELLED
+    shipment.status = ShipmentStatus.CANCELLED.value
     shipment.cancelled_at = datetime.utcnow()
     shipment.cancellation_reason = data.reason
 
@@ -1549,7 +1549,7 @@ async def upload_pod_file(
     
     # Update shipment with delivery info
     now = datetime.utcnow()
-    shipment.status = ShipmentStatus.DELIVERED
+    shipment.status = ShipmentStatus.DELIVERED.value
     shipment.delivered_at = now
     shipment.actual_delivery_date = now.date()
     shipment.delivered_to = delivered_to
@@ -1582,7 +1582,7 @@ async def upload_pod_file(
         order_result = await db.execute(order_query)
         order = order_result.scalar_one_or_none()
         if order:
-            order.status = OrderStatus.DELIVERED
+            order.status = OrderStatus.DELIVERED.value
             order.delivered_at = now
     
     await db.commit()

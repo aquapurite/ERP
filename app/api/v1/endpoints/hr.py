@@ -850,7 +850,7 @@ async def check_in(
         attendance.is_late = is_late
         attendance.late_minutes = max(0, late_minutes)
         attendance.location_in = check_in_data.location
-        attendance.status = AttendanceStatus.PRESENT
+        attendance.status = AttendanceStatus.PRESENT.value
     else:
         attendance = Attendance(
             employee_id=emp_id,
@@ -925,7 +925,7 @@ async def check_out(
 
     # Update status based on work hours
     if work_hours < 4:
-        attendance.status = AttendanceStatus.HALF_DAY
+        attendance.status = AttendanceStatus.HALF_DAY.value
 
     attendance.check_out = now
     attendance.work_hours = Decimal(str(round(work_hours, 2)))
@@ -1197,7 +1197,7 @@ async def approve_leave_request(
         )
 
     if action_in.action == "APPROVE":
-        leave_req.status = LeaveStatus.APPROVED
+        leave_req.status = LeaveStatus.APPROVED.value
         leave_req.approved_by = current_user.id
         leave_req.approved_on = datetime.now()
 
@@ -1218,7 +1218,7 @@ async def approve_leave_request(
             )
 
     else:  # REJECT
-        leave_req.status = LeaveStatus.REJECTED
+        leave_req.status = LeaveStatus.REJECTED.value
         leave_req.approved_by = current_user.id
         leave_req.approved_on = datetime.now()
         leave_req.rejection_reason = action_in.rejection_reason
@@ -1494,7 +1494,7 @@ async def process_payroll(
     payroll.total_gross = total_gross
     payroll.total_deductions = total_deductions
     payroll.total_net = total_net
-    payroll.status = PayrollStatus.PROCESSED
+    payroll.status = PayrollStatus.PROCESSED.value
 
     await db.commit()
     await db.refresh(payroll)
@@ -1539,7 +1539,7 @@ async def approve_payroll(
             detail=f"Payroll must be in PROCESSED status to approve. Current: {payroll.status}"
         )
 
-    payroll.status = PayrollStatus.APPROVED
+    payroll.status = PayrollStatus.APPROVED.value
     payroll.approved_by = current_user.id
     payroll.approved_at = datetime.now()
 
@@ -2641,7 +2641,7 @@ async def submit_self_review(
     appraisal.self_rating = review_in.self_rating
     appraisal.self_comments = review_in.self_comments
     appraisal.self_review_date = datetime.now()
-    appraisal.status = AppraisalStatus.MANAGER_REVIEW
+    appraisal.status = AppraisalStatus.MANAGER_REVIEW.value
 
     await db.commit()
     await db.refresh(appraisal)
@@ -2697,7 +2697,7 @@ async def submit_manager_review(
     appraisal.recommended_increment_percentage = review_in.recommended_increment_percentage
     appraisal.goals_achieved = goals_achieved
     appraisal.overall_goal_score = overall_goal_score
-    appraisal.status = AppraisalStatus.HR_REVIEW
+    appraisal.status = AppraisalStatus.HR_REVIEW.value
 
     await db.commit()
     await db.refresh(appraisal)
@@ -2735,7 +2735,7 @@ async def submit_hr_review(
     appraisal.hr_comments = review_in.hr_comments
     appraisal.hr_reviewed_by = current_user.id
     appraisal.hr_review_date = datetime.now()
-    appraisal.status = AppraisalStatus.COMPLETED
+    appraisal.status = AppraisalStatus.COMPLETED.value
 
     await db.commit()
     await db.refresh(appraisal)

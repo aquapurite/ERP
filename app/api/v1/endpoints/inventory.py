@@ -395,7 +395,7 @@ async def delete_stock_item(
         )
 
     # Soft delete - mark as DISPOSED
-    item.status = StockItemStatus.DISPOSED
+    item.status = StockItemStatus.DISPOSED.value
     item.notes = f"Deleted by user on {datetime.utcnow().isoformat()}"
 
     await db.commit()

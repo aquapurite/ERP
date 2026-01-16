@@ -196,7 +196,7 @@ class ManifestService:
 
             # Update shipment
             shipment.manifest_id = manifest.id
-            shipment.status = ShipmentStatus.READY_FOR_PICKUP
+            shipment.status = ShipmentStatus.READY_FOR_PICKUP.value
 
         # Update manifest totals
         manifest.total_shipments = len(manifest.items)
@@ -204,7 +204,7 @@ class ManifestService:
         manifest.total_boxes = sum(item.no_of_boxes for item in manifest.items)
 
         if manifest.status == ManifestStatus.DRAFT:
-            manifest.status = ManifestStatus.PENDING
+            manifest.status = ManifestStatus.PENDING.value
 
         await self.db.commit()
         await self.db.refresh(manifest)
@@ -236,7 +236,7 @@ class ManifestService:
             shipment = result.scalar_one_or_none()
             if shipment:
                 shipment.manifest_id = None
-                shipment.status = ShipmentStatus.PACKED
+                shipment.status = ShipmentStatus.PACKED.value
 
             manifest.items.remove(item)
             await self.db.delete(item)
@@ -320,7 +320,7 @@ class ManifestService:
         if manifest.total_shipments == 0:
             raise ValueError("Cannot confirm empty manifest")
 
-        manifest.status = ManifestStatus.CONFIRMED
+        manifest.status = ManifestStatus.CONFIRMED.value
         manifest.confirmed_at = datetime.utcnow()
         manifest.confirmed_by = confirmed_by
 
@@ -339,7 +339,7 @@ class ManifestService:
             result = await self.db.execute(stmt)
             shipment = result.scalar_one_or_none()
             if shipment:
-                shipment.status = ShipmentStatus.MANIFESTED
+                shipment.status = ShipmentStatus.MANIFESTED.value
 
         await self.db.commit()
         await self.db.refresh(manifest)
@@ -363,7 +363,7 @@ class ManifestService:
         if not manifest.all_scanned:
             raise ValueError(f"Cannot complete handover. {manifest.total_shipments - manifest.scanned_shipments} shipments not scanned")
 
-        manifest.status = ManifestStatus.HANDED_OVER
+        manifest.status = ManifestStatus.HANDED_OVER.value
         manifest.handover_at = datetime.utcnow()
         manifest.handover_by = handover_by
 
@@ -380,7 +380,7 @@ class ManifestService:
             result = await self.db.execute(stmt)
             shipment = result.scalar_one_or_none()
             if shipment:
-                shipment.status = ShipmentStatus.PICKED_UP
+                shipment.status = ShipmentStatus.PICKED_UP.value
                 shipment.shipped_at = datetime.utcnow()
 
                 # Update order
@@ -388,7 +388,7 @@ class ManifestService:
                 order_result = await self.db.execute(order_stmt)
                 order = order_result.scalar_one_or_none()
                 if order:
-                    order.status = OrderStatus.SHIPPED
+                    order.status = OrderStatus.SHIPPED.value
                     order.shipped_at = datetime.utcnow()
 
         await self.db.commit()
@@ -408,7 +408,7 @@ class ManifestService:
         if manifest.status in [ManifestStatus.HANDED_OVER, ManifestStatus.IN_TRANSIT, ManifestStatus.COMPLETED, ManifestStatus.CANCELLED]:
             raise ValueError(f"Cannot cancel manifest in {manifest.status} status")
 
-        manifest.status = ManifestStatus.CANCELLED
+        manifest.status = ManifestStatus.CANCELLED.value
         manifest.cancelled_at = datetime.utcnow()
         manifest.cancellation_reason = reason
 
@@ -419,7 +419,7 @@ class ManifestService:
             shipment = result.scalar_one_or_none()
             if shipment:
                 shipment.manifest_id = None
-                shipment.status = ShipmentStatus.PACKED
+                shipment.status = ShipmentStatus.PACKED.value
 
         await self.db.commit()
         await self.db.refresh(manifest)

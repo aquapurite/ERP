@@ -334,7 +334,7 @@ class LeadAssignmentService:
 
         # Update status if new
         if lead.status == LeadStatus.NEW:
-            lead.status = LeadStatus.ASSIGNED
+            lead.status = LeadStatus.ASSIGNED.value
 
         await self.db.commit()
         await self.db.refresh(lead)

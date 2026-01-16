@@ -579,7 +579,7 @@ class AllocationService:
         order.allocated_at = datetime.utcnow()
         # Update status to ALLOCATED for orders in NEW or CONFIRMED status
         if order.status in [OrderStatus.NEW, OrderStatus.CONFIRMED]:
-            order.status = OrderStatus.ALLOCATED
+            order.status = OrderStatus.ALLOCATED.value
             # Also mark as confirmed if it wasn't
             if not order.confirmed_at:
                 order.confirmed_at = datetime.utcnow()

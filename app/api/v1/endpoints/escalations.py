@@ -441,7 +441,7 @@ async def assign_escalation(
     escalation.assigned_at = datetime.utcnow()
 
     if escalation.status == EscalationStatus.NEW:
-        escalation.status = EscalationStatus.ASSIGNED
+        escalation.status = EscalationStatus.ASSIGNED.value
 
     escalation.updated_at = datetime.utcnow()
 
@@ -484,7 +484,7 @@ async def acknowledge_escalation(
     old_status = escalation.status
     escalation.acknowledged_at = datetime.utcnow()
     escalation.first_response_at = escalation.first_response_at or datetime.utcnow()
-    escalation.status = EscalationStatus.ACKNOWLEDGED
+    escalation.status = EscalationStatus.ACKNOWLEDGED.value
     escalation.updated_at = datetime.utcnow()
 
     # Check response SLA
@@ -541,7 +541,7 @@ async def escalate_to_next_level(
     old_status = escalation.status
 
     escalation.current_level = level_order[current_idx + 1]
-    escalation.status = EscalationStatus.ESCALATED
+    escalation.status = EscalationStatus.ESCALATED.value
 
     if data.assign_to_id:
         escalation.assigned_to_id = data.assign_to_id
@@ -596,7 +596,7 @@ async def de_escalate(
     old_status = escalation.status
 
     escalation.current_level = level_order[current_idx - 1]
-    escalation.status = EscalationStatus.IN_PROGRESS
+    escalation.status = EscalationStatus.IN_PROGRESS.value
     escalation.updated_at = datetime.utcnow()
 
     # Create history entry
@@ -639,7 +639,7 @@ async def resolve_escalation(
     old_status = escalation.status
     now = datetime.utcnow()
 
-    escalation.status = EscalationStatus.RESOLVED
+    escalation.status = EscalationStatus.RESOLVED.value
     escalation.resolved_at = now
     escalation.resolution_notes = data.resolution_notes
     escalation.resolved_by_id = current_user.id
@@ -687,7 +687,7 @@ async def reopen_escalation(
 
     old_status = escalation.status
 
-    escalation.status = EscalationStatus.REOPENED
+    escalation.status = EscalationStatus.REOPENED.value
     escalation.reopen_count = (escalation.reopen_count or 0) + 1
     escalation.last_reopened_at = datetime.utcnow()
     escalation.resolved_at = None
@@ -731,7 +731,7 @@ async def close_escalation(
 
     old_status = escalation.status
 
-    escalation.status = EscalationStatus.CLOSED
+    escalation.status = EscalationStatus.CLOSED.value
     escalation.closed_at = datetime.utcnow()
     escalation.updated_at = datetime.utcnow()
 

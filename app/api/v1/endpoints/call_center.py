@@ -368,7 +368,7 @@ async def complete_call(
     call.call_end_time = end_time
     call.duration_seconds = duration
     call.talk_time_seconds = duration - call.hold_time_seconds
-    call.status = CallStatus.COMPLETED
+    call.status = CallStatus.COMPLETED.value
     call.outcome = request.outcome
     call.disposition_id = request.disposition_id
     call.call_notes = request.call_notes or call.call_notes
@@ -442,7 +442,7 @@ async def transfer_call(
     call.transferred_to_id = request.transfer_to_agent_id
     call.agent_id = request.transfer_to_agent_id
     call.transfer_reason = request.transfer_reason
-    call.status = CallStatus.TRANSFERRED
+    call.status = CallStatus.TRANSFERRED.value
 
     if request.notes:
         call.internal_notes = (call.internal_notes or "") + f"\n[Transfer] {request.notes}"
@@ -632,7 +632,7 @@ async def complete_callback(
     if callback.status == CallbackStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Callback already completed")
 
-    callback.status = CallbackStatus.COMPLETED
+    callback.status = CallbackStatus.COMPLETED.value
     callback.completed_at = datetime.utcnow()
     callback.completed_call_id = request.completed_call_id
     callback.completion_notes = request.completion_notes
@@ -663,7 +663,7 @@ async def reschedule_callback(
         raise HTTPException(status_code=400, detail="Cannot reschedule completed callback")
 
     # Update the callback
-    callback.status = CallbackStatus.RESCHEDULED
+    callback.status = CallbackStatus.RESCHEDULED.value
     callback.scheduled_datetime = request.new_datetime
     callback.scheduled_date = request.new_datetime.date()
     callback.reschedule_count += 1

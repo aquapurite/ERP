@@ -341,7 +341,7 @@ async def delete_vendor(
             detail=f"Cannot delete vendor with outstanding balance of {vendor.current_balance}"
         )
 
-    vendor.status = VendorStatus.INACTIVE
+    vendor.status = VendorStatus.INACTIVE.value
     vendor.updated_by = current_user.id
 
     await db.commit()
@@ -385,7 +385,7 @@ async def verify_vendor(
     vendor.is_verified = True
     vendor.verified_at = datetime.utcnow()
     vendor.verified_by = current_user.id
-    vendor.status = VendorStatus.ACTIVE
+    vendor.status = VendorStatus.ACTIVE.value
 
     await db.commit()
     await db.refresh(vendor)

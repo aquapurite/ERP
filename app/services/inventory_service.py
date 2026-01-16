@@ -333,7 +333,7 @@ class InventoryService:
 
         # Allocate items
         for item in items:
-            item.status = StockItemStatus.ALLOCATED
+            item.status = StockItemStatus.ALLOCATED.value
             item.order_id = order_id
             item.allocated_at = datetime.utcnow()
 

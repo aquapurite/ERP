@@ -615,7 +615,7 @@ async def dispose_asset(
     # Calculate gain/loss on disposal
     gain_loss = dispose_in.disposal_price - asset.current_book_value
 
-    asset.status = AssetStatus.DISPOSED
+    asset.status = AssetStatus.DISPOSED.value
     asset.disposal_date = dispose_in.disposal_date
     asset.disposal_price = dispose_in.disposal_price
     asset.disposal_reason = dispose_in.disposal_reason
@@ -971,7 +971,7 @@ async def approve_transfer(
             detail=f"Cannot approve transfer with status {transfer.status}"
         )
 
-    transfer.status = TransferStatus.IN_TRANSIT
+    transfer.status = TransferStatus.IN_TRANSIT.value
     transfer.approved_by = current_user.id
     transfer.approved_at = datetime.now()
 
@@ -1028,7 +1028,7 @@ async def complete_transfer(
     asset.custodian_employee_id = transfer.to_custodian_id
     asset.location_details = transfer.to_location_details
 
-    transfer.status = TransferStatus.COMPLETED
+    transfer.status = TransferStatus.COMPLETED.value
     transfer.completed_at = datetime.now()
     transfer.received_by = current_user.id
 

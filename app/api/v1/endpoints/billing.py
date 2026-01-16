@@ -438,7 +438,7 @@ async def generate_einvoice_irn(
         invoice.ack_date = datetime.fromisoformat(irn_result["ack_date"]) if irn_result.get("ack_date") else datetime.utcnow()
         invoice.signed_qr_code = irn_result.get("signed_qr_code")
         invoice.signed_invoice_data = irn_result.get("signed_invoice")
-        invoice.status = InvoiceStatus.IRN_GENERATED
+        invoice.status = InvoiceStatus.IRN_GENERATED.value
 
         await db.commit()
         await db.refresh(invoice)
@@ -546,7 +546,7 @@ async def cancel_einvoice_irn(
         # Update invoice status
         invoice.irn_cancelled_at = datetime.utcnow()
         invoice.irn_cancel_reason = cancel_request.reason
-        invoice.status = InvoiceStatus.IRN_CANCELLED
+        invoice.status = InvoiceStatus.IRN_CANCELLED.value
 
         await db.commit()
         await db.refresh(invoice)
@@ -1783,9 +1783,9 @@ async def create_payment_receipt(
     invoice.amount_due -= receipt_in.amount
 
     if invoice.amount_due <= 0:
-        invoice.status = InvoiceStatus.PAID
+        invoice.status = InvoiceStatus.PAID.value
     else:
-        invoice.status = InvoiceStatus.PARTIALLY_PAID
+        invoice.status = InvoiceStatus.PARTIALLY_PAID.value
 
     await db.commit()
     await db.refresh(receipt)

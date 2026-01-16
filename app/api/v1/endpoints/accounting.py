@@ -384,7 +384,7 @@ async def close_financial_period(
 
     # TODO: Generate closing entries (transfer P&L to Retained Earnings)
 
-    period.status = PeriodStatus.CLOSED
+    period.status = PeriodStatus.CLOSED.value
     period.closed_at = datetime.utcnow()
     period.closed_by = current_user.id
 
@@ -771,7 +771,7 @@ async def submit_journal_for_approval(
     approval_level = _get_approval_level(journal.total_debit)
 
     # Update journal for submission
-    journal.status = JournalStatus.PENDING_APPROVAL
+    journal.status = JournalStatus.PENDING_APPROVAL.value
     journal.submitted_by = current_user.id
     journal.submitted_at = datetime.utcnow()
     journal.approval_level = approval_level
@@ -838,7 +838,7 @@ async def approve_journal_entry(
         )
 
     # Update journal for approval
-    journal.status = JournalStatus.APPROVED
+    journal.status = JournalStatus.APPROVED.value
     journal.approved_by = current_user.id
     journal.approved_at = datetime.utcnow()
 
@@ -880,7 +880,7 @@ async def approve_journal_entry(
             db.add(gl_entry)
 
         # Update journal to POSTED
-        journal.status = JournalStatus.POSTED
+        journal.status = JournalStatus.POSTED.value
         journal.posted_by = current_user.id
         journal.posted_at = datetime.utcnow()
 
@@ -949,7 +949,7 @@ async def reject_journal_entry(
         )
 
     # Update journal for rejection
-    journal.status = JournalStatus.REJECTED
+    journal.status = JournalStatus.REJECTED.value
     journal.approved_by = current_user.id  # Record who rejected
     journal.approved_at = datetime.utcnow()
     journal.rejection_reason = request.reason
@@ -1015,7 +1015,7 @@ async def resubmit_rejected_journal(
 
     # Reset approval fields and resubmit
     approval_level = _get_approval_level(journal.total_debit)
-    journal.status = JournalStatus.PENDING_APPROVAL
+    journal.status = JournalStatus.PENDING_APPROVAL.value
     journal.submitted_by = current_user.id
     journal.submitted_at = datetime.utcnow()
     journal.approval_level = approval_level
@@ -1100,7 +1100,7 @@ async def post_journal_entry(
             account.current_balance += (line.credit_amount - line.debit_amount)
 
     # Update journal status
-    journal.status = JournalStatus.POSTED
+    journal.status = JournalStatus.POSTED.value
     journal.posted_by = current_user.id
     journal.posted_at = datetime.utcnow()
 

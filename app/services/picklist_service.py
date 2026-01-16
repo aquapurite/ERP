@@ -161,7 +161,7 @@ class PicklistService:
                 total_quantity += order_item.quantity
 
             # Update order status
-            order.status = OrderStatus.PICKLIST_CREATED
+            order.status = OrderStatus.PICKLIST_CREATED.value
 
         picklist.total_items = total_items
         picklist.total_quantity = total_quantity
@@ -211,7 +211,7 @@ class PicklistService:
 
         picklist.assigned_to = assigned_to
         picklist.assigned_at = datetime.utcnow()
-        picklist.status = PicklistStatus.ASSIGNED
+        picklist.status = PicklistStatus.ASSIGNED.value
 
         await self.db.commit()
         await self.db.refresh(picklist)
@@ -226,7 +226,7 @@ class PicklistService:
         if picklist.status not in [PicklistStatus.PENDING, PicklistStatus.ASSIGNED]:
             raise ValueError(f"Cannot start picking for picklist in {picklist.status} status")
 
-        picklist.status = PicklistStatus.IN_PROGRESS
+        picklist.status = PicklistStatus.IN_PROGRESS.value
         picklist.started_at = datetime.utcnow()
 
         await self.db.commit()
@@ -319,9 +319,9 @@ class PicklistService:
         has_shorts = any(item.quantity_short > 0 for item in picklist.items)
 
         if all_picked:
-            picklist.status = PicklistStatus.COMPLETED if not has_shorts else PicklistStatus.PARTIALLY_PICKED
+            picklist.status = PicklistStatus.COMPLETED.value if not has_shorts else PicklistStatus.PARTIALLY_PICKED
         else:
-            picklist.status = PicklistStatus.PARTIALLY_PICKED
+            picklist.status = PicklistStatus.PARTIALLY_PICKED.value
 
         picklist.completed_at = datetime.utcnow()
         if notes:
@@ -334,7 +334,7 @@ class PicklistService:
                 result = await self.db.execute(stmt)
                 order = result.scalar_one_or_none()
                 if order:
-                    order.status = OrderStatus.PICKED
+                    order.status = OrderStatus.PICKED.value
                     order.picked_at = datetime.utcnow()
 
         await self.db.commit()
@@ -354,7 +354,7 @@ class PicklistService:
         if picklist.status in [PicklistStatus.COMPLETED, PicklistStatus.CANCELLED]:
             raise ValueError(f"Cannot cancel picklist in {picklist.status} status")
 
-        picklist.status = PicklistStatus.CANCELLED
+        picklist.status = PicklistStatus.CANCELLED.value
         picklist.cancelled_at = datetime.utcnow()
         picklist.cancellation_reason = reason
 
@@ -364,7 +364,7 @@ class PicklistService:
             result = await self.db.execute(stmt)
             order = result.scalar_one_or_none()
             if order and order.status == OrderStatus.PICKLIST_CREATED:
-                order.status = OrderStatus.CONFIRMED
+                order.status = OrderStatus.CONFIRMED.value
 
         await self.db.commit()
         await self.db.refresh(picklist)

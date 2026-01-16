@@ -622,7 +622,7 @@ async def delete_sales_channel(
             detail=f"Cannot delete channel with {active_orders} active orders"
         )
 
-    channel.status = ChannelStatus.INACTIVE
+    channel.status = ChannelStatus.INACTIVE.value
 
     await db.commit()
     return None
@@ -643,7 +643,7 @@ async def activate_channel(
     if not channel:
         raise HTTPException(status_code=404, detail="Sales channel not found")
 
-    channel.status = ChannelStatus.ACTIVE
+    channel.status = ChannelStatus.ACTIVE.value
 
     await db.commit()
     await db.refresh(channel)
@@ -666,7 +666,7 @@ async def deactivate_channel(
     if not channel:
         raise HTTPException(status_code=404, detail="Sales channel not found")
 
-    channel.status = ChannelStatus.INACTIVE
+    channel.status = ChannelStatus.INACTIVE.value
 
     await db.commit()
     await db.refresh(channel)

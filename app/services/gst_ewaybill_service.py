@@ -370,7 +370,7 @@ class GSTEWayBillService:
                     ewb.valid_until = datetime.strptime(
                         ewb_data.get("validUpto"), "%d/%m/%Y %H:%M:%S"
                     ) if ewb_data.get("validUpto") else None
-                    ewb.status = EWayBillStatus.GENERATED
+                    ewb.status = EWayBillStatus.GENERATED.value
 
                     await self.db.commit()
                     await self.db.refresh(ewb)
@@ -568,7 +568,7 @@ class GSTEWayBillService:
                 result = response.json()
 
                 if result.get("status") == 1:
-                    ewb.status = EWayBillStatus.CANCELLED
+                    ewb.status = EWayBillStatus.CANCELLED.value
                     ewb.cancelled_at = datetime.utcnow()
                     ewb.cancel_reason = remarks or reason_code
 

@@ -243,7 +243,7 @@ async def approve_dealer(
     if dealer.status != DealerStatus.PENDING_APPROVAL:
         raise HTTPException(status_code=400, detail="Dealer is not pending approval")
 
-    dealer.status = DealerStatus.ACTIVE
+    dealer.status = DealerStatus.ACTIVE.value
     dealer.approved_by = current_user.id
     dealer.approved_at = datetime.utcnow()
 
@@ -480,11 +480,11 @@ async def record_dealer_payment(
 
     # Update credit status
     if new_balance > dealer.credit_limit:
-        dealer.credit_status = CreditStatus.OVER_LIMIT
+        dealer.credit_status = CreditStatus.OVER_LIMI.valueT.value
     elif new_balance > dealer.credit_limit * Decimal("0.8"):
-        dealer.credit_status = CreditStatus.WARNING
+        dealer.credit_status = CreditStatus.WARNIN.valueG.value
     else:
-        dealer.credit_status = CreditStatus.NORMAL
+        dealer.credit_status = CreditStatus.NORMA.valueL.value
 
     await db.commit()
     await db.refresh(ledger)

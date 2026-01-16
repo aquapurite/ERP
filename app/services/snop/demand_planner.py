@@ -669,7 +669,7 @@ class DemandPlannerService:
         if forecast.status != ForecastStatus.DRAFT:
             raise ValueError(f"Forecast must be in DRAFT status to submit for review")
 
-        forecast.status = ForecastStatus.PENDING_REVIEW
+        forecast.status = ForecastStatus.PENDING_REVIEW.value
         forecast.submitted_at = datetime.utcnow()
 
         await self.db.commit()
@@ -691,7 +691,7 @@ class DemandPlannerService:
         if forecast.status not in [ForecastStatus.PENDING_REVIEW, ForecastStatus.UNDER_REVIEW]:
             raise ValueError(f"Forecast must be pending review to approve")
 
-        forecast.status = ForecastStatus.APPROVED
+        forecast.status = ForecastStatus.APPROVED.value
         forecast.approved_by_id = user_id
         forecast.approved_at = datetime.utcnow()
         if comments:
@@ -713,7 +713,7 @@ class DemandPlannerService:
         if not forecast:
             raise ValueError(f"Forecast {forecast_id} not found")
 
-        forecast.status = ForecastStatus.REJECTED
+        forecast.status = ForecastStatus.REJECTED.value
         forecast.reviewed_by_id = user_id
         forecast.reviewed_at = datetime.utcnow()
         forecast.notes = (forecast.notes or "") + f"\n[Rejection Reason]: {reason}"
@@ -734,7 +734,7 @@ class DemandPlannerService:
         if not forecast:
             raise ValueError(f"Forecast {forecast_id} not found")
 
-        forecast.status = ForecastStatus.ADJUSTMENT_REQUESTED
+        forecast.status = ForecastStatus.ADJUSTMENT_REQUESTED.value
         forecast.reviewed_by_id = user_id
         forecast.reviewed_at = datetime.utcnow()
         forecast.notes = (forecast.notes or "") + f"\n[Adjustment Requested]: {reason}"
@@ -801,7 +801,7 @@ class DemandPlannerService:
         if not adjustment:
             raise ValueError(f"Adjustment {adjustment_id} not found")
 
-        adjustment.status = ForecastStatus.APPROVED
+        adjustment.status = ForecastStatus.APPROVED.value
         adjustment.approved_by_id = user_id
         adjustment.approved_at = datetime.utcnow()
 

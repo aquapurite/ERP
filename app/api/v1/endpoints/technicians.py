@@ -309,6 +309,6 @@ async def deactivate_technician(
             detail="Technician not found"
         )
 
-    technician.status = TechnicianStatus.INACTIVE
+    technician.status = TechnicianStatus.INACTIVE.value
     technician.is_available = False
     await db.commit()

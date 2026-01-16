@@ -640,9 +640,9 @@ async def qualify_lead(
         lead.score = qualify_in.score
 
     if qualify_in.is_qualified:
-        lead.status = LeadStatus.QUALIFIED
+        lead.status = LeadStatus.QUALIFIED.value
     else:
-        lead.status = LeadStatus.DISQUALIFIED
+        lead.status = LeadStatus.DISQUALIFIED.value
 
     # Log activity
     activity = LeadActivity(
@@ -718,7 +718,7 @@ async def convert_lead(
             lead.converted_customer_id = customer.id
 
     # Update lead status
-    lead.status = LeadStatus.WON
+    lead.status = LeadStatus.WON.value
     lead.converted_at = datetime.utcnow()
     lead.converted_by_id = current_user.id
     lead.actual_value = lead.estimated_value
@@ -762,7 +762,7 @@ async def mark_lead_lost(
 
     old_status = lead.status
 
-    lead.status = LeadStatus.LOST
+    lead.status = LeadStatus.LOST.value
     lead.lost_reason = lost_in.lost_reason
     lead.lost_reason_details = lost_in.lost_reason_details
     lead.lost_to_competitor = lost_in.lost_to_competitor

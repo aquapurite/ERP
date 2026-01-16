@@ -438,7 +438,7 @@ async def approve_commission_transaction(
     if transaction.status != CommissionStatus.PENDING:
         raise HTTPException(status_code=400, detail="Transaction is not pending")
 
-    transaction.status = CommissionStatus.APPROVED
+    transaction.status = CommissionStatus.APPROVED.value
     transaction.approved_by = current_user.id
     transaction.approved_at = datetime.utcnow()
 
@@ -532,7 +532,7 @@ async def create_commission_payout(
         )
         db.add(line)
 
-        transaction.status = CommissionStatus.PAID
+        transaction.status = CommissionStatus.PAID.value
         transaction.payout_id = payout.id
         transaction.paid_at = datetime.utcnow()
 
@@ -624,7 +624,7 @@ async def process_commission_payout(
     if payout.status != PayoutStatus.PENDING:
         raise HTTPException(status_code=400, detail="Payout is not pending")
 
-    payout.status = PayoutStatus.PROCESSED
+    payout.status = PayoutStatus.PROCESSED.value
     payout.payment_reference = payment_reference
     payout.payment_date = payment_date
     payout.processed_by = current_user.id

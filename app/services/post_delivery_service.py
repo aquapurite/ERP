@@ -160,7 +160,7 @@ class PostDeliveryService:
         pod_data: Dict[str, Any]
     ) -> None:
         """Update shipment with POD details."""
-        shipment.status = ShipmentStatus.DELIVERED
+        shipment.status = ShipmentStatus.DELIVERED.value
         shipment.delivered_at = datetime.utcnow()
         shipment.pod_signature_url = pod_data.get("signature_url")
         shipment.pod_image_url = pod_data.get("image_url")
@@ -174,7 +174,7 @@ class PostDeliveryService:
 
     async def _update_order_status(self, order: Order) -> None:
         """Update order status to DELIVERED."""
-        order.status = OrderStatus.DELIVERED
+        order.status = OrderStatus.DELIVERED.value
         order.delivered_at = datetime.utcnow()
 
     async def _get_customer(self, customer_id) -> Customer:
@@ -370,7 +370,7 @@ class PostDeliveryService:
         technician = await self._find_available_technician(pincode)
         if technician:
             service_request.technician_id = technician.id
-            service_request.status = ServiceStatus.ASSIGNED
+            service_request.status = ServiceStatus.ASSIGNED.value
             service_request.assigned_at = datetime.utcnow()
             assignment["technician_id"] = str(technician.id)
             assignment["assigned_to"] = "technician"
@@ -382,7 +382,7 @@ class PostDeliveryService:
             # Convert franchisee.id to UUID if it's a string (SQLite stores UUIDs as strings)
             franchisee_uuid = UUID(str(franchisee.id)) if isinstance(franchisee.id, str) else franchisee.id
             service_request.franchisee_id = franchisee_uuid
-            service_request.status = ServiceStatus.ASSIGNED
+            service_request.status = ServiceStatus.ASSIGNED.value
             service_request.assigned_at = datetime.utcnow()
             assignment["franchisee_id"] = str(franchisee.id)
             assignment["serviceability_id"] = str(serviceability.id)
