@@ -51,7 +51,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { api } from '@/lib/api';
+import { snopApi } from '@/lib/api';
 import { toast } from 'sonner';
 
 const statusColors: Record<string, string> = {
@@ -70,24 +70,15 @@ export default function DemandForecastsPage() {
 
   const { data: forecasts, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['snop-forecasts', granularity, level],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (granularity) params.append('granularity', granularity);
-      if (level) params.append('level', level);
-      const response = await api.get(`/snop/forecasts?${params}`);
-      return response.data;
-    },
+    queryFn: () => snopApi.getForecasts({ granularity, level }),
   });
 
   const generateMutation = useMutation({
-    mutationFn: async () => {
-      const response = await api.post('/snop/forecast/generate', {
-        granularity,
-        level,
-        horizon_periods: 12,
-      });
-      return response.data;
-    },
+    mutationFn: () => snopApi.generateForecast({
+      granularity,
+      level,
+      horizon_periods: 12,
+    }),
     onSuccess: () => {
       toast.success('Forecast generation started');
       queryClient.invalidateQueries({ queryKey: ['snop-forecasts'] });

@@ -24,7 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { api } from '@/lib/api';
+import { snopApi } from '@/lib/api';
 
 function formatNumber(value: number): string {
   if (value >= 100000) return `${(value / 100000).toFixed(1)}L`;
@@ -37,8 +37,7 @@ export default function InventoryOptimizationPage() {
     queryKey: ['snop-inventory-optimizations'],
     queryFn: async () => {
       try {
-        const response = await api.get('/snop/inventory/optimizations');
-        return response.data;
+        return await snopApi.getOptimizations();
       } catch {
         return { items: [], total: 0 };
       }

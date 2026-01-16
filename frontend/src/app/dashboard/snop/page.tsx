@@ -21,7 +21,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { api } from '@/lib/api';
+import { snopApi } from '@/lib/api';
 
 function formatNumber(value: number): string {
   if (value >= 10000000) return `${(value / 10000000).toFixed(1)}Cr`;
@@ -33,19 +33,13 @@ function formatNumber(value: number): string {
 export default function SNOPDashboardPage() {
   const { data: dashboard, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['snop-dashboard'],
-    queryFn: async () => {
-      const response = await api.get('/snop/dashboard');
-      return response.data;
-    },
+    queryFn: () => snopApi.getDashboard(),
     staleTime: 5 * 60 * 1000,
   });
 
   const { data: gapAnalysis } = useQuery({
     queryKey: ['snop-gap-analysis'],
-    queryFn: async () => {
-      const response = await api.get('/snop/dashboard/demand-supply-gap');
-      return response.data;
-    },
+    queryFn: () => snopApi.getDemandSupplyGap(),
   });
 
   if (isLoading) {

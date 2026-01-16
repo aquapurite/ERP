@@ -24,15 +24,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { api } from '@/lib/api';
+import { snopApi } from '@/lib/api';
 
 export default function SupplyPlansPage() {
   const { data: plans, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['snop-supply-plans'],
     queryFn: async () => {
       try {
-        const response = await api.get('/snop/supply-plans');
-        return response.data;
+        return await snopApi.getSupplyPlans();
       } catch {
         return { items: [], total: 0 };
       }

@@ -25,15 +25,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { api } from '@/lib/api';
+import { snopApi } from '@/lib/api';
 
 export default function ScenariosPage() {
   const { data: scenarios, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['snop-scenarios'],
     queryFn: async () => {
       try {
-        const response = await api.get('/snop/scenarios');
-        return response.data;
+        return await snopApi.getScenarios();
       } catch {
         return { items: [], total: 0 };
       }

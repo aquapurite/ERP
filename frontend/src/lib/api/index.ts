@@ -4901,4 +4901,57 @@ export const portalApi = {
   },
 };
 
+// S&OP (Sales & Operations Planning) API
+export const snopApi = {
+  // Dashboard
+  getDashboard: async () => {
+    const { data } = await apiClient.get('/snop/dashboard');
+    return data;
+  },
+  getDemandSupplyGap: async () => {
+    const { data } = await apiClient.get('/snop/dashboard/demand-supply-gap');
+    return data;
+  },
+  // Forecasts
+  getForecasts: async (params?: { granularity?: string; level?: string; skip?: number; limit?: number }) => {
+    const { data } = await apiClient.get('/snop/forecasts', { params });
+    return data;
+  },
+  generateForecast: async (payload: { granularity: string; level: string; horizon_periods: number }) => {
+    const { data } = await apiClient.post('/snop/forecast/generate', payload);
+    return data;
+  },
+  // Supply Plans
+  getSupplyPlans: async (params?: { skip?: number; limit?: number }) => {
+    const { data } = await apiClient.get('/snop/supply-plans', { params });
+    return data;
+  },
+  createSupplyPlan: async (payload: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/snop/supply-plans', payload);
+    return data;
+  },
+  // Scenarios
+  getScenarios: async (params?: { skip?: number; limit?: number }) => {
+    const { data } = await apiClient.get('/snop/scenarios', { params });
+    return data;
+  },
+  createScenario: async (payload: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/snop/scenarios', payload);
+    return data;
+  },
+  runScenario: async (scenarioId: string) => {
+    const { data } = await apiClient.post(`/snop/scenarios/${scenarioId}/run`);
+    return data;
+  },
+  // Inventory Optimization
+  getOptimizations: async (params?: { skip?: number; limit?: number }) => {
+    const { data } = await apiClient.get('/snop/inventory/optimizations', { params });
+    return data;
+  },
+  runOptimization: async () => {
+    const { data } = await apiClient.post('/snop/inventory/optimize');
+    return data;
+  },
+};
+
 export default apiClient;
