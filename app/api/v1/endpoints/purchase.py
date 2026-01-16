@@ -397,13 +397,13 @@ async def approve_purchase_requisition(
         )
 
     if request.action == "APPROVE":
-        pr.status = RequisitionStatus.APPROVED
+        pr.status = RequisitionStatus.APPROVED.value
         pr.approved_by = current_user.id
         pr.approved_at = datetime.utcnow()
     else:  # REJECT
         if not request.rejection_reason:
             raise HTTPException(status_code=400, detail="Rejection reason is required")
-        pr.status = RequisitionStatus.REJECTED
+        pr.status = RequisitionStatus.REJECTED.value
         pr.rejection_reason = request.rejection_reason
 
     await db.commit()
@@ -439,7 +439,7 @@ async def submit_purchase_requisition(
     if not pr.items:
         raise HTTPException(status_code=400, detail="Cannot submit PR without items")
 
-    pr.status = RequisitionStatus.SUBMITTED
+    pr.status = RequisitionStatus.SUBMITTED.value
 
     # Create approval request
     approval = await ApprovalService.create_approval_request(
@@ -483,7 +483,7 @@ async def cancel_purchase_requisition(
             detail="Cannot cancel PR that has been converted to PO"
         )
 
-    pr.status = RequisitionStatus.CANCELLED
+    pr.status = RequisitionStatus.CANCELLED.value
     await db.commit()
     await db.refresh(pr)
 
@@ -780,7 +780,7 @@ async def convert_requisition_to_po(
             db.add(delivery_schedule)
 
     # Mark PR as converted
-    pr.status = RequisitionStatus.CONVERTED
+    pr.status = RequisitionStatus.CONVERTED.value
     pr.converted_to_po_id = po.id
 
     await db.commit()
@@ -1381,7 +1381,7 @@ async def create_purchase_order(
         )
         pr = pr_result.scalar_one_or_none()
         if pr:
-            pr.status = RequisitionStatus.CONVERTED
+            pr.status = RequisitionStatus.CONVERTED.value
             pr.converted_to_po_id = po.id
 
     await db.commit()
@@ -1635,7 +1635,7 @@ async def submit_purchase_order(
             detail=f"Cannot submit PO in {po.status} status. Only DRAFT POs can be submitted."
         )
 
-    po.status = POStatus.PENDING_APPROVAL
+    po.status = POStatus.PENDING_APPROVAL.value
 
     await db.commit()
     await db.refresh(po)
@@ -1682,12 +1682,12 @@ async def approve_purchase_order(
     serial_gen_data = None
 
     if request.action == "APPROVE":
-        po.status = POStatus.APPROVED
+        po.status = POStatus.APPROVED.value
         po.approved_by = current_user.id
         po.approved_at = datetime.utcnow()
         # Update all delivery schedules to ADVANCE_PENDING status
         for schedule in po.delivery_schedules:
-            schedule.status = DeliveryLotStatus.ADVANCE_PENDING
+            schedule.status = DeliveryLotStatus.ADVANCE_PENDING.value
 
         # Prepare serial generation data (but don't generate yet)
         # Wrapped in try/except to ensure approval succeeds even if serial check fails
@@ -1743,10 +1743,10 @@ async def approve_purchase_order(
             import logging
             logging.warning(f"Serial check failed (will skip serial generation): {serial_check_error}")
     else:
-        po.status = POStatus.CANCELLED
+        po.status = POStatus.CANCELLED.value
         # Cancel all delivery schedules
         for schedule in po.delivery_schedules:
-            schedule.status = DeliveryLotStatus.CANCELLED
+            schedule.status = DeliveryLotStatus.CANCELLED.value
 
     # Commit the approval/rejection first
     await db.commit()
@@ -2000,7 +2000,7 @@ async def send_po_to_vendor(
                 # Log error but don't fail the send operation
                 print(f"Warning: Failed to generate serials for PO {po.po_number}: {e}")
 
-    po.status = POStatus.SENT_TO_VENDOR
+    po.status = POStatus.SENT_TO_VENDOR.value
     po.sent_to_vendor_at = datetime.utcnow()
 
     await db.commit()
@@ -2029,7 +2029,7 @@ async def confirm_purchase_order(
     if not po:
         raise HTTPException(status_code=404, detail="Purchase Order not found")
 
-    po.status = POStatus.CONFIRMED
+    po.status = POStatus.CONFIRMED.value
     po.vendor_acknowledged_at = datetime.utcnow()
 
     await db.commit()
@@ -2088,7 +2088,7 @@ async def record_lot_payment(
         schedule.advance_paid = payment.amount
         schedule.advance_paid_date = payment.payment_date
         schedule.advance_payment_ref = payment.payment_reference
-        schedule.status = DeliveryLotStatus.ADVANCE_PAID
+        schedule.status = DeliveryLotStatus.ADVANCE_PAID.value
 
     elif payment.payment_type == "BALANCE":
         if schedule.status not in [DeliveryLotStatus.DELIVERED, DeliveryLotStatus.PAYMENT_PENDING]:
@@ -2100,7 +2100,7 @@ async def record_lot_payment(
         schedule.balance_paid = payment.amount
         schedule.balance_paid_date = payment.payment_date
         schedule.balance_payment_ref = payment.payment_reference
-        schedule.status = DeliveryLotStatus.COMPLETED
+        schedule.status = DeliveryLotStatus.COMPLETED.value
 
     await db.commit()
     await db.refresh(schedule)
@@ -2140,7 +2140,7 @@ async def mark_lot_delivered(
 
     schedule.actual_delivery_date = delivery_date
     schedule.grn_id = grn_id
-    schedule.status = DeliveryLotStatus.PAYMENT_PENDING
+    schedule.status = DeliveryLotStatus.PAYMENT_PENDING.value
     schedule.balance_due_date = delivery_date + timedelta(days=schedule.balance_due_days)
 
     await db.commit()
@@ -2304,15 +2304,15 @@ async def create_grn(
     # Update PO status
     all_closed = all(item.is_closed for item in po.items)
     if all_closed:
-        po.status = POStatus.FULLY_RECEIVED
+        po.status = POStatus.FULLY_RECEIVED.value
     else:
-        po.status = POStatus.PARTIAL
+        po.status = POStatus.PARTIAL.value
 
     po.total_received_value = (Decimal(str(po.total_received_value or 0)) + total_value).quantize(Decimal("0.01"))
 
     # Skip QC if not required
     if not grn_in.qc_required:
-        grn.status = GRNStatus.PENDING_PUTAWAY
+        grn.status = GRNStatus.PENDING_PUTAWAY.value
         grn.qc_status = QualityCheckResult.ACCEPTED
 
     await db.commit()
@@ -2492,7 +2492,7 @@ async def process_grn_quality_check(
     grn.qc_done_by = current_user.id
     grn.qc_done_at = datetime.utcnow()
     grn.qc_remarks = qc_request.overall_remarks
-    grn.status = GRNStatus.PENDING_PUTAWAY
+    grn.status = GRNStatus.PENDING_PUTAWAY.value
 
     await db.commit()
     await db.refresh(grn)
@@ -2602,7 +2602,7 @@ async def process_grn_putaway(
             db.add(movement)
 
     # Update GRN status
-    grn.status = GRNStatus.COMPLETED
+    grn.status = GRNStatus.COMPLETED.value
     grn.put_away_complete = True
     grn.put_away_at = datetime.utcnow()
 
@@ -2895,7 +2895,7 @@ async def perform_three_way_match(
         invoice.grn_matched = True
         invoice.is_fully_matched = True
         invoice.matching_variance = variance_amount
-        invoice.status = VendorInvoiceStatus.VERIFIED
+        invoice.status = VendorInvoiceStatus.VERIFIED.value
         invoice.verified_by = current_user.id
         invoice.verified_at = datetime.utcnow()
 
@@ -3134,7 +3134,7 @@ async def fix_and_test_po(
     steps.append({"step": 2, "action": "Deleted existing serials", "result": "Done"})
 
     # Step 3: Reset to DRAFT then APPROVE
-    po.status = POStatus.APPROVED
+    po.status = POStatus.APPROVED.value
     po.approved_at = datetime.utcnow()
     await db.commit()
     steps.append({"step": 3, "action": "Set status to APPROVED", "result": "Done"})
@@ -3324,7 +3324,7 @@ async def reset_po_to_draft(
     )
 
     # Reset PO to DRAFT
-    po.status = POStatus.DRAFT
+    po.status = POStatus.DRAFT.value
     po.approved_by = None
     po.approved_at = None
 
@@ -5330,11 +5330,11 @@ async def approve_vendor_proforma(
         )
 
     if request.action == "APPROVE":
-        proforma.status = ProformaStatus.APPROVED
+        proforma.status = ProformaStatus.APPROVED.value
         proforma.approved_by = current_user.id
         proforma.approved_at = datetime.utcnow()
     else:
-        proforma.status = ProformaStatus.REJECTED
+        proforma.status = ProformaStatus.REJECTED.value
         proforma.rejection_reason = request.rejection_reason
 
     await db.commit()
@@ -5386,7 +5386,7 @@ async def convert_proforma_to_po(
     po = PurchaseOrder(
         po_number=po_number,
         po_date=today,
-        status=POStatus.DRAFT,
+        status=POStatus.DRAFT.value,
         vendor_id=proforma.vendor_id,
         vendor_name=vendor.legal_name if vendor else "Unknown",
         vendor_gstin=vendor.gstin if vendor else None,
@@ -5441,7 +5441,7 @@ async def convert_proforma_to_po(
         db.add(po_item)
 
     # Update proforma status
-    proforma.status = ProformaStatus.CONVERTED_TO_PO
+    proforma.status = ProformaStatus.CONVERTED_TO_PO.value
     proforma.purchase_order_id = po.id
 
     await db.commit()
@@ -5474,7 +5474,7 @@ async def cancel_vendor_proforma(
             detail="Cannot cancel proforma that has been converted to PO"
         )
 
-    proforma.status = ProformaStatus.CANCELLED
+    proforma.status = ProformaStatus.CANCELLED.value
     await db.commit()
 
     return {"message": "Vendor Proforma cancelled successfully"}
@@ -6256,7 +6256,7 @@ async def schedule_srn_pickup(
 
     # Update status to PENDING_RECEIPT if it was DRAFT
     if srn.status == SRNStatus.DRAFT:
-        srn.status = SRNStatus.PENDING_RECEIPT
+        srn.status = SRNStatus.PENDING_RECEIPT.value
 
     await db.commit()
     await db.refresh(srn)
@@ -6311,7 +6311,7 @@ async def update_srn_pickup(
         # If delivered, mark pickup as complete and update SRN status
         if request.pickup_status == PickupStatus.DELIVERED.value:
             srn.pickup_completed_at = datetime.utcnow()
-            srn.status = SRNStatus.RECEIVED
+            srn.status = SRNStatus.RECEIVED.value
             srn.received_at = datetime.utcnow()
             srn.received_by = current_user.id
 
@@ -6360,9 +6360,9 @@ async def receive_srn(
 
     # Determine next status based on QC requirement
     if srn.qc_required:
-        srn.status = SRNStatus.PENDING_QC
+        srn.status = SRNStatus.PENDING_QC.value
     else:
-        srn.status = SRNStatus.PUT_AWAY_PENDING
+        srn.status = SRNStatus.PUT_AWAY_PENDING.value
         # If no QC required, accept all quantities
         for item in srn.items:
             item.quantity_accepted = item.quantity_returned
@@ -6464,7 +6464,7 @@ async def process_srn_quality_check(
     srn.qc_done_by = current_user.id
     srn.qc_done_at = datetime.utcnow()
     srn.qc_remarks = qc_request.overall_remarks
-    srn.status = SRNStatus.PUT_AWAY_PENDING
+    srn.status = SRNStatus.PUT_AWAY_PENDING.value
 
     await db.commit()
     await db.refresh(srn)
@@ -6596,7 +6596,7 @@ async def process_srn_putaway(
             db.add(movement)
 
     # Update SRN status
-    srn.status = SRNStatus.PUT_AWAY_COMPLETE
+    srn.status = SRNStatus.PUT_AWAY_COMPLETE.value
     srn.put_away_complete = True
     srn.put_away_at = datetime.utcnow()
 
@@ -6660,21 +6660,21 @@ async def resolve_srn(
         await db.flush()
 
         srn.credit_note_id = credit_note.id
-        srn.status = SRNStatus.CREDITED
+        srn.status = SRNStatus.CREDITED.value
 
     elif resolution_type == ResolutionType.REPLACEMENT:
         # For replacement, the order would typically be created manually
         # Just update status - linking replacement order can be done later
-        srn.status = SRNStatus.REPLACED
+        srn.status = SRNStatus.REPLACED.value
         # Note: replacement_order_id can be set via a separate update endpoint
 
     elif resolution_type == ResolutionType.REFUND:
         # Mark for refund processing
-        srn.status = SRNStatus.REFUNDED
+        srn.status = SRNStatus.REFUNDED.value
 
     elif resolution_type == ResolutionType.REJECT:
         # Return rejected - no credit/replacement
-        srn.status = SRNStatus.CANCELLED
+        srn.status = SRNStatus.CANCELLED.value
 
     await db.commit()
     await db.refresh(srn)
