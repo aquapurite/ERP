@@ -19,7 +19,7 @@ from sqlalchemy.dialects.postgresql import UUID
 
 # revision identifiers, used by Alembic.
 revision: str = 'add_document_sequences'
-down_revision: Union[str, None] = None  # Will be set automatically
+down_revision: Union[str, None] = 'convert_enum_to_varchar_phase2'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
