@@ -91,7 +91,7 @@ async def get_my_permissions(
                     "id": str(role.id),
                     "name": role.name,
                     "code": role.code,
-                    "level": role.level.name,
+                    "level": role.level,  # Already a string (VARCHAR)
                 }
                 for role in current_user.roles
             ],
@@ -118,7 +118,7 @@ async def get_my_permissions(
                 "id": str(role.id),
                 "name": role.name,
                 "code": role.code,
-                "level": role.level.name,
+                "level": role.level,  # Already a string (VARCHAR)
             }
             for role in current_user.roles
         ],

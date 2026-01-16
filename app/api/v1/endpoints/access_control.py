@@ -133,7 +133,7 @@ async def get_user_access_summary(
                 "id": str(role.id),
                 "name": role.name,
                 "code": role.code,
-                "level": role.level.name,
+                "level": role.level,  # Already a string (VARCHAR)
                 "department": role.department,
             }
             for role in current_user.roles
@@ -142,7 +142,7 @@ async def get_user_access_summary(
             "id": str(current_user.region.id),
             "name": current_user.region.name,
             "code": current_user.region.code,
-            "type": current_user.region.type.value,
+            "type": current_user.region.type,  # Already a string (VARCHAR)
         } if current_user.region else None,
         "permissions_by_module": permissions_by_module,
         "total_permissions": len(permission_codes),

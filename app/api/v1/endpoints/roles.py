@@ -149,7 +149,7 @@ async def create_role(
         role_data={
             "name": role.name,
             "code": role.code,
-            "level": role.level.name,
+            "level": role.level,  # Already a string (VARCHAR)
             "department": role.department,
         },
         user_id=current_user.id,
@@ -197,7 +197,7 @@ async def update_role(
     old_data = {
         "name": role.name,
         "description": role.description,
-        "level": role.level.name,
+        "level": role.level,  # Already a string (VARCHAR)
         "department": role.department,
         "is_active": role.is_active,
     }
@@ -206,8 +206,7 @@ async def update_role(
 
     # Audit log
     new_data = {k: v for k, v in data.model_dump(exclude_unset=True).items()}
-    if "level" in new_data:
-        new_data["level"] = new_data["level"].name
+    # level is already a string, no need to convert
 
     await audit_service.log_role_updated(
         role_id=role_id,
@@ -274,7 +273,7 @@ async def delete_role(
         role_data={
             "name": role.name,
             "code": role.code,
-            "level": role.level.name,
+            "level": role.level,  # Already a string (VARCHAR)
         },
         user_id=current_user.id,
         ip_address=request.client.host if request.client else None,
