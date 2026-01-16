@@ -148,7 +148,7 @@ class VendorResponse(VendorBase):
     id: UUID
     vendor_code: str
     status: str
-    grade: VendorGrade
+    grade: str  # VARCHAR in DB
     gst_state_code: Optional[str] = None
     opening_balance: Decimal
     current_balance: Decimal
@@ -172,9 +172,9 @@ class VendorBrief(BaseModel):
     id: UUID
     vendor_code: str
     name: str
-    vendor_type: VendorType
+    vendor_type: str  # VARCHAR in DB
     status: str
-    grade: VendorGrade = VendorGrade.B
+    grade: str = "B"  # VARCHAR in DB
     gstin: Optional[str] = None
     pan: Optional[str] = None
     phone: Optional[str] = None

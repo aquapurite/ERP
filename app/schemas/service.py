@@ -87,7 +87,7 @@ class ServiceRequestResponse(BaseModel):
     """Service request response schema."""
     id: uuid.UUID
     ticket_number: str
-    service_type: ServiceType
+    service_type: str  # VARCHAR in DB
     source: str
     priority: str
     status: str
@@ -159,8 +159,8 @@ class ServiceRequestListResponse(BaseModel):
 class ServiceStatusHistoryResponse(BaseModel):
     """Service status history response."""
     id: uuid.UUID
-    from_status: Optional[ServiceStatus] = None
-    to_status: ServiceStatus
+    from_status: Optional[str] = None  # VARCHAR in DB
+    to_status: str  # VARCHAR in DB
     changed_by: Optional[uuid.UUID] = None
     notes: Optional[str] = None
     created_at: datetime

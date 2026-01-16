@@ -93,7 +93,7 @@ class PicklistResponse(BaseModel):
     picklist_number: str
     warehouse_id: uuid.UUID
     status: str
-    picklist_type: PicklistType
+    picklist_type: str  # VARCHAR in DB
     priority: int
     total_orders: int
     total_items: int

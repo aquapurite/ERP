@@ -77,7 +77,7 @@ class ManifestResponse(BaseModel):
     transporter_id: uuid.UUID
     transporter: Optional[TransporterBrief] = None
     status: str
-    business_type: BusinessType
+    business_type: str  # VARCHAR in DB
     manifest_date: datetime
     total_shipments: int
     scanned_shipments: int

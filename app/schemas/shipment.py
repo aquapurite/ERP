@@ -94,10 +94,10 @@ class ShipmentResponse(BaseModel):
     awb_number: Optional[str] = None
     tracking_number: Optional[str] = None
     status: str
-    payment_mode: PaymentMode
+    payment_mode: str  # VARCHAR in DB
     cod_amount: Optional[float] = None
     cod_collected: bool
-    packaging_type: PackagingType
+    packaging_type: str  # VARCHAR in DB
     no_of_boxes: int
     weight_kg: float
     volumetric_weight_kg: Optional[float] = None

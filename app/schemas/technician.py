@@ -1,5 +1,5 @@
 """Technician schemas for API requests/responses."""
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 from datetime import datetime, date
 import uuid
@@ -67,9 +67,9 @@ class TechnicianResponse(BaseModel):
     phone: str
     alternate_phone: Optional[str] = None
     email: Optional[str] = None
-    technician_type: TechnicianType
+    technician_type: str  # VARCHAR in DB
     status: str
-    skill_level: SkillLevel
+    skill_level: str  # VARCHAR in DB
     specializations: Optional[List[str]] = None
     region_id: Optional[uuid.UUID] = None
     assigned_warehouse_id: Optional[uuid.UUID] = None
@@ -83,8 +83,7 @@ class TechnicianResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TechnicianDetail(TechnicianResponse):
@@ -114,12 +113,11 @@ class TechnicianBrief(BaseModel):
     employee_code: str
     full_name: str
     phone: str
-    skill_level: SkillLevel
+    skill_level: str  # VARCHAR in DB
     is_available: bool
     average_rating: float
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TechnicianListResponse(BaseModel):
@@ -159,8 +157,7 @@ class TechnicianLeaveResponse(BaseModel):
     rejection_reason: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TechnicianPerformance(BaseModel):

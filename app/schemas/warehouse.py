@@ -1,5 +1,5 @@
 """Warehouse schemas for API requests/responses."""
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 import uuid
@@ -65,7 +65,7 @@ class WarehouseResponse(BaseModel):
     id: uuid.UUID
     code: str
     name: str
-    warehouse_type: WarehouseType
+    warehouse_type: str  # VARCHAR in DB
     address_line1: str
     address_line2: Optional[str] = None
     city: str
@@ -90,8 +90,7 @@ class WarehouseResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WarehouseBrief(BaseModel):
@@ -99,13 +98,12 @@ class WarehouseBrief(BaseModel):
     id: uuid.UUID
     code: str
     name: str
-    warehouse_type: WarehouseType
+    warehouse_type: str  # VARCHAR in DB
     city: str
     state: str
     is_active: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WarehouseListResponse(BaseModel):

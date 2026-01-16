@@ -109,7 +109,7 @@ class StockTransferResponse(BaseModel):
     """Stock transfer response schema."""
     id: uuid.UUID
     transfer_number: str
-    transfer_type: TransferType
+    transfer_type: str  # VARCHAR in DB
     status: str
     from_warehouse_id: uuid.UUID
     to_warehouse_id: uuid.UUID

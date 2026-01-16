@@ -58,7 +58,7 @@ class PaymentResponse(BaseModel):
     """Payment response schema."""
     id: uuid.UUID
     amount: Decimal
-    method: PaymentMethod
+    method: str  # VARCHAR in DB
     status: str
     transaction_id: Optional[str] = None
     gateway: Optional[str] = None
@@ -76,8 +76,8 @@ class PaymentResponse(BaseModel):
 class StatusHistoryResponse(BaseModel):
     """Order status history response."""
     id: uuid.UUID
-    from_status: Optional[OrderStatus] = None
-    to_status: OrderStatus
+    from_status: Optional[str] = None  # VARCHAR in DB
+    to_status: str  # VARCHAR in DB
     changed_by: Optional[uuid.UUID] = None
     notes: Optional[str] = None
     created_at: datetime
@@ -167,8 +167,8 @@ class OrderResponse(BaseModel):
     shipping_amount: Decimal
     total_amount: Decimal
     discount_code: Optional[str] = None
-    payment_method: PaymentMethod
-    payment_status: PaymentStatus
+    payment_method: str  # VARCHAR in DB
+    payment_status: str  # VARCHAR in DB
     amount_paid: Decimal
     balance_due: Decimal
     shipping_address: dict

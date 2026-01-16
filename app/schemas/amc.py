@@ -65,7 +65,7 @@ class AMCContractResponse(BaseModel):
     """AMC contract response schema."""
     id: uuid.UUID
     contract_number: str
-    amc_type: AMCType
+    amc_type: str  # VARCHAR in DB
     status: str
     customer: CustomerBrief
     product_id: uuid.UUID
@@ -165,7 +165,7 @@ class AMCPlanResponse(BaseModel):
     id: uuid.UUID
     name: str
     code: str
-    amc_type: AMCType
+    amc_type: str  # VARCHAR in DB
     category_id: Optional[uuid.UUID] = None
     duration_months: int
     base_price: float

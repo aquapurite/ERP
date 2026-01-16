@@ -48,7 +48,7 @@ class AddressUpdate(BaseModel):
 class AddressResponse(BaseModel):
     """Address response schema."""
     id: uuid.UUID
-    address_type: AddressType
+    address_type: str  # VARCHAR in DB
     contact_name: Optional[str] = None
     contact_phone: Optional[str] = None
     address_line1: str
@@ -122,7 +122,7 @@ class CustomerResponse(BaseModel):
     email: Optional[str] = None
     phone: str
     alternate_phone: Optional[str] = None
-    customer_type: CustomerType
+    customer_type: str  # VARCHAR in DB
     source: str
     company_name: Optional[str] = None
     gst_number: Optional[str] = None

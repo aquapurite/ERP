@@ -114,7 +114,7 @@ class ProductDocumentResponse(BaseModel):
     """Product document response."""
     id: uuid.UUID
     title: str
-    document_type: DocumentType
+    document_type: str  # VARCHAR in DB
     file_url: str
     file_size_bytes: Optional[int] = None
     mime_type: Optional[str] = None
@@ -305,7 +305,7 @@ class ProductResponse(BaseModel):
     # Master Product File - FG/Item Code
     fg_code: Optional[str] = None
     model_code: Optional[str] = None
-    item_type: ProductItemType = ProductItemType.FINISHED_GOODS
+    item_type: str = "FG"  # VARCHAR in DB
 
     short_description: Optional[str] = None
     description: Optional[str] = None
@@ -382,7 +382,7 @@ class ProductBriefResponse(BaseModel):
     slug: str
     fg_code: Optional[str] = None
     model_code: Optional[str] = None
-    item_type: ProductItemType = ProductItemType.FINISHED_GOODS
+    item_type: str = "FG"  # VARCHAR in DB
     mrp: Decimal
     selling_price: Decimal
     primary_image_url: Optional[str] = None
@@ -403,7 +403,7 @@ class MasterProductFileResponse(BaseModel):
     model_code: Optional[str] = None
     name: str
     sku: str
-    item_type: ProductItemType
+    item_type: str  # VARCHAR in DB
     category_name: str
     brand_name: str
     # Dimensions
