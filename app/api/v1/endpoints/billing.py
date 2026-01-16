@@ -1365,7 +1365,7 @@ async def get_eway_bill_details(
             "ewb_id": str(ewb_id),
             "ewb_number": ewb.eway_bill_number,
             "document_number": ewb.document_number,
-            "status": ewb.status.value if ewb.status else None,
+            "status": ewb.status if ewb.status else None,
             "valid_from": ewb.valid_from,
             "valid_until": ewb.valid_until,
             "vehicle_number": ewb.vehicle_number,
@@ -1523,7 +1523,7 @@ async def print_eway_bill(
                 <h1>E-WAY BILL</h1>
                 <div class="subtitle">Generated under GST (Goods and Services Tax)</div>
                 <div class="ewb-number">{ewb.eway_bill_number}</div>
-                <span class="status {ewb.status.value.lower()}">{ewb.status.value}</span>
+                <span class="status {ewb.status.lower()}">{ewb.status}</span>
             </div>
 
             <div class="section">
@@ -1974,7 +1974,7 @@ async def get_gstr1_report(
             {
                 "note_number": note.note_number,
                 "note_date": note.note_date.isoformat(),
-                "note_type": note.document_type.value,
+                "note_type": note.document_type,
                 "original_invoice_number": note.original_invoice_number,
                 "original_invoice_date": note.original_invoice_date.isoformat() if note.original_invoice_date else None,
                 "taxable_value": float(note.taxable_amount),
@@ -2196,7 +2196,7 @@ async def download_tax_invoice(
     <html>
     <head>
         <meta charset="UTF-8">
-        <title>{'Proforma Invoice' if invoice.invoice_type and invoice.invoice_type.value == 'PROFORMA' else 'Delivery Challan' if invoice.invoice_type and invoice.invoice_type.value == 'DELIVERY_CHALLAN' else 'Tax Invoice'} - {invoice.invoice_number}</title>
+        <title>{'Proforma Invoice' if invoice.invoice_type and invoice.invoice_type == 'PROFORMA' else 'Delivery Challan' if invoice.invoice_type and invoice.invoice_type == 'DELIVERY_CHALLAN' else 'Tax Invoice'} - {invoice.invoice_number}</title>
         <style>
             @media print {{
                 body {{ margin: 0; padding: 15px; }}
@@ -2350,7 +2350,7 @@ async def download_tax_invoice(
                 </div>
             </div>
             <div class="invoice-title">
-                <h2>{'PROFORMA INVOICE' if invoice.invoice_type and invoice.invoice_type.value == 'PROFORMA' else 'DELIVERY CHALLAN' if invoice.invoice_type and invoice.invoice_type.value == 'DELIVERY_CHALLAN' else 'TAX INVOICE'}</h2>
+                <h2>{'PROFORMA INVOICE' if invoice.invoice_type and invoice.invoice_type == 'PROFORMA' else 'DELIVERY CHALLAN' if invoice.invoice_type and invoice.invoice_type == 'DELIVERY_CHALLAN' else 'TAX INVOICE'}</h2>
                 <div style="margin-top: 10px; text-align: right; font-size: 11px;">
                     <strong>Invoice No:</strong> {invoice.invoice_number}<br>
                     <strong>Date:</strong> {invoice.invoice_date}<br>
@@ -2385,7 +2385,7 @@ async def download_tax_invoice(
             </div>
             <div class="info-box">
                 <h4>Payment Details</h4>
-                <p><strong>Payment Status:</strong> {invoice.status.value if invoice.status else 'N/A'}</p>
+                <p><strong>Payment Status:</strong> {invoice.status if invoice.status else 'N/A'}</p>
                 <p><strong>Amount Due:</strong> ₹{float(invoice.amount_due or 0):,.2f}</p>
             </div>
         </div>

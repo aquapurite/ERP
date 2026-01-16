@@ -184,7 +184,7 @@ class RegionFilter:
                 "id": str(region.id),
                 "name": region.name,
                 "code": region.code,
-                "type": region.type.value,
+                "type": region.type,
                 "children": [await build_tree(child) for child in children]
             }
 

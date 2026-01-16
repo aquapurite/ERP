@@ -270,11 +270,11 @@ async def post_journal_entry(
             id=journal.id,
             entry_number=journal.entry_number,
             entry_date=journal.entry_date,
-            journal_type=journal.journal_type.value if journal.journal_type else "GENERAL",
+            journal_type=journal.journal_type if journal.journal_type else "GENERAL",
             narration=journal.narration or "",
             total_debit=float(journal.total_debit or 0),
             total_credit=float(journal.total_credit or 0),
-            status=journal.status.value if journal.status else "DRAFT",
+            status=journal.status if journal.status else "DRAFT",
             reference_type=journal.reference_type,
             reference_id=journal.reference_id
         )
@@ -317,7 +317,7 @@ async def list_pending_journal_entries(
             "id": str(j.id),
             "entry_number": j.entry_number,
             "entry_date": str(j.entry_date),
-            "journal_type": j.journal_type.value if j.journal_type else None,
+            "journal_type": j.journal_type if j.journal_type else None,
             "narration": j.narration,
             "total_debit": float(j.total_debit or 0),
             "total_credit": float(j.total_credit or 0),

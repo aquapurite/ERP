@@ -289,7 +289,7 @@ class DemandPlannerService:
 
         return [
             {
-                "channel": row.channel.value if row.channel else "UNKNOWN",
+                "channel": row.channel if row.channel else "UNKNOWN",
                 "total_quantity": Decimal(str(row.total_quantity or 0)),
                 "total_revenue": Decimal(str(row.total_revenue or 0)),
                 "order_count": row.order_count
@@ -520,7 +520,7 @@ class DemandPlannerService:
             factor_details.append({
                 "factor_id": str(factor.id),
                 "factor_name": factor.factor_name,
-                "factor_type": factor.factor_type.value,
+                "factor_type": factor.factor_type,  # Already a string (VARCHAR)
                 "original_forecast": float(original),
                 "adjusted_forecast": float(adjusted_forecast),
                 "impact_pct": round((float(adjusted_forecast) - float(original)) / float(original) * 100, 2) if float(original) > 0 else 0

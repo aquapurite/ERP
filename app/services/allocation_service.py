@@ -183,7 +183,7 @@ class AllocationService:
             warehouse_name=selected_warehouse.warehouse.name,
             is_split=False,
             rule_applied=applied_rule.name if applied_rule else "Default",
-            allocation_type=applied_rule.allocation_type.value if applied_rule and hasattr(applied_rule.allocation_type, 'value') else "NEAREST",
+            allocation_type=applied_rule.allocation_type if applied_rule and hasattr(applied_rule.allocation_type, 'value') else "NEAREST",
             decision_factors=decision_factors,
             recommended_transporter_id=transporter.id if transporter else None,
             recommended_transporter_code=transporter.code if transporter else shipping_info.get("carrier_code") if shipping_info else None,
@@ -284,7 +284,7 @@ class AllocationService:
         """Apply allocation rule and return selected warehouse."""
         decision_factors = {
             "rule_name": rule.name,
-            "allocation_type": rule.allocation_type.value if hasattr(rule.allocation_type, 'value') else str(rule.allocation_type),
+            "allocation_type": rule.allocation_type if hasattr(rule.allocation_type, 'value') else str(rule.allocation_type),
             "candidates_count": len(serviceable_warehouses)
         }
 

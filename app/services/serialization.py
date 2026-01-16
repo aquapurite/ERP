@@ -663,7 +663,7 @@ class SerializationService:
 
         counts = {"total": 0}
         for row in result:
-            counts[row.status.value] = row.count
+            counts[row.status] = row.count
             counts["total"] += row.count
 
         return counts
@@ -699,7 +699,7 @@ class SerializationService:
                 barcode=barcode,
                 is_valid=False,
                 status=serial.status,
-                message=f"Barcode already processed. Current status: {serial.status.value}",
+                message=f"Barcode already processed. Current status: {serial.status}",
                 serial_details=POSerialResponse.model_validate(serial),
             )
 
@@ -759,7 +759,7 @@ class SerializationService:
 
         if serial.status != SerialStatus.RECEIVED:
             raise ValueError(
-                f"Serial must be in RECEIVED status to assign. Current: {serial.status.value}"
+                f"Serial must be in RECEIVED status to assign. Current: {serial.status}"
             )
 
         serial.status = SerialStatus.ASSIGNED
@@ -788,7 +788,7 @@ class SerializationService:
 
         if serial.status not in [SerialStatus.ASSIGNED, SerialStatus.RECEIVED]:
             raise ValueError(
-                f"Serial must be in ASSIGNED or RECEIVED status to sell. Current: {serial.status.value}"
+                f"Serial must be in ASSIGNED or RECEIVED status to sell. Current: {serial.status}"
             )
 
         now = datetime.utcnow()

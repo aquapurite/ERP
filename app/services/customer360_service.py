@@ -250,8 +250,8 @@ class Customer360Service:
             "lead": Customer360LeadSummary(
                 id=lead.id,
                 lead_number=lead.lead_number,
-                status=lead.status.value if hasattr(lead.status, 'value') else str(lead.status),
-                source=lead.source.value if hasattr(lead.source, 'value') else str(lead.source),
+                status=lead.status if hasattr(lead.status, 'value') else str(lead.status),
+                source=lead.source if hasattr(lead.source, 'value') else str(lead.source),
                 converted_at=lead.converted_at,
             ),
             "activities": [
@@ -326,7 +326,7 @@ class Customer360Service:
 
         return [
             Customer360ShipmentTracking(
-                status=t.status.value if hasattr(t.status, 'value') else str(t.status),
+                status=t.status if hasattr(t.status, 'value') else str(t.status),
                 location=t.location,
                 city=t.city,
                 remarks=t.remarks,
@@ -437,7 +437,7 @@ class Customer360Service:
                 event_id=o.id,
                 title=f"Order {o.order_number}",
                 description=f"Amount: Rs.{o.total_amount}",
-                status=o.status.value if hasattr(o.status, 'value') else str(o.status),
+                status=o.status if hasattr(o.status, 'value') else str(o.status),
                 timestamp=o.created_at,
                 metadata={"order_number": o.order_number, "amount": float(o.total_amount or 0)},
             ))
@@ -449,7 +449,7 @@ class Customer360Service:
                 event_id=s.id,
                 title=f"Shipment {s.shipment_number}",
                 description=f"AWB: {s.awb_number}" if s.awb_number else None,
-                status=s.status.value if hasattr(s.status, 'value') else str(s.status),
+                status=s.status if hasattr(s.status, 'value') else str(s.status),
                 timestamp=s.created_at,
                 metadata={"shipment_number": s.shipment_number, "awb": s.awb_number},
             ))
@@ -461,7 +461,7 @@ class Customer360Service:
                 event_id=i.id,
                 title=f"Installation {i.installation_number}",
                 description=f"Pincode: {i.installation_pincode}",
-                status=i.status.value if hasattr(i.status, 'value') else str(i.status),
+                status=i.status if hasattr(i.status, 'value') else str(i.status),
                 timestamp=i.created_at,
                 metadata={"installation_number": i.installation_number, "rating": i.customer_rating},
             ))
@@ -475,9 +475,9 @@ class Customer360Service:
                 event_id=sr.id,
                 title=f"Service {sr.ticket_number}",
                 description=sr.title,
-                status=sr.status.value if hasattr(sr.status, 'value') else str(sr.status),
+                status=sr.status if hasattr(sr.status, 'value') else str(sr.status),
                 timestamp=sr_timestamp if isinstance(sr_timestamp, datetime) else datetime.combine(sr_timestamp, datetime.min.time()),
-                metadata={"ticket_number": sr.ticket_number, "service_type": sr.service_type.value if hasattr(sr.service_type, 'value') else str(sr.service_type)},
+                metadata={"ticket_number": sr.ticket_number, "service_type": sr.service_type if hasattr(sr.service_type, 'value') else str(sr.service_type)},
             ))
 
         # Add calls
@@ -486,8 +486,8 @@ class Customer360Service:
                 event_type="CALL",
                 event_id=c.id,
                 title=f"Call {c.call_id}",
-                description=f"{c.call_type.value if hasattr(c.call_type, 'value') else c.call_type} - {c.category.value if hasattr(c.category, 'value') else c.category}",
-                status=c.status.value if hasattr(c.status, 'value') else str(c.status),
+                description=f"{c.call_type.value if hasattr(c.call_type, 'value') else c.call_type} - {c.category if hasattr(c.category, 'value') else c.category}",
+                status=c.status if hasattr(c.status, 'value') else str(c.status),
                 timestamp=c.call_start_time,
                 metadata={"call_id": c.call_id, "duration": c.duration_seconds},
             ))
@@ -499,7 +499,7 @@ class Customer360Service:
                 event_id=p.id,
                 title=f"Payment Rs.{p.amount}",
                 description=f"Method: {p.method.value if hasattr(p.method, 'value') else p.method}",
-                status=p.status.value if hasattr(p.status, 'value') else str(p.status),
+                status=p.status if hasattr(p.status, 'value') else str(p.status),
                 timestamp=p.created_at,
                 metadata={"amount": float(p.amount or 0), "method": p.method.value if hasattr(p.method, 'value') else str(p.method)},
             ))
@@ -514,9 +514,9 @@ class Customer360Service:
         return Customer360OrderSummary(
             id=order.id,
             order_number=order.order_number,
-            status=order.status.value if hasattr(order.status, 'value') else str(order.status),
+            status=order.status if hasattr(order.status, 'value') else str(order.status),
             total_amount=float(order.total_amount or 0),
-            payment_status=order.payment_status.value if order.payment_status and hasattr(order.payment_status, 'value') else str(order.payment_status) if order.payment_status else None,
+            payment_status=order.payment_status if order.payment_status and hasattr(order.payment_status, 'value') else str(order.payment_status) if order.payment_status else None,
             items_count=0,  # Avoid lazy loading - would need selectinload
             created_at=order.created_at,
         )
@@ -527,7 +527,7 @@ class Customer360Service:
             id=shipment.id,
             shipment_number=shipment.shipment_number,
             order_number=None,  # Would need to join
-            status=shipment.status.value if hasattr(shipment.status, 'value') else str(shipment.status),
+            status=shipment.status if hasattr(shipment.status, 'value') else str(shipment.status),
             awb_number=shipment.awb_number,
             transporter_name=None,  # Would need to join
             delivered_to=shipment.delivered_to,
@@ -540,7 +540,7 @@ class Customer360Service:
         return Customer360InstallationSummary(
             id=installation.id,
             installation_number=installation.installation_number,
-            status=installation.status.value if hasattr(installation.status, 'value') else str(installation.status),
+            status=installation.status if hasattr(installation.status, 'value') else str(installation.status),
             product_name=None,  # Would need to join
             installation_pincode=installation.installation_pincode,
             franchisee_name=None,  # Would need to join
@@ -558,9 +558,9 @@ class Customer360Service:
         return Customer360ServiceRequestSummary(
             id=sr.id,
             ticket_number=sr.ticket_number,
-            service_type=sr.service_type.value if hasattr(sr.service_type, 'value') else str(sr.service_type),
-            status=sr.status.value if hasattr(sr.status, 'value') else str(sr.status),
-            priority=sr.priority.value if sr.priority and hasattr(sr.priority, 'value') else str(sr.priority) if sr.priority else None,
+            service_type=sr.service_type if hasattr(sr.service_type, 'value') else str(sr.service_type),
+            status=sr.status if hasattr(sr.status, 'value') else str(sr.status),
+            priority=sr.priority if sr.priority and hasattr(sr.priority, 'value') else str(sr.priority) if sr.priority else None,
             title=sr.title,
             franchisee_name=None,  # Would need to join
             technician_name=None,  # Would need to join
@@ -576,9 +576,9 @@ class Customer360Service:
             id=call.id,
             call_id=call.call_id,
             call_type=call.call_type.value if hasattr(call.call_type, 'value') else str(call.call_type),
-            category=call.category.value if hasattr(call.category, 'value') else str(call.category),
-            status=call.status.value if hasattr(call.status, 'value') else str(call.status),
-            outcome=call.outcome.value if call.outcome and hasattr(call.outcome, 'value') else str(call.outcome) if call.outcome else None,
+            category=call.category if hasattr(call.category, 'value') else str(call.category),
+            status=call.status if hasattr(call.status, 'value') else str(call.status),
+            outcome=call.outcome if call.outcome and hasattr(call.outcome, 'value') else str(call.outcome) if call.outcome else None,
             duration_seconds=call.duration_seconds,
             agent_name=None,  # Would need to join
             call_start_time=call.call_start_time,
@@ -592,7 +592,7 @@ class Customer360Service:
             order_number=None,  # Would need to join
             amount=float(payment.amount or 0),
             method=payment.method.value if hasattr(payment.method, 'value') else str(payment.method),
-            status=payment.status.value if hasattr(payment.status, 'value') else str(payment.status),
+            status=payment.status if hasattr(payment.status, 'value') else str(payment.status),
             transaction_id=payment.transaction_id,
             gateway=payment.gateway,
             completed_at=payment.completed_at,
@@ -605,7 +605,7 @@ class Customer360Service:
             id=amc.id,
             contract_number=amc.contract_number,
             plan_name=amc.plan_name if hasattr(amc, 'plan_name') else "AMC Plan",
-            status=amc.status.value if hasattr(amc.status, 'value') else str(amc.status),
+            status=amc.status if hasattr(amc.status, 'value') else str(amc.status),
             start_date=amc.start_date,
             end_date=amc.end_date,
             total_services=amc.total_services or 0,

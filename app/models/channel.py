@@ -223,7 +223,7 @@ class SalesChannel(Base):
     @property
     def is_marketplace(self) -> bool:
         """Check if channel is a marketplace."""
-        return self.channel_type.value.startswith("MARKETPLACE_")
+        return self.channel_type.startswith("MARKETPLACE_")
 
     def __repr__(self) -> str:
         return f"<SalesChannel(code='{self.code}', type='{self.channel_type}')>"

@@ -1114,7 +1114,7 @@ async def get_aging_report(
     # By level
     level_counts = {}
     for esc in escalations:
-        level = str(esc.current_level.value)
+        level = str(esc.current_level)
         level_counts[level] = level_counts.get(level, 0) + 1
 
     by_level = [{"level": k, "count": v} for k, v in level_counts.items()]
@@ -1122,7 +1122,7 @@ async def get_aging_report(
     # By priority
     priority_counts = {}
     for esc in escalations:
-        priority = str(esc.priority.value)
+        priority = str(esc.priority)
         priority_counts[priority] = priority_counts.get(priority, 0) + 1
 
     by_priority = [{"priority": k, "count": v} for k, v in priority_counts.items()]
@@ -1172,7 +1172,7 @@ async def get_sla_compliance_report(
     # By source
     source_data = {}
     for esc in escalations:
-        source = str(esc.source_type.value)
+        source = str(esc.source_type)
         if source not in source_data:
             source_data[source] = {"total": 0, "response_met": 0, "resolution_met": 0}
         source_data[source]["total"] += 1
@@ -1194,7 +1194,7 @@ async def get_sla_compliance_report(
     # By priority
     priority_data = {}
     for esc in escalations:
-        priority = str(esc.priority.value)
+        priority = str(esc.priority)
         if priority not in priority_data:
             priority_data[priority] = {"total": 0, "response_met": 0, "resolution_met": 0}
         priority_data[priority]["total"] += 1

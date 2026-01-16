@@ -169,14 +169,14 @@ async def list_tds_deductions(
             id=d.id,
             deductee_name=d.deductee_name,
             deductee_pan=d.deductee_pan,
-            section=d.section.value,
+            section=d.section,
             deduction_date=d.deduction_date,
             financial_year=d.financial_year,
             quarter=d.quarter,
             gross_amount=d.gross_amount,
             tds_rate=float(d.tds_rate),
             total_tds=d.total_tds,
-            status=d.status.value,
+            status=d.status,
             challan_number=d.challan_number,
             certificate_issued=d.certificate_issued
         )
@@ -214,7 +214,7 @@ async def get_tds_deduction(
         "deductee_name": deduction.deductee_name,
         "deductee_pan": deduction.deductee_pan,
         "deductee_address": deduction.deductee_address,
-        "section": deduction.section.value,
+        "section": deduction.section,
         "deduction_date": str(deduction.deduction_date),
         "financial_year": deduction.financial_year,
         "quarter": deduction.quarter,
@@ -230,7 +230,7 @@ async def get_tds_deduction(
         "reference_id": str(deduction.reference_id) if deduction.reference_id else None,
         "reference_number": deduction.reference_number,
         "narration": deduction.narration,
-        "status": deduction.status.value,
+        "status": deduction.status,
         "deposit_date": str(deduction.deposit_date) if deduction.deposit_date else None,
         "challan_number": deduction.challan_number,
         "challan_date": str(deduction.challan_date) if deduction.challan_date else None,
@@ -462,7 +462,7 @@ async def get_tds_summary(
         "financial_year": financial_year,
         "by_section": [
             {
-                "section": row.section.value,
+                "section": row.section,
                 "count": row.count,
                 "total_gross": float(row.total_gross or 0),
                 "total_tds": float(row.total_tds or 0)
@@ -479,7 +479,7 @@ async def get_tds_summary(
         ],
         "by_status": [
             {
-                "status": row.status.value,
+                "status": row.status,
                 "count": row.count,
                 "total_tds": float(row.total_tds or 0)
             }

@@ -271,7 +271,7 @@ class ERPChatbotService:
         )
         rows = result.all()
 
-        status_counts = {str(r.status.value): r.count for r in rows}
+        status_counts = {str(r.status): r.count for r in rows}
         total = sum(status_counts.values())
 
         period_name = self._get_period_name(query)
@@ -556,7 +556,7 @@ class ERPChatbotService:
                 "order_number": r.order_number,
                 "customer": r.customer_name,
                 "amount": float(r.total_amount or 0),
-                "status": r.status.value,
+                "status": r.status,
                 "date": r.created_at.isoformat() if r.created_at else None
             }
             for r in rows
@@ -641,7 +641,7 @@ class ERPChatbotService:
         )
         rows = result.all()
 
-        status_counts = {str(r.status.value): r.count for r in rows}
+        status_counts = {str(r.status): r.count for r in rows}
         total = sum(status_counts.values())
         open_count = status_counts.get('PENDING', 0) + status_counts.get('ASSIGNED', 0) + status_counts.get('SCHEDULED', 0)
 

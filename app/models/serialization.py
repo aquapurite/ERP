@@ -243,7 +243,7 @@ class POSerial(Base):
     grn = relationship("GoodsReceiptNote", backref="scanned_serials")
 
     def __repr__(self):
-        return f"<POSerial {self.barcode} ({self.status.value})>"
+        return f"<POSerial {self.barcode} ({self.status})>"
 
 
 class ModelCodeReference(Base):

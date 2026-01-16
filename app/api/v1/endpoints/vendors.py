@@ -158,7 +158,7 @@ async def create_vendor(
             amount=vendor_in.opening_balance or Decimal("0"),
             title=f"Vendor Onboarding: {vendor.name}",
             requested_by=current_user.id,
-            description=f"New vendor registration - {vendor.vendor_type.value if vendor.vendor_type else 'General'}",
+            description=f"New vendor registration - {vendor.vendor_type if vendor.vendor_type else 'General'}",
             priority=5,
         )
         await db.commit()
@@ -727,7 +727,7 @@ async def get_vendor_stats(
     ).group_by(Vendor.status)
 
     status_result = await db.execute(status_query)
-    status_counts = {row.status.value: row.count for row in status_result.all()}
+    status_counts = {row.status: row.count for row in status_result.all()}
 
     # Total vendors by type
     type_query = select(
@@ -736,7 +736,7 @@ async def get_vendor_stats(
     ).group_by(Vendor.vendor_type)
 
     type_result = await db.execute(type_query)
-    type_counts = {row.vendor_type.value: row.count for row in type_result.all()}
+    type_counts = {row.vendor_type: row.count for row in type_result.all()}
 
     # Total outstanding
     outstanding_query = select(

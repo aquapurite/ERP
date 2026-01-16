@@ -477,7 +477,7 @@ async def list_pending_approvals(
     items = []
     for a in approvals:
         mapped_type = entity_type_map.get(a.entity_type.value, a.entity_type.value)
-        level_num = a.approval_level.value[-1] if a.approval_level else "1"
+        level_num = a.approval_level[-1] if a.approval_level else "1"
         is_overdue = a.due_date < datetime.utcnow() if a.due_date else False
 
         items.append({
@@ -488,7 +488,7 @@ async def list_pending_approvals(
             "title": a.title,
             "description": a.description,
             "amount": float(a.amount) if a.amount else 0,
-            "status": a.status.value,
+            "status": a.status,
             "level": f"L{level_num}",
             "current_approver": None,
             "requested_by": _get_user_name(a.requester) if a.requester else "Unknown",
@@ -640,8 +640,8 @@ async def get_approval_history(
             "reference": a.entity_number,
             "title": a.title,
             "amount": float(a.amount) if a.amount else 0,
-            "level": f"L{a.approval_level.value[-1]}" if a.approval_level else "L1",
-            "status": a.status.value,
+            "level": f"L{a.approval_level[-1]}" if a.approval_level else "L1",
+            "status": a.status,
             "requested_by": _get_user_name(a.requester) if a.requester else "Unknown",
             "requested_at": a.requested_at.isoformat() if a.requested_at else None,
         })
@@ -709,7 +709,7 @@ async def submit_po_for_approval(
     if po.status != POStatus.DRAFT:
         raise HTTPException(
             status_code=400,
-            detail=f"Only DRAFT POs can be submitted for approval. Current status: {po.status.value}"
+            detail=f"Only DRAFT POs can be submitted for approval. Current status: {po.status}"
         )
 
     # Check if already has an active approval request
@@ -748,7 +748,7 @@ async def submit_po_for_approval(
     # Update PO
     po.status = POStatus.PENDING_APPROVAL
     po.approval_request_id = approval.id
-    po.approval_level = approval.approval_level.value
+    po.approval_level = approval.approval_level
     po.submitted_for_approval_at = datetime.utcnow()
 
     await db.commit()
@@ -757,7 +757,7 @@ async def submit_po_for_approval(
     return POApprovalResponse(
         po_id=po.id,
         po_number=po.po_number,
-        po_status=po.status.value,
+        po_status=po.status,
         approval_request_id=approval.id,
         approval_status=approval.status,
         approval_level=approval.approval_level,
@@ -795,7 +795,7 @@ async def approve_request(
     if approval.status != ApprovalStatus.PENDING:
         raise HTTPException(
             status_code=400,
-            detail=f"Only PENDING requests can be approved. Current status: {approval.status.value}"
+            detail=f"Only PENDING requests can be approved. Current status: {approval.status}"
         )
 
     # Maker-Checker validation
@@ -806,7 +806,7 @@ async def approve_request(
         )
 
     # Update approval request
-    old_status = approval.status.value
+    old_status = approval.status
     approval.status = ApprovalStatus.APPROVED
     approval.approved_by = current_user.id
     approval.approved_at = datetime.utcnow()
@@ -878,7 +878,7 @@ async def reject_request(
     if approval.status != ApprovalStatus.PENDING:
         raise HTTPException(
             status_code=400,
-            detail=f"Only PENDING requests can be rejected. Current status: {approval.status.value}"
+            detail=f"Only PENDING requests can be rejected. Current status: {approval.status}"
         )
 
     # Maker-Checker validation
@@ -889,7 +889,7 @@ async def reject_request(
         )
 
     # Update approval request
-    old_status = approval.status.value
+    old_status = approval.status
     approval.status = ApprovalStatus.REJECTED
     approval.rejected_by = current_user.id
     approval.rejected_at = datetime.utcnow()
@@ -958,11 +958,11 @@ async def escalate_request(
     if approval.status != ApprovalStatus.PENDING:
         raise HTTPException(
             status_code=400,
-            detail=f"Only PENDING requests can be escalated. Current status: {approval.status.value}"
+            detail=f"Only PENDING requests can be escalated. Current status: {approval.status}"
         )
 
     # Update approval
-    old_status = approval.status.value
+    old_status = approval.status
     approval.status = ApprovalStatus.ESCALATED
     approval.escalated_at = datetime.utcnow()
     approval.escalated_to = request.escalate_to
@@ -1011,7 +1011,7 @@ async def bulk_approve(
                 continue
 
             if approval.status != ApprovalStatus.PENDING:
-                failed.append({"id": str(req_id), "error": f"Status is {approval.status.value}"})
+                failed.append({"id": str(req_id), "error": f"Status is {approval.status}"})
                 continue
 
             if approval.requested_by == current_user.id:

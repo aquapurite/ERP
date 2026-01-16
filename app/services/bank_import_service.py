@@ -427,7 +427,7 @@ class BankImportService:
                     "date": str(t.transaction_date),
                     "description": t.description,
                     "amount": float(t.amount),
-                    "type": t.transaction_type.value
+                    "type": t.transaction_type
                 }
                 for t in imported_transactions[:50]  # Limit response
             ],

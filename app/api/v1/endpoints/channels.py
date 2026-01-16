@@ -160,7 +160,7 @@ async def get_channels_dropdown(
             "id": str(c.id),
             "code": c.channel_code,
             "name": c.name,
-            "type": c.channel_type.value,
+            "type": c.channel_type,
         }
         for c in channels
     ]
@@ -195,7 +195,7 @@ async def get_channel_summary(
     by_channel = [
         {
             "channel_name": row.name,
-            "channel_type": row.channel_type.value if row.channel_type else None,
+            "channel_type": row.channel_type if row.channel_type else None,
             "order_count": row.order_count,
             "order_value": float(row.order_value),
         }
@@ -223,7 +223,7 @@ async def get_channel_summary(
         ).group_by(SalesChannel.status)
     )
     status_counts = {
-        row.status.value: row.count
+        row.status: row.count
         for row in channel_counts.all()
     }
 

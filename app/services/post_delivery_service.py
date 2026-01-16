@@ -364,7 +364,7 @@ class PostDeliveryService:
             return assignment
 
         # Determine service type for capability matching
-        service_type = service_request.service_type.value if service_request.service_type else "INSTALLATION"
+        service_type = service_request.service_type if service_request.service_type else "INSTALLATION"
 
         # Try to find available technician in the area
         technician = await self._find_available_technician(pincode)

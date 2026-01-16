@@ -803,7 +803,7 @@ async def get_commission_summary(
 
     status_result = await db.execute(status_query)
     by_status = {
-        row.status.value: {"count": row.count, "amount": float(row.amount)}
+        row.status: {"count": row.count, "amount": float(row.amount)}
         for row in status_result.all()
     }
 

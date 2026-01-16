@@ -308,7 +308,7 @@ class LeadAssignmentService:
             if strategy == AssignmentStrategy.ROUND_ROBIN:
                 agent = await self.get_next_agent_round_robin(
                     team_id=team_id,
-                    lead_source=lead.source.value if lead.source else None
+                    lead_source=lead.source if lead.source else None
                 )
             elif strategy == AssignmentStrategy.LOAD_BALANCED:
                 agent = await self.get_next_agent_load_balanced(team_id=team_id)

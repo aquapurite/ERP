@@ -258,7 +258,7 @@ async def get_franchisee_dashboard(
             "id": str(f.id),
             "name": f.name,
             "code": f.franchisee_code,
-            "tier": f.tier.value,
+            "tier": f.tier,
             "revenue": float(f.total_revenue),
             "orders": f.total_orders,
         }
@@ -339,7 +339,7 @@ async def get_franchisee_leaderboard(
                 "franchisee_id": str(row[0]),
                 "name": franchisee.name,
                 "code": franchisee.franchisee_code,
-                "tier": franchisee.tier.value,
+                "tier": franchisee.tier,
                 "revenue": float(row[1] or 0),
                 "orders": int(row[2] or 0),
                 "score": float(row[3] or 0),
@@ -447,7 +447,7 @@ async def approve_franchisee(
     ]:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot approve franchisee with status {franchisee.status.value}"
+            detail=f"Cannot approve franchisee with status {franchisee.status}"
         )
 
     franchisee.status = FranchiseeStatus.APPROVED
@@ -1532,7 +1532,7 @@ async def check_serviceability(
             "franchisee_id": str(franchisee.id),
             "franchisee_code": franchisee.franchisee_code,
             "franchisee_name": franchisee.name,
-            "tier": franchisee.tier.value,
+            "tier": franchisee.tier,
             "pincode": r.pincode,
             "service_types": r.service_types,
             "priority": r.priority,

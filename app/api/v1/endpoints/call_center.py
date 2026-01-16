@@ -949,14 +949,14 @@ async def get_call_center_dashboard(
     # By category
     calls_by_category = {}
     for c in today_calls:
-        cat = c.category.value if c.category else "OTHER"
+        cat = c.category if c.category else "OTHER"
         calls_by_category[cat] = calls_by_category.get(cat, 0) + 1
 
     # By outcome
     calls_by_outcome = {}
     for c in today_calls:
         if c.outcome:
-            out = c.outcome.value
+            out = c.outcome
             calls_by_outcome[out] = calls_by_outcome.get(out, 0) + 1
 
     return CallCenterDashboardResponse(
@@ -1015,7 +1015,7 @@ async def get_fcr_report(
     # By category
     fcr_by_category = {}
     for c in calls:
-        cat = c.category.value if c.category else "OTHER"
+        cat = c.category if c.category else "OTHER"
         if cat not in fcr_by_category:
             fcr_by_category[cat] = {"total": 0, "fcr": 0}
         fcr_by_category[cat]["total"] += 1

@@ -1027,7 +1027,7 @@ class PODeliverySchedule(Base):
         return None
 
     def __repr__(self) -> str:
-        return f"<PODeliverySchedule(lot={self.lot_name}, status={self.status.value})>"
+        return f"<PODeliverySchedule(lot={self.lot_name}, status={self.status})>"
 
 
 # ==================== Goods Receipt Note (GRN) ====================
@@ -1960,7 +1960,7 @@ class SalesReturnNote(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<SalesReturnNote(srn='{self.srn_number}', status='{self.status.value}')>"
+        return f"<SalesReturnNote(srn='{self.srn_number}', status='{self.status}')>"
 
 
 class SRNItem(Base):

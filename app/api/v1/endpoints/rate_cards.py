@@ -1253,7 +1253,7 @@ async def get_rate_cards_dropdown(
                 id=item.id,
                 code=item.code,
                 name=item.name,
-                service_type=item.service_type.value,
+                service_type=item.service_type,
                 is_active=item.is_active,
             )
             for item in items
@@ -1269,7 +1269,7 @@ async def get_rate_cards_dropdown(
                 id=item.id,
                 code=item.code,
                 name=item.name,
-                service_type=item.service_type.value,
+                service_type=item.service_type,
                 is_active=item.is_active,
             )
             for item in items
@@ -1285,7 +1285,7 @@ async def get_rate_cards_dropdown(
                 id=item.id,
                 code=item.code,
                 name=item.name,
-                service_type=item.rate_type.value,
+                service_type=item.rate_type,
                 is_active=item.is_active,
             )
             for item in items

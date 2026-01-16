@@ -201,7 +201,7 @@ async def get_accounts_dropdown(
             "code": a.account_code,
             "name": a.name,
             "full_name": f"{a.account_code} - {a.name}",
-            "type": a.account_type.value,
+            "type": a.account_type,
         }
         for a in accounts
     ]
@@ -764,7 +764,7 @@ async def submit_journal_for_approval(
     if journal.status != JournalStatus.DRAFT:
         raise HTTPException(
             status_code=400,
-            detail=f"Only DRAFT entries can be submitted. Current status: {journal.status.value}"
+            detail=f"Only DRAFT entries can be submitted. Current status: {journal.status}"
         )
 
     # Determine approval level based on amount
@@ -827,7 +827,7 @@ async def approve_journal_entry(
     if journal.status != JournalStatus.PENDING_APPROVAL:
         raise HTTPException(
             status_code=400,
-            detail=f"Only PENDING_APPROVAL entries can be approved. Current status: {journal.status.value}"
+            detail=f"Only PENDING_APPROVAL entries can be approved. Current status: {journal.status}"
         )
 
     # Maker-Checker validation: Approver must be different from creator
@@ -938,7 +938,7 @@ async def reject_journal_entry(
     if journal.status != JournalStatus.PENDING_APPROVAL:
         raise HTTPException(
             status_code=400,
-            detail=f"Only PENDING_APPROVAL entries can be rejected. Current status: {journal.status.value}"
+            detail=f"Only PENDING_APPROVAL entries can be rejected. Current status: {journal.status}"
         )
 
     # Maker-Checker validation
@@ -1003,7 +1003,7 @@ async def resubmit_rejected_journal(
     if journal.status != JournalStatus.REJECTED:
         raise HTTPException(
             status_code=400,
-            detail=f"Only REJECTED entries can be resubmitted. Current status: {journal.status.value}"
+            detail=f"Only REJECTED entries can be resubmitted. Current status: {journal.status}"
         )
 
     # Only original maker can resubmit
@@ -1370,7 +1370,7 @@ async def get_balance_sheet(
     ).group_by(ChartOfAccount.sub_type)
 
     assets_result = await db.execute(assets_query)
-    assets_data = {row.sub_type.value if row.sub_type else "other": float(row.total or 0) for row in assets_result.all()}
+    assets_data = {row.sub_type if row.sub_type else "other": float(row.total or 0) for row in assets_result.all()}
 
     # Liabilities
     liabilities_query = select(
@@ -1384,7 +1384,7 @@ async def get_balance_sheet(
     ).group_by(ChartOfAccount.sub_type)
 
     liabilities_result = await db.execute(liabilities_query)
-    liabilities_data = {row.sub_type.value if row.sub_type else "other": float(row.total or 0) for row in liabilities_result.all()}
+    liabilities_data = {row.sub_type if row.sub_type else "other": float(row.total or 0) for row in liabilities_result.all()}
 
     # Equity
     equity_query = select(
@@ -1463,7 +1463,7 @@ async def get_profit_loss(
     ).group_by(ChartOfAccount.account_sub_type)
 
     revenue_result = await db.execute(revenue_query)
-    revenue_data = {row.account_sub_type.value if row.account_sub_type else "other": float(row.total or 0) for row in revenue_result.all()}
+    revenue_data = {row.account_sub_type if row.account_sub_type else "other": float(row.total or 0) for row in revenue_result.all()}
 
     # Expenses query (COGS - 5xxx accounts)
     cogs_query = select(
@@ -1497,7 +1497,7 @@ async def get_profit_loss(
     ).group_by(ChartOfAccount.account_sub_type)
 
     opex_result = await db.execute(opex_query)
-    opex_data = {row.account_sub_type.value if row.account_sub_type else "other": float(row.total or 0) for row in opex_result.all()}
+    opex_data = {row.account_sub_type if row.account_sub_type else "other": float(row.total or 0) for row in opex_result.all()}
     opex_total = sum(opex_data.values())
 
     # Other expenses (7xxx accounts)

@@ -563,7 +563,7 @@ async def create_d2c_order(
             id=order.id,
             order_number=order.order_number,
             total_amount=order.total_amount,
-            status=order.status.value,
+            status=order.status,
         )
 
     except ValueError as e:

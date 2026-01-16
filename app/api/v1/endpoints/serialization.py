@@ -588,7 +588,7 @@ async def export_po_serials(
         # Generate CSV
         lines = ["Barcode,Model,Serial,Status"]
         for s in serials:
-            lines.append(f"{s.barcode},{s.model_code},{s.serial_number},{s.status.value}")
+            lines.append(f"{s.barcode},{s.model_code},{s.serial_number},{s.status}")
         content = "\n".join(lines)
         media_type = "text/csv"
         filename = f"serials_{po_id}.csv"
@@ -737,7 +737,7 @@ async def validate_barcode(
         "is_valid_format": True,
         "exists_in_db": serial is not None,
         "parsed": parsed,
-        "status": serial.status.value if serial else None,
+        "status": serial.status if serial else None,
     }
 
 
@@ -829,7 +829,7 @@ async def serialization_dashboard(
             func.count(POSerial.id).label("count")
         ).group_by(POSerial.status)
     )
-    status_counts = {row.status.value: row.count for row in status_result}
+    status_counts = {row.status: row.count for row in status_result}
 
     # Total by month (current year)
     service = SerializationService(db)

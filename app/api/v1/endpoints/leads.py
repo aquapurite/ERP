@@ -186,7 +186,7 @@ async def create_lead(
         lead_id=lead.id,
         activity_type=ActivityType.NOTE,
         subject="Lead Created",
-        description=f"Lead created from {lead.source.value}",
+        description=f"Lead created from {lead.source}",
         created_by_id=current_user.id
     )
     db.add(activity)
@@ -511,7 +511,7 @@ async def get_unassigned_leads(
                 "id": str(lead.id),
                 "lead_number": lead.lead_number,
                 "name": lead.name,
-                "source": lead.source.value if lead.source else None,
+                "source": lead.source if lead.source else None,
                 "created_at": lead.created_at.isoformat() if lead.created_at else None,
             }
             for lead in leads
@@ -711,7 +711,7 @@ async def convert_lead(
                 phone=lead.phone,
                 alternate_phone=lead.alternate_phone,
                 customer_type="INDIVIDUAL" if lead.lead_type == LeadType.INDIVIDUAL else "BUSINESS",
-                source=lead.source.value
+                source=lead.source
             )
             db.add(customer)
             await db.flush()

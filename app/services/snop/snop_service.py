@@ -745,7 +745,7 @@ class SNOPService:
         by_algorithm = defaultdict(list)
         for f in forecasts:
             if f.mape:
-                by_algorithm[f.algorithm_used.value].append(f.mape)
+                by_algorithm[f.algorithm_used].append(f.mape)
 
         accuracy_by_algorithm = {
             algo: round(sum(mapes) / len(mapes), 2)

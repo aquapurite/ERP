@@ -871,7 +871,7 @@ async def check_unsubscribe(
 
     return {
         "is_unsubscribed": len(unsubscribes) > 0,
-        "channels": [u.channel.value for u in unsubscribes]
+        "channels": [u.channel for u in unsubscribes]
     }
 
 
@@ -961,7 +961,7 @@ async def get_campaign_dashboard(
         {
             "id": str(c.id),
             "name": c.name,
-            "type": c.campaign_type.value,
+            "type": c.campaign_type,
             "sent": c.total_sent,
             "opened": c.total_opened,
             "open_rate": round(c.total_opened / c.total_sent * 100, 2) if c.total_sent > 0 else 0

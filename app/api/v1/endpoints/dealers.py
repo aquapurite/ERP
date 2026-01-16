@@ -746,7 +746,7 @@ async def get_dealer_performance_report(
             "dealer_id": str(dealer.id),
             "dealer_code": dealer.dealer_code,
             "dealer_name": dealer.name,
-            "tier": dealer.tier.value if dealer.tier else None,
+            "tier": dealer.tier if dealer.tier else None,
             "order_count": orders.order_count,
             "order_value": float(orders.order_value),
             "target_value": float(targets.target_value),

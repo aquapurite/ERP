@@ -5,6 +5,7 @@ from math import ceil
 from fastapi import APIRouter, HTTPException, status, Query, Depends, Request
 
 from app.api.deps import DB, CurrentUser, Permissions, require_permissions
+from app.core.permissions import get_level_value
 from app.schemas.role import (
     RoleCreate,
     RoleUpdate,
@@ -135,7 +136,8 @@ async def create_role(
     # Check if user can create roles at this level
     if not permissions.is_super_admin():
         # Users can only create roles below their own level
-        if data.level.value <= permissions.highest_role_level.value:
+        # Lower level value = higher authority (SUPER_ADMIN=0)
+        if get_level_value(data.level.value) <= get_level_value(permissions.highest_role_level):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Cannot create a role at or above your own level"

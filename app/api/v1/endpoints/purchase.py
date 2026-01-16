@@ -444,7 +444,7 @@ async def approve_purchase_requisition(
     if pr.status != RequisitionStatus.SUBMITTED:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot {request.action.lower()} PR in {pr.status.value} status. Only SUBMITTED PRs can be approved/rejected."
+            detail=f"Cannot {request.action.lower()} PR in {pr.status} status. Only SUBMITTED PRs can be approved/rejected."
         )
 
     if request.action == "APPROVE":
@@ -483,7 +483,7 @@ async def submit_purchase_requisition(
     if pr.status != RequisitionStatus.DRAFT:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot submit PR in {pr.status.value} status. Only DRAFT PRs can be submitted."
+            detail=f"Cannot submit PR in {pr.status} status. Only DRAFT PRs can be submitted."
         )
 
     # Validate PR has items
@@ -600,7 +600,7 @@ async def update_purchase_requisition(
     if pr.status not in allowed_statuses:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot edit PR with status '{pr.status.value}'. Only DRAFT or SUBMITTED PRs can be edited."
+            detail=f"Cannot edit PR with status '{pr.status}'. Only DRAFT or SUBMITTED PRs can be edited."
         )
 
     # Update fields
@@ -636,7 +636,7 @@ async def convert_requisition_to_po(
     if pr.status != RequisitionStatus.APPROVED:
         raise HTTPException(
             status_code=400,
-            detail=f"Only APPROVED PRs can be converted to PO. Current status: {pr.status.value}"
+            detail=f"Only APPROVED PRs can be converted to PO. Current status: {pr.status}"
         )
 
     # Validate vendor
@@ -937,7 +937,7 @@ async def download_purchase_requisition(
         "CONVERTED": "#007bff",
         "CANCELLED": "#6c757d"
     }
-    status_value = pr.status.value if pr.status else "DRAFT"
+    status_value = pr.status if pr.status else "DRAFT"
     status_color = status_colors.get(status_value, "#6c757d")
 
     # Build items table
@@ -1643,7 +1643,7 @@ async def delete_purchase_order(
     if po.status not in allowed_statuses:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot delete PO with status '{po.status.value}'. Only DRAFT or CANCELLED POs can be deleted."
+            detail=f"Cannot delete PO with status '{po.status}'. Only DRAFT or CANCELLED POs can be deleted."
         )
 
     # Delete PO items first (cascade should handle this, but being explicit)
@@ -1686,7 +1686,7 @@ async def update_purchase_order(
     if po.status not in allowed_statuses:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot edit PO with status '{po.status.value}'. Only DRAFT or PENDING_APPROVAL POs can be edited."
+            detail=f"Cannot edit PO with status '{po.status}'. Only DRAFT or PENDING_APPROVAL POs can be edited."
         )
 
     # Update fields
@@ -1723,7 +1723,7 @@ async def submit_purchase_order(
     if po.status != POStatus.DRAFT:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot submit PO in {po.status.value} status. Only DRAFT POs can be submitted."
+            detail=f"Cannot submit PO in {po.status} status. Only DRAFT POs can be submitted."
         )
 
     po.status = POStatus.PENDING_APPROVAL
@@ -1765,7 +1765,7 @@ async def approve_purchase_order(
         logging.error(f"PO APPROVE: Invalid status {po.status} for PO {po.po_number}")
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot {request.action.lower()} PO in {po.status.value} status"
+            detail=f"Cannot {request.action.lower()} PO in {po.status} status"
         )
 
     # Store data needed for serial generation before commit
@@ -2173,7 +2173,7 @@ async def record_lot_payment(
         if schedule.status not in [DeliveryLotStatus.PENDING, DeliveryLotStatus.ADVANCE_PENDING]:
             raise HTTPException(
                 status_code=400,
-                detail=f"Cannot record advance payment for lot in {schedule.status.value} status"
+                detail=f"Cannot record advance payment for lot in {schedule.status} status"
             )
 
         schedule.advance_paid = payment.amount
@@ -2185,7 +2185,7 @@ async def record_lot_payment(
         if schedule.status not in [DeliveryLotStatus.DELIVERED, DeliveryLotStatus.PAYMENT_PENDING]:
             raise HTTPException(
                 status_code=400,
-                detail=f"Balance payment can only be recorded after delivery. Current status: {schedule.status.value}"
+                detail=f"Balance payment can only be recorded after delivery. Current status: {schedule.status}"
             )
 
         schedule.balance_paid = payment.amount
@@ -2224,7 +2224,7 @@ async def mark_lot_delivered(
     if schedule.status != DeliveryLotStatus.ADVANCE_PAID:
         raise HTTPException(
             status_code=400,
-            detail=f"Lot must have advance paid before marking as delivered. Current status: {schedule.status.value}"
+            detail=f"Lot must have advance paid before marking as delivered. Current status: {schedule.status}"
         )
 
     from datetime import timedelta
@@ -3221,7 +3221,7 @@ async def fix_and_test_po(
     if not po:
         raise HTTPException(status_code=404, detail="PO not found")
 
-    steps.append({"step": 1, "action": "Found PO", "result": f"{po.po_number}, status={po.status.value}, items={len(po.items)}"})
+    steps.append({"step": 1, "action": "Found PO", "result": f"{po.po_number}, status={po.status}, items={len(po.items)}"})
 
     # Step 2: Delete existing serials
     delete_result = await db.execute(
@@ -3388,7 +3388,7 @@ async def verify_serials(po_id: UUID, db: DB):
 
     return {
         "po_number": po.po_number,
-        "status": po.status.value if po.status else None,
+        "status": po.status if po.status else None,
         "total_serials": count,
         "samples": samples,
         "message": "SUCCESS - Barcodes are generated!" if count > 0 else "No serials found"
@@ -3412,7 +3412,7 @@ async def reset_po_to_draft(
     if not po:
         raise HTTPException(status_code=404, detail="PO not found")
 
-    old_status = po.status.value if po.status else None
+    old_status = po.status if po.status else None
 
     # Delete any existing serials for this PO
     await db.execute(
@@ -3462,7 +3462,7 @@ async def manually_generate_serials(
         raise HTTPException(status_code=404, detail="PO not found")
 
     if po.status != POStatus.APPROVED:
-        raise HTTPException(status_code=400, detail=f"PO must be APPROVED to generate serials. Current status: {po.status.value}")
+        raise HTTPException(status_code=400, detail=f"PO must be APPROVED to generate serials. Current status: {po.status}")
 
     # Check if serials already exist
     existing_result = await db.execute(
@@ -3618,7 +3618,7 @@ async def diagnose_po_serials(
     return {
         "po_id": str(po.id),
         "po_number": po.po_number,
-        "status": po.status.value if po.status else None,
+        "status": po.status if po.status else None,
         "vendor_id": str(po.vendor_id) if po.vendor_id else None,
         "items_count": len(po.items) if po.items else 0,
         "serials": {
@@ -3628,10 +3628,10 @@ async def diagnose_po_serials(
         "supplier_code_for_vendor": supplier_code_info,
         "all_supplier_codes": all_supplier_codes,
         "diagnosis": {
-            "po_approved": po.status and po.status.value == "APPROVED",
+            "po_approved": po.status and po.status == "APPROVED",
             "has_serials": serial_count > 0,
             "vendor_has_supplier_code": supplier_code_info is not None,
-            "can_generate_barcodes": po.status and po.status.value == "APPROVED" and serial_count > 0
+            "can_generate_barcodes": po.status and po.status == "APPROVED" and serial_count > 0
         }
     }
 
@@ -4037,7 +4037,7 @@ async def download_purchase_order(
     if serial_groups:
         serial_rows = ""
         for sg in serial_groups:
-            item_type = sg.item_type.value if hasattr(sg.item_type, 'value') else str(sg.item_type)
+            item_type = sg.item_type if hasattr(sg.item_type, 'value') else str(sg.item_type)
 
             # Get product name using product_sku from serials (more reliable than model_code matching)
             product_name = "-"
@@ -4585,7 +4585,7 @@ async def download_grn(
     warehouse_name = warehouse.name if warehouse else "N/A"
     po_number = po.po_number if po else "N/A"
 
-    qc_status_color = "green" if grn.qc_status and grn.qc_status.value == "ACCEPTED" else "orange"
+    qc_status_color = "green" if grn.qc_status and grn.qc_status == "ACCEPTED" else "orange"
 
     html_content = f"""
     <!DOCTYPE html>
@@ -4737,8 +4737,8 @@ async def download_grn(
                 <p><strong>GRN Number:</strong> {grn.grn_number}</p>
                 <p><strong>GRN Date:</strong> {grn.grn_date}</p>
                 <p><strong>PO Reference:</strong> {po_number}</p>
-                <p><strong>Status:</strong> {grn.status.value if grn.status else 'N/A'}</p>
-                <p><strong>QC Status:</strong> <span style="color: {qc_status_color};">{grn.qc_status.value if grn.qc_status else 'PENDING'}</span></p>
+                <p><strong>Status:</strong> {grn.status if grn.status else 'N/A'}</p>
+                <p><strong>QC Status:</strong> <span style="color: {qc_status_color};">{grn.qc_status if grn.qc_status else 'PENDING'}</span></p>
             </div>
         </div>
 
@@ -4879,7 +4879,7 @@ async def download_vendor_invoice(
     grn_number = grn.grn_number if grn else "N/A"
 
     # Handle both enum and string status values
-    status_val = invoice.status.value if hasattr(invoice.status, 'value') else str(invoice.status) if invoice.status else ""
+    status_val = invoice.status if hasattr(invoice.status, 'value') else str(invoice.status) if invoice.status else ""
     status_color = "green" if status_val in ["VERIFIED", "PAID", "MATCHED", "APPROVED"] else "orange"
 
     html_content = f"""
@@ -5627,7 +5627,7 @@ async def download_vendor_proforma(
         company = company_result.scalar_one_or_none()
 
     vendor = proforma.vendor
-    status_val = proforma.status.value if hasattr(proforma.status, 'value') else str(proforma.status) if proforma.status else ""
+    status_val = proforma.status if hasattr(proforma.status, 'value') else str(proforma.status) if proforma.status else ""
     status_color = "green" if status_val in ["APPROVED", "CONVERTED_TO_PO"] else "red" if status_val in ["REJECTED", "CANCELLED", "EXPIRED"] else "orange"
 
     # Generate items rows
@@ -6206,8 +6206,8 @@ async def list_srns(
             srn_date=srn.srn_date,
             customer_name=customer_name,
             order_number=order_number,
-            status=srn.status.value if isinstance(srn.status, SRNStatus) else srn.status,
-            return_reason=srn.return_reason.value if isinstance(srn.return_reason, ReturnReason) else srn.return_reason,
+            status=srn.status if isinstance(srn.status, SRNStatus) else srn.status,
+            return_reason=srn.return_reason if isinstance(srn.return_reason, ReturnReason) else srn.return_reason,
             total_quantity_returned=srn.total_quantity_returned,
             total_value=srn.total_value or Decimal("0"),
             pickup_status=srn.pickup_status,
@@ -6292,8 +6292,8 @@ async def list_pending_pickups(
             srn_date=srn.srn_date,
             customer_name=customer_name,
             order_number=order_number,
-            status=srn.status.value if isinstance(srn.status, SRNStatus) else srn.status,
-            return_reason=srn.return_reason.value if isinstance(srn.return_reason, ReturnReason) else srn.return_reason,
+            status=srn.status if isinstance(srn.status, SRNStatus) else srn.status,
+            return_reason=srn.return_reason if isinstance(srn.return_reason, ReturnReason) else srn.return_reason,
             total_quantity_returned=srn.total_quantity_returned,
             total_value=srn.total_value or Decimal("0"),
             pickup_status=srn.pickup_status,
@@ -6351,7 +6351,7 @@ async def schedule_srn_pickup(
     if srn.status not in [SRNStatus.DRAFT, SRNStatus.PENDING_RECEIPT]:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot schedule pickup for SRN in status: {srn.status.value}"
+            detail=f"Cannot schedule pickup for SRN in status: {srn.status}"
         )
 
     # Validate courier if provided
@@ -6467,7 +6467,7 @@ async def receive_srn(
     if srn.status not in [SRNStatus.DRAFT, SRNStatus.PENDING_RECEIPT]:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot receive goods for SRN in status: {srn.status.value}"
+            detail=f"Cannot receive goods for SRN in status: {srn.status}"
         )
 
     # Update receiving details
@@ -6521,7 +6521,7 @@ async def process_srn_quality_check(
     if srn.status != SRNStatus.PENDING_QC:
         raise HTTPException(
             status_code=400,
-            detail=f"SRN is not pending QC. Current status: {srn.status.value}"
+            detail=f"SRN is not pending QC. Current status: {srn.status}"
         )
 
     # Process each item's QC result
@@ -6618,7 +6618,7 @@ async def process_srn_putaway(
     if srn.status != SRNStatus.PUT_AWAY_PENDING:
         raise HTTPException(
             status_code=400,
-            detail=f"SRN is not pending put-away. Current status: {srn.status.value}"
+            detail=f"SRN is not pending put-away. Current status: {srn.status}"
         )
 
     # Process each item location
@@ -6715,7 +6715,7 @@ async def process_srn_putaway(
                 reference_number=srn.srn_number,
                 unit_price=item.unit_price,
                 total_value=item.return_value,
-                notes=f"Sales Return Put-away - {item.restock_decision.value if item.restock_decision else 'Standard'}",
+                notes=f"Sales Return Put-away - {item.restock_decision if item.restock_decision else 'Standard'}",
                 created_by=current_user.id,
             )
             db.add(movement)
@@ -6752,7 +6752,7 @@ async def resolve_srn(
     if srn.status != SRNStatus.PUT_AWAY_COMPLETE:
         raise HTTPException(
             status_code=400,
-            detail=f"SRN must be put-away complete before resolution. Current status: {srn.status.value}"
+            detail=f"SRN must be put-away complete before resolution. Current status: {srn.status}"
         )
 
     resolution_type = ResolutionType(request.resolution_type)
@@ -6890,8 +6890,8 @@ async def download_srn_pdf(
     items_html = ""
     for idx, item in enumerate(srn.items, 1):
         serials_str = ", ".join(item.serial_numbers) if item.serial_numbers else "-"
-        condition_str = item.item_condition.value if item.item_condition else "-"
-        decision_str = item.restock_decision.value if item.restock_decision else "-"
+        condition_str = item.item_condition if item.item_condition else "-"
+        decision_str = item.restock_decision if item.restock_decision else "-"
 
         items_html += f"""
         <tr>
@@ -6907,8 +6907,8 @@ async def download_srn_pdf(
         </tr>
         """
 
-    status_val = srn.status.value if isinstance(srn.status, SRNStatus) else srn.status
-    reason_val = srn.return_reason.value if isinstance(srn.return_reason, ReturnReason) else srn.return_reason
+    status_val = srn.status if isinstance(srn.status, SRNStatus) else srn.status
+    reason_val = srn.return_reason if isinstance(srn.return_reason, ReturnReason) else srn.return_reason
 
     html_content = f"""
     <!DOCTYPE html>
@@ -7030,7 +7030,7 @@ async def download_srn_pdf(
             <p><strong>Return Reason Detail:</strong> {srn.return_reason_detail or 'None'}</p>
             <p><strong>Receiving Remarks:</strong> {srn.receiving_remarks or 'None'}</p>
             <p><strong>QC Remarks:</strong> {srn.qc_remarks or 'None'}</p>
-            <p><strong>Resolution:</strong> {srn.resolution_type.value if srn.resolution_type else 'Pending'}</p>
+            <p><strong>Resolution:</strong> {srn.resolution_type if srn.resolution_type else 'Pending'}</p>
         </div>
 
         <div class="signatures">

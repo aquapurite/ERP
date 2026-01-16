@@ -149,8 +149,8 @@ async def generate_forecasts(
                 "id": str(f.id),
                 "code": f.forecast_code,
                 "name": f.forecast_name,
-                "level": f.forecast_level.value,
-                "algorithm": f.algorithm_used.value,
+                "level": f.forecast_level,
+                "algorithm": f.algorithm_used,
                 "total_qty": float(f.total_forecasted_qty),
                 "mape": f.mape
             }
@@ -193,14 +193,14 @@ async def list_forecasts(
                 "id": str(f.id),
                 "code": f.forecast_code,
                 "name": f.forecast_name,
-                "level": f.forecast_level.value,
-                "granularity": f.granularity.value,
+                "level": f.forecast_level,
+                "granularity": f.granularity,
                 "start_date": f.forecast_start_date.isoformat(),
                 "end_date": f.forecast_end_date.isoformat(),
                 "total_qty": float(f.total_forecasted_qty),
-                "algorithm": f.algorithm_used.value,
+                "algorithm": f.algorithm_used,
                 "mape": f.mape,
-                "status": f.status.value,
+                "status": f.status,
                 "created_at": f.created_at.isoformat()
             }
             for f in forecasts
@@ -230,8 +230,8 @@ async def get_forecast(
         "id": str(forecast.id),
         "code": forecast.forecast_code,
         "name": forecast.forecast_name,
-        "level": forecast.forecast_level.value,
-        "granularity": forecast.granularity.value,
+        "level": forecast.forecast_level,
+        "granularity": forecast.granularity,
         "product_id": str(forecast.product_id) if forecast.product_id else None,
         "product_name": forecast.product.name if forecast.product else None,
         "category_id": str(forecast.category_id) if forecast.category_id else None,
@@ -246,7 +246,7 @@ async def get_forecast(
         "total_forecasted_qty": float(forecast.total_forecasted_qty),
         "avg_daily_demand": float(forecast.avg_daily_demand),
         "peak_demand": float(forecast.peak_demand),
-        "algorithm": forecast.algorithm_used.value,
+        "algorithm": forecast.algorithm_used,
         "model_parameters": forecast.model_parameters,
         "accuracy_metrics": {
             "mape": forecast.mape,
@@ -255,7 +255,7 @@ async def get_forecast(
             "bias": forecast.forecast_bias
         },
         "confidence_level": forecast.confidence_level,
-        "status": forecast.status.value,
+        "status": forecast.status,
         "version": forecast.version,
         "created_at": forecast.created_at.isoformat(),
         "submitted_at": forecast.submitted_at.isoformat() if forecast.submitted_at else None,
@@ -269,7 +269,7 @@ async def get_forecast(
                 "adjusted_qty": float(adj.adjusted_qty),
                 "adjustment_pct": adj.adjustment_pct,
                 "reason": adj.adjustment_reason,
-                "status": adj.status.value
+                "status": adj.status
             }
             for adj in forecast.adjustments
         ] if forecast.adjustments else []
@@ -294,7 +294,7 @@ async def submit_forecast_for_review(
         return {
             "message": "Forecast submitted for review",
             "forecast_id": str(forecast.id),
-            "status": forecast.status.value
+            "status": forecast.status
         }
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -323,7 +323,7 @@ async def approve_forecast(
         return {
             "message": f"Forecast {request.action}d successfully",
             "forecast_id": str(forecast.id),
-            "status": forecast.status.value
+            "status": forecast.status
         }
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -380,7 +380,7 @@ async def approve_adjustment(
         return {
             "message": "Adjustment approved and applied to forecast",
             "adjustment_id": str(adjustment.id),
-            "status": adjustment.status.value
+            "status": adjustment.status
         }
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -459,7 +459,7 @@ async def optimize_supply_plan(
             "plan_code": plan.plan_code,
             "planned_production": float(plan.planned_production_qty),
             "planned_procurement": float(plan.planned_procurement_qty),
-            "status": plan.status.value
+            "status": plan.status
         }
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -608,7 +608,7 @@ async def run_scenario_simulation(
         return {
             "message": "Scenario simulation completed",
             "scenario_id": str(scenario.id),
-            "status": scenario.status.value,
+            "status": scenario.status,
             "results": scenario.results
         }
     except ValueError as e:
@@ -657,7 +657,7 @@ async def compare_scenarios(
             {
                 "id": str(s.id),
                 "name": s.scenario_name,
-                "status": s.status.value,
+                "status": s.status,
                 "results": s.results
             }
             for s in scenarios

@@ -968,7 +968,7 @@ async def download_shipping_label(
                         <td><span class="label-title">Boxes:</span><br>{shipment.no_of_boxes}</td>
                     </tr>
                     <tr>
-                        <td><span class="label-title">Payment:</span><br>{shipment.payment_mode.value if shipment.payment_mode else 'PREPAID'}</td>
+                        <td><span class="label-title">Payment:</span><br>{shipment.payment_mode if shipment.payment_mode else 'PREPAID'}</td>
                         <td colspan="2"><span class="label-title">COD Amount:</span><br>₹{shipment.cod_amount or 0}</td>
                     </tr>
                 </table>
@@ -1194,8 +1194,8 @@ async def download_shipment_invoice(
             </table>
 
             <div class="footer">
-                <div><strong>Payment Method:</strong> {order.payment_method.value if order else 'N/A'}</div>
-                <div><strong>Payment Status:</strong> {order.payment_status.value if order else 'N/A'}</div>
+                <div><strong>Payment Method:</strong> {order.payment_method if order else 'N/A'}</div>
+                <div><strong>Payment Status:</strong> {order.payment_status if order else 'N/A'}</div>
                 <br>
                 <div><strong>Terms & Conditions:</strong></div>
                 <ol style="font-size:10px; color:#666;">
@@ -1314,7 +1314,7 @@ async def get_sla_dashboard(
                         "awb_number": s.awb_number,
                         "promised_date": s.promised_delivery_date.isoformat(),
                         "days_late": (today - s.promised_delivery_date).days,
-                        "status": s.status.value,
+                        "status": s.status,
                     })
                 elif s.promised_delivery_date <= today + timedelta(days=1):
                     at_risk += 1
@@ -1324,7 +1324,7 @@ async def get_sla_dashboard(
                         "awb_number": s.awb_number,
                         "promised_date": s.promised_delivery_date.isoformat(),
                         "days_remaining": (s.promised_delivery_date - today).days,
-                        "status": s.status.value,
+                        "status": s.status,
                     })
     
     # Calculate metrics
@@ -1412,7 +1412,7 @@ async def get_at_risk_shipments(
             "shipment_id": str(s.id),
             "shipment_number": s.shipment_number,
             "awb_number": s.awb_number,
-            "status": s.status.value,
+            "status": s.status,
             "promised_date": s.promised_delivery_date.isoformat() if s.promised_delivery_date else None,
             "days_remaining": days_remaining,
             "sla_status": status_label,
@@ -1592,7 +1592,7 @@ async def upload_pod_file(
         "success": True,
         "shipment_id": str(shipment.id),
         "shipment_number": shipment.shipment_number,
-        "status": shipment.status.value,
+        "status": shipment.status,
         "delivered_at": shipment.delivered_at.isoformat() if shipment.delivered_at else None,
         "pod_image_url": pod_image_url,
         "pod_signature_url": pod_signature_url,
