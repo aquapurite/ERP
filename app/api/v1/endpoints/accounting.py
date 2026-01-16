@@ -76,8 +76,7 @@ async def create_account(
             raise HTTPException(status_code=404, detail="Parent account not found")
 
     account = ChartOfAccount(
-        **account_in.model_dump(),
-        created_by=current_user.id,
+        **account_in.model_dump(by_alias=False, exclude_unset=False),
     )
 
     db.add(account)
@@ -279,8 +278,7 @@ async def create_financial_period(
         )
 
     period = FinancialPeriod(
-        **period_in.model_dump(),
-        created_by=current_user.id,
+        **period_in.model_dump(by_alias=False, exclude_unset=False),
     )
 
     db.add(period)

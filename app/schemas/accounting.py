@@ -16,26 +16,27 @@ from app.models.accounting import (
 
 class ChartOfAccountBase(BaseModel):
     """Base schema for ChartOfAccount."""
-    account_code: str = Field(..., min_length=3, max_length=20)
-    account_name: str = Field(..., min_length=2, max_length=200)
-    account_type: AccountType
-    account_subtype: Optional[AccountSubType] = None
+    account_code: str = Field(..., min_length=1, max_length=20)
+    account_name: str = Field(..., min_length=1, max_length=200, alias="name")
+    account_type: AccountType = Field(..., alias="type")
+    account_sub_type: Optional[AccountSubType] = Field(None, alias="subType")
     description: Optional[str] = None
     parent_id: Optional[UUID] = None
-    is_header: bool = False
+    is_group: bool = Field(False, alias="isGroup")
     is_system: bool = False
-    normal_balance: str = Field("DEBIT", pattern="^(DEBIT|CREDIT)$")
-    currency: str = Field("INR", max_length=3)
-    is_bank_account: bool = False
+    is_active: bool = True
+    allow_direct_posting: bool = True
     bank_name: Optional[str] = None
     bank_account_number: Optional[str] = None
     bank_ifsc: Optional[str] = None
-    is_active: bool = True
-    allow_manual_entries: bool = True
+    gst_type: Optional[str] = None
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class ChartOfAccountCreate(ChartOfAccountBase):
     """Schema for creating ChartOfAccount."""
+    # Allow frontend to send either 'name' or 'account_name', 'type' or 'account_type'
     pass
 
 
@@ -51,15 +52,28 @@ class ChartOfAccountUpdate(BaseModel):
     bank_ifsc: Optional[str] = None
 
 
-class ChartOfAccountResponse(ChartOfAccountBase):
+class ChartOfAccountResponse(BaseModel):
     """Response schema for ChartOfAccount."""
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: UUID
-    level: int
-    full_path: Optional[str] = None
-    opening_balance: Decimal
-    current_balance: Decimal
+    account_code: str
+    account_name: str
+    account_type: AccountType
+    account_sub_type: Optional[AccountSubType] = None
+    description: Optional[str] = None
+    parent_id: Optional[UUID] = None
+    level: int = 1
+    is_group: bool = False
+    is_system: bool = False
+    is_active: bool = True
+    allow_direct_posting: bool = True
+    opening_balance: Decimal = Decimal("0")
+    current_balance: Decimal = Decimal("0")
+    bank_name: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    gst_type: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -77,9 +91,8 @@ class AccountListResponse(BaseModel):
     """Paginated account list response."""
     items: List[ChartOfAccountResponse]
     total: int
-    page: int = 1
-    size: int = 50
-    pages: int = 1
+    skip: int = 0
+    limit: int = 100
 
 
 class AccountBalanceResponse(BaseModel):
@@ -98,12 +111,16 @@ class AccountBalanceResponse(BaseModel):
 
 class FinancialPeriodBase(BaseModel):
     """Base schema for FinancialPeriod."""
-    period_name: str = Field(..., min_length=2, max_length=50)
+    model_config = ConfigDict(populate_by_name=True)
+
+    period_name: str = Field(..., min_length=1, max_length=50, alias="yearName")
     period_code: Optional[str] = Field(None, max_length=20)
-    start_date: date
-    end_date: date
+    period_type: str = Field("YEAR", max_length=20, description="YEAR, QUARTER, MONTH")
+    start_date: date = Field(..., alias="startDate")
+    end_date: date = Field(..., alias="endDate")
     financial_year: Optional[str] = Field(None, max_length=10)
     is_year_end: bool = False
+    is_adjustment_period: bool = False
 
     @field_validator("end_date")
     @classmethod
@@ -123,21 +140,33 @@ class FinancialPeriodUpdate(BaseModel):
     status: Optional[PeriodStatus] = None
 
 
-class FinancialPeriodResponse(FinancialPeriodBase):
+class FinancialPeriodResponse(BaseModel):
     """Response schema for FinancialPeriod."""
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: UUID
+    period_name: str
+    period_code: Optional[str] = None
+    period_type: str = "YEAR"
+    start_date: date
+    end_date: date
+    financial_year: Optional[str] = None
+    is_year_end: bool = False
+    is_adjustment_period: bool = False
+    is_current: bool = False
     status: PeriodStatus
     closed_by: Optional[UUID] = None
     closed_at: Optional[datetime] = None
     created_at: datetime
+    updated_at: Optional[datetime] = None
 
 
 class FinancialPeriodListResponse(BaseModel):
     """Response for listing periods."""
     items: List[FinancialPeriodResponse]
     total: int
+    skip: int = 0
+    limit: int = 20
 
 
 # Alias for backward compatibility
@@ -274,9 +303,8 @@ class JournalEntryListResponse(BaseModel):
     """Response for listing journal entries."""
     items: List[JournalEntryResponse]
     total: int
-    page: int = 1
-    size: int = 50
-    pages: int = 1
+    skip: int = 0
+    limit: int = 50
 
 
 # Alias for backward compatibility
@@ -426,12 +454,15 @@ class LedgerReportResponse(BaseModel):
 
 class LedgerListResponse(BaseModel):
     """Paginated ledger list response."""
+    account_id: UUID
+    account_code: str
+    account_name: str
     items: List[GeneralLedgerResponse]
     total: int
-    page: int = 1
-    size: int = 50
-    pages: int = 1
-    opening_balance: Decimal = Decimal("0")
+    skip: int = 0
+    limit: int = 100
+    total_debit: Decimal = Decimal("0")
+    total_credit: Decimal = Decimal("0")
     closing_balance: Decimal = Decimal("0")
 
 
