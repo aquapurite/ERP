@@ -8,19 +8,24 @@ from app.models.role import Role, RoleLevel
 from app.models.user import User
 
 
-# Map string level names to hierarchy values (lower = higher authority)
+# Map level names to hierarchy values using RoleLevel enum for type safety
+# Lower value = higher authority (SUPER_ADMIN=0 is highest)
 LEVEL_ORDER = {
-    "SUPER_ADMIN": 0,
-    "DIRECTOR": 1,
-    "HEAD": 2,
-    "MANAGER": 3,
-    "EXECUTIVE": 4,
+    RoleLevel.SUPER_ADMIN.name: RoleLevel.SUPER_ADMIN.value,
+    RoleLevel.DIRECTOR.name: RoleLevel.DIRECTOR.value,
+    RoleLevel.HEAD.name: RoleLevel.HEAD.value,
+    RoleLevel.MANAGER.name: RoleLevel.MANAGER.value,
+    RoleLevel.EXECUTIVE.name: RoleLevel.EXECUTIVE.value,
 }
 
 
 def get_level_value(level: str) -> int:
-    """Convert string level to numeric value for comparison."""
-    return LEVEL_ORDER.get(str(level), 4)  # Default to EXECUTIVE
+    """Convert string level to numeric value for comparison.
+
+    Uses RoleLevel enum values for consistency.
+    Returns EXECUTIVE level (4) as default for unknown levels.
+    """
+    return LEVEL_ORDER.get(str(level), RoleLevel.EXECUTIVE.value)
 
 
 class PermissionChecker:
@@ -52,7 +57,7 @@ class PermissionChecker:
 
     def is_super_admin(self) -> bool:
         """Check if user is a SUPER_ADMIN."""
-        return self.highest_role_level == "SUPER_ADMIN"
+        return self.highest_role_level == RoleLevel.SUPER_ADMIN.name
 
     def has_permission(self, permission_code: str) -> bool:
         """
@@ -178,8 +183,11 @@ class PermissionChecker:
         if not target_roles:
             return True  # Can manage users without roles
 
-        target_highest_level = min(role.level for role in target_roles)
-        return self.highest_role_level.value < target_highest_level.value
+        # Find target's highest level (lowest value = highest authority)
+        target_highest_level = min((role.level for role in target_roles), key=get_level_value)
+
+        # Compare using level values (lower value = higher authority)
+        return get_level_value(self.highest_role_level) < get_level_value(target_highest_level)
 
 
 def require_permission(permission_code: str):

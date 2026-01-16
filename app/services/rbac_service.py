@@ -325,7 +325,7 @@ class RBACService:
 
         # Check for SUPER_ADMIN
         for role in roles:
-            if role.level == "SUPER_ADMIN":
+            if role.level == RoleLevel.SUPER_ADMIN.name:
                 # Return all permission codes
                 stmt = select(Permission.code).where(Permission.is_active == True)
                 result = await self.db.execute(stmt)
