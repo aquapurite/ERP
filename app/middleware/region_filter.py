@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user import User
 from app.models.region import Region
 from app.models.role import RoleLevel
+from app.core.permissions import get_level_value
 
 
 class RegionFilter:
@@ -53,10 +54,11 @@ class RegionFilter:
         if not self.user.roles:
             return True  # No roles = filter by region
 
-        highest_level = min(role.level for role in self.user.roles)
+        # Get level with lowest value (highest authority)
+        highest_level = min((role.level for role in self.user.roles), key=get_level_value)
 
         # SUPER_ADMIN and DIRECTOR see everything
-        if highest_level in (RoleLevel.SUPER_ADMIN, RoleLevel.DIRECTOR):
+        if highest_level in ("SUPER_ADMIN", "DIRECTOR"):
             return False
 
         # Others are filtered by region

@@ -8,6 +8,21 @@ from app.models.role import Role, RoleLevel
 from app.models.user import User
 
 
+# Map string level names to hierarchy values (lower = higher authority)
+LEVEL_ORDER = {
+    "SUPER_ADMIN": 0,
+    "DIRECTOR": 1,
+    "HEAD": 2,
+    "MANAGER": 3,
+    "EXECUTIVE": 4,
+}
+
+
+def get_level_value(level: str) -> int:
+    """Convert string level to numeric value for comparison."""
+    return LEVEL_ORDER.get(str(level), 4)  # Default to EXECUTIVE
+
+
 class PermissionChecker:
     """
     Permission checker utility for RBAC.
@@ -27,16 +42,17 @@ class PermissionChecker:
         self.roles = user.roles
         self.highest_role_level = self._get_highest_role_level()
 
-    def _get_highest_role_level(self) -> Optional[RoleLevel]:
-        """Get the highest (lowest number) role level for the user."""
+    def _get_highest_role_level(self) -> Optional[str]:
+        """Get the highest (lowest number) role level for the user as string."""
         if not self.roles:
             return None
 
-        return min(role.level for role in self.roles)
+        # Find role with lowest level value (highest authority)
+        return min((role.level for role in self.roles), key=get_level_value)
 
     def is_super_admin(self) -> bool:
         """Check if user is a SUPER_ADMIN."""
-        return self.highest_role_level == RoleLevel.SUPER_ADMIN
+        return self.highest_role_level == "SUPER_ADMIN"
 
     def has_permission(self, permission_code: str) -> bool:
         """
@@ -101,7 +117,7 @@ class PermissionChecker:
         Check if user has a role at or above the specified level.
 
         Args:
-            level: The minimum role level required
+            level: The minimum role level required (RoleLevel enum)
 
         Returns:
             True if user has sufficient role level
@@ -109,7 +125,10 @@ class PermissionChecker:
         if self.highest_role_level is None:
             return False
 
-        return self.highest_role_level.value <= level.value
+        # Compare using level order values (lower = higher authority)
+        user_level_value = get_level_value(self.highest_role_level)
+        required_level_value = level.value  # RoleLevel is IntEnum
+        return user_level_value <= required_level_value
 
     def can_manage_role(self, target_role: Role) -> bool:
         """
@@ -129,8 +148,8 @@ class PermissionChecker:
         if self.is_super_admin():
             return True
 
-        # Can only manage roles below own level
-        return self.highest_role_level.value < target_role.level.value
+        # Can only manage roles below own level (higher value = lower authority)
+        return get_level_value(self.highest_role_level) < get_level_value(target_role.level)
 
     def can_manage_user(self, target_user: User) -> bool:
         """

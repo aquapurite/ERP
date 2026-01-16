@@ -78,7 +78,7 @@ async def get_user_permissions(
     """
     # SUPER_ADMIN has all permissions
     for role in user.roles:
-        if role.level == RoleLevel.SUPER_ADMIN:
+        if role.level == "SUPER_ADMIN":
             # Return empty set - PermissionChecker will handle SUPER_ADMIN
             return set()
 
