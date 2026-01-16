@@ -9,14 +9,14 @@ Supports:
 - Payout management
 """
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 from decimal import Decimal
 
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date, JSON
-from sqlalchemy import Enum as SQLEnum, UniqueConstraint, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date
+from sqlalchemy import UniqueConstraint, Index
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -99,14 +99,16 @@ class CommissionPlan(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Type & Basis
-    commission_type: Mapped[CommissionType] = mapped_column(
-        SQLEnum(CommissionType),
+    commission_type: Mapped[str] = mapped_column(
+        String(50),
         nullable=False,
-        index=True
+        index=True,
+        default="SALES_REP"
     )
-    calculation_basis: Mapped[CalculationBasis] = mapped_column(
-        SQLEnum(CalculationBasis),
-        nullable=False
+    calculation_basis: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="PERCENTAGE_OF_REVENUE"
     )
 
     # Validity
@@ -129,9 +131,9 @@ class CommissionPlan(Base):
         nullable=True
     )
 
-    # Slab/Tier Configuration (JSON)
+    # Slab/Tier Configuration (JSONB)
     rate_slabs: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Commission rate slabs"
     )
@@ -144,17 +146,17 @@ class CommissionPlan(Base):
         comment="Minimum order value for commission"
     )
     applicable_products: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="List of applicable product IDs"
     )
     applicable_categories: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="List of applicable category IDs"
     )
     excluded_products: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="List of excluded product IDs"
     )
@@ -194,14 +196,14 @@ class CommissionPlan(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -267,15 +269,15 @@ class CommissionCategoryRate(Base):
     )
 
     # Slabs (optional override)
-    rate_slabs: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    rate_slabs: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -336,8 +338,8 @@ class CommissionProductRate(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -369,9 +371,10 @@ class CommissionEarner(Base):
     )
 
     # Earner Type
-    earner_type: Mapped[CommissionType] = mapped_column(
-        SQLEnum(CommissionType),
-        nullable=False
+    earner_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="SALES_REP"
     )
 
     # Link to User or Dealer
@@ -437,7 +440,7 @@ class CommissionEarner(Base):
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
-    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Performance
     total_earnings: Mapped[Decimal] = mapped_column(
@@ -456,14 +459,14 @@ class CommissionEarner(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -574,9 +577,9 @@ class CommissionTransaction(Base):
     )
 
     # Status
-    status: Mapped[CommissionStatus] = mapped_column(
-        SQLEnum(CommissionStatus),
-        default=CommissionStatus.PENDING,
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="PENDING",
         nullable=False
     )
     status_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
@@ -595,7 +598,7 @@ class CommissionTransaction(Base):
         ForeignKey("commission_payouts.id", ondelete="SET NULL"),
         nullable=True
     )
-    paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Clawback
     is_clawed_back: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -620,14 +623,14 @@ class CommissionTransaction(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -677,9 +680,9 @@ class CommissionPayout(Base):
     payout_date: Mapped[date] = mapped_column(Date, nullable=False)
 
     # Status
-    status: Mapped[PayoutStatus] = mapped_column(
-        SQLEnum(PayoutStatus),
-        default=PayoutStatus.DRAFT,
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="DRAFT",
         nullable=False
     )
 
@@ -734,23 +737,23 @@ class CommissionPayout(Base):
         UUID(as_uuid=True),
         nullable=True
     )
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     processed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         nullable=True
     )
-    processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -822,13 +825,13 @@ class CommissionPayoutLine(Base):
         comment="PENDING, SUCCESS, FAILED"
     )
     payment_reference: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    payment_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    payment_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     failure_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -888,7 +891,7 @@ class AffiliateReferral(Base):
     )
 
     # Click/Visit Tracking
-    click_timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    click_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     source_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     landing_page: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     utm_source: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
@@ -902,7 +905,7 @@ class AffiliateReferral(Base):
 
     # Conversion
     is_converted: Mapped[bool] = mapped_column(Boolean, default=False)
-    converted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    converted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     conversion_value: Mapped[Optional[Decimal]] = mapped_column(
         Numeric(14, 2),
         nullable=True
@@ -922,8 +925,8 @@ class AffiliateReferral(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 

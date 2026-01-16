@@ -1,12 +1,12 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 from decimal import Decimal
 
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Enum as SQLEnum, JSON
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 from app.database import Base
 
@@ -126,18 +126,20 @@ class Order(Base):
     )
 
     # Status
-    status: Mapped[OrderStatus] = mapped_column(
-        SQLEnum(OrderStatus),
-        default=OrderStatus.NEW,
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="NEW",
         nullable=False,
-        index=True
+        index=True,
+        comment="Order status: NEW, PENDING_PAYMENT, CONFIRMED, ALLOCATED, etc."
     )
 
     # Source/Channel
-    source: Mapped[OrderSource] = mapped_column(
-        SQLEnum(OrderSource),
-        default=OrderSource.WEBSITE,
-        nullable=False
+    source: Mapped[str] = mapped_column(
+        String(50),
+        default="WEBSITE",
+        nullable=False,
+        comment="WEBSITE, MOBILE_APP, STORE, PHONE, DEALER, AMAZON, FLIPKART, OTHER"
     )
 
     # Warehouse (fulfillment location)
@@ -190,15 +192,17 @@ class Order(Base):
     discount_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     # Payment
-    payment_method: Mapped[PaymentMethod] = mapped_column(
-        SQLEnum(PaymentMethod),
-        default=PaymentMethod.COD,
-        nullable=False
+    payment_method: Mapped[str] = mapped_column(
+        String(50),
+        default="COD",
+        nullable=False,
+        comment="CASH, CARD, UPI, NET_BANKING, WALLET, EMI, COD, CREDIT, CHEQUE"
     )
-    payment_status: Mapped[PaymentStatus] = mapped_column(
-        SQLEnum(PaymentStatus),
-        default=PaymentStatus.PENDING,
-        nullable=False
+    payment_status: Mapped[str] = mapped_column(
+        String(50),
+        default="PENDING",
+        nullable=False,
+        comment="PENDING, AUTHORIZED, CAPTURED, PARTIALLY_PAID, PAID, FAILED, REFUNDED, CANCELLED"
     )
     amount_paid: Mapped[Decimal] = mapped_column(
         Numeric(12, 2),
@@ -206,13 +210,13 @@ class Order(Base):
         nullable=False
     )
 
-    # Addresses (stored as JSON for historical record)
-    shipping_address: Mapped[dict] = mapped_column(JSON, nullable=False)
-    billing_address: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # Addresses (stored as JSONB for historical record)
+    shipping_address: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    billing_address: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Delivery
-    expected_delivery_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    expected_delivery_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Region for filtering
     region_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -234,38 +238,38 @@ class Order(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
         index=True
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
-    confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # OMS tracking timestamps
     allocated_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=True,
         comment="When inventory was allocated"
     )
     picked_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=True,
         comment="When order was picked"
     )
     packed_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=True,
         comment="When order was packed"
     )
     shipped_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=True,
         comment="When order was shipped"
     )
@@ -384,8 +388,8 @@ class OrderItem(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -413,12 +417,12 @@ class OrderStatusHistory(Base):
         nullable=False
     )
 
-    from_status: Mapped[Optional[OrderStatus]] = mapped_column(
-        SQLEnum(OrderStatus),
+    from_status: Mapped[Optional[str]] = mapped_column(
+        String(50),
         nullable=True
     )
-    to_status: Mapped[OrderStatus] = mapped_column(
-        SQLEnum(OrderStatus),
+    to_status: Mapped[str] = mapped_column(
+        String(50),
         nullable=False
     )
 
@@ -431,8 +435,8 @@ class OrderStatusHistory(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -461,20 +465,22 @@ class Payment(Base):
 
     # Payment Details
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
-    method: Mapped[PaymentMethod] = mapped_column(
-        SQLEnum(PaymentMethod),
-        nullable=False
+    method: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="CASH, CARD, UPI, NET_BANKING, WALLET, EMI, COD, CREDIT, CHEQUE"
     )
-    status: Mapped[PaymentStatus] = mapped_column(
-        SQLEnum(PaymentStatus),
-        default=PaymentStatus.PENDING,
-        nullable=False
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="PENDING",
+        nullable=False,
+        comment="PENDING, AUTHORIZED, CAPTURED, PARTIALLY_PAID, PAID, FAILED, REFUNDED, CANCELLED"
     )
 
     # Transaction Info
     transaction_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     gateway: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    gateway_response: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    gateway_response: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Reference
     reference_number: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
@@ -482,11 +488,11 @@ class Payment(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     order: Mapped["Order"] = relationship("Order", back_populates="payments")
@@ -535,20 +541,20 @@ class Invoice(Base):
 
     # Dates
     invoice_date: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
-    due_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    due_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Status
     is_cancelled: Mapped[bool] = mapped_column(Boolean, default=False)
-    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 

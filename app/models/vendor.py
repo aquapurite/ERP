@@ -8,14 +8,14 @@ Supports:
 - Vendor ledger for Accounts Payable
 """
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 from decimal import Decimal
 
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date, JSON
-from sqlalchemy import Enum as SQLEnum, UniqueConstraint, Index, CheckConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date
+from sqlalchemy import UniqueConstraint, Index, CheckConstraint
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -115,21 +115,24 @@ class Vendor(Base):
     trade_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
     # Type & Status
-    vendor_type: Mapped[VendorType] = mapped_column(
-        SQLEnum(VendorType),
+    vendor_type: Mapped[str] = mapped_column(
+        String(50),
         nullable=False,
-        index=True
+        index=True,
+        comment="MANUFACTURER, IMPORTER, DISTRIBUTOR, TRADER, SERVICE_PROVIDER, RAW_MATERIAL, SPARE_PARTS, CONSUMABLES, TRANSPORTER, CONTRACTOR"
     )
-    status: Mapped[VendorStatus] = mapped_column(
-        SQLEnum(VendorStatus),
-        default=VendorStatus.PENDING_APPROVAL,
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="PENDING_APPROVAL",
         nullable=False,
-        index=True
+        index=True,
+        comment="PENDING_APPROVAL, ACTIVE, INACTIVE, SUSPENDED, BLACKLISTED"
     )
-    grade: Mapped[VendorGrade] = mapped_column(
-        SQLEnum(VendorGrade),
-        default=VendorGrade.B,
-        nullable=False
+    grade: Mapped[str] = mapped_column(
+        String(10),
+        default="B",
+        nullable=False,
+        comment="A+, A, B, C, D"
     )
 
     # GST Compliance (Critical for India)
@@ -192,7 +195,7 @@ class Vendor(Base):
 
     # Warehouse Address (if different)
     warehouse_address: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Pickup/dispatch address"
     )
@@ -210,10 +213,11 @@ class Vendor(Base):
     beneficiary_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     # Payment Terms
-    payment_terms: Mapped[PaymentTerms] = mapped_column(
-        SQLEnum(PaymentTerms),
-        default=PaymentTerms.NET_30,
-        nullable=False
+    payment_terms: Mapped[str] = mapped_column(
+        String(50),
+        default="NET_30",
+        nullable=False,
+        comment="ADVANCE, PARTIAL_ADVANCE, ON_DELIVERY, NET_7, NET_15, NET_30, NET_45, NET_60, NET_90, CUSTOM"
     )
     credit_days: Mapped[int] = mapped_column(
         Integer,
@@ -273,7 +277,7 @@ class Vendor(Base):
 
     # Products & Categories (what they supply)
     product_categories: Mapped[Optional[List[uuid.UUID]]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Category IDs they supply"
     )
@@ -315,7 +319,7 @@ class Vendor(Base):
 
     # Verification Status
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
-    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     verified_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
@@ -338,8 +342,8 @@ class Vendor(Base):
         nullable=True,
         comment="Percentage of rejected goods"
     )
-    last_po_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    last_payment_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_po_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_payment_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Internal Notes
     internal_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -350,18 +354,18 @@ class Vendor(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -426,10 +430,11 @@ class VendorLedger(Base):
     )
 
     # Transaction Details
-    transaction_type: Mapped[VendorTransactionType] = mapped_column(
-        SQLEnum(VendorTransactionType),
+    transaction_type: Mapped[str] = mapped_column(
+        String(50),
         nullable=False,
-        index=True
+        index=True,
+        comment="OPENING_BALANCE, PURCHASE_INVOICE, PAYMENT, ADVANCE, DEBIT_NOTE, CREDIT_NOTE, TDS_DEDUCTED, ADJUSTMENT"
     )
     transaction_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
@@ -513,8 +518,8 @@ class VendorLedger(Base):
         nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -569,8 +574,8 @@ class VendorContact(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 

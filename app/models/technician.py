@@ -1,9 +1,8 @@
 """Technician model for service operations."""
 from enum import Enum
-from datetime import datetime, date
-from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float, JSON
-from sqlalchemy import Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
+from datetime import datetime, date, timezone as tz
+from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -54,20 +53,20 @@ class Technician(Base, TimestampMixin):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), unique=True)
 
     # Employment
-    technician_type = Column(SQLEnum(TechnicianType), default=TechnicianType.INTERNAL)
-    status = Column(SQLEnum(TechnicianStatus), default=TechnicianStatus.ACTIVE, index=True)
+    technician_type = Column(String(50), default="INTERNAL", comment="INTERNAL, EXTERNAL, FREELANCE")
+    status = Column(String(50), default="ACTIVE", index=True, comment="ACTIVE, INACTIVE, ON_LEAVE, TRAINING, RESIGNED")
     date_of_joining = Column(Date)
     date_of_leaving = Column(Date)
 
     # Skills
-    skill_level = Column(SQLEnum(SkillLevel), default=SkillLevel.JUNIOR)
-    specializations = Column(JSON)  # ["RO Systems", "Water Purifiers", "AC"]
-    certifications = Column(JSON)  # [{"name": "...", "date": "...", "expiry": "..."}]
+    skill_level = Column(String(50), default="JUNIOR", comment="TRAINEE, JUNIOR, SENIOR, EXPERT, MASTER")
+    specializations = Column(JSONB)  # ["RO Systems", "Water Purifiers", "AC"]
+    certifications = Column(JSONB)  # [{"name": "...", "date": "...", "expiry": "..."}]
 
     # Location/Assignment
     region_id = Column(UUID(as_uuid=True), ForeignKey("regions.id"))
     assigned_warehouse_id = Column(UUID(as_uuid=True), ForeignKey("warehouses.id"))
-    service_pincodes = Column(JSON)  # List of serviceable pincodes
+    service_pincodes = Column(JSONB)  # List of serviceable pincodes
 
     # Address
     address = Column(Text)
@@ -95,10 +94,10 @@ class Technician(Base, TimestampMixin):
 
     # Availability
     is_available = Column(Boolean, default=True)
-    last_job_date = Column(DateTime)
+    last_job_date = Column(DateTime(timezone=True))
     current_location_lat = Column(Float)
     current_location_lng = Column(Float)
-    location_updated_at = Column(DateTime)
+    location_updated_at = Column(DateTime(timezone=True))
 
     notes = Column(Text)
 
@@ -131,12 +130,12 @@ class TechnicianJobHistory(Base, TimestampMixin):
     service_request_id = Column(UUID(as_uuid=True), ForeignKey("service_requests.id"), nullable=False)
 
     # Assignment
-    assigned_at = Column(DateTime, default=datetime.utcnow)
+    assigned_at = Column(DateTime(timezone=True), default=lambda: datetime.now(tz.utc))
     assigned_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
 
     # Timing
-    started_at = Column(DateTime)
-    completed_at = Column(DateTime)
+    started_at = Column(DateTime(timezone=True))
+    completed_at = Column(DateTime(timezone=True))
     time_taken_minutes = Column(Integer)
 
     # Status
@@ -174,7 +173,7 @@ class TechnicianLeave(Base, TimestampMixin):
 
     status = Column(String(50), default="pending")  # pending, approved, rejected, cancelled
     approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    approved_at = Column(DateTime)
+    approved_at = Column(DateTime(timezone=True))
     rejection_reason = Column(Text)
 
     # Relationships

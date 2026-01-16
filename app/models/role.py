@@ -1,9 +1,9 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 
-from sqlalchemy import String, Boolean, DateTime, Integer, Text, Enum as SQLEnum
+from sqlalchemy import String, Boolean, DateTime, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -49,10 +49,11 @@ class Role(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Hierarchy level
-    level: Mapped[RoleLevel] = mapped_column(
-        SQLEnum(RoleLevel),
+    level: Mapped[str] = mapped_column(
+        String(50),
         nullable=False,
-        default=RoleLevel.EXECUTIVE
+        default="EXECUTIVE",
+        comment="SUPER_ADMIN, DIRECTOR, HEAD, MANAGER, EXECUTIVE"
     )
 
     # Department association (for HEAD/MANAGER roles)
@@ -64,14 +65,14 @@ class Role(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -90,11 +91,14 @@ class Role(Base):
     @property
     def is_super_admin(self) -> bool:
         """Check if this role is SUPER_ADMIN level."""
-        return self.level == RoleLevel.SUPER_ADMIN
+        return self.level == "SUPER_ADMIN" or self.level == RoleLevel.SUPER_ADMIN.name
 
     def has_higher_level_than(self, other_role: "Role") -> bool:
         """Check if this role has higher authority than another role."""
-        return self.level.value < other_role.level.value
+        level_order = {"SUPER_ADMIN": 0, "DIRECTOR": 1, "HEAD": 2, "MANAGER": 3, "EXECUTIVE": 4}
+        self_level = level_order.get(str(self.level), 4)
+        other_level = level_order.get(str(other_role.level), 4)
+        return self_level < other_level
 
     def __repr__(self) -> str:
-        return f"<Role(name='{self.name}', code='{self.code}', level='{self.level.name}')>"
+        return f"<Role(name='{self.name}', code='{self.code}', level='{self.level}')>"

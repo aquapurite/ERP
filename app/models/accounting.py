@@ -4,14 +4,14 @@ Implements: Chart of Accounts, General Ledger, Journal Entries,
 Financial Periods, Cost Centers, and GST compliance.
 """
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 from decimal import Decimal
 
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date, JSON
-from sqlalchemy import Enum as SQLEnum, UniqueConstraint, CheckConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date
+from sqlalchemy import UniqueConstraint, CheckConstraint
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -110,14 +110,16 @@ class ChartOfAccount(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Classification
-    account_type: Mapped[AccountType] = mapped_column(
-        SQLEnum(AccountType),
+    account_type: Mapped[str] = mapped_column(
+        String(50),
         nullable=False,
-        index=True
+        index=True,
+        comment="ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE"
     )
-    account_sub_type: Mapped[Optional[AccountSubType]] = mapped_column(
-        SQLEnum(AccountSubType),
-        nullable=True
+    account_sub_type: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Account sub-type classification"
     )
 
     # Hierarchy
@@ -172,14 +174,14 @@ class ChartOfAccount(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -258,10 +260,11 @@ class FinancialPeriod(Base):
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
 
     # Status
-    status: Mapped[FinancialPeriodStatus] = mapped_column(
-        SQLEnum(FinancialPeriodStatus),
-        default=FinancialPeriodStatus.OPEN,
-        nullable=False
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="OPEN",
+        nullable=False,
+        comment="OPEN, CLOSED, LOCKED"
     )
 
     # Flags
@@ -278,18 +281,18 @@ class FinancialPeriod(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -356,14 +359,14 @@ class CostCenter(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -442,10 +445,11 @@ class JournalEntry(Base):
     total_credit: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False)
 
     # Status
-    status: Mapped[JournalEntryStatus] = mapped_column(
-        SQLEnum(JournalEntryStatus),
-        default=JournalEntryStatus.DRAFT,
-        nullable=False
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="DRAFT",
+        nullable=False,
+        comment="DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, POSTED, REVERSED, CANCELLED"
     )
 
     # Reversal
@@ -479,7 +483,7 @@ class JournalEntry(Base):
         comment="Who submitted for approval"
     )
     submitted_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=True,
         comment="When submitted for approval"
     )
@@ -499,7 +503,7 @@ class JournalEntry(Base):
         comment="Checker - who approved/rejected"
     )
     approved_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=True,
         comment="When approved/rejected"
     )
@@ -517,21 +521,21 @@ class JournalEntry(Base):
         comment="Who posted to GL after approval"
     )
     posted_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=True,
         comment="When posted to GL"
     )
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -612,8 +616,8 @@ class JournalEntryLine(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -715,8 +719,8 @@ class GeneralLedger(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -791,14 +795,14 @@ class TaxConfiguration(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -861,9 +865,10 @@ class BankStatementLine(Base):
     cheque_number: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     # Transaction
-    transaction_type: Mapped[BankTransactionType] = mapped_column(
-        SQLEnum(BankTransactionType),
-        nullable=False
+    transaction_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="DEPOSIT, WITHDRAWAL, TRANSFER, CHARGE, INTEREST, REVERSAL"
     )
     description: Mapped[str] = mapped_column(Text, nullable=False)
     debit_amount: Mapped[Decimal] = mapped_column(
@@ -884,7 +889,7 @@ class BankStatementLine(Base):
 
     # Reconciliation
     is_reconciled: Mapped[bool] = mapped_column(Boolean, default=False)
-    reconciled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    reconciled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     reconciled_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
@@ -901,12 +906,12 @@ class BankStatementLine(Base):
 
     # Import tracking
     import_batch_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    imported_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    imported_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 

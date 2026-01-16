@@ -8,14 +8,14 @@ Supports:
 - Payment receipts and advances
 """
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 from decimal import Decimal
 
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date, JSON
-from sqlalchemy import Enum as SQLEnum, UniqueConstraint, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date
+from sqlalchemy import UniqueConstraint, Index
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -133,16 +133,18 @@ class TaxInvoice(Base):
     )
 
     # Type & Status
-    invoice_type: Mapped[InvoiceType] = mapped_column(
-        SQLEnum(InvoiceType),
-        default=InvoiceType.TAX_INVOICE,
-        nullable=False
-    )
-    status: Mapped[InvoiceStatus] = mapped_column(
-        SQLEnum(InvoiceStatus),
-        default=InvoiceStatus.DRAFT,
+    invoice_type: Mapped[str] = mapped_column(
+        String(50),
+        default="TAX_INVOICE",
         nullable=False,
-        index=True
+        comment="TAX_INVOICE, PROFORMA, DELIVERY_CHALLAN, EXPORT, SEZ, DEEMED_EXPORT"
+    )
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="DRAFT",
+        nullable=False,
+        index=True,
+        comment="DRAFT, PENDING_APPROVAL, APPROVED, GENERATED, IRN_PENDING, IRN_GENERATED, SENT, PARTIALLY_PAID, PAID, OVERDUE, CANCELLED, VOID"
     )
 
     # Dates
@@ -337,13 +339,13 @@ class TaxInvoice(Base):
         nullable=True,
         comment="Invoice Reference Number from GST Portal"
     )
-    irn_generated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    irn_generated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     ack_number: Mapped[Optional[str]] = mapped_column(
         String(50),
         nullable=True,
         comment="Acknowledgement number from GST Portal"
     )
-    ack_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    ack_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     signed_invoice: Mapped[Optional[str]] = mapped_column(
         Text,
         nullable=True,
@@ -404,25 +406,25 @@ class TaxInvoice(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     cancelled_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     cancellation_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -506,7 +508,7 @@ class InvoiceItem(Base):
 
     # Serial Numbers
     serial_numbers: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="List of serial numbers for this item"
     )
@@ -608,8 +610,8 @@ class InvoiceItem(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -645,9 +647,10 @@ class CreditDebitNote(Base):
         index=True,
         comment="Credit/Debit note number"
     )
-    document_type: Mapped[DocumentType] = mapped_column(
-        SQLEnum(DocumentType),
-        nullable=False
+    document_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="CREDIT_NOTE, DEBIT_NOTE"
     )
 
     # Reference Invoice
@@ -666,17 +669,19 @@ class CreditDebitNote(Base):
 
     # Note Details
     note_date: Mapped[date] = mapped_column(Date, nullable=False)
-    reason: Mapped[NoteReason] = mapped_column(
-        SQLEnum(NoteReason),
-        nullable=False
+    reason: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="SALES_RETURN, POST_SALE_DISCOUNT, DEFICIENCY_IN_SERVICE, CORRECTION_IN_INVOICE, CHANGE_IN_POS, FINALIZATION_OF_PROVISIONAL, PRICE_INCREASE, ADDITIONAL_CHARGES, QUALITY_VARIATION, OTHER"
     )
     reason_description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Status
-    status: Mapped[InvoiceStatus] = mapped_column(
-        SQLEnum(InvoiceStatus),
-        default=InvoiceStatus.DRAFT,
-        nullable=False
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="DRAFT",
+        nullable=False,
+        comment="DRAFT, PENDING_APPROVAL, APPROVED, GENERATED, CANCELLED, VOID"
     )
 
     # Customer Details
@@ -710,7 +715,7 @@ class CreditDebitNote(Base):
         comment="IRN for credit/debit note"
     )
     ack_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    ack_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    ack_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Pre-GST Reference (for notes against old invoices)
     pre_gst: Mapped[bool] = mapped_column(
@@ -732,18 +737,18 @@ class CreditDebitNote(Base):
         UUID(as_uuid=True),
         nullable=True
     )
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -814,8 +819,8 @@ class CreditDebitNoteItem(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -860,10 +865,11 @@ class EWayBill(Base):
     )
 
     # Status
-    status: Mapped[EWayBillStatus] = mapped_column(
-        SQLEnum(EWayBillStatus),
-        default=EWayBillStatus.PENDING,
-        nullable=False
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="PENDING",
+        nullable=False,
+        comment="PENDING, GENERATED, EXTENDED, CANCELLED, EXPIRED"
     )
 
     # Document Details
@@ -953,36 +959,36 @@ class EWayBill(Base):
     )
 
     # Validity
-    valid_from: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    valid_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    valid_from: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    valid_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Extension Details
     extension_count: Mapped[int] = mapped_column(Integer, default=0)
-    extended_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    extended_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     extension_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Cancellation
-    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     cancellation_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # API Response
-    generated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    generated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     api_response: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Raw response from GST portal"
     )
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -1086,9 +1092,10 @@ class PaymentReceipt(Base):
 
     # Payment Details
     payment_date: Mapped[date] = mapped_column(Date, nullable=False)
-    payment_mode: Mapped[PaymentMode] = mapped_column(
-        SQLEnum(PaymentMode),
-        nullable=False
+    payment_mode: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="CASH, CHEQUE, RTGS, NEFT, UPI, CREDIT_CARD, DEBIT_CARD, NET_BANKING, WALLET, EMI, CREDIT, ADVANCE, TDS_DEDUCTED"
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), default="INR")
@@ -1123,9 +1130,9 @@ class PaymentReceipt(Base):
 
     # Status
     is_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
-    confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_bounced: Mapped[bool] = mapped_column(Boolean, default=False)
-    bounced_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    bounced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     bounce_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Remarks
@@ -1140,14 +1147,14 @@ class PaymentReceipt(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -1217,14 +1224,14 @@ class InvoiceNumberSequence(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 

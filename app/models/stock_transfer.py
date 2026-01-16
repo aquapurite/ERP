@@ -1,8 +1,7 @@
 """Stock Transfer model for warehouse-to-warehouse movements."""
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, Text, ForeignKey, Integer, DateTime, Float, Numeric
-from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import uuid
@@ -40,18 +39,18 @@ class StockTransfer(Base, TimestampMixin):
 
     # Transfer identification
     transfer_number = Column(String(50), unique=True, nullable=False, index=True)
-    transfer_type = Column(SQLEnum(TransferType), default=TransferType.STOCK_TRANSFER)
-    status = Column(SQLEnum(TransferStatus), default=TransferStatus.DRAFT, index=True)
+    transfer_type = Column(String(50), default="STOCK_TRANSFER")
+    status = Column(String(50), default="DRAFT", index=True)
 
     # Warehouses
     from_warehouse_id = Column(UUID(as_uuid=True), ForeignKey("warehouses.id"), nullable=False, index=True)
     to_warehouse_id = Column(UUID(as_uuid=True), ForeignKey("warehouses.id"), nullable=False, index=True)
 
     # Dates
-    request_date = Column(DateTime, default=datetime.utcnow)
-    expected_date = Column(DateTime)
-    dispatch_date = Column(DateTime)
-    received_date = Column(DateTime)
+    request_date = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    expected_date = Column(DateTime(timezone=True))
+    dispatch_date = Column(DateTime(timezone=True))
+    received_date = Column(DateTime(timezone=True))
 
     # Users involved
     requested_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
@@ -60,7 +59,7 @@ class StockTransfer(Base, TimestampMixin):
     received_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
 
     # Approval
-    approved_at = Column(DateTime)
+    approved_at = Column(DateTime(timezone=True))
     rejection_reason = Column(Text)
 
     # Totals
@@ -80,8 +79,8 @@ class StockTransfer(Base, TimestampMixin):
     internal_notes = Column(Text)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     from_warehouse = relationship(
@@ -155,7 +154,7 @@ class StockTransferSerial(Base, TimestampMixin):
     is_received = Column(Integer, default=False)
     is_damaged = Column(Integer, default=False)
 
-    received_at = Column(DateTime)
+    received_at = Column(DateTime(timezone=True))
     damage_notes = Column(Text)
 
     # Relationships
