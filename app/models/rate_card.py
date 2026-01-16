@@ -1,6 +1,6 @@
 """Rate Card models for logistics pricing across D2C, B2B, and FTL segments."""
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
@@ -9,7 +9,6 @@ from sqlalchemy import (
     String, Boolean, DateTime, Date, ForeignKey, Integer, Text,
     Numeric, UniqueConstraint, Index
 )
-from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -153,10 +152,11 @@ class D2CRateCard(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Service Type
-    service_type: Mapped[D2CServiceType] = mapped_column(
-        SQLEnum(D2CServiceType, name="d2cservicetype", create_type=False),
-        default=D2CServiceType.STANDARD,
-        nullable=False
+    service_type: Mapped[str] = mapped_column(
+        String(50),
+        default="STANDARD",
+        nullable=False,
+        comment="STANDARD, EXPRESS, ECONOMY, SAME_DAY, NEXT_DAY"
     )
 
     # Zone Type (how zones are defined)
@@ -185,14 +185,14 @@ class D2CRateCard(Base):
         nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -288,8 +288,8 @@ class D2CWeightSlab(Base):
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -329,16 +329,18 @@ class D2CSurcharge(Base):
         index=True
     )
 
-    surcharge_type: Mapped[SurchargeType] = mapped_column(
-        SQLEnum(SurchargeType),
-        nullable=False
+    surcharge_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="FUEL, COD_HANDLING, COD_PERCENTAGE, RTO, ODA, INSURANCE, HANDLING, DOCKET, LOADING, UNLOADING, POD_COPY, DETENTION, DEMURRAGE"
     )
 
     # Calculation Method
-    calculation_type: Mapped[CalculationType] = mapped_column(
-        SQLEnum(CalculationType),
-        default=CalculationType.PERCENTAGE,
-        nullable=False
+    calculation_type: Mapped[str] = mapped_column(
+        String(50),
+        default="PERCENTAGE",
+        nullable=False,
+        comment="PERCENTAGE, FIXED, PER_KG, PER_UNIT, PER_PKG"
     )
 
     # Value
@@ -442,8 +444,8 @@ class ZoneMapping(Base):
     )
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -486,17 +488,19 @@ class B2BRateCard(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Service Type
-    service_type: Mapped[B2BServiceType] = mapped_column(
-        SQLEnum(B2BServiceType),
-        default=B2BServiceType.LTL,
-        nullable=False
+    service_type: Mapped[str] = mapped_column(
+        String(50),
+        default="LTL",
+        nullable=False,
+        comment="LTL, PTL, PARCEL"
     )
 
     # Transport Mode
-    transport_mode: Mapped[TransportMode] = mapped_column(
-        SQLEnum(TransportMode),
-        default=TransportMode.SURFACE,
-        nullable=False
+    transport_mode: Mapped[str] = mapped_column(
+        String(50),
+        default="SURFACE",
+        nullable=False,
+        comment="SURFACE, AIR, RAIL, MULTIMODAL"
     )
 
     # Minimum Requirements
@@ -521,14 +525,14 @@ class B2BRateCard(Base):
         nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -598,10 +602,11 @@ class B2BRateSlab(Base):
     )
 
     # Rate Structure
-    rate_type: Mapped[B2BRateType] = mapped_column(
-        SQLEnum(B2BRateType),
-        default=B2BRateType.PER_KG,
-        nullable=False
+    rate_type: Mapped[str] = mapped_column(
+        String(50),
+        default="PER_KG",
+        nullable=False,
+        comment="PER_KG, PER_CFT, FLAT_RATE"
     )
     rate: Mapped[Decimal] = mapped_column(
         Numeric(10, 2),
@@ -620,8 +625,8 @@ class B2BRateSlab(Base):
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -657,15 +662,17 @@ class B2BAdditionalCharge(Base):
         index=True
     )
 
-    charge_type: Mapped[SurchargeType] = mapped_column(
-        SQLEnum(SurchargeType),
-        nullable=False
+    charge_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="FUEL, COD_HANDLING, COD_PERCENTAGE, RTO, ODA, INSURANCE, HANDLING, DOCKET, LOADING, UNLOADING, POD_COPY, DETENTION, DEMURRAGE"
     )
 
-    calculation_type: Mapped[CalculationType] = mapped_column(
-        SQLEnum(CalculationType),
-        default=CalculationType.FIXED,
-        nullable=False
+    calculation_type: Mapped[str] = mapped_column(
+        String(50),
+        default="FIXED",
+        nullable=False,
+        comment="PERCENTAGE, FIXED, PER_KG, PER_UNIT, PER_PKG"
     )
 
     value: Mapped[Decimal] = mapped_column(
@@ -725,10 +732,11 @@ class FTLRateCard(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Rate Type
-    rate_type: Mapped[FTLRateType] = mapped_column(
-        SQLEnum(FTLRateType),
-        default=FTLRateType.CONTRACT,
-        nullable=False
+    rate_type: Mapped[str] = mapped_column(
+        String(50),
+        default="CONTRACT",
+        nullable=False,
+        comment="CONTRACT, SPOT, TENDER"
     )
 
     # Payment Terms
@@ -749,14 +757,14 @@ class FTLRateCard(Base):
         nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -869,8 +877,8 @@ class FTLLaneRate(Base):
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -910,10 +918,11 @@ class FTLAdditionalCharge(Base):
         comment="LOADING_DETENTION, UNLOADING_DETENTION, OVERNIGHT_HALT, TOLL, DRIVER_BATA, EMPTY_RETURN"
     )
 
-    calculation_type: Mapped[CalculationType] = mapped_column(
-        SQLEnum(CalculationType),
-        default=CalculationType.FIXED,
-        nullable=False
+    calculation_type: Mapped[str] = mapped_column(
+        String(50),
+        default="FIXED",
+        nullable=False,
+        comment="PERCENTAGE, FIXED, PER_KG, PER_UNIT, PER_PKG"
     )
 
     value: Mapped[Decimal] = mapped_column(
@@ -976,15 +985,16 @@ class FTLVehicleType(Base):
     capacity_cft: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # Category
-    category: Mapped[VehicleCategory] = mapped_column(
-        SQLEnum(VehicleCategory),
-        nullable=True
+    category: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="MINI, SMALL, MEDIUM, LARGE, HEAVY, TRAILER"
     )
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -1068,14 +1078,14 @@ class CarrierPerformance(Base):
     )
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 

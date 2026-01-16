@@ -10,15 +10,15 @@ This module contains models for:
 """
 import uuid
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional, List
 
 from sqlalchemy import (
     String, Text, Integer, Boolean, DateTime, Date,
-    ForeignKey, Numeric, Enum as SQLEnum, JSON
+    ForeignKey, Numeric
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -129,10 +129,14 @@ class Lead(Base):
     )  # LEAD-YYYYMMDD-XXXX
 
     # Lead Type & Source
-    lead_type: Mapped[LeadType] = mapped_column(
-        SQLEnum(LeadType), default=LeadType.INDIVIDUAL
+    lead_type: Mapped[str] = mapped_column(
+        String(50), default="INDIVIDUAL",
+        comment="INDIVIDUAL, BUSINESS, GOVERNMENT, INSTITUTIONAL"
     )
-    source: Mapped[LeadSource] = mapped_column(SQLEnum(LeadSource))
+    source: Mapped[str] = mapped_column(
+        String(50),
+        comment="WEBSITE, PHONE_CALL, WALK_IN, REFERRAL, SOCIAL_MEDIA, EMAIL_CAMPAIGN, SMS_CAMPAIGN, EXHIBITION, ADVERTISEMENT, PARTNER, DEALER, FRANCHISEE, AMAZON, FLIPKART, OTHER_MARKETPLACE, COLD_CALL, OTHER"
+    )
     source_details: Mapped[Optional[str]] = mapped_column(String(200))
     campaign_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     referral_code: Mapped[Optional[str]] = mapped_column(String(50))
@@ -161,10 +165,11 @@ class Lead(Base):
     country: Mapped[str] = mapped_column(String(50), default="India")
 
     # Product Interest
-    interest: Mapped[LeadInterest] = mapped_column(
-        SQLEnum(LeadInterest), default=LeadInterest.NEW_PURCHASE
+    interest: Mapped[str] = mapped_column(
+        String(50), default="NEW_PURCHASE",
+        comment="NEW_PURCHASE, REPLACEMENT, UPGRADE, AMC, DEMO, INQUIRY"
     )
-    interested_products: Mapped[Optional[dict]] = mapped_column(JSON)  # List of product IDs
+    interested_products: Mapped[Optional[dict]] = mapped_column(JSONB)  # List of product IDs
     interested_category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL")
     )
@@ -174,16 +179,18 @@ class Lead(Base):
     expected_purchase_date: Mapped[Optional[datetime]] = mapped_column(Date)
 
     # Status & Priority
-    status: Mapped[LeadStatus] = mapped_column(
-        SQLEnum(LeadStatus), default=LeadStatus.NEW, index=True
+    status: Mapped[str] = mapped_column(
+        String(50), default="NEW", index=True,
+        comment="NEW, CONTACTED, QUALIFIED, PROPOSAL_SENT, NEGOTIATION, WON, LOST, NURTURING, DISQUALIFIED, DUPLICATE"
     )
-    priority: Mapped[LeadPriority] = mapped_column(
-        SQLEnum(LeadPriority), default=LeadPriority.MEDIUM
+    priority: Mapped[str] = mapped_column(
+        String(50), default="MEDIUM",
+        comment="LOW, MEDIUM, HIGH, CRITICAL"
     )
 
     # Lead Scoring
     score: Mapped[int] = mapped_column(Integer, default=0)
-    score_breakdown: Mapped[Optional[dict]] = mapped_column(JSON)  # Individual scores
+    score_breakdown: Mapped[Optional[dict]] = mapped_column(JSONB)  # Individual scores
     is_qualified: Mapped[bool] = mapped_column(Boolean, default=False)
     qualification_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
     qualified_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -222,7 +229,10 @@ class Lead(Base):
     )
 
     # Lost Information
-    lost_reason: Mapped[Optional[LostReason]] = mapped_column(SQLEnum(LostReason))
+    lost_reason: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        comment="PRICE_TOO_HIGH, COMPETITOR_CHOSEN, BUDGET_CONSTRAINTS, NOT_INTERESTED, NO_RESPONSE, WRONG_TIMING, PRODUCT_NOT_FIT, LOCATION_NOT_SERVICEABLE, CUSTOMER_POSTPONED, OTHER"
+    )
     lost_reason_details: Mapped[Optional[str]] = mapped_column(Text)
     lost_to_competitor: Mapped[Optional[str]] = mapped_column(String(100))
     lost_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
@@ -231,7 +241,7 @@ class Lead(Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
     internal_notes: Mapped[Optional[str]] = mapped_column(Text)
     special_requirements: Mapped[Optional[str]] = mapped_column(Text)
-    tags: Mapped[Optional[dict]] = mapped_column(JSON)  # List of tags
+    tags: Mapped[Optional[dict]] = mapped_column(JSONB)  # List of tags
 
     # Call Integration
     source_call_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -251,9 +261,13 @@ class Lead(Base):
     created_by_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -290,18 +304,23 @@ class LeadActivity(Base):
     )
 
     # Activity Details
-    activity_type: Mapped[ActivityType] = mapped_column(SQLEnum(ActivityType))
+    activity_type: Mapped[str] = mapped_column(
+        String(50),
+        comment="CALL, EMAIL, SMS, WHATSAPP, MEETING, DEMO, SITE_VISIT, PROPOSAL, NEGOTIATION, FOLLOW_UP, NOTE, STATUS_CHANGE, ASSIGNMENT, CONVERSION"
+    )
     subject: Mapped[str] = mapped_column(String(200))
     description: Mapped[Optional[str]] = mapped_column(Text)
     outcome: Mapped[Optional[str]] = mapped_column(String(100))
 
     # Timing
-    activity_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    activity_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
     duration_minutes: Mapped[Optional[int]] = mapped_column(Integer)
 
     # Status Change (if activity is status change)
-    old_status: Mapped[Optional[LeadStatus]] = mapped_column(SQLEnum(LeadStatus))
-    new_status: Mapped[Optional[LeadStatus]] = mapped_column(SQLEnum(LeadStatus))
+    old_status: Mapped[Optional[str]] = mapped_column(String(50))
+    new_status: Mapped[Optional[str]] = mapped_column(String(50))
 
     # Assignment Change (if activity is assignment)
     old_assignee_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
@@ -320,7 +339,9 @@ class LeadActivity(Base):
     created_by_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
 
     # Relationships
     lead = relationship("Lead", back_populates="activities")
@@ -352,9 +373,13 @@ class LeadScoreRule(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
     )
 
 
@@ -369,8 +394,8 @@ class LeadAssignmentRule(Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
 
     # Criteria
-    source: Mapped[Optional[LeadSource]] = mapped_column(SQLEnum(LeadSource))
-    lead_type: Mapped[Optional[LeadType]] = mapped_column(SQLEnum(LeadType))
+    source: Mapped[Optional[str]] = mapped_column(String(50))
+    lead_type: Mapped[Optional[str]] = mapped_column(String(50))
     region_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("regions.id", ondelete="SET NULL")
     )
@@ -387,16 +412,20 @@ class LeadAssignmentRule(Base):
     )
     assign_to_team_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     round_robin: Mapped[bool] = mapped_column(Boolean, default=False)
-    round_robin_users: Mapped[Optional[dict]] = mapped_column(JSON)  # List of user IDs
+    round_robin_users: Mapped[Optional[dict]] = mapped_column(JSONB)  # List of user IDs
 
     # Priority & Status
     priority: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships

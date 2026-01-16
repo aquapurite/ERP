@@ -1,5 +1,5 @@
 """TDS (Tax Deducted at Source) Models."""
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from enum import Enum
 from typing import Optional
@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     Column, String, Numeric, Date, DateTime, Boolean,
-    ForeignKey, Text, Enum as SQLEnum, Index
+    ForeignKey, Text, Index
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import relationship
@@ -59,7 +59,11 @@ class TDSDeduction(Base):
     deductee_address = Column(Text, nullable=True)
 
     # Deduction Details
-    section = Column(SQLEnum(TDSSection), nullable=False)
+    section = Column(
+        String(20),
+        nullable=False,
+        comment="194A, 194C, 194H, 194I, 194IA, 194J, 194Q, 195, 192, 194B, 194D, 194E, 194G, 194K, 194LA, 194LB, 194N, 194O"
+    )
     deduction_date = Column(Date, nullable=False)
     financial_year = Column(String(9), nullable=False)  # 2024-25
     quarter = Column(String(2), nullable=False)  # Q1, Q2, Q3, Q4
@@ -83,7 +87,11 @@ class TDSDeduction(Base):
     narration = Column(Text, nullable=True)
 
     # Deposit Details
-    status = Column(SQLEnum(TDSDeductionStatus), default=TDSDeductionStatus.PENDING)
+    status = Column(
+        String(50),
+        default="PENDING",
+        comment="PENDING, DEPOSITED, CERTIFICATE_ISSUED"
+    )
     deposit_date = Column(Date, nullable=True)
     challan_number = Column(String(50), nullable=True)
     challan_date = Column(Date, nullable=True)
@@ -97,8 +105,8 @@ class TDSDeduction(Base):
 
     # Audit
     created_by = Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     company = relationship("Company", back_populates="tds_deductions")
@@ -118,7 +126,11 @@ class TDSRate(Base):
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     company_id = Column(PGUUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
 
-    section = Column(SQLEnum(TDSSection), nullable=False)
+    section = Column(
+        String(20),
+        nullable=False,
+        comment="194A, 194C, 194H, 194I, 194IA, 194J, 194Q, 195, 192, 194B, 194D, 194E, 194G, 194K, 194LA, 194LB, 194N, 194O"
+    )
     description = Column(String(255), nullable=False)
 
     # Rate Details
@@ -131,7 +143,7 @@ class TDSRate(Base):
     effective_to = Column(Date, nullable=True)
     is_active = Column(Boolean, default=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         Index("ix_tds_rates_company_section", "company_id", "section"),
@@ -177,7 +189,7 @@ class Form16ACertificate(Base):
     pdf_path = Column(String(500), nullable=True)
 
     created_by = Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         Index("ix_form16a_company_fy_qtr", "company_id", "financial_year", "quarter"),

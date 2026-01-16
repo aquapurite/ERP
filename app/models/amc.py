@@ -1,9 +1,8 @@
 """AMC (Annual Maintenance Contract) model."""
 from enum import Enum
-from datetime import datetime, date
-from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float, JSON, Numeric
-from sqlalchemy import Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
+from datetime import datetime, date, timezone
+from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float, Numeric
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -37,8 +36,14 @@ class AMCContract(Base, TimestampMixin):
 
     # Identification
     contract_number = Column(String(50), unique=True, nullable=False, index=True)
-    amc_type = Column(SQLEnum(AMCType), default=AMCType.STANDARD)
-    status = Column(SQLEnum(AMCStatus), default=AMCStatus.DRAFT, index=True)
+    amc_type = Column(
+        String(50), default="STANDARD",
+        comment="STANDARD, COMPREHENSIVE, EXTENDED_WARRANTY, PLATINUM"
+    )
+    status = Column(
+        String(50), default="DRAFT", index=True,
+        comment="DRAFT, PENDING_PAYMENT, ACTIVE, EXPIRED, CANCELLED, RENEWED"
+    )
 
     # Customer
     customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id"), nullable=False, index=True)
@@ -86,7 +91,7 @@ class AMCContract(Base, TimestampMixin):
     renewed_to_id = Column(UUID(as_uuid=True), ForeignKey("amc_contracts.id"))
 
     # Service schedule
-    service_schedule = Column(JSON)  # [{"month": 1, "scheduled_date": null, "completed_date": null}]
+    service_schedule = Column(JSONB)  # [{"month": 1, "scheduled_date": null, "completed_date": null}]
     next_service_due = Column(Date)
 
     notes = Column(Text)
@@ -133,11 +138,14 @@ class AMCPlan(Base, TimestampMixin):
 
     name = Column(String(200), nullable=False)
     code = Column(String(20), unique=True, nullable=False)
-    amc_type = Column(SQLEnum(AMCType), default=AMCType.STANDARD)
+    amc_type = Column(
+        String(50), default="STANDARD",
+        comment="STANDARD, COMPREHENSIVE, EXTENDED_WARRANTY, PLATINUM"
+    )
 
     # Applicable products
     category_id = Column(UUID(as_uuid=True), ForeignKey("categories.id"))  # If specific to category
-    product_ids = Column(JSON)  # List of specific product IDs if applicable
+    product_ids = Column(JSONB)  # List of specific product IDs if applicable
 
     # Duration options
     duration_months = Column(Integer, default=12)

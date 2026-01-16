@@ -12,9 +12,9 @@ Barcode Structure: APFSZAIEL000001 (15 characters)
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, Text, Enum, UniqueConstraint
+from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from app.database import Base
@@ -61,7 +61,7 @@ class SerialSequence(Base):
         nullable=True
     )
     model_code: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
-    item_type = mapped_column(Enum(ItemType), default=ItemType.FINISHED_GOODS)
+    item_type: Mapped[str] = mapped_column(String(10), default="FG", comment="FG, SP, CO")
 
     # Sequence key components
     supplier_code: Mapped[str] = mapped_column(String(2), nullable=False, index=True)
@@ -73,8 +73,8 @@ class SerialSequence(Base):
     total_generated: Mapped[int] = mapped_column(Integer, default=0)
 
     # Metadata
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     product = relationship("Product", backref="serial_sequences")
@@ -115,7 +115,7 @@ class ProductSerialSequence(Base):
         nullable=True
     )
     model_code: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
-    item_type = mapped_column(Enum(ItemType), nullable=False, default=ItemType.FINISHED_GOODS)
+    item_type: Mapped[str] = mapped_column(String(10), nullable=False, default="FG", comment="FG, SP, CO")
 
     # Unique constraint on model_code + item_type (FG and SP can have same model_code)
     __table_args__ = (
@@ -132,8 +132,8 @@ class ProductSerialSequence(Base):
     max_serial: Mapped[int] = mapped_column(Integer, default=99999999)
 
     # Metadata
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     product = relationship("Product", backref="product_serial_sequence")
@@ -188,7 +188,7 @@ class POSerial(Base):
     )
     product_sku: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     model_code: Mapped[str] = mapped_column(String(10), nullable=False)
-    item_type = mapped_column(Enum(ItemType), default=ItemType.FINISHED_GOODS)
+    item_type: Mapped[str] = mapped_column(String(10), default="FG", comment="FG, SP, CO")
 
     # Barcode components
     brand_prefix: Mapped[str] = mapped_column(String(2), default="AP")
@@ -201,7 +201,7 @@ class POSerial(Base):
     barcode: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
 
     # Status tracking
-    status = mapped_column(Enum(SerialStatus), default=SerialStatus.GENERATED)
+    status: Mapped[str] = mapped_column(String(30), default="GENERATED", comment="GENERATED, PRINTED, SENT_TO_VENDOR, RECEIVED, ASSIGNED, SOLD, RETURNED, DAMAGED, CANCELLED")
 
     # GRN linkage (when received)
     grn_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -210,7 +210,7 @@ class POSerial(Base):
         nullable=True
     )
     grn_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
-    received_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    received_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     received_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     # Stock item linkage (when assigned to inventory)
@@ -219,21 +219,21 @@ class POSerial(Base):
         ForeignKey("stock_items.id"),
         nullable=True
     )
-    assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Sale linkage (when sold)
     order_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
     order_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
-    sold_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    sold_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     # Warranty tracking
-    warranty_start_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    warranty_end_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    warranty_start_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    warranty_end_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Metadata
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Relationships
@@ -275,7 +275,7 @@ class ModelCodeReference(Base):
     model_code: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
 
     # Item type
-    item_type = mapped_column(Enum(ItemType), default=ItemType.FINISHED_GOODS)
+    item_type: Mapped[str] = mapped_column(String(10), default="FG", comment="FG, SP, CO")
 
     # Description
     description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -284,8 +284,8 @@ class ModelCodeReference(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Metadata
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationship
     product = relationship("Product", backref="model_code_ref")
@@ -328,8 +328,8 @@ class SupplierCode(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Metadata
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationship
     vendor = relationship("Vendor", backref="supplier_code_ref")

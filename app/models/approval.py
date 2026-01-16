@@ -14,14 +14,14 @@ Approval Levels based on amount thresholds:
 - LEVEL_3: Above ₹5,00,000 - Finance Head approval
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 from decimal import Decimal
 
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date, JSON
-from sqlalchemy import Enum as SQLEnum, UniqueConstraint, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date
+from sqlalchemy import UniqueConstraint, Index
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -94,10 +94,11 @@ class ApprovalRequest(Base):
     )
 
     # Entity being approved
-    entity_type: Mapped[ApprovalEntityType] = mapped_column(
-        SQLEnum(ApprovalEntityType),
+    entity_type: Mapped[str] = mapped_column(
+        String(50),
         nullable=False,
-        index=True
+        index=True,
+        comment="PURCHASE_ORDER, PURCHASE_REQUISITION, STOCK_TRANSFER, STOCK_ADJUSTMENT, VENDOR_ONBOARDING, VENDOR_DELETION, DEALER_ONBOARDING, FRANCHISEE_CONTRACT, JOURNAL_ENTRY, CREDIT_NOTE, DEBIT_NOTE, SALES_CHANNEL"
     )
     entity_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -118,18 +119,20 @@ class ApprovalRequest(Base):
     )
 
     # Approval Level
-    approval_level: Mapped[ApprovalLevel] = mapped_column(
-        SQLEnum(ApprovalLevel),
+    approval_level: Mapped[str] = mapped_column(
+        String(50),
         nullable=False,
-        index=True
+        index=True,
+        comment="LEVEL_1 (up to ₹50K), LEVEL_2 (₹50K-₹5L), LEVEL_3 (above ₹5L)"
     )
 
     # Current Status
-    status: Mapped[ApprovalStatus] = mapped_column(
-        SQLEnum(ApprovalStatus),
-        default=ApprovalStatus.PENDING,
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="PENDING",
         nullable=False,
-        index=True
+        index=True,
+        comment="PENDING, APPROVED, REJECTED, CANCELLED, ESCALATED"
     )
 
     # Priority (1=Urgent, 5=Normal, 10=Low)
@@ -158,8 +161,8 @@ class ApprovalRequest(Base):
         nullable=False
     )
     requested_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -178,7 +181,7 @@ class ApprovalRequest(Base):
         nullable=True
     )
     approved_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=True
     )
     approval_comments: Mapped[Optional[str]] = mapped_column(
@@ -193,7 +196,7 @@ class ApprovalRequest(Base):
         nullable=True
     )
     rejected_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=True
     )
     rejection_reason: Mapped[Optional[str]] = mapped_column(
@@ -203,7 +206,7 @@ class ApprovalRequest(Base):
 
     # SLA
     due_date: Mapped[Optional[datetime]] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=True,
         comment="Expected approval deadline"
     )
@@ -214,7 +217,7 @@ class ApprovalRequest(Base):
 
     # Escalation
     escalated_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=True
     )
     escalated_to: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -229,21 +232,21 @@ class ApprovalRequest(Base):
 
     # Extra Info
     extra_info: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Additional context (vendor name, product details, etc.)"
     )
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -323,8 +326,8 @@ class ApprovalHistory(Base):
 
     # Timestamp
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 

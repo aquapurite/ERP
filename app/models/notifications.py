@@ -1,14 +1,14 @@
 """Database models for Notifications module."""
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID, uuid4
 from enum import Enum
 
 from sqlalchemy import (
-    Column, String, Text, DateTime, Boolean, ForeignKey, Enum as SAEnum,
-    Index, JSON
+    Column, String, Text, DateTime, Boolean, ForeignKey,
+    Index
 )
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -94,8 +94,8 @@ class Notification(Base):
     user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Notification content
-    notification_type = Column(SAEnum(NotificationType), nullable=False, index=True)
-    priority = Column(SAEnum(NotificationPriority), default=NotificationPriority.MEDIUM, nullable=False)
+    notification_type = Column(String(50), nullable=False, index=True, comment="SYSTEM, ALERT, ANNOUNCEMENT, ORDER_*, LOW_STOCK, APPROVAL_*, LEAVE_*, etc.")
+    priority = Column(String(20), default="MEDIUM", nullable=False, comment="LOW, MEDIUM, HIGH, URGENT")
 
     title = Column(String(200), nullable=False)
     message = Column(Text, nullable=False)
@@ -108,20 +108,20 @@ class Notification(Base):
     entity_type = Column(String(50))  # e.g., "order", "leave_request", "asset"
     entity_id = Column(PGUUID(as_uuid=True))
 
-    # Additional data as JSON
-    extra_data = Column(JSON, default=dict)
+    # Additional data as JSONB
+    extra_data = Column(JSONB, default=dict)
 
     # Status
     is_read = Column(Boolean, default=False, nullable=False, index=True)
-    read_at = Column(DateTime)
+    read_at = Column(DateTime(timezone=True))
 
     # Delivery status
-    channels = Column(JSON, default=list)  # List of channels notification was sent to
-    delivered_at = Column(JSON, default=dict)  # {channel: timestamp}
+    channels = Column(JSONB, default=list)  # List of channels notification was sent to
+    delivered_at = Column(JSONB, default=dict)  # {channel: timestamp}
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    expires_at = Column(DateTime)  # Optional expiration
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    expires_at = Column(DateTime(timezone=True))  # Optional expiration
 
     # Relationships
     user = relationship("User", back_populates="notifications")
@@ -149,8 +149,8 @@ class NotificationPreference(Base):
     push_enabled = Column(Boolean, default=True, nullable=False)
     in_app_enabled = Column(Boolean, default=True, nullable=False)
 
-    # Type-specific preferences (JSON: {notification_type: {email: bool, sms: bool, push: bool, in_app: bool}})
-    type_preferences = Column(JSON, default=dict)
+    # Type-specific preferences (JSONB: {notification_type: {email: bool, sms: bool, push: bool, in_app: bool}})
+    type_preferences = Column(JSONB, default=dict)
 
     # Quiet hours
     quiet_hours_enabled = Column(Boolean, default=False, nullable=False)
@@ -162,8 +162,8 @@ class NotificationPreference(Base):
     email_digest_frequency = Column(String(20), default="DAILY")  # DAILY, WEEKLY
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationships
     user = relationship("User", back_populates="notification_preferences")
@@ -177,7 +177,7 @@ class NotificationTemplate(Base):
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
 
-    notification_type = Column(SAEnum(NotificationType), nullable=False, unique=True)
+    notification_type = Column(String(50), nullable=False, unique=True, comment="SYSTEM, ALERT, ANNOUNCEMENT, ORDER_*, etc.")
 
     # Template content (with placeholders like {{order_number}})
     title_template = Column(String(200), nullable=False)
@@ -191,17 +191,17 @@ class NotificationTemplate(Base):
     sms_template = Column(String(500))
 
     # Default channels for this notification type
-    default_channels = Column(JSON, default=["IN_APP"])
+    default_channels = Column(JSONB, default=["IN_APP"])
 
     # Default priority
-    default_priority = Column(SAEnum(NotificationPriority), default=NotificationPriority.MEDIUM)
+    default_priority = Column(String(20), default="MEDIUM", comment="LOW, MEDIUM, HIGH, URGENT")
 
     # Is this notification type enabled
     is_active = Column(Boolean, default=True, nullable=False)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 class Announcement(Base):
@@ -223,12 +223,12 @@ class Announcement(Base):
     action_label = Column(String(100))
 
     # Target audience
-    target_roles = Column(JSON, default=list)  # Empty means all users
-    target_departments = Column(JSON, default=list)
+    target_roles = Column(JSONB, default=list)  # Empty means all users
+    target_departments = Column(JSONB, default=list)
 
     # Schedule
-    start_date = Column(DateTime, nullable=False)
-    end_date = Column(DateTime)
+    start_date = Column(DateTime(timezone=True), nullable=False)
+    end_date = Column(DateTime(timezone=True))
 
     # Display settings
     is_dismissible = Column(Boolean, default=True, nullable=False)
@@ -241,8 +241,8 @@ class Announcement(Base):
     created_by_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationships
     created_by = relationship("User", foreign_keys=[created_by_id])
@@ -259,7 +259,7 @@ class AnnouncementDismissal(Base):
     announcement_id = Column(PGUUID(as_uuid=True), ForeignKey("announcements.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
-    dismissed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    dismissed_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     __table_args__ = (
         Index('ix_announcement_dismissals_unique', 'announcement_id', 'user_id', unique=True),

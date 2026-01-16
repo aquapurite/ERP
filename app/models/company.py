@@ -5,14 +5,14 @@ All invoices, POs, GST filings are done in the name of this company.
 Supports multi-branch/multi-GSTIN setup for companies operating in multiple states.
 """
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 from decimal import Decimal
 
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date, JSON
-from sqlalchemy import Enum as SQLEnum, UniqueConstraint, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date
+from sqlalchemy import UniqueConstraint, Index
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -98,10 +98,11 @@ class Company(Base):
         comment="Short code e.g., AQUA, HVL"
     )
 
-    company_type: Mapped[CompanyType] = mapped_column(
-        SQLEnum(CompanyType),
-        default=CompanyType.PRIVATE_LIMITED,
-        nullable=False
+    company_type: Mapped[str] = mapped_column(
+        String(50),
+        default="PRIVATE_LIMITED",
+        nullable=False,
+        comment="PRIVATE_LIMITED, PUBLIC_LIMITED, LLP, PARTNERSHIP, PROPRIETORSHIP, OPC, TRUST, SOCIETY, HUF, GOVERNMENT"
     )
 
     # ==================== Tax Registration (India) ====================
@@ -113,10 +114,11 @@ class Company(Base):
         comment="15-digit GSTIN e.g., 27AAACT1234M1Z5"
     )
 
-    gst_registration_type: Mapped[GSTRegistrationType] = mapped_column(
-        SQLEnum(GSTRegistrationType),
-        default=GSTRegistrationType.REGULAR,
-        nullable=False
+    gst_registration_type: Mapped[str] = mapped_column(
+        String(50),
+        default="REGULAR",
+        nullable=False,
+        comment="REGULAR, COMPOSITION, CASUAL, SEZ_UNIT, SEZ_DEVELOPER, ISD, TDS_DEDUCTOR, TCS_COLLECTOR, NON_RESIDENT, UNREGISTERED"
     )
 
     # State Code (first 2 digits of GSTIN)
@@ -310,20 +312,20 @@ class Company(Base):
         comment="Primary company for multi-company setup"
     )
 
-    # Additional data stored as JSON
-    extra_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # Additional data stored as JSONB
+    extra_data: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # ==================== Audit ====================
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -461,11 +463,11 @@ class CompanyBranch(Base):
         comment="Use this as dispatch address"
     )
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -531,7 +533,7 @@ class CompanyBankAccount(Base):
     # For display on invoices
     show_on_invoice: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     company: Mapped["Company"] = relationship("Company", back_populates="bank_accounts")

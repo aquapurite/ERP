@@ -8,14 +8,14 @@ Supports:
 - Payroll processing with PF, ESIC, TDS, Professional Tax
 """
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 from decimal import Decimal
 
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date, JSON
-from sqlalchemy import Enum as SQLEnum, UniqueConstraint, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date
+from sqlalchemy import UniqueConstraint, Index
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -142,14 +142,14 @@ class Department(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -204,14 +204,16 @@ class Employee(Base):
 
     # Personal Information
     date_of_birth: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    gender: Mapped[Optional[Gender]] = mapped_column(
-        SQLEnum(Gender),
-        nullable=True
+    gender: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="MALE, FEMALE, OTHER"
     )
     blood_group: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
-    marital_status: Mapped[Optional[MaritalStatus]] = mapped_column(
-        SQLEnum(MaritalStatus),
-        nullable=True
+    marital_status: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="SINGLE, MARRIED, DIVORCED, WIDOWED"
     )
     nationality: Mapped[str] = mapped_column(String(50), default="Indian")
 
@@ -225,8 +227,8 @@ class Employee(Base):
     emergency_contact_relation: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     # Address (JSON: {line1, line2, city, state, pincode, country})
-    current_address: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    permanent_address: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    current_address: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    permanent_address: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Employment Details
     department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -235,16 +237,18 @@ class Employee(Base):
         nullable=True
     )
     designation: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    employment_type: Mapped[EmploymentType] = mapped_column(
-        SQLEnum(EmploymentType),
-        default=EmploymentType.FULL_TIME,
-        nullable=False
-    )
-    status: Mapped[EmployeeStatus] = mapped_column(
-        SQLEnum(EmployeeStatus),
-        default=EmployeeStatus.ACTIVE,
+    employment_type: Mapped[str] = mapped_column(
+        String(50),
+        default="FULL_TIME",
         nullable=False,
-        index=True
+        comment="FULL_TIME, PART_TIME, CONTRACT, INTERN, CONSULTANT"
+    )
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="ACTIVE",
+        nullable=False,
+        index=True,
+        comment="ACTIVE, ON_NOTICE, ON_LEAVE, SUSPENDED, RESIGNED, TERMINATED"
     )
 
     # Employment Dates
@@ -282,21 +286,21 @@ class Employee(Base):
     # Other
     profile_photo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     documents: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Array of document URLs"
     )
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -441,14 +445,14 @@ class SalaryStructure(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -485,8 +489,8 @@ class Attendance(Base):
     attendance_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
 
     # Time tracking
-    check_in: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    check_out: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    check_in: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    check_out: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     work_hours: Mapped[Optional[Decimal]] = mapped_column(
         Numeric(4, 2),
         nullable=True,
@@ -494,10 +498,11 @@ class Attendance(Base):
     )
 
     # Status
-    status: Mapped[AttendanceStatus] = mapped_column(
-        SQLEnum(AttendanceStatus),
+    status: Mapped[str] = mapped_column(
+        String(50),
         nullable=False,
-        index=True
+        index=True,
+        comment="PRESENT, ABSENT, HALF_DAY, ON_LEAVE, HOLIDAY, WEEKEND"
     )
 
     # Late/Early tracking
@@ -507,8 +512,8 @@ class Attendance(Base):
     early_out_minutes: Mapped[int] = mapped_column(Integer, default=0)
 
     # Location tracking (JSON: {lat, lng, address})
-    location_in: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    location_out: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    location_in: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    location_out: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Notes
     remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -520,14 +525,14 @@ class Attendance(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -568,9 +573,10 @@ class LeaveBalance(Base):
         ForeignKey("employees.id", ondelete="CASCADE"),
         nullable=False
     )
-    leave_type: Mapped[LeaveType] = mapped_column(
-        SQLEnum(LeaveType),
-        nullable=False
+    leave_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="CASUAL, SICK, EARNED, MATERNITY, PATERNITY, COMPENSATORY, UNPAID"
     )
     financial_year: Mapped[str] = mapped_column(
         String(10),
@@ -638,9 +644,10 @@ class LeaveRequest(Base):
         ForeignKey("employees.id", ondelete="CASCADE"),
         nullable=False
     )
-    leave_type: Mapped[LeaveType] = mapped_column(
-        SQLEnum(LeaveType),
-        nullable=False
+    leave_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="CASUAL, SICK, EARNED, MATERNITY, PATERNITY, COMPENSATORY, UNPAID"
     )
 
     # Leave Period
@@ -660,17 +667,18 @@ class LeaveRequest(Base):
 
     # Details
     reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    status: Mapped[LeaveStatus] = mapped_column(
-        SQLEnum(LeaveStatus),
-        default=LeaveStatus.PENDING,
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="PENDING",
         nullable=False,
-        index=True
+        index=True,
+        comment="PENDING, APPROVED, REJECTED, CANCELLED"
     )
 
     # Application tracking
     applied_on: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -680,19 +688,19 @@ class LeaveRequest(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    approved_on: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    approved_on: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -734,11 +742,12 @@ class Payroll(Base):
     )
 
     # Status
-    status: Mapped[PayrollStatus] = mapped_column(
-        SQLEnum(PayrollStatus),
-        default=PayrollStatus.DRAFT,
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="DRAFT",
         nullable=False,
-        index=True
+        index=True,
+        comment="DRAFT, PROCESSING, PROCESSED, APPROVED, PAID"
     )
 
     # Summary
@@ -753,24 +762,24 @@ class Payroll(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -888,14 +897,14 @@ class Payslip(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -963,22 +972,23 @@ class AppraisalCycle(Base):
     review_end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     # Status
-    status: Mapped[AppraisalCycleStatus] = mapped_column(
-        SQLEnum(AppraisalCycleStatus),
-        default=AppraisalCycleStatus.DRAFT,
-        nullable=False
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="DRAFT",
+        nullable=False,
+        comment="DRAFT, ACTIVE, CLOSED"
     )
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -1042,8 +1052,8 @@ class KPI(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -1105,23 +1115,24 @@ class Goal(Base):
     completed_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     # Status
-    status: Mapped[GoalStatus] = mapped_column(
-        SQLEnum(GoalStatus),
-        default=GoalStatus.PENDING,
-        nullable=False
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="PENDING",
+        nullable=False,
+        comment="PENDING, IN_PROGRESS, COMPLETED, CANCELLED"
     )
     completion_percentage: Mapped[int] = mapped_column(Integer, default=0)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -1160,10 +1171,11 @@ class Appraisal(Base):
     )
 
     # Status
-    status: Mapped[AppraisalStatus] = mapped_column(
-        SQLEnum(AppraisalStatus),
-        default=AppraisalStatus.NOT_STARTED,
-        nullable=False
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="NOT_STARTED",
+        nullable=False,
+        comment="NOT_STARTED, SELF_REVIEW, MANAGER_REVIEW, HR_REVIEW, COMPLETED"
     )
 
     # Self Review
@@ -1173,7 +1185,7 @@ class Appraisal(Base):
         comment="Self rating 1-5"
     )
     self_comments: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    self_review_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    self_review_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Manager Review
     manager_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -1187,7 +1199,7 @@ class Appraisal(Base):
         comment="Manager rating 1-5"
     )
     manager_comments: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    manager_review_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    manager_review_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Final Rating
     final_rating: Mapped[Optional[Decimal]] = mapped_column(
@@ -1224,19 +1236,19 @@ class Appraisal(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    hr_review_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    hr_review_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     hr_comments: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -1315,8 +1327,8 @@ class PerformanceFeedback(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 

@@ -9,14 +9,14 @@ Supports:
 - Asset maintenance tracking
 """
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 from decimal import Decimal
 
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date, JSON
-from sqlalchemy import Enum as SQLEnum, UniqueConstraint, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date
+from sqlalchemy import UniqueConstraint, Index
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -79,10 +79,11 @@ class AssetCategory(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Depreciation Settings
-    depreciation_method: Mapped[DepreciationMethod] = mapped_column(
-        SQLEnum(DepreciationMethod),
-        default=DepreciationMethod.SLM,
-        nullable=False
+    depreciation_method: Mapped[str] = mapped_column(
+        String(50),
+        default="SLM",
+        nullable=False,
+        comment="SLM (Straight Line), WDV (Written Down Value)"
     )
     depreciation_rate: Mapped[Decimal] = mapped_column(
         Numeric(5, 2),
@@ -117,14 +118,14 @@ class AssetCategory(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -231,10 +232,10 @@ class Asset(Base):
     )
 
     # Depreciation Settings (can override category defaults)
-    depreciation_method: Mapped[Optional[DepreciationMethod]] = mapped_column(
-        SQLEnum(DepreciationMethod),
+    depreciation_method: Mapped[Optional[str]] = mapped_column(
+        String(50),
         nullable=True,
-        comment="Override category method"
+        comment="Override category method: SLM, WDV"
     )
     depreciation_rate: Mapped[Optional[Decimal]] = mapped_column(
         Numeric(5, 2),
@@ -277,11 +278,12 @@ class Asset(Base):
     insurance_expiry: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     # Status
-    status: Mapped[AssetStatus] = mapped_column(
-        SQLEnum(AssetStatus),
-        default=AssetStatus.ACTIVE,
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="ACTIVE",
         nullable=False,
-        index=True
+        index=True,
+        comment="ACTIVE, UNDER_MAINTENANCE, DISPOSED, WRITTEN_OFF, TRANSFERRED"
     )
 
     # Disposal (if disposed)
@@ -292,12 +294,12 @@ class Asset(Base):
 
     # Documents
     documents: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Array of document URLs"
     )
     images: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Array of image URLs"
     )
@@ -307,14 +309,14 @@ class Asset(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -383,9 +385,10 @@ class DepreciationEntry(Base):
     opening_book_value: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
 
     # Depreciation
-    depreciation_method: Mapped[DepreciationMethod] = mapped_column(
-        SQLEnum(DepreciationMethod),
-        nullable=False
+    depreciation_method: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="SLM, WDV"
     )
     depreciation_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     depreciation_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
@@ -408,12 +411,12 @@ class DepreciationEntry(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -477,10 +480,11 @@ class AssetTransfer(Base):
     reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Status
-    status: Mapped[TransferStatus] = mapped_column(
-        SQLEnum(TransferStatus),
-        default=TransferStatus.PENDING,
-        nullable=False
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="PENDING",
+        nullable=False,
+        comment="PENDING, IN_TRANSIT, COMPLETED, CANCELLED"
     )
 
     # Approval
@@ -494,10 +498,10 @@ class AssetTransfer(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Completion
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     received_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
@@ -509,14 +513,14 @@ class AssetTransfer(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -580,10 +584,11 @@ class AssetMaintenance(Base):
     vendor_invoice_no: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     # Status
-    status: Mapped[MaintenanceStatus] = mapped_column(
-        SQLEnum(MaintenanceStatus),
-        default=MaintenanceStatus.SCHEDULED,
-        nullable=False
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="SCHEDULED",
+        nullable=False,
+        comment="SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED"
     )
 
     # Findings
@@ -599,18 +604,18 @@ class AssetMaintenance(Base):
     )
 
     # Documents
-    documents: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    documents: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 

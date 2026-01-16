@@ -1,9 +1,8 @@
 """Service Request model for after-sales service."""
 from enum import Enum
-from datetime import datetime, date
-from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float, JSON, Numeric
-from sqlalchemy import Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
+from datetime import datetime, date, timezone
+from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float, Numeric
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -71,10 +70,22 @@ class ServiceRequest(Base, TimestampMixin):
 
     # Identification
     ticket_number = Column(String(50), unique=True, nullable=False, index=True)
-    service_type = Column(SQLEnum(ServiceType), nullable=False, index=True)
-    source = Column(SQLEnum(ServiceSource), default=ServiceSource.CALL_CENTER)
-    priority = Column(SQLEnum(ServicePriority), default=ServicePriority.NORMAL, index=True)
-    status = Column(SQLEnum(ServiceStatus), default=ServiceStatus.PENDING, index=True)
+    service_type = Column(
+        String(50), nullable=False, index=True,
+        comment="INSTALLATION, WARRANTY_REPAIR, PAID_REPAIR, AMC_SERVICE, DEMO, PREVENTIVE_MAINTENANCE, COMPLAINT, FILTER_CHANGE, INSPECTION, UNINSTALLATION"
+    )
+    source = Column(
+        String(50), default="CALL_CENTER",
+        comment="CALL_CENTER, WEBSITE, MOBILE_APP, WALK_IN, EMAIL, WHATSAPP, AUTO_AMC, REFERRAL, SYSTEM"
+    )
+    priority = Column(
+        String(50), default="NORMAL", index=True,
+        comment="LOW, NORMAL, HIGH, URGENT, CRITICAL"
+    )
+    status = Column(
+        String(50), default="PENDING", index=True,
+        comment="DRAFT, PENDING, ASSIGNED, SCHEDULED, EN_ROUTE, IN_PROGRESS, PARTS_REQUIRED, ON_HOLD, COMPLETED, CLOSED, CANCELLED, REOPENED"
+    )
 
     # Customer
     customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id"), nullable=False, index=True)
@@ -95,11 +106,11 @@ class ServiceRequest(Base, TimestampMixin):
     # Problem description
     title = Column(String(255), nullable=False)
     description = Column(Text)
-    symptoms = Column(JSON)  # List of symptoms selected
+    symptoms = Column(JSONB)  # List of symptoms selected
     customer_reported_issue = Column(Text)
 
     # Location (snapshot of address)
-    service_address = Column(JSON)  # Full address JSON
+    service_address = Column(JSONB)  # Full address JSONB
     service_pincode = Column(String(10), index=True)
     service_city = Column(String(100))
     service_state = Column(String(100))
@@ -135,7 +146,7 @@ class ServiceRequest(Base, TimestampMixin):
     action_taken = Column(Text)
 
     # Parts used
-    parts_used = Column(JSON)  # [{"part_id": "", "quantity": 1, "serial": ""}]
+    parts_used = Column(JSONB)  # [{"part_id": "", "quantity": 1, "serial": ""}]
     total_parts_cost = Column(Numeric(12, 2), default=0)
 
     # Charges
@@ -154,8 +165,8 @@ class ServiceRequest(Base, TimestampMixin):
     feedback_date = Column(DateTime)
 
     # Attachments
-    images_before = Column(JSON)  # URLs
-    images_after = Column(JSON)
+    images_before = Column(JSONB)  # URLs
+    images_after = Column(JSONB)
     customer_signature_url = Column(String(500))
 
     # Internal
@@ -166,8 +177,8 @@ class ServiceRequest(Base, TimestampMixin):
 
     # Audit
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     customer = relationship("Customer", back_populates="service_requests")
@@ -198,8 +209,8 @@ class ServiceStatusHistory(Base, TimestampMixin):
 
     service_request_id = Column(UUID(as_uuid=True), ForeignKey("service_requests.id"), nullable=False, index=True)
 
-    from_status = Column(SQLEnum(ServiceStatus))
-    to_status = Column(SQLEnum(ServiceStatus), nullable=False)
+    from_status = Column(String(50))
+    to_status = Column(String(50), nullable=False)
     changed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     notes = Column(Text)
 
@@ -224,7 +235,7 @@ class PartsRequest(Base, TimestampMixin):
     status = Column(String(50), default="pending")  # pending, approved, dispatched, delivered, returned
 
     # Items
-    items = Column(JSON)  # [{"product_id": "", "quantity": 1, "notes": ""}]
+    items = Column(JSONB)  # [{"product_id": "", "quantity": 1, "notes": ""}]
 
     # Warehouse
     from_warehouse_id = Column(UUID(as_uuid=True), ForeignKey("warehouses.id"))

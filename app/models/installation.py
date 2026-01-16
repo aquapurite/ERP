@@ -1,9 +1,8 @@
 """Installation and Warranty model."""
 from enum import Enum
-from datetime import datetime, date
-from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float, JSON, Numeric
-from sqlalchemy import Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
+from datetime import datetime, date, timezone
+from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float, Numeric
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -29,7 +28,10 @@ class Installation(Base, TimestampMixin):
 
     # Identification
     installation_number = Column(String(50), unique=True, nullable=False, index=True)
-    status = Column(SQLEnum(InstallationStatus), default=InstallationStatus.PENDING, index=True)
+    status = Column(
+        String(50), default="PENDING", index=True,
+        comment="PENDING, SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED, FAILED"
+    )
 
     # Customer & Order
     customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id"), nullable=False, index=True)
@@ -44,7 +46,7 @@ class Installation(Base, TimestampMixin):
 
     # Installation Address
     address_id = Column(UUID(as_uuid=True), ForeignKey("customer_addresses.id"))
-    installation_address = Column(JSON)  # Address snapshot
+    installation_address = Column(JSONB)  # Address snapshot
     installation_pincode = Column(String(10), index=True)
     installation_city = Column(String(100))
     latitude = Column(Float)
@@ -68,12 +70,12 @@ class Installation(Base, TimestampMixin):
 
     # Installation details
     installation_notes = Column(Text)
-    pre_installation_checklist = Column(JSON)  # Checklist items
-    post_installation_checklist = Column(JSON)
-    installation_photos = Column(JSON)  # URLs
+    pre_installation_checklist = Column(JSONB)  # Checklist items
+    post_installation_checklist = Column(JSONB)
+    installation_photos = Column(JSONB)  # URLs
 
     # Accessories installed
-    accessories_used = Column(JSON)  # [{"item": "", "quantity": 1}]
+    accessories_used = Column(JSONB)  # [{"item": "", "quantity": 1}]
 
     # Water quality (for water purifiers)
     input_tds = Column(Integer)  # TDS before installation
@@ -103,8 +105,8 @@ class Installation(Base, TimestampMixin):
     internal_notes = Column(Text)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Audit
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))

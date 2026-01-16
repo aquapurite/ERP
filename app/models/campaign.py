@@ -10,15 +10,15 @@ This module contains models for:
 """
 import uuid
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional, List
 
 from sqlalchemy import (
     String, Text, Integer, Boolean, DateTime, Date,
-    ForeignKey, Numeric, Enum as SQLEnum, JSON
+    ForeignKey, Numeric
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -110,8 +110,16 @@ class CampaignTemplate(Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
 
     # Template type
-    campaign_type: Mapped[CampaignType] = mapped_column(SQLEnum(CampaignType))
-    category: Mapped[CampaignCategory] = mapped_column(SQLEnum(CampaignCategory))
+    campaign_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="EMAIL, SMS, WHATSAPP, PUSH_NOTIFICATION, IN_APP, VOICE, MULTI_CHANNEL"
+    )
+    category: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="PROMOTIONAL, TRANSACTIONAL, INFORMATIONAL, REMINDER, FEEDBACK, WELCOME, REACTIVATION, LOYALTY, SEASONAL, PRODUCT_LAUNCH, SERVICE_UPDATE, AMC_RENEWAL"
+    )
 
     # Content
     subject: Mapped[Optional[str]] = mapped_column(String(500))  # For email
@@ -119,10 +127,10 @@ class CampaignTemplate(Base):
     html_content: Mapped[Optional[str]] = mapped_column(Text)  # HTML version for email
 
     # Placeholders/Variables
-    variables: Mapped[Optional[dict]] = mapped_column(JSON)  # {{customer_name}}, {{product}}, etc.
+    variables: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)  # {{customer_name}}, {{product}}, etc.
 
     # Media
-    media_urls: Mapped[Optional[dict]] = mapped_column(JSON)  # Images, attachments
+    media_urls: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)  # Images, attachments
 
     # Metadata
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -132,9 +140,14 @@ class CampaignTemplate(Base):
     created_by_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -152,21 +165,23 @@ class AudienceSegment(Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
 
     # Segment definition
-    segment_type: Mapped[AudienceType] = mapped_column(
-        SQLEnum(AudienceType), default=AudienceType.DYNAMIC
+    segment_type: Mapped[str] = mapped_column(
+        String(50),
+        default="DYNAMIC",
+        comment="ALL_CUSTOMERS, SEGMENT, MANUAL_LIST, IMPORTED, DYNAMIC"
     )
 
     # Dynamic segment conditions (JSON array of conditions)
     # [{"field": "total_orders", "operator": "GREATER_THAN", "value": 5}, ...]
-    conditions: Mapped[Optional[dict]] = mapped_column(JSON)
+    conditions: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     condition_logic: Mapped[str] = mapped_column(String(10), default="AND")  # AND/OR
 
     # Static list (for MANUAL_LIST type)
-    customer_ids: Mapped[Optional[dict]] = mapped_column(JSON)  # List of customer IDs
+    customer_ids: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)  # List of customer IDs
 
     # Estimated size
     estimated_size: Mapped[int] = mapped_column(Integer, default=0)
-    last_calculated_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    last_calculated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -175,9 +190,14 @@ class AudienceSegment(Base):
     created_by_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -198,12 +218,22 @@ class Campaign(Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
 
     # Type and category
-    campaign_type: Mapped[CampaignType] = mapped_column(SQLEnum(CampaignType))
-    category: Mapped[CampaignCategory] = mapped_column(SQLEnum(CampaignCategory))
+    campaign_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="EMAIL, SMS, WHATSAPP, PUSH_NOTIFICATION, IN_APP, VOICE, MULTI_CHANNEL"
+    )
+    category: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="PROMOTIONAL, TRANSACTIONAL, INFORMATIONAL, REMINDER, FEEDBACK, WELCOME, REACTIVATION, LOYALTY, SEASONAL, PRODUCT_LAUNCH, SERVICE_UPDATE, AMC_RENEWAL"
+    )
 
     # Status
-    status: Mapped[CampaignStatus] = mapped_column(
-        SQLEnum(CampaignStatus), default=CampaignStatus.DRAFT
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="DRAFT",
+        comment="DRAFT, SCHEDULED, RUNNING, PAUSED, COMPLETED, CANCELLED, FAILED"
     )
 
     # Template (optional)
@@ -215,15 +245,17 @@ class Campaign(Base):
     subject: Mapped[Optional[str]] = mapped_column(String(500))
     content: Mapped[str] = mapped_column(Text)
     html_content: Mapped[Optional[str]] = mapped_column(Text)
-    media_urls: Mapped[Optional[dict]] = mapped_column(JSON)
+    media_urls: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Call to Action
     cta_text: Mapped[Optional[str]] = mapped_column(String(100))
     cta_url: Mapped[Optional[str]] = mapped_column(String(500))
 
     # Audience
-    audience_type: Mapped[AudienceType] = mapped_column(
-        SQLEnum(AudienceType), default=AudienceType.ALL_CUSTOMERS
+    audience_type: Mapped[str] = mapped_column(
+        String(50),
+        default="ALL_CUSTOMERS",
+        comment="ALL_CUSTOMERS, SEGMENT, MANUAL_LIST, IMPORTED, DYNAMIC"
     )
     segment_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("audience_segments.id", ondelete="SET NULL")
@@ -231,14 +263,14 @@ class Campaign(Base):
     target_count: Mapped[int] = mapped_column(Integer, default=0)
 
     # Scheduling
-    scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Recurring campaign settings
     is_recurring: Mapped[bool] = mapped_column(Boolean, default=False)
     recurrence_pattern: Mapped[Optional[str]] = mapped_column(String(50))  # DAILY, WEEKLY, MONTHLY
-    recurrence_config: Mapped[Optional[dict]] = mapped_column(JSON)  # {day_of_week: 1, time: "10:00"}
+    recurrence_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)  # {day_of_week: 1, time: "10:00"}
 
     # Sending configuration
     sender_name: Mapped[Optional[str]] = mapped_column(String(100))
@@ -248,7 +280,7 @@ class Campaign(Base):
 
     # A/B Testing
     is_ab_test: Mapped[bool] = mapped_column(Boolean, default=False)
-    ab_test_config: Mapped[Optional[dict]] = mapped_column(JSON)  # Variants, split percentage
+    ab_test_config: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)  # Variants, split percentage
 
     # Budget and limits
     budget_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2))
@@ -268,15 +300,20 @@ class Campaign(Base):
     total_cost: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
 
     # Tags for organization
-    tags: Mapped[Optional[dict]] = mapped_column(JSON)
+    tags: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Creator
     created_by_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -306,21 +343,24 @@ class CampaignRecipient(Base):
     name: Mapped[Optional[str]] = mapped_column(String(200))
 
     # Personalization data
-    personalization_data: Mapped[Optional[dict]] = mapped_column(JSON)
+    personalization_data: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Delivery status
-    status: Mapped[DeliveryStatus] = mapped_column(
-        SQLEnum(DeliveryStatus), default=DeliveryStatus.PENDING, index=True
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="PENDING",
+        index=True,
+        comment="PENDING, SENT, DELIVERED, OPENED, CLICKED, BOUNCED, FAILED, UNSUBSCRIBED, COMPLAINED"
     )
 
     # Tracking timestamps
-    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    opened_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    clicked_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    bounced_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    unsubscribed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    failed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    opened_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    clicked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    bounced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    unsubscribed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    failed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Engagement metrics
     open_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -336,9 +376,14 @@ class CampaignRecipient(Base):
     ab_variant: Mapped[Optional[str]] = mapped_column(String(10))  # A, B, C...
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -362,7 +407,7 @@ class CampaignAutomation(Base):
     # BIRTHDAY, ANNIVERSARY, CART_ABANDONED, INACTIVE_CUSTOMER, etc.
 
     # Trigger conditions
-    trigger_conditions: Mapped[Optional[dict]] = mapped_column(JSON)
+    trigger_conditions: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     # e.g., {"days_before": 30} for AMC_EXPIRING
 
     # Delay after trigger
@@ -374,7 +419,11 @@ class CampaignAutomation(Base):
     )
 
     # Channel
-    campaign_type: Mapped[CampaignType] = mapped_column(SQLEnum(CampaignType))
+    campaign_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="EMAIL, SMS, WHATSAPP, PUSH_NOTIFICATION, IN_APP, VOICE, MULTI_CHANNEL"
+    )
 
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -391,9 +440,14 @@ class CampaignAutomation(Base):
     created_by_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -429,8 +483,11 @@ class CampaignAutomationLog(Base):
     )
 
     # Timestamps
-    triggered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    triggered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
+    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     automation = relationship("CampaignAutomation", lazy="selectin")
@@ -453,7 +510,11 @@ class UnsubscribeList(Base):
     phone: Mapped[Optional[str]] = mapped_column(String(20), index=True)
 
     # Channel-specific unsubscribe
-    channel: Mapped[CampaignType] = mapped_column(SQLEnum(CampaignType))
+    channel: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="EMAIL, SMS, WHATSAPP, PUSH_NOTIFICATION, IN_APP, VOICE, MULTI_CHANNEL"
+    )
 
     # Reason
     reason: Mapped[Optional[str]] = mapped_column(Text)
@@ -464,7 +525,10 @@ class UnsubscribeList(Base):
     )
 
     # Timestamps
-    unsubscribed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    unsubscribed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
 
     # Relationships
     customer = relationship("Customer", lazy="selectin")

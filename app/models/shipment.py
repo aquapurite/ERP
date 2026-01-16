@@ -1,12 +1,11 @@
 """Shipment models for order fulfillment and delivery tracking."""
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Float, Date, JSON
-from sqlalchemy import Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Float, Date
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -121,18 +120,20 @@ class Shipment(Base):
     )
 
     # Status
-    status: Mapped[ShipmentStatus] = mapped_column(
-        SQLEnum(ShipmentStatus),
-        default=ShipmentStatus.CREATED,
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="CREATED",
         nullable=False,
-        index=True
+        index=True,
+        comment="CREATED, PACKED, READY_FOR_PICKUP, MANIFESTED, PICKED_UP, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, DELIVERY_FAILED, RTO_INITIATED, RTO_IN_TRANSIT, RTO_DELIVERED, CANCELLED, LOST"
     )
 
     # Payment
-    payment_mode: Mapped[PaymentMode] = mapped_column(
-        SQLEnum(PaymentMode),
-        default=PaymentMode.PREPAID,
-        nullable=False
+    payment_mode: Mapped[str] = mapped_column(
+        String(50),
+        default="PREPAID",
+        nullable=False,
+        comment="PREPAID, COD"
     )
     cod_amount: Mapped[Optional[float]] = mapped_column(
         Float,
@@ -143,10 +144,11 @@ class Shipment(Base):
     cod_collected_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Package details
-    packaging_type: Mapped[PackagingType] = mapped_column(
-        SQLEnum(PackagingType),
-        default=PackagingType.BOX,
-        nullable=False
+    packaging_type: Mapped[str] = mapped_column(
+        String(50),
+        default="BOX",
+        nullable=False,
+        comment="BOX, ENVELOPE, POLY_BAG, PALLET, CUSTOM"
     )
     no_of_boxes: Mapped[int] = mapped_column(Integer, default=1)
 
@@ -165,10 +167,10 @@ class Shipment(Base):
     ship_to_phone: Mapped[str] = mapped_column(String(20), nullable=False)
     ship_to_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     ship_to_address: Mapped[dict] = mapped_column(
-        JSON,
+        JSONB,
         nullable=False,
         default=dict,
-        comment="Full shipping address JSON"
+        comment="Full shipping address JSONB"
     )
     ship_to_pincode: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
     ship_to_city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
@@ -229,21 +231,21 @@ class Shipment(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
         index=True
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
-    packed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    shipped_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    packed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    shipped_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     cancellation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Relationships
@@ -333,9 +335,10 @@ class ShipmentTracking(Base):
     )
 
     # Status
-    status: Mapped[ShipmentStatus] = mapped_column(
-        SQLEnum(ShipmentStatus),
-        nullable=False
+    status: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="CREATED, PACKED, READY_FOR_PICKUP, MANIFESTED, PICKED_UP, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, DELIVERY_FAILED, RTO_INITIATED, RTO_IN_TRANSIT, RTO_DELIVERED, CANCELLED, LOST"
     )
     status_code: Mapped[Optional[str]] = mapped_column(
         String(50),
@@ -359,8 +362,8 @@ class ShipmentTracking(Base):
 
     # Event time
     event_time: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
         comment="Time of the tracking event"
     )
@@ -379,8 +382,8 @@ class ShipmentTracking(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 

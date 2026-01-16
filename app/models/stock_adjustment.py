@@ -1,8 +1,7 @@
 """Stock Adjustment model for inventory corrections."""
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, Text, ForeignKey, Integer, DateTime, Float, Numeric
-from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import uuid
@@ -43,16 +42,26 @@ class StockAdjustment(Base, TimestampMixin):
 
     # Identification
     adjustment_number = Column(String(50), unique=True, nullable=False, index=True)
-    adjustment_type = Column(SQLEnum(AdjustmentType), nullable=False, index=True)
-    status = Column(SQLEnum(AdjustmentStatus), default=AdjustmentStatus.DRAFT, index=True)
+    adjustment_type = Column(
+        String(50),
+        nullable=False,
+        index=True,
+        comment="CYCLE_COUNT, DAMAGE, THEFT, EXPIRY, QUALITY_ISSUE, CORRECTION, WRITE_OFF, FOUND, OPENING_STOCK, OTHER"
+    )
+    status = Column(
+        String(50),
+        default="DRAFT",
+        index=True,
+        comment="DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, COMPLETED, CANCELLED"
+    )
 
     # Location
     warehouse_id = Column(UUID(as_uuid=True), ForeignKey("warehouses.id"), nullable=False, index=True)
 
     # Dates
-    adjustment_date = Column(DateTime, default=datetime.utcnow)
-    approved_at = Column(DateTime)
-    completed_at = Column(DateTime)
+    adjustment_date = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    approved_at = Column(DateTime(timezone=True))
+    completed_at = Column(DateTime(timezone=True))
 
     # Users
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
@@ -137,9 +146,9 @@ class InventoryAudit(Base, TimestampMixin):
     category_id = Column(UUID(as_uuid=True), ForeignKey("categories.id"))  # Optional: specific category
 
     # Schedule
-    scheduled_date = Column(DateTime)
-    start_date = Column(DateTime)
-    end_date = Column(DateTime)
+    scheduled_date = Column(DateTime(timezone=True))
+    start_date = Column(DateTime(timezone=True))
+    end_date = Column(DateTime(timezone=True))
 
     # Status
     status = Column(String(50), default="planned")  # planned, in_progress, completed, cancelled

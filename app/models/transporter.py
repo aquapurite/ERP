@@ -1,12 +1,12 @@
 """Transporter/Carrier models for shipping management."""
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Float, JSON
-from sqlalchemy import Enum as SQLEnum, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Float
+from sqlalchemy import UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -49,10 +49,11 @@ class Transporter(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
 
     # Type
-    transporter_type: Mapped[TransporterType] = mapped_column(
-        SQLEnum(TransporterType),
-        default=TransporterType.COURIER,
-        nullable=False
+    transporter_type: Mapped[str] = mapped_column(
+        String(50),
+        default="COURIER",
+        nullable=False,
+        comment="COURIER, SELF_SHIP, MARKETPLACE, LOCAL, FRANCHISE"
     )
 
     # API Integration
@@ -104,14 +105,14 @@ class Transporter(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -205,14 +206,14 @@ class TransporterServiceability(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 

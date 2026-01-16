@@ -1,11 +1,11 @@
 """WMS (Warehouse Management System) models for zone, bin, and putaway management."""
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Float
-from sqlalchemy import Enum as SQLEnum, UniqueConstraint
+from sqlalchemy import UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -75,10 +75,11 @@ class WarehouseZone(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Zone type
-    zone_type: Mapped[ZoneType] = mapped_column(
-        SQLEnum(ZoneType),
-        default=ZoneType.STORAGE,
-        nullable=False
+    zone_type: Mapped[str] = mapped_column(
+        String(50),
+        default="STORAGE",
+        nullable=False,
+        comment="RECEIVING, STORAGE, PICKING, PACKING, SHIPPING, RETURNS, QUARANTINE, COLD_STORAGE, HAZMAT"
     )
 
     # Physical attributes
@@ -111,14 +112,14 @@ class WarehouseZone(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -198,10 +199,11 @@ class WarehouseBin(Base):
     position: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
 
     # Bin type
-    bin_type: Mapped[BinType] = mapped_column(
-        SQLEnum(BinType),
-        default=BinType.SHELF,
-        nullable=False
+    bin_type: Mapped[str] = mapped_column(
+        String(50),
+        default="SHELF",
+        nullable=False,
+        comment="SHELF, RACK, FLOOR, PALLET, CONTAINER, CAGE, BULK"
     )
 
     # Dimensions (in cm)
@@ -245,17 +247,17 @@ class WarehouseBin(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
-    last_activity_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_activity_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     warehouse: Mapped["Warehouse"] = relationship("Warehouse", back_populates="bins")
@@ -364,14 +366,14 @@ class PutAwayRule(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 

@@ -9,15 +9,15 @@ Comprehensive demand forecasting and supply planning with:
 """
 
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Float, Date
-from sqlalchemy import Enum as SQLEnum, JSON, UniqueConstraint, Index
+from sqlalchemy import UniqueConstraint, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 from app.database import Base
 
@@ -127,13 +127,15 @@ class DemandForecast(Base):
     forecast_name: Mapped[str] = mapped_column(String(200), nullable=False)
 
     # Forecast scope
-    forecast_level: Mapped[ForecastLevel] = mapped_column(
-        SQLEnum(ForecastLevel),
-        default=ForecastLevel.SKU
+    forecast_level: Mapped[str] = mapped_column(
+        String(50),
+        default="SKU",
+        comment="SKU, CATEGORY, REGION, CHANNEL, COMPANY"
     )
-    granularity: Mapped[ForecastGranularity] = mapped_column(
-        SQLEnum(ForecastGranularity),
-        default=ForecastGranularity.WEEKLY
+    granularity: Mapped[str] = mapped_column(
+        String(50),
+        default="WEEKLY",
+        comment="DAILY, WEEKLY, MONTHLY, QUARTERLY"
     )
 
     # Target entities (nullable based on forecast_level)
@@ -164,9 +166,9 @@ class DemandForecast(Base):
     forecast_end_date: Mapped[date] = mapped_column(Date, nullable=False)
     forecast_horizon_days: Mapped[int] = mapped_column(Integer, default=90)
 
-    # Forecast values (stored as JSON for flexibility)
+    # Forecast values (stored as JSONB for flexibility)
     # Format: [{"date": "2024-01-01", "forecasted_qty": 100, "lower_bound": 80, "upper_bound": 120}, ...]
-    forecast_data: Mapped[dict] = mapped_column(JSON, nullable=False, default=list)
+    forecast_data: Mapped[dict] = mapped_column(JSONB, nullable=False, default=list)
 
     # Aggregated metrics
     total_forecasted_qty: Mapped[Decimal] = mapped_column(
@@ -183,11 +185,12 @@ class DemandForecast(Base):
     )
 
     # Model information
-    algorithm_used: Mapped[ForecastAlgorithm] = mapped_column(
-        SQLEnum(ForecastAlgorithm),
-        default=ForecastAlgorithm.ENSEMBLE
+    algorithm_used: Mapped[str] = mapped_column(
+        String(50),
+        default="ENSEMBLE",
+        comment="HOLT_WINTERS, PROPHET, ARIMA, XGBOOST, LIGHTGBM, LSTM, ENSEMBLE, MANUAL"
     )
-    model_parameters: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    model_parameters: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Accuracy metrics
     mape: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Mean Absolute Percentage Error
@@ -199,12 +202,13 @@ class DemandForecast(Base):
     confidence_level: Mapped[float] = mapped_column(Float, default=0.95)
 
     # External factors considered
-    external_factors_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    external_factors_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Approval workflow
-    status: Mapped[ForecastStatus] = mapped_column(
-        SQLEnum(ForecastStatus),
-        default=ForecastStatus.DRAFT
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="DRAFT",
+        comment="DRAFT, PENDING_REVIEW, UNDER_REVIEW, ADJUSTMENT_REQUESTED, APPROVED, REJECTED, SUPERSEDED"
     )
 
     # Audit trail
@@ -224,11 +228,11 @@ class DemandForecast(Base):
         nullable=True
     )
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Version control
     version: Mapped[int] = mapped_column(Integer, default=1)
@@ -289,9 +293,10 @@ class ForecastAdjustment(Base):
     justification: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Approval
-    status: Mapped[ForecastStatus] = mapped_column(
-        SQLEnum(ForecastStatus),
-        default=ForecastStatus.PENDING_REVIEW
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="PENDING_REVIEW",
+        comment="DRAFT, PENDING_REVIEW, UNDER_REVIEW, ADJUSTMENT_REQUESTED, APPROVED, REJECTED, SUPERSEDED"
     )
 
     adjusted_by_id: Mapped[uuid.UUID] = mapped_column(
@@ -305,8 +310,8 @@ class ForecastAdjustment(Base):
         nullable=True
     )
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     forecast: Mapped["DemandForecast"] = relationship("DemandForecast", back_populates="adjustments")
@@ -378,14 +383,15 @@ class SupplyPlan(Base):
     )
     lead_time_days: Mapped[int] = mapped_column(Integer, default=0)
 
-    # Detailed schedule (JSON)
+    # Detailed schedule (JSONB)
     # Format: [{"date": "2024-01-01", "production_qty": 50, "procurement_qty": 100}, ...]
-    schedule_data: Mapped[dict] = mapped_column(JSON, nullable=False, default=list)
+    schedule_data: Mapped[dict] = mapped_column(JSONB, nullable=False, default=list)
 
     # Status
-    status: Mapped[SupplyPlanStatus] = mapped_column(
-        SQLEnum(SupplyPlanStatus),
-        default=SupplyPlanStatus.DRAFT
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="DRAFT",
+        comment="DRAFT, SUBMITTED, APPROVED, IN_EXECUTION, COMPLETED, CANCELLED"
     )
 
     # Audit
@@ -400,9 +406,9 @@ class SupplyPlan(Base):
         nullable=True
     )
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -446,15 +452,15 @@ class SNOPScenario(Base):
     lead_time_multiplier: Mapped[float] = mapped_column(Float, default=1.0)
     price_change_pct: Mapped[float] = mapped_column(Float, default=0.0)
 
-    # Detailed assumptions (JSON)
-    assumptions: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # Detailed assumptions (JSONB)
+    assumptions: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
     # Simulation period
     simulation_start_date: Mapped[date] = mapped_column(Date, nullable=False)
     simulation_end_date: Mapped[date] = mapped_column(Date, nullable=False)
 
-    # Results (JSON)
-    results: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # Results (JSONB)
+    results: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Key metrics from simulation
     projected_revenue: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
@@ -463,9 +469,10 @@ class SNOPScenario(Base):
     service_level_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     # Status
-    status: Mapped[ScenarioStatus] = mapped_column(
-        SQLEnum(ScenarioStatus),
-        default=ScenarioStatus.DRAFT
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="DRAFT",
+        comment="DRAFT, RUNNING, COMPLETED, FAILED, ARCHIVED"
     )
 
     # Audit
@@ -475,9 +482,9 @@ class SNOPScenario(Base):
         nullable=True
     )
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -501,9 +508,10 @@ class ExternalFactor(Base):
     # Factor identification
     factor_code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     factor_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    factor_type: Mapped[ExternalFactorType] = mapped_column(
-        SQLEnum(ExternalFactorType),
-        nullable=False
+    factor_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="PROMOTION, SEASONAL, WEATHER, ECONOMIC, COMPETITOR, EVENT, PRICE_CHANGE, SUPPLY_DISRUPTION"
     )
 
     # Scope (which products/categories this affects)
@@ -532,8 +540,8 @@ class ExternalFactor(Base):
     impact_multiplier: Mapped[float] = mapped_column(Float, default=1.0)  # e.g., 1.2 = 20% increase
     impact_absolute: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2), nullable=True)  # Fixed qty change
 
-    # Additional data (JSON)
-    metadata_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # Additional data (JSONB)
+    metadata_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -544,8 +552,8 @@ class ExternalFactor(Base):
         ForeignKey("users.id"),
         nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     product: Mapped[Optional["Product"]] = relationship("Product")
@@ -627,8 +635,8 @@ class InventoryOptimization(Base):
         default=Decimal("0")
     )
 
-    # Calculation details (JSON)
-    calculation_details: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # Calculation details (JSONB)
+    calculation_details: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Validity
     valid_from: Mapped[date] = mapped_column(Date, nullable=False)
@@ -636,11 +644,11 @@ class InventoryOptimization(Base):
 
     # Status
     is_applied: Mapped[bool] = mapped_column(Boolean, default=False)
-    applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Audit
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     product: Mapped["Product"] = relationship("Product")
@@ -673,21 +681,21 @@ class SNOPMeeting(Base):
     planning_period_start: Mapped[date] = mapped_column(Date, nullable=False)
     planning_period_end: Mapped[date] = mapped_column(Date, nullable=False)
 
-    # Participants (JSON array of user IDs)
-    participants: Mapped[dict] = mapped_column(JSON, nullable=False, default=list)
+    # Participants (JSONB array of user IDs)
+    participants: Mapped[dict] = mapped_column(JSONB, nullable=False, default=list)
 
     # Agenda and notes
     agenda: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     meeting_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    # Forecasts reviewed (JSON array of forecast IDs)
-    forecasts_reviewed: Mapped[dict] = mapped_column(JSON, nullable=False, default=list)
+    # Forecasts reviewed (JSONB array of forecast IDs)
+    forecasts_reviewed: Mapped[dict] = mapped_column(JSONB, nullable=False, default=list)
 
-    # Decisions made (JSON)
-    decisions: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # Decisions made (JSONB)
+    decisions: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
-    # Action items (JSON)
-    action_items: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # Action items (JSONB)
+    action_items: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Status
     is_completed: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -698,8 +706,8 @@ class SNOPMeeting(Base):
         ForeignKey("users.id"),
         nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     created_by: Mapped[Optional["User"]] = relationship("User")

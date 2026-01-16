@@ -1,9 +1,9 @@
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 
-from sqlalchemy import String, Boolean, DateTime, Date, ForeignKey, Text, Enum as SQLEnum
+from sqlalchemy import String, Boolean, DateTime, Date, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -74,15 +74,17 @@ class Customer(Base):
     alternate_phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     # Type & Source
-    customer_type: Mapped[CustomerType] = mapped_column(
-        SQLEnum(CustomerType),
-        default=CustomerType.INDIVIDUAL,
-        nullable=False
+    customer_type: Mapped[str] = mapped_column(
+        String(50),
+        default="INDIVIDUAL",
+        nullable=False,
+        comment="INDIVIDUAL, BUSINESS, DEALER, DISTRIBUTOR"
     )
-    source: Mapped[CustomerSource] = mapped_column(
-        SQLEnum(CustomerSource),
-        default=CustomerSource.WEBSITE,
-        nullable=False
+    source: Mapped[str] = mapped_column(
+        String(50),
+        default="WEBSITE",
+        nullable=False,
+        comment="WEBSITE, WALK_IN, REFERRAL, DEALER, CAMPAIGN, SOCIAL_MEDIA, OTHER"
     )
 
     # Business Info (for business customers)
@@ -109,14 +111,14 @@ class Customer(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -179,10 +181,11 @@ class CustomerAddress(Base):
     )
 
     # Address Type
-    address_type: Mapped[AddressType] = mapped_column(
-        SQLEnum(AddressType),
-        default=AddressType.HOME,
-        nullable=False
+    address_type: Mapped[str] = mapped_column(
+        String(50),
+        default="HOME",
+        nullable=False,
+        comment="HOME, OFFICE, BILLING, SHIPPING, OTHER"
     )
 
     # Contact for this address
@@ -210,14 +213,14 @@ class CustomerAddress(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 

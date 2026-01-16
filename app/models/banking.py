@@ -1,5 +1,5 @@
 """Banking models for bank accounts, transactions, and reconciliation."""
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from enum import Enum
 from typing import Optional, List
@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     Column, String, Text, Numeric, Boolean, Date, DateTime,
-    ForeignKey, Enum as SQLEnum, Integer, JSON
+    ForeignKey, Integer
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import relationship, Mapped, mapped_column
@@ -78,8 +78,8 @@ class BankAccount(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Audit
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     created_by: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id"))
 
     # Relationships
@@ -110,9 +110,10 @@ class BankTransaction(Base):
     cheque_number: Mapped[Optional[str]] = mapped_column(String(20))
 
     # Transaction Type
-    transaction_type: Mapped[TransactionType] = mapped_column(
-        SQLEnum(TransactionType, name="bank_transaction_type"),
-        nullable=False
+    transaction_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="CREDIT, DEBIT"
     )
 
     # Amounts
@@ -123,7 +124,7 @@ class BankTransaction(Base):
 
     # Reconciliation
     is_reconciled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
-    reconciled_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    reconciled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     matched_journal_entry_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("journal_entries.id"))
     reconciliation_status: Mapped[Optional[str]] = mapped_column(String(50), default="PENDING")
 
@@ -138,7 +139,7 @@ class BankTransaction(Base):
     party_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True))
 
     # Audit
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     created_by: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id"))
 
     # Relationships
@@ -186,14 +187,14 @@ class BankReconciliation(Base):
     status: Mapped[str] = mapped_column(String(50), default="IN_PROGRESS")  # IN_PROGRESS, COMPLETED, APPROVED
     is_balanced: Mapped[bool] = mapped_column(Boolean, default=False)
     approved_by: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id"))
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     # Notes
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
     # Audit
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     created_by: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id"))
 
     def __repr__(self):

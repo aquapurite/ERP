@@ -1,12 +1,12 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 from decimal import Decimal
 
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Enum as SQLEnum, JSON
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 from app.database import Base
 
@@ -75,9 +75,9 @@ class Product(Base):
         index=True,
         comment="Vendor's part code e.g., AFGPSW2001"
     )
-    item_type: Mapped[ProductItemType] = mapped_column(
-        SQLEnum(ProductItemType, values_callable=lambda x: [e.value for e in x], native_enum=False),
-        default=ProductItemType.FINISHED_GOODS,
+    item_type: Mapped[str] = mapped_column(
+        String(50),
+        default="FG",
         nullable=False,
         comment="FG=Finished Goods, SP=Spare Part, CO=Component, CN=Consumable, AC=Accessory"
     )
@@ -170,10 +170,11 @@ class Product(Base):
     max_stock_level: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # Status & Display
-    status: Mapped[ProductStatus] = mapped_column(
-        SQLEnum(ProductStatus),
-        default=ProductStatus.DRAFT,
-        nullable=False
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="DRAFT",
+        nullable=False,
+        comment="DRAFT, ACTIVE, INACTIVE, DISCONTINUED, OUT_OF_STOCK"
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_featured: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -186,22 +187,22 @@ class Product(Base):
     meta_description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     meta_keywords: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
-    # Additional Data (flexible JSON storage)
-    extra_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # Additional Data (flexible JSONB storage)
+    extra_data: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
-    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     category: Mapped["Category"] = relationship("Category", back_populates="products")
@@ -315,8 +316,8 @@ class ProductImage(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -384,9 +385,9 @@ class ProductVariant(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     sku: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
 
-    # Variant Attributes (JSON for flexibility)
+    # Variant Attributes (JSONB for flexibility)
     # e.g., {"color": "Blue", "capacity": "7L", "model": "Premium"}
-    attributes: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    attributes: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Pricing (can override parent product)
     mrp: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
@@ -402,14 +403,14 @@ class ProductVariant(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -459,10 +460,11 @@ class ProductDocument(Base):
     )
 
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    document_type: Mapped[DocumentType] = mapped_column(
-        SQLEnum(DocumentType),
-        default=DocumentType.OTHER,
-        nullable=False
+    document_type: Mapped[str] = mapped_column(
+        String(50),
+        default="OTHER",
+        nullable=False,
+        comment="MANUAL, BROCHURE, WARRANTY_CARD, SPECIFICATION_SHEET, INSTALLATION_GUIDE, VIDEO, OTHER"
     )
     file_url: Mapped[str] = mapped_column(String(500), nullable=False)
     file_size_bytes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -471,8 +473,8 @@ class ProductDocument(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 

@@ -8,14 +8,14 @@ Supports:
 - 3-Way Matching (PO-GRN-Invoice)
 """
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 from decimal import Decimal
 
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date, JSON
-from sqlalchemy import Enum as SQLEnum, UniqueConstraint, Index, CheckConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date
+from sqlalchemy import UniqueConstraint, Index, CheckConstraint
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -189,11 +189,12 @@ class PurchaseRequisition(Base):
     )
 
     # Status
-    status: Mapped[RequisitionStatus] = mapped_column(
-        SQLEnum(RequisitionStatus),
-        default=RequisitionStatus.DRAFT,
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="DRAFT",
         nullable=False,
-        index=True
+        index=True,
+        comment="DRAFT, SUBMITTED, APPROVED, REJECTED, CONVERTED, CANCELLED"
     )
 
     # Requesting Details
@@ -256,14 +257,14 @@ class PurchaseRequisition(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -350,7 +351,7 @@ class PurchaseRequisitionItem(Base):
     # Monthly Quantities - for multi-month PRs (same pattern as PO)
     # Format: {"2026-01": 1500, "2026-02": 1500, "2026-03": 0}
     monthly_quantities: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Month-wise quantity breakdown for multi-delivery PRs"
     )
@@ -394,11 +395,12 @@ class PurchaseOrder(Base):
     po_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
 
     # Status
-    status: Mapped[POStatus] = mapped_column(
-        SQLEnum(POStatus),
-        default=POStatus.DRAFT,
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="DRAFT",
         nullable=False,
-        index=True
+        index=True,
+        comment="DRAFT, PENDING_APPROVAL, APPROVED, SENT_TO_VENDOR, ACKNOWLEDGED, PARTIALLY_RECEIVED, FULLY_RECEIVED, CLOSED, CANCELLED"
     )
 
     # Vendor
@@ -424,7 +426,7 @@ class PurchaseOrder(Base):
     )
     expected_delivery_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     delivery_address: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Delivery address if different from warehouse"
     )
@@ -432,17 +434,17 @@ class PurchaseOrder(Base):
     # Vendor Details Snapshot
     vendor_name: Mapped[str] = mapped_column(String(200), nullable=False)
     vendor_gstin: Mapped[Optional[str]] = mapped_column(String(15), nullable=True)
-    vendor_address: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    vendor_address: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
-    # Bill To & Ship To (JSON format)
+    # Bill To & Ship To (JSONB format)
     # Format: {"name": "", "address_line1": "", "address_line2": "", "city": "", "state": "", "pincode": "", "gstin": "", "state_code": ""}
     bill_to: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Bill To address (buyer details)"
     )
     ship_to: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Ship To address (delivery location, defaults to bill_to if not provided)"
     )
@@ -584,17 +586,17 @@ class PurchaseOrder(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
-    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     vendor: Mapped["Vendor"] = relationship("Vendor", back_populates="purchase_orders")
@@ -755,7 +757,7 @@ class PurchaseOrderItem(Base):
     # Monthly Quantities - for multi-month POs
     # Format: {"2026-01": 1500, "2026-02": 1500, "2026-03": 0}
     monthly_quantities: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Month-wise quantity breakdown for multi-delivery POs"
     )
@@ -940,11 +942,12 @@ class PODeliverySchedule(Base):
     )
 
     # Status
-    status: Mapped[DeliveryLotStatus] = mapped_column(
-        SQLEnum(DeliveryLotStatus),
-        default=DeliveryLotStatus.PENDING,
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="PENDING",
         nullable=False,
-        index=True
+        index=True,
+        comment="PENDING, ADVANCE_PENDING, ADVANCE_PAID, DELIVERED, PAYMENT_PENDING, COMPLETED, CANCELLED"
     )
 
     # GRN Reference
@@ -973,14 +976,14 @@ class PODeliverySchedule(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -1056,11 +1059,12 @@ class GoodsReceiptNote(Base):
     grn_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
 
     # Status
-    status: Mapped[GRNStatus] = mapped_column(
-        SQLEnum(GRNStatus),
-        default=GRNStatus.DRAFT,
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="DRAFT",
         nullable=False,
-        index=True
+        index=True,
+        comment="DRAFT, PENDING_QC, QC_PASSED, QC_FAILED, PARTIALLY_ACCEPTED, ACCEPTED, REJECTED, PUT_AWAY_PENDING, PUT_AWAY_COMPLETE, CANCELLED"
     )
 
     # Against PO
@@ -1118,9 +1122,10 @@ class GoodsReceiptNote(Base):
 
     # Quality Check
     qc_required: Mapped[bool] = mapped_column(Boolean, default=True)
-    qc_status: Mapped[Optional[QualityCheckResult]] = mapped_column(
-        SQLEnum(QualityCheckResult),
-        nullable=True
+    qc_status: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="PASSED, FAILED, CONDITIONAL, PENDING"
     )
     qc_done_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
@@ -1145,21 +1150,21 @@ class GoodsReceiptNote(Base):
     # Documents
     grn_pdf_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     photos_urls: Mapped[Optional[List[str]]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Photos of received goods"
     )
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -1256,7 +1261,7 @@ class GRNItem(Base):
     manufacturing_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     expiry_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     serial_numbers: Mapped[Optional[List[str]]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="List of serial numbers received"
     )
@@ -1270,9 +1275,10 @@ class GRNItem(Base):
     bin_location: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     # Quality Check
-    qc_result: Mapped[Optional[QualityCheckResult]] = mapped_column(
-        SQLEnum(QualityCheckResult),
-        nullable=True
+    qc_result: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="PASSED, FAILED, CONDITIONAL, PENDING"
     )
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
@@ -1326,11 +1332,12 @@ class VendorInvoice(Base):
     )
 
     # Status
-    status: Mapped[VendorInvoiceStatus] = mapped_column(
-        SQLEnum(VendorInvoiceStatus),
-        default=VendorInvoiceStatus.RECEIVED,
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="RECEIVED",
         nullable=False,
-        index=True
+        index=True,
+        comment="RECEIVED, UNDER_VERIFICATION, MATCHED, PARTIALLY_MATCHED, MISMATCH, APPROVED, PAYMENT_INITIATED, PAID, DISPUTED, CANCELLED"
     )
 
     # Vendor
@@ -1424,8 +1431,8 @@ class VendorInvoice(Base):
         nullable=False
     )
     received_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     verified_by: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -1446,14 +1453,14 @@ class VendorInvoice(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -1526,11 +1533,12 @@ class VendorProformaInvoice(Base):
     )
 
     # Status
-    status: Mapped[ProformaStatus] = mapped_column(
-        SQLEnum(ProformaStatus),
-        default=ProformaStatus.RECEIVED,
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="RECEIVED",
         nullable=False,
-        index=True
+        index=True,
+        comment="RECEIVED, UNDER_REVIEW, APPROVED, REJECTED, CONVERTED_TO_PO, EXPIRED, CANCELLED"
     )
 
     # Vendor
@@ -1572,15 +1580,15 @@ class VendorProformaInvoice(Base):
     delivery_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     delivery_terms: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
-    # Bill To & Ship To (JSON format)
+    # Bill To & Ship To (JSONB format)
     # Format: {"name": "", "address_line1": "", "address_line2": "", "city": "", "state": "", "pincode": "", "gstin": "", "state_code": ""}
     bill_to: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Bill To address (buyer details)"
     )
     ship_to: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Ship To address (delivery location, defaults to bill_to if not provided)"
     )
@@ -1623,18 +1631,18 @@ class VendorProformaInvoice(Base):
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False
     )
-    received_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationships
     vendor: Mapped["Vendor"] = relationship("Vendor")
@@ -1786,24 +1794,27 @@ class SalesReturnNote(Base):
     )
 
     # Status & Workflow
-    status: Mapped[SRNStatus] = mapped_column(
-        SQLEnum(SRNStatus),
-        default=SRNStatus.DRAFT,
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="DRAFT",
         nullable=False,
-        index=True
+        index=True,
+        comment="DRAFT, PENDING_RECEIPT, RECEIVED, PENDING_QC, QC_PASSED, QC_FAILED, PARTIALLY_ACCEPTED, ACCEPTED, PUT_AWAY_PENDING, PUT_AWAY_COMPLETE, CREDITED, REPLACED, REFUNDED, CANCELLED"
     )
 
     # Return Details
-    return_reason: Mapped[ReturnReason] = mapped_column(
-        SQLEnum(ReturnReason),
-        nullable=False
+    return_reason: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="DEFECTIVE, DAMAGED_IN_TRANSIT, WRONG_ITEM, NOT_AS_DESCRIBED, CHANGE_OF_MIND, WARRANTY_CLAIM, SIZE_ISSUE, QUALITY_ISSUE, OTHER"
     )
     return_reason_detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Resolution (manual choice per SRN)
-    resolution_type: Mapped[Optional[ResolutionType]] = mapped_column(
-        SQLEnum(ResolutionType),
-        nullable=True
+    resolution_type: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="CREDIT_NOTE, REPLACEMENT, REFUND, REPAIR, REJECT"
     )
     credit_note_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
@@ -1818,9 +1829,10 @@ class SalesReturnNote(Base):
 
     # Pickup/Reverse Logistics (Full Tracking)
     pickup_required: Mapped[bool] = mapped_column(Boolean, default=False)
-    pickup_status: Mapped[Optional[PickupStatus]] = mapped_column(
-        SQLEnum(PickupStatus),
-        nullable=True
+    pickup_status: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="NOT_REQUIRED, SCHEDULED, PICKUP_FAILED, PICKED_UP, IN_TRANSIT, DELIVERED"
     )
     pickup_scheduled_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     pickup_scheduled_slot: Mapped[Optional[str]] = mapped_column(
@@ -1828,7 +1840,7 @@ class SalesReturnNote(Base):
         nullable=True,
         comment="Time slot e.g., 10AM-12PM"
     )
-    pickup_address: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    pickup_address: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     pickup_contact_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     pickup_contact_phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     courier_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -1847,9 +1859,10 @@ class SalesReturnNote(Base):
 
     # Quality Control
     qc_required: Mapped[bool] = mapped_column(Boolean, default=True)
-    qc_status: Mapped[Optional[QualityCheckResult]] = mapped_column(
-        SQLEnum(QualityCheckResult),
-        nullable=True
+    qc_status: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="PASSED, FAILED, CONDITIONAL, PENDING"
     )
     qc_done_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
@@ -1887,7 +1900,7 @@ class SalesReturnNote(Base):
 
     # Documents
     srn_pdf_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    photos_urls: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    photos_urls: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
 
     # Audit
     created_by: Mapped[uuid.UUID] = mapped_column(
@@ -1896,14 +1909,14 @@ class SalesReturnNote(Base):
         nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -1998,7 +2011,7 @@ class SRNItem(Base):
 
     # Serial Numbers Being Returned
     serial_numbers: Mapped[Optional[list]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="List of serial numbers being returned"
     )
@@ -2023,19 +2036,22 @@ class SRNItem(Base):
     )
 
     # Condition Assessment (set during QC)
-    item_condition: Mapped[Optional[ItemCondition]] = mapped_column(
-        SQLEnum(ItemCondition),
-        nullable=True
+    item_condition: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="LIKE_NEW, GOOD, DAMAGED, DEFECTIVE, UNSALVAGEABLE"
     )
-    restock_decision: Mapped[Optional[RestockDecision]] = mapped_column(
-        SQLEnum(RestockDecision),
-        nullable=True
+    restock_decision: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="RESTOCK_AS_NEW, RESTOCK_AS_REFURB, SEND_FOR_REPAIR, RETURN_TO_VENDOR, SCRAP"
     )
 
     # QC Result
-    qc_result: Mapped[Optional[QualityCheckResult]] = mapped_column(
-        SQLEnum(QualityCheckResult),
-        nullable=True
+    qc_result: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="PASSED, FAILED, CONDITIONAL, PENDING"
     )
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 

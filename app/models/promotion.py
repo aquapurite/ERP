@@ -9,14 +9,14 @@ Supports:
 - Loyalty & Referral rewards
 """
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 from decimal import Decimal
 
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date, JSON
-from sqlalchemy import Enum as SQLEnum, UniqueConstraint, Index, CheckConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date
+from sqlalchemy import UniqueConstraint, Index, CheckConstraint
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -144,39 +144,43 @@ class Promotion(Base):
     )
 
     # Type & Scope
-    promotion_type: Mapped[PromotionType] = mapped_column(
-        SQLEnum(PromotionType),
+    promotion_type: Mapped[str] = mapped_column(
+        String(50),
         nullable=False,
-        index=True
+        index=True,
+        comment="PERCENTAGE_DISCOUNT, FLAT_DISCOUNT, BOGO, BUNDLE, CASHBACK, FREE_GIFT, FREE_SHIPPING, FLASH_SALE, SEASONAL, FIRST_ORDER, LOYALTY_REWARD, REFERRAL_REWARD, EXCHANGE_OFFER, EMI_DISCOUNT, BANK_OFFER, TRADE_DISCOUNT, VOLUME_REBATE, EARLY_PAYMENT, TARGET_INCENTIVE, DISPLAY_INCENTIVE, LAUNCH_SCHEME, CLEARANCE, FOC"
     )
-    promotion_scope: Mapped[PromotionScope] = mapped_column(
-        SQLEnum(PromotionScope),
-        default=PromotionScope.ALL_PRODUCTS,
-        nullable=False
+    promotion_scope: Mapped[str] = mapped_column(
+        String(50),
+        default="ALL_PRODUCTS",
+        nullable=False,
+        comment="ALL_PRODUCTS, SPECIFIC_PRODUCTS, SPECIFIC_CATEGORIES, SPECIFIC_BRANDS, CART_LEVEL, SHIPPING"
     )
-    discount_application: Mapped[DiscountApplication] = mapped_column(
-        SQLEnum(DiscountApplication),
-        default=DiscountApplication.ON_SELLING_PRICE,
-        nullable=False
+    discount_application: Mapped[str] = mapped_column(
+        String(50),
+        default="ON_SELLING_PRICE",
+        nullable=False,
+        comment="ON_MRP, ON_SELLING_PRICE, ON_CART_TOTAL, ON_SHIPPING, POST_PURCHASE"
     )
 
     # Status
-    status: Mapped[PromotionStatus] = mapped_column(
-        SQLEnum(PromotionStatus),
-        default=PromotionStatus.DRAFT,
-        nullable=False
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="DRAFT",
+        nullable=False,
+        comment="DRAFT, PENDING_APPROVAL, APPROVED, ACTIVE, PAUSED, EXPIRED, CANCELLED"
     )
 
     # Validity
-    start_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    end_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    start_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    end_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     is_recurring: Mapped[bool] = mapped_column(
         Boolean,
         default=False,
         comment="For daily/weekly flash sales"
     )
     recurring_schedule: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Cron-like schedule for recurring promos"
     )
@@ -185,14 +189,14 @@ class Promotion(Base):
     # Which channels this promotion applies to
 
     applicable_channels: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="List of channel codes, null = all channels"
     )
     # Example: ["D2C_WEB", "D2C_APP", "AMAZON_IN"]
 
     excluded_channels: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Channels to exclude"
     )
@@ -272,73 +276,73 @@ class Promotion(Base):
 
     # Product/Category applicability
     applicable_products: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="List of product IDs"
     )
     applicable_categories: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="List of category IDs"
     )
     applicable_brands: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="List of brand IDs"
     )
     excluded_products: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True
     )
     excluded_categories: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True
     )
 
     # Customer eligibility
     customer_segments: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="NEW, RETURNING, VIP, etc."
     )
     applicable_regions: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="State/region codes"
     )
     applicable_pincodes: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True
     )
 
     # Dealer/Partner eligibility (for B2B)
     applicable_dealer_types: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True
     )
     applicable_dealer_tiers: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True
     )
     applicable_dealers: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Specific dealer IDs"
     )
 
     # Payment method restrictions
     applicable_payment_methods: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="CREDIT_CARD, UPI, EMI, etc."
     )
     applicable_banks: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="For bank offers"
     )
     applicable_card_types: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="VISA, MASTERCARD, RUPAY"
     )
@@ -416,18 +420,18 @@ class Promotion(Base):
         UUID(as_uuid=True),
         nullable=True
     )
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -505,7 +509,7 @@ class PromotionUsage(Base):
     channel_code: Mapped[str] = mapped_column(String(30), nullable=False)
 
     # Usage Details
-    usage_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    usage_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     order_value: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     discount_applied: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     cashback_earned: Mapped[Decimal] = mapped_column(
@@ -515,13 +519,13 @@ class PromotionUsage(Base):
 
     # Status
     is_reversed: Mapped[bool] = mapped_column(Boolean, default=False)
-    reversed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    reversed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     reversal_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -566,10 +570,11 @@ class ChannelCommissionPlan(Base):
     )
 
     # Who earns
-    beneficiary_type: Mapped[CommissionBeneficiary] = mapped_column(
-        SQLEnum(CommissionBeneficiary),
+    beneficiary_type: Mapped[str] = mapped_column(
+        String(50),
         nullable=False,
-        index=True
+        index=True,
+        comment="SALES_EXECUTIVE, AREA_MANAGER, REGIONAL_MANAGER, ZONAL_HEAD, DEALER, DISTRIBUTOR, RETAILER, FRANCHISE, AFFILIATE, INFLUENCER, REFERRER, SERVICE_PARTNER, INSTALLATION_TEAM"
     )
 
     # Validity
@@ -596,7 +601,7 @@ class ChannelCommissionPlan(Base):
 
     # Slab configuration
     rate_slabs: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Volume/value based slabs"
     )
@@ -617,9 +622,9 @@ class ChannelCommissionPlan(Base):
         Numeric(12, 2),
         nullable=True
     )
-    applicable_categories: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    applicable_products: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    excluded_products: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    applicable_categories: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    applicable_products: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    excluded_products: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Payout Rules
     payout_frequency: Mapped[str] = mapped_column(
@@ -653,14 +658,14 @@ class ChannelCommissionPlan(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -718,8 +723,8 @@ class ChannelCommissionCategoryRate(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -759,9 +764,10 @@ class ChannelCommissionEarning(Base):
     channel_code: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
 
     # Beneficiary
-    beneficiary_type: Mapped[CommissionBeneficiary] = mapped_column(
-        SQLEnum(CommissionBeneficiary),
-        nullable=False
+    beneficiary_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="SALES_EXECUTIVE, AREA_MANAGER, REGIONAL_MANAGER, ZONAL_HEAD, DEALER, DISTRIBUTOR, RETAILER, FRANCHISE, AFFILIATE, INFLUENCER, REFERRER, SERVICE_PARTNER, INSTALLATION_TEAM"
     )
     beneficiary_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -806,7 +812,7 @@ class ChannelCommissionEarning(Base):
     )
     eligible_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     is_paid: Mapped[bool] = mapped_column(Boolean, default=False)
-    paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     payout_reference: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     # Clawback
@@ -828,14 +834,14 @@ class ChannelCommissionEarning(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -862,7 +868,7 @@ class LoyaltyProgram(Base):
 
     # Applicable channels
     applicable_channels: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Channel codes, null = all"
     )
@@ -903,7 +909,7 @@ class LoyaltyProgram(Base):
 
     # Tiers
     tier_config: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Tier configuration with benefits"
     )
@@ -916,14 +922,14 @@ class LoyaltyProgram(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -947,7 +953,7 @@ class ReferralProgram(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Applicable channels
-    applicable_channels: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    applicable_channels: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Referrer reward (existing customer)
     referrer_reward_type: Mapped[str] = mapped_column(
@@ -1003,14 +1009,14 @@ class ReferralProgram(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -1084,22 +1090,22 @@ class CustomerReferral(Base):
         Numeric(10, 2),
         default=Decimal("0")
     )
-    referrer_rewarded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    referrer_rewarded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     referee_reward: Mapped[Decimal] = mapped_column(
         Numeric(10, 2),
         default=Decimal("0")
     )
-    referee_rewarded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    referee_rewarded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
     referred_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
-    registered_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    ordered_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    registered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    ordered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     def __repr__(self) -> str:
         return f"<CustomerReferral(code='{self.referral_code}', status='{self.status}')>"

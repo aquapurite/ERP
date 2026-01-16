@@ -1,8 +1,8 @@
 """Inventory models for stock management."""
 from enum import Enum
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float, Numeric
-from sqlalchemy import Enum as SQLEnum, UniqueConstraint, CheckConstraint
+from sqlalchemy import UniqueConstraint, CheckConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import uuid
@@ -50,7 +50,10 @@ class StockItem(Base, TimestampMixin):
     barcode = Column(String(100), index=True)
 
     # Status
-    status = Column(SQLEnum(StockItemStatus), default=StockItemStatus.AVAILABLE, index=True)
+    status = Column(
+        String(50), default="AVAILABLE", index=True,
+        comment="AVAILABLE, RESERVED, ALLOCATED, PICKED, PACKED, IN_TRANSIT, SHIPPED, DAMAGED, DEFECTIVE, SOLD, RETURNED, QUARANTINE, SCRAPPED"
+    )
 
     # Procurement info
     purchase_order_id = Column(UUID(as_uuid=True))  # Reference to PO
@@ -66,7 +69,7 @@ class StockItem(Base, TimestampMixin):
     expiry_date = Column(Date)
     warranty_start_date = Column(Date)
     warranty_end_date = Column(Date)
-    received_date = Column(DateTime, default=datetime.utcnow)
+    received_date = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Order allocation
     order_id = Column(UUID(as_uuid=True), ForeignKey("orders.id"))
@@ -90,8 +93,8 @@ class StockItem(Base, TimestampMixin):
     notes = Column(Text)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     product = relationship("Product", back_populates="stock_items")
@@ -180,8 +183,11 @@ class StockMovement(Base, TimestampMixin):
 
     # Reference
     movement_number = Column(String(50), unique=True, nullable=False, index=True)
-    movement_type = Column(SQLEnum(StockMovementType), nullable=False, index=True)
-    movement_date = Column(DateTime, default=datetime.utcnow)
+    movement_type = Column(
+        String(50), nullable=False, index=True,
+        comment="RECEIPT, ISSUE, TRANSFER_IN, TRANSFER_OUT, RETURN_IN, RETURN_OUT, ADJUSTMENT_PLUS, ADJUSTMENT_MINUS, DAMAGE, SCRAP, CYCLE_COUNT"
+    )
+    movement_date = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Location
     warehouse_id = Column(UUID(as_uuid=True), ForeignKey("warehouses.id"), nullable=False, index=True)

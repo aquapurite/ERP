@@ -4,14 +4,14 @@ Supports: D2C Website, Mobile App, Amazon, Flipkart, Dealer Network,
 Retail Stores, Franchise, Corporate Sales, etc.
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 from decimal import Decimal
 
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Float, JSON
-from sqlalchemy import Enum as SQLEnum, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Float
+from sqlalchemy import UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -88,15 +88,17 @@ class SalesChannel(Base):
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
 
     # Type & Status
-    channel_type: Mapped[ChannelType] = mapped_column(
-        SQLEnum(ChannelType),
+    channel_type: Mapped[str] = mapped_column(
+        String(50),
         nullable=False,
-        index=True
+        index=True,
+        comment="D2C, MARKETPLACE, B2B, OFFLINE, D2C_WEBSITE, D2C_APP, AMAZON, FLIPKART, MYNTRA, TATACLIQ, JIOMART, MEESHO, NYKAA, AJIO, RETAIL_STORE, FRANCHISE, DEALER, DEALER_PORTAL, DISTRIBUTOR, MODERN_TRADE, CORPORATE, B2B_PORTAL, GOVERNMENT, EXPORT, QUICK_COMMERCE, OTHER"
     )
-    status: Mapped[ChannelStatus] = mapped_column(
-        SQLEnum(ChannelStatus),
-        default=ChannelStatus.ACTIVE,
-        nullable=False
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="ACTIVE",
+        nullable=False,
+        comment="ACTIVE, INACTIVE, SUSPENDED, PENDING_SETUP"
     )
 
     # Marketplace Integration (for marketplace channels)
@@ -180,28 +182,28 @@ class SalesChannel(Base):
     contact_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     contact_phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
-    # Configuration (JSON for flexible settings)
+    # Configuration (JSONB for flexible settings)
     config: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Channel-specific configuration"
     )
 
     # Sync Settings
-    last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     sync_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     sync_interval_minutes: Mapped[int] = mapped_column(Integer, default=30)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -289,19 +291,19 @@ class ChannelPricing(Base):
     )
 
     # Effective dates
-    effective_from: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    effective_to: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    effective_from: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    effective_to: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -392,21 +394,21 @@ class ChannelInventory(Base):
         default=0,
         comment="Quantity synced to marketplace"
     )
-    last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -486,26 +488,26 @@ class ChannelOrder(Base):
 
     # Sync
     raw_order_data: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Raw order data from marketplace"
     )
     synced_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
-    last_status_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_status_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Settlement
     settlement_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    settlement_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    settlement_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_settled: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -585,22 +587,22 @@ class MarketplaceIntegration(Base):
     sync_interval_minutes: Mapped[int] = mapped_column(Integer, default=30)
 
     # Last Sync Timestamps
-    last_order_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    last_inventory_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_order_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_inventory_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_sync_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     last_sync_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Audit
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(

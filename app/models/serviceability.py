@@ -10,12 +10,12 @@ Order Flow:
 NEW → Check Serviceability → Allocate Warehouse → Check Stock → Allocate Inventory
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Float
-from sqlalchemy import Enum as SQLEnum, UniqueConstraint, Index
+from sqlalchemy import UniqueConstraint, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -135,14 +135,14 @@ class WarehouseServiceability(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -190,11 +190,12 @@ class AllocationRule(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Channel (which sales channel this rule applies to)
-    channel_code: Mapped[ChannelCode] = mapped_column(
-        SQLEnum(ChannelCode),
-        default=ChannelCode.ALL,
+    channel_code: Mapped[str] = mapped_column(
+        String(50),
+        default="ALL",
         nullable=False,
-        index=True
+        index=True,
+        comment="D2C, AMAZON, FLIPKART, MYNTRA, MEESHO, TATACLIQ, DEALER, STORE, ALL"
     )
 
     # Optional: Link to SalesChannel for marketplace-specific rules
@@ -213,10 +214,11 @@ class AllocationRule(Base):
     )
 
     # Allocation type
-    allocation_type: Mapped[AllocationType] = mapped_column(
-        SQLEnum(AllocationType),
-        default=AllocationType.NEAREST,
-        nullable=False
+    allocation_type: Mapped[str] = mapped_column(
+        String(50),
+        default="NEAREST",
+        nullable=False,
+        comment="NEAREST, ROUND_ROBIN, FIFO, FIXED, PRIORITY, COST_OPTIMIZED"
     )
 
     # Fixed warehouse (if allocation_type is FIXED)
@@ -271,14 +273,14 @@ class AllocationRule(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -371,8 +373,8 @@ class AllocationLog(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 

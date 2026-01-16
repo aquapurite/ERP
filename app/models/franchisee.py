@@ -12,15 +12,15 @@ This module handles:
 """
 import enum
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from decimal import Decimal
 from typing import Optional, List
 
 from sqlalchemy import (
     String, Text, Boolean, Integer, DateTime, Date,
-    ForeignKey, Enum, Numeric, JSON, Index, Float,
+    ForeignKey, Numeric, Index, Float,
 )
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -184,14 +184,14 @@ class Franchisee(Base):
     legal_name: Mapped[Optional[str]] = mapped_column(String(300))
 
     # Type and Status
-    franchisee_type: Mapped[FranchiseeType] = mapped_column(
-        Enum(FranchiseeType), default=FranchiseeType.DEALER
+    franchisee_type: Mapped[str] = mapped_column(
+        String(50), default="DEALER", comment="EXCLUSIVE, NON_EXCLUSIVE, MASTER, SUB_FRANCHISEE, DEALER, DISTRIBUTOR"
     )
-    status: Mapped[FranchiseeStatus] = mapped_column(
-        Enum(FranchiseeStatus), default=FranchiseeStatus.PROSPECT, index=True
+    status: Mapped[str] = mapped_column(
+        String(50), default="PROSPECT", index=True, comment="PROSPECT, APPLICATION_PENDING, UNDER_REVIEW, APPROVED, ONBOARDING, ACTIVE, SUSPENDED, TERMINATED, INACTIVE"
     )
-    tier: Mapped[FranchiseeTier] = mapped_column(
-        Enum(FranchiseeTier), default=FranchiseeTier.STANDARD
+    tier: Mapped[str] = mapped_column(
+        String(50), default="STANDARD", comment="PLATINUM, GOLD, SILVER, BRONZE, STANDARD"
     )
 
     # Contact Information
@@ -250,7 +250,7 @@ class Franchisee(Base):
     last_audit_date: Mapped[Optional[date]] = mapped_column(Date)
 
     # Documents and Notes
-    documents: Mapped[Optional[dict]] = mapped_column(JSON)  # {type: url}
+    documents: Mapped[Optional[dict]] = mapped_column(JSONB)  # {type: url}
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
     # Tracking
@@ -263,9 +263,9 @@ class Franchisee(Base):
     account_manager_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -298,8 +298,8 @@ class FranchiseeContract(Base):
     # Contract Details
     contract_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     contract_type: Mapped[str] = mapped_column(String(50))  # FRANCHISE_AGREEMENT, DEALER_AGREEMENT, etc.
-    status: Mapped[ContractStatus] = mapped_column(
-        Enum(ContractStatus), default=ContractStatus.DRAFT, index=True
+    status: Mapped[str] = mapped_column(
+        String(50), default="DRAFT", index=True, comment="DRAFT, PENDING_APPROVAL, ACTIVE, EXPIRED, RENEWED, TERMINATED, CANCELLED"
     )
 
     # Terms
@@ -327,22 +327,22 @@ class FranchiseeContract(Base):
     approved_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     # Termination
     terminated_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     termination_reason: Mapped[Optional[str]] = mapped_column(Text)
-    terminated_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    terminated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     notes: Mapped[Optional[str]] = mapped_column(Text)
     created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -363,17 +363,17 @@ class FranchiseeTerritory(Base):
     # Territory Definition
     territory_name: Mapped[str] = mapped_column(String(200))
     territory_type: Mapped[str] = mapped_column(String(50))  # PINCODE, CITY, DISTRICT, STATE
-    status: Mapped[TerritoryStatus] = mapped_column(
-        Enum(TerritoryStatus), default=TerritoryStatus.ACTIVE, index=True
+    status: Mapped[str] = mapped_column(
+        String(50), default="ACTIVE", index=True, comment="PROPOSED, ACTIVE, DISPUTED, REVOKED, EXPIRED"
     )
     is_exclusive: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Geographic Boundaries
-    pincodes: Mapped[Optional[List[str]]] = mapped_column(JSON)  # List of pincodes
-    cities: Mapped[Optional[List[str]]] = mapped_column(JSON)
-    districts: Mapped[Optional[List[str]]] = mapped_column(JSON)
-    states: Mapped[Optional[List[str]]] = mapped_column(JSON)
-    geo_boundary: Mapped[Optional[dict]] = mapped_column(JSON)  # GeoJSON polygon
+    pincodes: Mapped[Optional[List[str]]] = mapped_column(JSONB)  # List of pincodes
+    cities: Mapped[Optional[List[str]]] = mapped_column(JSONB)
+    districts: Mapped[Optional[List[str]]] = mapped_column(JSONB)
+    states: Mapped[Optional[List[str]]] = mapped_column(JSONB)
+    geo_boundary: Mapped[Optional[dict]] = mapped_column(JSONB)  # GeoJSON polygon
 
     # Validity
     effective_from: Mapped[date] = mapped_column(Date)
@@ -388,9 +388,9 @@ class FranchiseeTerritory(Base):
     created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -427,7 +427,7 @@ class FranchiseeServiceability(Base):
 
     # Service capabilities for this pincode
     service_types: Mapped[List[str]] = mapped_column(
-        JSON, default=list
+        JSONB, default=list
     )  # ["INSTALLATION", "REPAIR", "MAINTENANCE", "AMC_SERVICE"]
 
     # Availability and priority
@@ -448,9 +448,9 @@ class FranchiseeServiceability(Base):
     # Timestamps
     effective_from: Mapped[date] = mapped_column(Date, default=date.today)
     effective_to: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -520,9 +520,9 @@ class FranchiseePerformance(Base):
     rank_overall: Mapped[Optional[int]] = mapped_column(Integer)
 
     notes: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -547,14 +547,14 @@ class FranchiseeTraining(Base):
     # Training Details
     training_code: Mapped[str] = mapped_column(String(50), index=True)
     training_name: Mapped[str] = mapped_column(String(200))
-    training_type: Mapped[TrainingType] = mapped_column(Enum(TrainingType), index=True)
-    status: Mapped[TrainingStatus] = mapped_column(
-        Enum(TrainingStatus), default=TrainingStatus.SCHEDULED, index=True
+    training_type: Mapped[str] = mapped_column(String(50), index=True, comment="ONBOARDING, PRODUCT, SALES, SERVICE, COMPLIANCE, CERTIFICATION, REFRESHER")
+    status: Mapped[str] = mapped_column(
+        String(50), default="SCHEDULED", index=True, comment="SCHEDULED, IN_PROGRESS, COMPLETED, FAILED, CANCELLED, EXPIRED"
     )
 
     # Description
     description: Mapped[Optional[str]] = mapped_column(Text)
-    objectives: Mapped[Optional[List[str]]] = mapped_column(JSON)
+    objectives: Mapped[Optional[List[str]]] = mapped_column(JSONB)
 
     # Schedule
     scheduled_date: Mapped[date] = mapped_column(Date)
@@ -587,7 +587,7 @@ class FranchiseeTraining(Base):
     certificate_expiry: Mapped[Optional[date]] = mapped_column(Date)
 
     # Completion
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     feedback: Mapped[Optional[str]] = mapped_column(Text)
     feedback_rating: Mapped[Optional[int]] = mapped_column(Integer)
 
@@ -598,9 +598,9 @@ class FranchiseeTraining(Base):
     )
 
     notes: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -624,14 +624,14 @@ class FranchiseeSupport(Base):
     description: Mapped[str] = mapped_column(Text)
 
     # Classification
-    category: Mapped[SupportTicketCategory] = mapped_column(
-        Enum(SupportTicketCategory), index=True
+    category: Mapped[str] = mapped_column(
+        String(50), index=True, comment="TECHNICAL, BILLING, INVENTORY, MARKETING, OPERATIONS, COMPLIANCE, OTHER"
     )
-    priority: Mapped[SupportTicketPriority] = mapped_column(
-        Enum(SupportTicketPriority), default=SupportTicketPriority.MEDIUM, index=True
+    priority: Mapped[str] = mapped_column(
+        String(20), default="MEDIUM", index=True, comment="LOW, MEDIUM, HIGH, CRITICAL"
     )
-    status: Mapped[SupportTicketStatus] = mapped_column(
-        Enum(SupportTicketStatus), default=SupportTicketStatus.OPEN, index=True
+    status: Mapped[str] = mapped_column(
+        String(50), default="OPEN", index=True, comment="OPEN, IN_PROGRESS, WAITING_ON_FRANCHISEE, ESCALATED, RESOLVED, CLOSED"
     )
 
     # Contact
@@ -643,10 +643,10 @@ class FranchiseeSupport(Base):
     assigned_to_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
-    assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     # SLA
-    sla_due_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    sla_due_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     sla_breached: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Resolution
@@ -654,7 +654,7 @@ class FranchiseeSupport(Base):
     resolved_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
-    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     resolution_time_hours: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2))
 
     # Feedback
@@ -666,20 +666,20 @@ class FranchiseeSupport(Base):
     escalated_to_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
-    escalated_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    escalated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     escalation_reason: Mapped[Optional[str]] = mapped_column(Text)
 
     # Attachments
-    attachments: Mapped[Optional[List[str]]] = mapped_column(JSON)
+    attachments: Mapped[Optional[List[str]]] = mapped_column(JSONB)
 
     # Tracking
-    first_response_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    first_response_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     reopen_count: Mapped[int] = mapped_column(Integer, default=0)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -712,9 +712,9 @@ class FranchiseeSupportComment(Base):
     author_type: Mapped[str] = mapped_column(String(20))  # STAFF, FRANCHISEE
     author_name: Mapped[str] = mapped_column(String(200))
 
-    attachments: Mapped[Optional[List[str]]] = mapped_column(JSON)
+    attachments: Mapped[Optional[List[str]]] = mapped_column(JSONB)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     ticket = relationship("FranchiseeSupport", back_populates="comments")
@@ -733,9 +733,9 @@ class FranchiseeAudit(Base):
 
     # Audit Details
     audit_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
-    audit_type: Mapped[AuditType] = mapped_column(Enum(AuditType), index=True)
-    status: Mapped[AuditStatus] = mapped_column(
-        Enum(AuditStatus), default=AuditStatus.SCHEDULED, index=True
+    audit_type: Mapped[str] = mapped_column(String(50), index=True, comment="INITIAL, PERIODIC, SURPRISE, COMPLIANCE, QUALITY, FINANCIAL")
+    status: Mapped[str] = mapped_column(
+        String(50), default="SCHEDULED", index=True, comment="SCHEDULED, IN_PROGRESS, COMPLETED, ACTION_REQUIRED, CLOSED, CANCELLED"
     )
 
     # Schedule
@@ -749,10 +749,10 @@ class FranchiseeAudit(Base):
     auditor_name: Mapped[str] = mapped_column(String(200))
 
     # Checklist and Findings
-    checklist: Mapped[Optional[List[dict]]] = mapped_column(JSON)  # [{item, score, remarks}]
+    checklist: Mapped[Optional[List[dict]]] = mapped_column(JSONB)  # [{item, score, remarks}]
     findings: Mapped[Optional[str]] = mapped_column(Text)
-    observations: Mapped[Optional[List[str]]] = mapped_column(JSON)
-    non_conformities: Mapped[Optional[List[dict]]] = mapped_column(JSON)  # [{item, severity, action}]
+    observations: Mapped[Optional[List[str]]] = mapped_column(JSONB)
+    non_conformities: Mapped[Optional[List[dict]]] = mapped_column(JSONB)  # [{item, severity, action}]
 
     # Scores
     overall_score: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2))
@@ -760,25 +760,25 @@ class FranchiseeAudit(Base):
     quality_score: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2))
 
     # Result
-    result: Mapped[Optional[AuditResult]] = mapped_column(Enum(AuditResult))
+    result: Mapped[Optional[str]] = mapped_column(String(50), comment="PASSED, PASSED_WITH_OBSERVATIONS, FAILED, REQUIRES_FOLLOW_UP")
 
     # Corrective Actions
-    corrective_actions: Mapped[Optional[List[dict]]] = mapped_column(JSON)  # [{action, due_date, status}]
+    corrective_actions: Mapped[Optional[List[dict]]] = mapped_column(JSONB)  # [{action, due_date, status}]
     follow_up_required: Mapped[bool] = mapped_column(Boolean, default=False)
     follow_up_date: Mapped[Optional[date]] = mapped_column(Date)
 
     # Documents
     report_url: Mapped[Optional[str]] = mapped_column(String(500))
-    evidence_urls: Mapped[Optional[List[str]]] = mapped_column(JSON)
+    evidence_urls: Mapped[Optional[List[str]]] = mapped_column(JSONB)
 
     # Completion
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     notes: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships

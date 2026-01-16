@@ -1,11 +1,10 @@
 """Manifest models for shipping handover management."""
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Float, Date
-from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -74,24 +73,26 @@ class Manifest(Base):
     )
 
     # Status
-    status: Mapped[ManifestStatus] = mapped_column(
-        SQLEnum(ManifestStatus),
-        default=ManifestStatus.DRAFT,
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="DRAFT",
         nullable=False,
-        index=True
+        index=True,
+        comment="DRAFT, PENDING, CONFIRMED, HANDED_OVER, IN_TRANSIT, COMPLETED, CANCELLED"
     )
 
     # Business type
-    business_type: Mapped[BusinessType] = mapped_column(
-        SQLEnum(BusinessType),
-        default=BusinessType.B2C,
-        nullable=False
+    business_type: Mapped[str] = mapped_column(
+        String(50),
+        default="B2C",
+        nullable=False,
+        comment="B2C, B2B"
     )
 
     # Manifest date
     manifest_date: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -140,18 +141,18 @@ class Manifest(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
         index=True
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
-    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     cancellation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Relationships
@@ -259,8 +260,8 @@ class ManifestItem(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 

@@ -10,15 +10,15 @@ This module contains models for:
 """
 import uuid
 import enum
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional, List
 
 from sqlalchemy import (
     String, Text, Integer, Boolean, DateTime, Date,
-    ForeignKey, Numeric, Enum as SQLEnum, JSON, Interval
+    ForeignKey, Numeric, Interval
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -114,17 +114,29 @@ class EscalationMatrix(Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
 
     # Applicable to
-    source_type: Mapped[EscalationSource] = mapped_column(SQLEnum(EscalationSource))
+    source_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="SERVICE_REQUEST, COMPLAINT, ORDER, CALL, LEAD, AMC, WARRANTY, BILLING, DELIVERY, INSTALLATION, QUALITY, CUSTOMER_FEEDBACK, SOCIAL_MEDIA, MANUAL"
+    )
     category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL")
     )
-    priority: Mapped[Optional[EscalationPriority]] = mapped_column(SQLEnum(EscalationPriority))
+    priority: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="LOW, MEDIUM, HIGH, CRITICAL"
+    )
     region_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("regions.id", ondelete="SET NULL")
     )
 
     # Level configuration
-    level: Mapped[EscalationLevel] = mapped_column(SQLEnum(EscalationLevel))
+    level: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="L1, L2, L3, L4, L5, CRITICAL"
+    )
 
     # Time-based triggers (in minutes)
     trigger_after_minutes: Mapped[int] = mapped_column(Integer)  # Time after which to escalate
@@ -144,10 +156,10 @@ class EscalationMatrix(Base):
     assign_to_role_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("roles.id", ondelete="SET NULL")
     )
-    additional_notify_emails: Mapped[Optional[dict]] = mapped_column(JSON)  # List of emails
+    additional_notify_emails: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)  # List of emails
 
     # Notification settings
-    notification_channels: Mapped[Optional[dict]] = mapped_column(JSON)  # List of channels
+    notification_channels: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)  # List of channels
     notification_template_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
 
     # Auto-actions
@@ -161,9 +173,14 @@ class EscalationMatrix(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -185,7 +202,11 @@ class Escalation(Base):
     )  # ESC-YYYYMMDD-XXXX
 
     # Source reference
-    source_type: Mapped[EscalationSource] = mapped_column(SQLEnum(EscalationSource))
+    source_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="SERVICE_REQUEST, COMPLAINT, ORDER, CALL, LEAD, AMC, WARRANTY, BILLING, DELIVERY, INSTALLATION, QUALITY, CUSTOMER_FEEDBACK, SOCIAL_MEDIA, MANUAL"
+    )
     source_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), index=True)
     source_reference: Mapped[Optional[str]] = mapped_column(String(50))  # e.g., SR number, Order number
 
@@ -200,45 +221,56 @@ class Escalation(Base):
     # Escalation details
     subject: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text)
-    current_level: Mapped[EscalationLevel] = mapped_column(
-        SQLEnum(EscalationLevel), default=EscalationLevel.L1
+    current_level: Mapped[str] = mapped_column(
+        String(50),
+        default="L1",
+        comment="L1, L2, L3, L4, L5, CRITICAL"
     )
-    priority: Mapped[EscalationPriority] = mapped_column(
-        SQLEnum(EscalationPriority), default=EscalationPriority.MEDIUM
+    priority: Mapped[str] = mapped_column(
+        String(50),
+        default="MEDIUM",
+        comment="LOW, MEDIUM, HIGH, CRITICAL"
     )
-    reason: Mapped[EscalationReason] = mapped_column(SQLEnum(EscalationReason))
+    reason: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="SLA_BREACH, REPEATED_COMPLAINT, CUSTOMER_REQUEST, COMPLEX_ISSUE, VIP_CUSTOMER, HIGH_VALUE, LEGAL_THREAT, SOCIAL_MEDIA_COMPLAINT, REGULATORY_ISSUE, SAFETY_CONCERN, PRODUCT_DEFECT, NO_RESPONSE, UNRESOLVED, MANAGER_OVERRIDE, AUTO_ESCALATION, OTHER"
+    )
     reason_details: Mapped[Optional[str]] = mapped_column(Text)
 
     # Status
-    status: Mapped[EscalationStatus] = mapped_column(
-        SQLEnum(EscalationStatus), default=EscalationStatus.NEW, index=True
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="NEW",
+        index=True,
+        comment="NEW, ASSIGNED, ACKNOWLEDGED, IN_PROGRESS, ESCALATED, PENDING_RESPONSE, RESOLVED, REOPENED, CLOSED, AUTO_CLOSED"
     )
 
     # Assignment
     assigned_to_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
-    assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     assigned_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
 
     # SLA tracking
-    response_due_at: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)
-    resolution_due_at: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)
-    first_response_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    response_due_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True, nullable=True)
+    resolution_due_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True, nullable=True)
+    first_response_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_response_sla_breached: Mapped[bool] = mapped_column(Boolean, default=False)
     is_resolution_sla_breached: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Acknowledgment
-    acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     acknowledged_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
     acknowledgment_notes: Mapped[Optional[str]] = mapped_column(Text)
 
     # Resolution
-    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
@@ -252,7 +284,7 @@ class Escalation(Base):
 
     # Reopening
     reopen_count: Mapped[int] = mapped_column(Integer, default=0)
-    last_reopened_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    last_reopened_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     reopen_reason: Mapped[Optional[str]] = mapped_column(Text)
 
     # Matrix reference
@@ -280,17 +312,22 @@ class Escalation(Base):
 
     # Internal notes
     internal_notes: Mapped[Optional[str]] = mapped_column(Text)
-    tags: Mapped[Optional[dict]] = mapped_column(JSON)
+    tags: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Creator
     created_by_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
     )
-    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     customer = relationship("Customer", lazy="selectin")
@@ -317,12 +354,28 @@ class EscalationHistory(Base):
     )
 
     # Level change
-    from_level: Mapped[Optional[EscalationLevel]] = mapped_column(SQLEnum(EscalationLevel))
-    to_level: Mapped[EscalationLevel] = mapped_column(SQLEnum(EscalationLevel))
+    from_level: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="L1, L2, L3, L4, L5, CRITICAL"
+    )
+    to_level: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="L1, L2, L3, L4, L5, CRITICAL"
+    )
 
     # Status change
-    from_status: Mapped[Optional[EscalationStatus]] = mapped_column(SQLEnum(EscalationStatus))
-    to_status: Mapped[EscalationStatus] = mapped_column(SQLEnum(EscalationStatus))
+    from_status: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="NEW, ASSIGNED, ACKNOWLEDGED, IN_PROGRESS, ESCALATED, PENDING_RESPONSE, RESOLVED, REOPENED, CLOSED, AUTO_CLOSED"
+    )
+    to_status: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="NEW, ASSIGNED, ACKNOWLEDGED, IN_PROGRESS, ESCALATED, PENDING_RESPONSE, RESOLVED, REOPENED, CLOSED, AUTO_CLOSED"
+    )
 
     # Assignment change
     from_assignee_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
@@ -341,7 +394,10 @@ class EscalationHistory(Base):
     changed_by_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )
-    changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
 
     # Relationships
     escalation = relationship("Escalation", back_populates="history")
@@ -365,13 +421,16 @@ class EscalationComment(Base):
     is_system: Mapped[bool] = mapped_column(Boolean, default=False)  # System-generated
 
     # Attachments
-    attachments: Mapped[Optional[dict]] = mapped_column(JSON)  # List of attachment URLs
+    attachments: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)  # List of attachment URLs
 
     # Created by
     created_by_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
 
     # Relationships
     escalation = relationship("Escalation", back_populates="comments")
@@ -390,7 +449,11 @@ class EscalationNotification(Base):
     )
 
     # Notification details
-    channel: Mapped[NotificationChannel] = mapped_column(SQLEnum(NotificationChannel))
+    channel: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="EMAIL, SMS, WHATSAPP, IN_APP, PUSH"
+    )
     recipient_type: Mapped[str] = mapped_column(String(20))  # USER, CUSTOMER, EXTERNAL
     recipient_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     recipient_email: Mapped[Optional[str]] = mapped_column(String(255))
@@ -401,10 +464,10 @@ class EscalationNotification(Base):
     message: Mapped[str] = mapped_column(Text)
 
     # Status
-    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    read_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    failed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    read_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    failed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     failure_reason: Mapped[Optional[str]] = mapped_column(Text)
 
     # Retry
@@ -412,7 +475,10 @@ class EscalationNotification(Base):
     max_retries: Mapped[int] = mapped_column(Integer, default=3)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
 
     # Relationships
     escalation = relationship("Escalation", lazy="selectin")
@@ -429,8 +495,16 @@ class SLAConfiguration(Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
 
     # Applicable to
-    source_type: Mapped[EscalationSource] = mapped_column(SQLEnum(EscalationSource))
-    priority: Mapped[EscalationPriority] = mapped_column(SQLEnum(EscalationPriority))
+    source_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="SERVICE_REQUEST, COMPLAINT, ORDER, CALL, LEAD, AMC, WARRANTY, BILLING, DELIVERY, INSTALLATION, QUALITY, CUSTOMER_FEEDBACK, SOCIAL_MEDIA, MANUAL"
+    )
+    priority: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="LOW, MEDIUM, HIGH, CRITICAL"
+    )
     category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL")
     )
@@ -454,7 +528,12 @@ class SLAConfiguration(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
     )

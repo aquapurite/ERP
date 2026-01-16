@@ -1,9 +1,9 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Text
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -37,10 +37,11 @@ class Region(Base):
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
-    type: Mapped[RegionType] = mapped_column(
-        SQLEnum(RegionType),
+    type: Mapped[str] = mapped_column(
+        String(50),
         nullable=False,
-        default=RegionType.STATE
+        default="STATE",
+        comment="COUNTRY, ZONE, STATE, CITY, AREA"
     )
 
     # Self-referential for hierarchy
@@ -56,14 +57,14 @@ class Region(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 

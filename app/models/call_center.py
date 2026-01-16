@@ -9,15 +9,15 @@ This module contains models for:
 """
 import uuid
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional, List
 
 from sqlalchemy import (
     String, Text, Integer, Boolean, DateTime, Date, Time,
-    ForeignKey, Numeric, Enum as SQLEnum, JSON
+    ForeignKey, Numeric
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -128,9 +128,10 @@ class CallDisposition(Base):
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    category: Mapped[CallCategory] = mapped_column(
-        SQLEnum(CallCategory),
-        nullable=False
+    category: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="INSTALLATION, REINSTALLATION, BREAKDOWN, DEMO, DEALER_SUPPORT, COMPLAINT, INQUIRY, FEEDBACK, AMC, WARRANTY, SPARE_PARTS, BILLING, GENERAL, SALES, FOLLOW_UP, CAMPAIGN"
     )
 
     # Behavior Flags
@@ -150,14 +151,14 @@ class CallDisposition(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -188,13 +189,15 @@ class Call(Base):
     )
 
     # Call Type & Category
-    call_type: Mapped[CallType] = mapped_column(
-        SQLEnum(CallType),
-        nullable=False
+    call_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="INBOUND, OUTBOUND"
     )
-    category: Mapped[CallCategory] = mapped_column(
-        SQLEnum(CallCategory),
-        nullable=False
+    category: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="INSTALLATION, REINSTALLATION, BREAKDOWN, DEMO, DEALER_SUPPORT, COMPLAINT, INQUIRY, FEEDBACK, AMC, WARRANTY, SPARE_PARTS, BILLING, GENERAL, SALES, FOLLOW_UP, CAMPAIGN"
     )
     sub_category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
@@ -230,14 +233,16 @@ class Call(Base):
     talk_time_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # Call Status & Outcome
-    status: Mapped[CallStatus] = mapped_column(
-        SQLEnum(CallStatus),
-        default=CallStatus.IN_PROGRESS,
-        nullable=False
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="IN_PROGRESS",
+        nullable=False,
+        comment="IN_PROGRESS, COMPLETED, DROPPED, TRANSFERRED, VOICEMAIL"
     )
-    outcome: Mapped[Optional[CallOutcome]] = mapped_column(
-        SQLEnum(CallOutcome),
-        nullable=True
+    outcome: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="RESOLVED, TICKET_CREATED, LEAD_CREATED, CALLBACK_SCHEDULED, ESCALATED, TRANSFERRED, NO_ACTION, CUSTOMER_NOT_AVAILABLE, WRONG_NUMBER, NOT_INTERESTED, INFORMATION_PROVIDED"
     )
     disposition_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
@@ -246,14 +251,16 @@ class Call(Base):
     )
 
     # Priority & Sentiment
-    priority: Mapped[CallPriority] = mapped_column(
-        SQLEnum(CallPriority),
-        default=CallPriority.NORMAL,
-        nullable=False
+    priority: Mapped[str] = mapped_column(
+        String(50),
+        default="NORMAL",
+        nullable=False,
+        comment="LOW, NORMAL, HIGH, URGENT"
     )
-    sentiment: Mapped[Optional[CustomerSentiment]] = mapped_column(
-        SQLEnum(CustomerSentiment),
-        nullable=True
+    sentiment: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="VERY_POSITIVE, POSITIVE, NEUTRAL, NEGATIVE, VERY_NEGATIVE"
     )
     urgency_level: Mapped[int] = mapped_column(
         Integer,
@@ -348,14 +355,14 @@ class Call(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -449,22 +456,25 @@ class CallbackSchedule(Base):
 
     # Callback Details
     reason: Mapped[str] = mapped_column(String(500), nullable=False)
-    category: Mapped[CallCategory] = mapped_column(
-        SQLEnum(CallCategory),
-        nullable=False
+    category: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="INSTALLATION, REINSTALLATION, BREAKDOWN, DEMO, DEALER_SUPPORT, COMPLAINT, INQUIRY, FEEDBACK, AMC, WARRANTY, SPARE_PARTS, BILLING, GENERAL, SALES, FOLLOW_UP, CAMPAIGN"
     )
-    priority: Mapped[CallPriority] = mapped_column(
-        SQLEnum(CallPriority),
-        default=CallPriority.NORMAL,
-        nullable=False
+    priority: Mapped[str] = mapped_column(
+        String(50),
+        default="NORMAL",
+        nullable=False,
+        comment="LOW, NORMAL, HIGH, URGENT"
     )
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Status
-    status: Mapped[CallbackStatus] = mapped_column(
-        SQLEnum(CallbackStatus),
-        default=CallbackStatus.SCHEDULED,
-        nullable=False
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="SCHEDULED",
+        nullable=False,
+        comment="SCHEDULED, COMPLETED, MISSED, RESCHEDULED, CANCELLED"
     )
 
     # Completion
@@ -495,14 +505,14 @@ class CallbackSchedule(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -574,10 +584,11 @@ class CallQAReview(Base):
     reviewer_comments: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Status
-    status: Mapped[QAStatus] = mapped_column(
-        SQLEnum(QAStatus),
-        default=QAStatus.PENDING,
-        nullable=False
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="PENDING",
+        nullable=False,
+        comment="PENDING, REVIEWED, DISPUTED"
     )
 
     # Agent Acknowledgment
@@ -593,19 +604,19 @@ class CallQAReview(Base):
 
     # Timestamps
     reviewed_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 

@@ -1,10 +1,10 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional, Any
 
-from sqlalchemy import String, DateTime, ForeignKey, Text, JSON
+from sqlalchemy import String, DateTime, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 from app.database import Base
 
@@ -47,8 +47,8 @@ class AuditLog(Base):
     )
 
     # Change tracking
-    old_values: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    new_values: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    old_values: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    new_values: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     # Additional context
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -59,8 +59,8 @@ class AuditLog(Base):
 
     # Timestamp
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
         index=True
     )

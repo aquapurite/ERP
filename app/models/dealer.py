@@ -9,14 +9,14 @@ Supports:
 - Scheme management
 """
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 from decimal import Decimal
 
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date, JSON
-from sqlalchemy import Enum as SQLEnum, UniqueConstraint, Index, CheckConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date
+from sqlalchemy import UniqueConstraint, Index, CheckConstraint
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -122,21 +122,24 @@ class Dealer(Base):
     display_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
     # Type & Status
-    dealer_type: Mapped[DealerType] = mapped_column(
-        SQLEnum(DealerType),
+    dealer_type: Mapped[str] = mapped_column(
+        String(50),
         nullable=False,
-        index=True
+        index=True,
+        comment="DISTRIBUTOR, DEALER, SUB_DEALER, RETAILER, FRANCHISE, MODERN_TRADE, INSTITUTIONAL, GOVERNMENT"
     )
-    status: Mapped[DealerStatus] = mapped_column(
-        SQLEnum(DealerStatus),
-        default=DealerStatus.PENDING_APPROVAL,
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="PENDING_APPROVAL",
         nullable=False,
-        index=True
+        index=True,
+        comment="PENDING_APPROVAL, ACTIVE, INACTIVE, SUSPENDED, BLACKLISTED, TERMINATED"
     )
-    tier: Mapped[DealerTier] = mapped_column(
-        SQLEnum(DealerTier),
-        default=DealerTier.STANDARD,
-        nullable=False
+    tier: Mapped[str] = mapped_column(
+        String(50),
+        default="STANDARD",
+        nullable=False,
+        comment="PLATINUM, GOLD, SILVER, BRONZE, STANDARD"
     )
 
     # Hierarchy (for sub-dealers)
@@ -208,7 +211,7 @@ class Dealer(Base):
         comment="Specific territory/zone"
     )
     assigned_pincodes: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="List of assigned pincode ranges"
     )
@@ -228,7 +231,7 @@ class Dealer(Base):
     shop_area_sqft: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     no_of_employees: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     existing_brands: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="Other brands dealer sells"
     )
@@ -251,10 +254,11 @@ class Dealer(Base):
         default=30,
         comment="Credit period in days"
     )
-    credit_status: Mapped[CreditStatus] = mapped_column(
-        SQLEnum(CreditStatus),
-        default=CreditStatus.ACTIVE,
-        nullable=False
+    credit_status: Mapped[str] = mapped_column(
+        String(50),
+        default="ACTIVE",
+        nullable=False,
+        comment="ACTIVE, ON_HOLD, BLOCKED, CLOSED"
     )
     outstanding_amount: Mapped[Decimal] = mapped_column(
         Numeric(14, 2),
@@ -307,7 +311,7 @@ class Dealer(Base):
 
     # KYC Status
     kyc_verified: Mapped[bool] = mapped_column(Boolean, default=False)
-    kyc_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    kyc_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     kyc_verified_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         nullable=True
@@ -319,7 +323,7 @@ class Dealer(Base):
         Numeric(14, 2),
         default=Decimal("0")
     )
-    last_order_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_order_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     average_order_value: Mapped[Optional[Decimal]] = mapped_column(
         Numeric(12, 2),
         nullable=True
@@ -346,16 +350,16 @@ class Dealer(Base):
     internal_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Timestamps
-    onboarded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    onboarded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -484,14 +488,14 @@ class DealerPricing(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -526,10 +530,11 @@ class DealerTierPricing(Base):
         default=uuid.uuid4
     )
 
-    tier: Mapped[DealerTier] = mapped_column(
-        SQLEnum(DealerTier),
+    tier: Mapped[str] = mapped_column(
+        String(50),
         nullable=False,
-        index=True
+        index=True,
+        comment="PLATINUM, GOLD, SILVER, BRONZE, STANDARD"
     )
 
     product_id: Mapped[uuid.UUID] = mapped_column(
@@ -566,14 +571,14 @@ class DealerTierPricing(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -608,9 +613,10 @@ class DealerCreditLedger(Base):
     )
 
     # Transaction Details
-    transaction_type: Mapped[TransactionType] = mapped_column(
-        SQLEnum(TransactionType),
-        nullable=False
+    transaction_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="INVOICE, PAYMENT, CREDIT_NOTE, DEBIT_NOTE, OPENING_BALANCE, ADJUSTMENT"
     )
     transaction_date: Mapped[date] = mapped_column(Date, nullable=False)
     due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
@@ -663,8 +669,8 @@ class DealerCreditLedger(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -774,14 +780,14 @@ class DealerTarget(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -830,9 +836,10 @@ class DealerScheme(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Type
-    scheme_type: Mapped[SchemeType] = mapped_column(
-        SQLEnum(SchemeType),
-        nullable=False
+    scheme_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="QUANTITY_DISCOUNT, SLAB_DISCOUNT, CASH_DISCOUNT, EARLY_PAYMENT, FESTIVE_SCHEME, TARGET_INCENTIVE, PRODUCT_COMBO, FOC"
     )
 
     # Validity
@@ -842,36 +849,36 @@ class DealerScheme(Base):
 
     # Eligibility
     applicable_dealer_types: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="List of applicable dealer types"
     )
     applicable_tiers: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="List of applicable tiers"
     )
     applicable_regions: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="List of applicable regions"
     )
     applicable_products: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="List of applicable product IDs"
     )
     applicable_categories: Mapped[Optional[dict]] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
         comment="List of applicable category IDs"
     )
 
-    # Scheme Rules (JSON structure depends on scheme_type)
+    # Scheme Rules (JSONB structure depends on scheme_type)
     rules: Mapped[dict] = mapped_column(
-        JSON,
+        JSONB,
         nullable=False,
-        comment="Scheme rules/slabs in JSON"
+        comment="Scheme rules/slabs in JSONB"
     )
     # Example rules for QUANTITY_DISCOUNT:
     # {"buy_quantity": 10, "discount_percentage": 5}
@@ -910,14 +917,14 @@ class DealerScheme(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
@@ -982,12 +989,12 @@ class DealerSchemeApplication(Base):
 
     # Status
     is_approved: Mapped[bool] = mapped_column(Boolean, default=True)
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
 
