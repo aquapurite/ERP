@@ -425,6 +425,23 @@ from app.models.rate_card import (
     FTLRateType,
     VehicleCategory,
 )
+# S&OP (Sales and Operations Planning)
+from app.models.snop import (
+    DemandForecast,
+    ForecastAdjustment,
+    SupplyPlan,
+    SNOPScenario,
+    ExternalFactor,
+    InventoryOptimization,
+    SNOPMeeting,
+    ForecastGranularity,
+    ForecastLevel,
+    ForecastStatus,
+    ForecastAlgorithm,
+    SupplyPlanStatus,
+    ScenarioStatus,
+    ExternalFactorType,
+)
 
 __all__ = [
     # Access Control
@@ -773,4 +790,19 @@ __all__ = [
     "B2BRateType",
     "FTLRateType",
     "VehicleCategory",
+    # S&OP (Sales and Operations Planning)
+    "DemandForecast",
+    "ForecastAdjustment",
+    "SupplyPlan",
+    "SNOPScenario",
+    "ExternalFactor",
+    "InventoryOptimization",
+    "SNOPMeeting",
+    "ForecastGranularity",
+    "ForecastLevel",
+    "ForecastStatus",
+    "ForecastAlgorithm",
+    "SupplyPlanStatus",
+    "ScenarioStatus",
+    "ExternalFactorType",
 ]

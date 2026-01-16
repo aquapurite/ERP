@@ -17,6 +17,8 @@ from app.api.v1.endpoints import (
     insights,
     # AI Services (Advanced)
     ai,
+    # S&OP (Sales and Operations Planning)
+    snop,
     # Product Catalog
     categories,
     brands,
@@ -399,4 +401,11 @@ api_router.include_router(
     ai.router,
     prefix="/ai",
     tags=["AI Services"]
+)
+
+# ==================== S&OP (Sales and Operations Planning) ====================
+api_router.include_router(
+    snop.router,
+    prefix="/snop",
+    tags=["S&OP (Sales & Operations Planning)"]
 )
