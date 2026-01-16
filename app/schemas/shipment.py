@@ -14,7 +14,7 @@ class ShipmentTrackingResponse(BaseModel):
     """Shipment tracking history entry."""
     id: uuid.UUID
     shipment_id: uuid.UUID
-    status: ShipmentStatus
+    status: str
     status_code: Optional[str] = None
     location: Optional[str] = None
     city: Optional[str] = None
@@ -93,7 +93,7 @@ class ShipmentResponse(BaseModel):
     manifest_id: Optional[uuid.UUID] = None
     awb_number: Optional[str] = None
     tracking_number: Optional[str] = None
-    status: ShipmentStatus
+    status: str
     payment_mode: PaymentMode
     cod_amount: Optional[float] = None
     cod_collected: bool
@@ -163,7 +163,7 @@ class ShipmentBrief(BaseModel):
     id: uuid.UUID
     shipment_number: str
     awb_number: Optional[str] = None
-    status: ShipmentStatus
+    status: str
 
     class Config:
         from_attributes = True
@@ -188,7 +188,7 @@ class ShipmentPackResponse(BaseModel):
     success: bool
     shipment_id: uuid.UUID
     shipment_number: str
-    status: ShipmentStatus
+    status: str
     message: str
 
 
@@ -225,7 +225,7 @@ class ShipmentDeliveryMarkResponse(BaseModel):
     shipment_id: uuid.UUID
     shipment_number: str
     order_id: uuid.UUID
-    status: ShipmentStatus
+    status: str
     delivered_at: datetime
     message: str
 
@@ -241,7 +241,7 @@ class ShipmentRTOResponse(BaseModel):
     success: bool
     shipment_id: uuid.UUID
     shipment_number: str
-    status: ShipmentStatus
+    status: str
     rto_reason: str
     message: str
 
@@ -312,7 +312,7 @@ class TrackShipmentResponse(BaseModel):
     """Public tracking response."""
     awb_number: str
     order_number: str
-    status: ShipmentStatus
+    status: str
     status_description: str
     current_location: Optional[str] = None
     expected_delivery: Optional[date] = None

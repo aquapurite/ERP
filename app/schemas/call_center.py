@@ -134,7 +134,7 @@ class CallResponse(BaseModel):
     id: UUID
     call_id: str
     call_type: CallType
-    category: CallCategory
+    category: str
     sub_category: Optional[str] = None
 
     # Customer
@@ -155,13 +155,13 @@ class CallResponse(BaseModel):
     talk_time_seconds: Optional[int] = None
 
     # Status
-    status: CallStatus
+    status: str
     outcome: Optional[CallOutcome] = None
     disposition_id: Optional[UUID] = None
     disposition_name: Optional[str] = None
 
     # Priority & Sentiment
-    priority: CallPriority
+    priority: str
     sentiment: Optional[CustomerSentiment] = None
     urgency_level: int = 1
 
@@ -279,11 +279,11 @@ class CallbackResponse(BaseModel):
     time_window_end: Optional[time] = None
 
     reason: str
-    category: CallCategory
-    priority: CallPriority
+    category: str
+    priority: str
     notes: Optional[str] = None
 
-    status: CallbackStatus
+    status: str
     attempt_count: int = 0
     max_attempts: int = 3
     last_attempt_at: Optional[datetime] = None
@@ -374,7 +374,7 @@ class CallQAReviewResponse(BaseModel):
     reviewer_comments: Optional[str] = None
 
     # Status
-    status: QAStatus
+    status: str
     acknowledged_by_agent: bool = False
     acknowledged_at: Optional[datetime] = None
     agent_comments: Optional[str] = None

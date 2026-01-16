@@ -113,8 +113,8 @@ class FranchiseeResponse(BaseModel):
     name: str
     legal_name: Optional[str] = None
     franchisee_type: FranchiseeType
-    status: FranchiseeStatus
-    tier: FranchiseeTier
+    status: str
+    tier: str
 
     contact_person: str
     email: str
@@ -253,7 +253,7 @@ class FranchiseeContractResponse(BaseModel):
     franchisee_id: UUID
     contract_number: str
     contract_type: str
-    status: ContractStatus
+    status: str
 
     start_date: date
     end_date: date
@@ -329,7 +329,7 @@ class FranchiseeTerritoryResponse(BaseModel):
     franchisee_id: UUID
     territory_name: str
     territory_type: str
-    status: TerritoryStatus
+    status: str
     is_exclusive: bool
 
     pincodes: Optional[List[str]] = None
@@ -477,7 +477,7 @@ class FranchiseeTrainingResponse(BaseModel):
     training_code: str
     training_name: str
     training_type: TrainingType
-    status: TrainingStatus
+    status: str
 
     scheduled_date: date
     duration_hours: Decimal
@@ -554,9 +554,9 @@ class FranchiseeSupportResponse(BaseModel):
     subject: str
     description: str
 
-    category: SupportTicketCategory
-    priority: SupportTicketPriority
-    status: SupportTicketStatus
+    category: str
+    priority: str
+    status: str
 
     contact_name: str
     contact_email: Optional[str] = None
@@ -664,7 +664,7 @@ class FranchiseeAuditResponse(BaseModel):
     franchisee_id: UUID
     audit_number: str
     audit_type: AuditType
-    status: AuditStatus
+    status: str
 
     scheduled_date: date
     actual_date: Optional[date] = None

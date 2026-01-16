@@ -66,7 +66,7 @@ class AMCContractResponse(BaseModel):
     id: uuid.UUID
     contract_number: str
     amc_type: AMCType
-    status: AMCStatus
+    status: str
     customer: CustomerBrief
     product_id: uuid.UUID
     serial_number: str  # Required - links AMC to specific product unit

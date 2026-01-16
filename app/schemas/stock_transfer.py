@@ -110,7 +110,7 @@ class StockTransferResponse(BaseModel):
     id: uuid.UUID
     transfer_number: str
     transfer_type: TransferType
-    status: TransferStatus
+    status: str
     from_warehouse_id: uuid.UUID
     to_warehouse_id: uuid.UUID
     request_date: datetime
@@ -162,7 +162,7 @@ class StockTransferBrief(BaseModel):
     """Brief transfer info."""
     id: uuid.UUID
     transfer_number: str
-    status: TransferStatus
+    status: str
     from_warehouse_code: str
     to_warehouse_code: str
     total_quantity: int

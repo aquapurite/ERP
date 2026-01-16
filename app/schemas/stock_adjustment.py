@@ -83,7 +83,7 @@ class StockAdjustmentResponse(BaseModel):
     id: uuid.UUID
     adjustment_number: str
     adjustment_type: AdjustmentType
-    status: AdjustmentStatus
+    status: str
     warehouse_id: uuid.UUID
     adjustment_date: datetime
     approved_at: Optional[datetime] = None

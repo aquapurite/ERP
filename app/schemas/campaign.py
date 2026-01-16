@@ -52,7 +52,7 @@ class CampaignTemplateResponse(BaseModel):
     name: str
     description: Optional[str] = None
     campaign_type: CampaignType
-    category: CampaignCategory
+    category: str
     subject: Optional[str] = None
     content: str
     html_content: Optional[str] = None
@@ -184,8 +184,8 @@ class CampaignResponse(BaseModel):
     name: str
     description: Optional[str] = None
     campaign_type: CampaignType
-    category: CampaignCategory
-    status: CampaignStatus
+    category: str
+    status: str
     template_id: Optional[UUID] = None
     subject: Optional[str] = None
     content: str
@@ -249,7 +249,7 @@ class CampaignRecipientResponse(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     name: Optional[str] = None
-    status: DeliveryStatus
+    status: str
     sent_at: Optional[datetime] = None
     delivered_at: Optional[datetime] = None
     opened_at: Optional[datetime] = None
@@ -341,7 +341,7 @@ class UnsubscribeResponse(BaseModel):
     customer_id: Optional[UUID] = None
     email: Optional[str] = None
     phone: Optional[str] = None
-    channel: CampaignType
+    channel: str
     reason: Optional[str] = None
     unsubscribed_at: datetime
 
@@ -390,7 +390,7 @@ class CampaignPerformanceResponse(BaseModel):
     campaign_id: UUID
     campaign_name: str
     campaign_type: CampaignType
-    status: CampaignStatus
+    status: str
 
     # Audience
     target_count: int = 0

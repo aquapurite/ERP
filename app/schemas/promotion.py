@@ -128,7 +128,7 @@ class PromotionResponse(PromotionBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    status: PromotionStatus
+    status: str
     current_usage_count: int
     utilized_budget: Decimal
     is_active: bool

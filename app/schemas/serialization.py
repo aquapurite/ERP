@@ -177,7 +177,7 @@ class POSerialResponse(BaseModel):
     month_code: str
     serial_number: int
     barcode: str
-    status: SerialStatus
+    status: str
     grn_id: Optional[str] = None
     received_at: Optional[datetime] = None
     stock_item_id: Optional[str] = None
@@ -213,7 +213,7 @@ class ScanSerialResponse(BaseModel):
     """Response after scanning a serial"""
     barcode: str
     is_valid: bool
-    status: SerialStatus
+    status: str
     message: str
     serial_details: Optional[POSerialResponse] = None
 

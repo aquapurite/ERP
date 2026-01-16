@@ -228,7 +228,7 @@ class EmployeeResponse(BaseModel):
     department_name: Optional[str] = None
     designation: Optional[str] = None
     employment_type: EmploymentType
-    status: EmployeeStatus
+    status: str
     joining_date: date
 
     # Manager
@@ -243,7 +243,7 @@ class EmployeeDetailResponse(EmployeeResponse):
     """Detailed response schema for Employee (profile view)."""
     # Personal
     date_of_birth: Optional[date] = None
-    gender: Optional[Gender] = None
+    gender: Optional[str] = None
     blood_group: Optional[str] = None
     marital_status: Optional[MaritalStatus] = None
     nationality: Optional[str] = None
@@ -502,7 +502,7 @@ class LeaveRequestResponse(LeaveRequestBase):
     id: UUID
     employee_id: UUID
     days: Decimal
-    status: LeaveStatus
+    status: str
 
     applied_on: datetime
     approved_by: Optional[UUID] = None
@@ -550,7 +550,7 @@ class PayrollResponse(BaseModel):
     id: UUID
     payroll_month: date
     financial_year: str
-    status: PayrollStatus
+    status: str
 
     total_employees: int
     total_gross: Decimal
@@ -756,7 +756,7 @@ class AppraisalCycleResponse(AppraisalCycleBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    status: AppraisalCycleStatus
+    status: str
     created_at: datetime
     updated_at: datetime
 
@@ -864,7 +864,7 @@ class GoalResponse(GoalBase):
     employee_id: UUID
     cycle_id: UUID
     achieved_value: Optional[Decimal] = None
-    status: GoalStatus
+    status: str
     completion_percentage: int
     completed_date: Optional[date] = None
 
@@ -926,7 +926,7 @@ class AppraisalResponse(BaseModel):
     id: UUID
     employee_id: UUID
     cycle_id: UUID
-    status: AppraisalStatus
+    status: str
 
     # Self Review
     self_rating: Optional[Decimal] = None

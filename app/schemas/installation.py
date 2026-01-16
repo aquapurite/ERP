@@ -68,7 +68,7 @@ class InstallationResponse(BaseModel):
     """Installation response schema."""
     id: uuid.UUID
     installation_number: str
-    status: InstallationStatus
+    status: str
     customer: CustomerBrief
     product_id: uuid.UUID
     serial_number: Optional[str] = None
@@ -185,7 +185,7 @@ class InstallationEndpointResponse(BaseModel):
 
     id: uuid.UUID
     installation_number: str
-    status: InstallationStatus
+    status: str
     customer_id: uuid.UUID
     order_id: Optional[uuid.UUID] = None
     product_id: uuid.UUID

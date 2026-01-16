@@ -50,7 +50,7 @@ class RoleResponse(BaseModel):
     name: str
     code: str
     description: Optional[str] = None
-    level: RoleLevel
+    level: str
     department: Optional[str] = None
     is_system: bool
     is_active: bool

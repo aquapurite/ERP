@@ -145,7 +145,7 @@ class DemandForecastResponse(BaseModel):
     accuracy_metrics: Optional[ForecastAccuracyMetrics] = None
 
     # Workflow
-    status: ForecastStatus
+    status: str
     version: int
 
     # Audit
@@ -175,7 +175,7 @@ class DemandForecastBrief(BaseModel):
     forecast_end_date: date
     total_forecasted_qty: Decimal
     algorithm_used: ForecastAlgorithm
-    status: ForecastStatus
+    status: str
     created_at: datetime
 
     class Config:
@@ -203,7 +203,7 @@ class ForecastAdjustmentResponse(BaseModel):
     adjustment_pct: float
     adjustment_reason: str
     justification: Optional[str] = None
-    status: ForecastStatus
+    status: str
     adjusted_by_name: str
     approved_by_name: Optional[str] = None
     created_at: datetime
@@ -294,7 +294,7 @@ class SupplyPlanResponse(BaseModel):
 
     schedule_data: List[SupplyPlanScheduleItem] = []
 
-    status: SupplyPlanStatus
+    status: str
 
     created_by_name: Optional[str] = None
     approved_by_name: Optional[str] = None
@@ -382,7 +382,7 @@ class SNOPScenarioResponse(BaseModel):
     # Results (populated after simulation)
     results: Optional[ScenarioResults] = None
 
-    status: ScenarioStatus
+    status: str
 
     created_by_name: Optional[str] = None
     created_at: datetime

@@ -147,7 +147,7 @@ class VendorResponse(VendorBase):
 
     id: UUID
     vendor_code: str
-    status: VendorStatus
+    status: str
     grade: VendorGrade
     gst_state_code: Optional[str] = None
     opening_balance: Decimal
@@ -173,7 +173,7 @@ class VendorBrief(BaseModel):
     vendor_code: str
     name: str
     vendor_type: VendorType
-    status: VendorStatus
+    status: str
     grade: VendorGrade = VendorGrade.B
     gstin: Optional[str] = None
     pan: Optional[str] = None

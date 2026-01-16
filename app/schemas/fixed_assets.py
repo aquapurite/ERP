@@ -174,7 +174,7 @@ class AssetResponse(BaseModel):
     accumulated_depreciation: Decimal
     current_book_value: Decimal
 
-    status: AssetStatus
+    status: str
     created_at: datetime
     updated_at: datetime
 
@@ -310,7 +310,7 @@ class AssetTransferResponse(BaseModel):
 
     transfer_date: date
     reason: Optional[str] = None
-    status: TransferStatus
+    status: str
 
     requested_by_name: Optional[str] = None
     approved_by_name: Optional[str] = None
@@ -383,7 +383,7 @@ class AssetMaintenanceResponse(BaseModel):
     vendor_name: Optional[str] = None
     vendor_invoice_no: Optional[str] = None
 
-    status: MaintenanceStatus
+    status: str
 
     findings: Optional[str] = None
     parts_replaced: Optional[str] = None

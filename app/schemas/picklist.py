@@ -92,7 +92,7 @@ class PicklistResponse(BaseModel):
     id: uuid.UUID
     picklist_number: str
     warehouse_id: uuid.UUID
-    status: PicklistStatus
+    status: str
     picklist_type: PicklistType
     priority: int
     total_orders: int
@@ -135,7 +135,7 @@ class PicklistBrief(BaseModel):
     """Brief picklist info."""
     id: uuid.UUID
     picklist_number: str
-    status: PicklistStatus
+    status: str
     total_items: int
     pick_progress: float
 
@@ -189,7 +189,7 @@ class PickCompleteResponse(BaseModel):
     success: bool
     picklist_id: uuid.UUID
     picklist_number: str
-    status: PicklistStatus
+    status: str
     total_picked: int
     total_short: int
     message: str

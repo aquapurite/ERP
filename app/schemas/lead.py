@@ -160,7 +160,7 @@ class LeadResponse(BaseModel):
     id: UUID
     lead_number: str
     lead_type: LeadType
-    source: LeadSource
+    source: str
     source_details: Optional[str] = None
 
     # Contact
@@ -191,8 +191,8 @@ class LeadResponse(BaseModel):
     expected_purchase_date: Optional[date] = None
 
     # Status & Priority
-    status: LeadStatus
-    priority: LeadPriority
+    status: str
+    priority: str
 
     # Scoring
     score: int = 0
@@ -366,7 +366,7 @@ class LeadAssignmentRuleResponse(BaseModel):
     id: UUID
     name: str
     description: Optional[str] = None
-    source: Optional[LeadSource] = None
+    source: Optional[str] = None
     lead_type: Optional[LeadType] = None
     region_id: Optional[UUID] = None
     pincode_pattern: Optional[str] = None

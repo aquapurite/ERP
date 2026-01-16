@@ -83,7 +83,7 @@ class StockItemResponse(BaseModel):
     serial_number: Optional[str] = None
     batch_number: Optional[str] = None
     barcode: Optional[str] = None
-    status: StockItemStatus
+    status: str
     purchase_price: float
     landed_cost: float
     manufacturing_date: Optional[date] = None

@@ -33,7 +33,7 @@ class RegionResponse(BaseModel):
     id: uuid.UUID
     name: str
     code: str
-    type: RegionType
+    type: str
     description: Optional[str] = None
     parent_id: Optional[uuid.UUID] = None
     is_active: bool

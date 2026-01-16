@@ -123,7 +123,7 @@ class CustomerResponse(BaseModel):
     phone: str
     alternate_phone: Optional[str] = None
     customer_type: CustomerType
-    source: CustomerSource
+    source: str
     company_name: Optional[str] = None
     gst_number: Optional[str] = None
     date_of_birth: Optional[date] = None

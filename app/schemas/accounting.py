@@ -154,7 +154,7 @@ class FinancialPeriodResponse(BaseModel):
     is_year_end: bool = False
     is_adjustment_period: bool = False
     is_current: bool = False
-    status: PeriodStatus
+    status: str
     closed_by: Optional[UUID] = None
     closed_at: Optional[datetime] = None
     created_at: datetime
@@ -284,7 +284,7 @@ class JournalEntryResponse(JournalEntryBase):
     id: UUID
     entry_number: str
     period_id: UUID
-    status: JournalStatus
+    status: str
     total_debit: Decimal
     total_credit: Decimal
     is_auto_generated: bool
@@ -354,7 +354,7 @@ class JournalApprovalResponse(BaseModel):
 
     id: UUID
     entry_number: str
-    status: JournalStatus
+    status: str
     total_debit: Decimal
     total_credit: Decimal
     narration: str

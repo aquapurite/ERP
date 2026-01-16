@@ -31,7 +31,7 @@ class NotificationResponse(BaseModel):
     id: UUID
     user_id: UUID
     notification_type: NotificationType
-    priority: NotificationPriority
+    priority: str
     title: str
     message: str
     action_url: Optional[str] = None
@@ -255,7 +255,7 @@ class BulkNotificationResult(BaseModel):
 
 class NotificationTypeInfo(BaseModel):
     """Information about a notification type."""
-    type: NotificationType
+    type: str
     label: str
     description: str
     category: str

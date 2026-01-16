@@ -59,7 +59,7 @@ class PaymentResponse(BaseModel):
     id: uuid.UUID
     amount: Decimal
     method: PaymentMethod
-    status: PaymentStatus
+    status: str
     transaction_id: Optional[str] = None
     gateway: Optional[str] = None
     reference_number: Optional[str] = None
@@ -159,8 +159,8 @@ class OrderResponse(BaseModel):
     id: uuid.UUID
     order_number: str
     customer: Optional[CustomerBrief] = None
-    status: OrderStatus
-    source: OrderSource
+    status: str
+    source: str
     subtotal: Decimal
     tax_amount: Decimal
     discount_amount: Decimal

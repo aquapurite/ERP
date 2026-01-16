@@ -144,7 +144,7 @@ class InvoiceResponse(InvoiceBase):
     id: UUID
     invoice_number: str
     invoice_series: Optional[str] = None
-    status: InvoiceStatus
+    status: str
     is_interstate: bool
 
     # Amounts
@@ -218,7 +218,7 @@ class InvoiceBrief(BaseModel):
     invoice_date: date
     customer_name: str
     grand_total: Decimal
-    status: InvoiceStatus
+    status: str
 
 
 class InvoiceApproveRequest(BaseModel):
@@ -310,7 +310,7 @@ class CreditDebitNoteResponse(CreditDebitNoteBase):
 
     id: UUID
     note_number: str
-    status: InvoiceStatus
+    status: str
     is_interstate: bool
     taxable_amount: Decimal
     cgst_amount: Decimal
@@ -418,7 +418,7 @@ class EWayBillResponse(EWayBillBase):
 
     id: UUID
     eway_bill_number: Optional[str] = None
-    status: EWayBillStatus
+    status: str
     total_value: Decimal
     cgst_amount: Decimal
     sgst_amount: Decimal

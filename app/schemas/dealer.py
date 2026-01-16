@@ -165,7 +165,7 @@ class DealerResponse(DealerBase):
 
     id: UUID
     dealer_code: str
-    status: DealerStatus
+    status: str
     parent_dealer_id: Optional[UUID] = None
     user_id: Optional[UUID] = None
 
@@ -226,8 +226,8 @@ class DealerBrief(BaseModel):
     dealer_code: str
     name: str
     dealer_type: DealerType
-    tier: Optional[DealerTier] = None
-    status: DealerStatus
+    tier: Optional[str] = None
+    status: str
 
 
 class DealerApproveRequest(BaseModel):
@@ -541,7 +541,7 @@ class DealerPerformanceResponse(BaseModel):
     dealer_id: UUID
     dealer_code: str
     dealer_name: str
-    tier: Optional[DealerTier] = None
+    tier: Optional[str] = None
     total_orders: int = 0
     total_value: Decimal = Decimal("0")
     total_units: int = 0

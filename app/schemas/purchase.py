@@ -74,7 +74,7 @@ class PurchaseRequisitionResponse(PurchaseRequisitionBase):
 
     id: UUID
     requisition_number: str
-    status: RequisitionStatus
+    status: str
     request_date: date
     requested_by: UUID
     requested_by_name: Optional[str] = None  # Computed from relationship
@@ -194,7 +194,7 @@ class PODeliveryScheduleResponse(PODeliveryScheduleBase):
     balance_paid_date: Optional[date] = None
     balance_payment_ref: Optional[str] = None
     balance_due_date: Optional[date] = None
-    status: DeliveryLotStatus
+    status: str
     actual_delivery_date: Optional[date] = None
     quantity_received: int
     grn_id: Optional[UUID] = None
@@ -224,7 +224,7 @@ class PODeliveryScheduleBrief(BaseModel):
     lot_total: Decimal
     advance_amount: Decimal
     balance_amount: Decimal
-    status: DeliveryLotStatus
+    status: str
     # Serial number range
     serial_number_start: Optional[int] = None
     serial_number_end: Optional[int] = None
@@ -305,7 +305,7 @@ class PurchaseOrderResponse(BaseModel):
     id: UUID
     po_number: str
     po_date: date
-    status: POStatus
+    status: str
     requisition_id: Optional[UUID] = None
 
     # Vendor info (snapshot stored on PO)
@@ -388,7 +388,7 @@ class POBrief(BaseModel):
     po_number: str
     po_date: date
     vendor_name: str
-    status: POStatus
+    status: str
     grand_total: Decimal
     total_received_value: Decimal
     expected_delivery_date: Optional[date] = None
@@ -497,7 +497,7 @@ class GoodsReceiptResponse(GoodsReceiptBase):
     id: UUID
     grn_number: str
     grn_date: date
-    status: GRNStatus
+    status: str
     vendor_id: UUID
     total_items: int
     total_quantity_received: int
@@ -527,7 +527,7 @@ class GRNBrief(BaseModel):
     grn_date: date
     po_number: str
     vendor_name: str
-    status: GRNStatus
+    status: str
     total_quantity_received: int
     total_value: Decimal
 
@@ -600,7 +600,7 @@ class VendorInvoiceResponse(VendorInvoiceBase):
 
     id: UUID
     our_reference: str
-    status: VendorInvoiceStatus
+    status: str
     taxable_amount: Decimal
     total_tax: Decimal
     tds_amount: Decimal
@@ -634,7 +634,7 @@ class VendorInvoiceBrief(BaseModel):
     grand_total: Decimal
     balance_due: Decimal
     due_date: date
-    status: VendorInvoiceStatus
+    status: str
 
 
 class VendorInvoiceListResponse(BaseModel):
@@ -800,7 +800,7 @@ class VendorProformaResponse(VendorProformaBase):
 
     id: UUID
     our_reference: str
-    status: ProformaStatus
+    status: str
     requisition_id: Optional[UUID] = None
     purchase_order_id: Optional[UUID] = None
     subtotal: Decimal
@@ -833,7 +833,7 @@ class VendorProformaBrief(BaseModel):
     vendor_name: str
     grand_total: Decimal
     validity_date: Optional[date] = None
-    status: ProformaStatus
+    status: str
 
 
 class VendorProformaListResponse(BaseModel):

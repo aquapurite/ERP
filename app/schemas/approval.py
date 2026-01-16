@@ -115,7 +115,7 @@ class ApprovalRequestResponse(BaseModel):
     amount: Decimal
     approval_level: ApprovalLevel
     approval_level_name: Optional[str] = None
-    status: ApprovalStatus
+    status: str
     priority: int
     title: str
     description: Optional[str]
@@ -172,7 +172,7 @@ class ApprovalRequestBrief(BaseModel):
     entity_number: str
     amount: Decimal
     approval_level: ApprovalLevel
-    status: ApprovalStatus
+    status: str
     title: str
     requester_name: Optional[str] = None
     requested_at: datetime

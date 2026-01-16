@@ -74,9 +74,9 @@ class EscalationMatrixResponse(BaseModel):
     description: Optional[str] = None
     source_type: EscalationSource
     category_id: Optional[UUID] = None
-    priority: Optional[EscalationPriority] = None
+    priority: Optional[str] = None
     region_id: Optional[UUID] = None
-    level: EscalationLevel
+    level: str
     trigger_after_minutes: int
     response_sla_minutes: int
     resolution_sla_minutes: int
@@ -188,11 +188,11 @@ class EscalationResponse(BaseModel):
     subject: str
     description: str
     current_level: EscalationLevel
-    priority: EscalationPriority
+    priority: str
     reason: EscalationReason
     reason_details: Optional[str] = None
 
-    status: EscalationStatus
+    status: str
     assigned_to_id: Optional[UUID] = None
     assigned_to_name: Optional[str] = None
     assigned_at: Optional[datetime] = None
@@ -312,7 +312,7 @@ class SLAConfigurationResponse(BaseModel):
     name: str
     description: Optional[str] = None
     source_type: EscalationSource
-    priority: EscalationPriority
+    priority: str
     category_id: Optional[UUID] = None
     response_time_minutes: int
     resolution_time_minutes: int

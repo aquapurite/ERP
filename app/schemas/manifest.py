@@ -76,7 +76,7 @@ class ManifestResponse(BaseModel):
     warehouse_id: uuid.UUID
     transporter_id: uuid.UUID
     transporter: Optional[TransporterBrief] = None
-    status: ManifestStatus
+    status: str
     business_type: BusinessType
     manifest_date: datetime
     total_shipments: int
@@ -121,7 +121,7 @@ class ManifestBrief(BaseModel):
     """Brief manifest info."""
     id: uuid.UUID
     manifest_number: str
-    status: ManifestStatus
+    status: str
     total_shipments: int
 
     class Config:
@@ -170,7 +170,7 @@ class ManifestConfirmResponse(BaseModel):
     success: bool
     manifest_id: uuid.UUID
     manifest_number: str
-    status: ManifestStatus
+    status: str
     total_shipments: int
     message: str
 
@@ -186,7 +186,7 @@ class ManifestHandoverResponse(BaseModel):
     success: bool
     manifest_id: uuid.UUID
     manifest_number: str
-    status: ManifestStatus
+    status: str
     shipped_orders: int
     message: str
 

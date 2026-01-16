@@ -249,7 +249,7 @@ class CommissionTransactionResponse(CommissionTransactionBase):
     id: UUID
     tds_amount: Decimal
     net_amount: Decimal
-    status: CommissionStatus
+    status: str
     status_reason: Optional[str] = None
     eligible_date: Optional[date] = None
     is_eligible: bool
@@ -332,7 +332,7 @@ class CommissionPayoutResponse(CommissionPayoutBase):
 
     id: UUID
     payout_number: str
-    status: PayoutStatus
+    status: str
     total_gross: Decimal
     total_tds: Decimal
     total_deductions: Decimal

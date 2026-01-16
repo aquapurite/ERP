@@ -88,9 +88,9 @@ class ServiceRequestResponse(BaseModel):
     id: uuid.UUID
     ticket_number: str
     service_type: ServiceType
-    source: ServiceSource
-    priority: ServicePriority
-    status: ServiceStatus
+    source: str
+    priority: str
+    status: str
     customer: CustomerBrief
     product_id: Optional[uuid.UUID] = None
     serial_number: Optional[str] = None

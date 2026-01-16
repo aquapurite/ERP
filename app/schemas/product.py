@@ -336,7 +336,7 @@ class ProductResponse(BaseModel):
     volumetric_weight_kg: Optional[float] = None
     chargeable_weight_kg: Optional[float] = None
 
-    status: ProductStatus
+    status: str
     is_active: bool
     is_featured: bool
     is_bestseller: bool
@@ -389,7 +389,7 @@ class ProductBriefResponse(BaseModel):
     category_name: str
     brand_name: str
     is_active: bool
-    status: ProductStatus
+    status: str
     chargeable_weight_kg: Optional[float] = None
 
     class Config:
@@ -420,7 +420,7 @@ class MasterProductFileResponse(BaseModel):
     hsn_code: Optional[str] = None
     gst_rate: Optional[Decimal] = None
     # Status
-    status: ProductStatus
+    status: str
     is_active: bool
 
     class Config:

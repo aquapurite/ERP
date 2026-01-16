@@ -68,7 +68,7 @@ class TechnicianResponse(BaseModel):
     alternate_phone: Optional[str] = None
     email: Optional[str] = None
     technician_type: TechnicianType
-    status: TechnicianStatus
+    status: str
     skill_level: SkillLevel
     specializations: Optional[List[str]] = None
     region_id: Optional[uuid.UUID] = None

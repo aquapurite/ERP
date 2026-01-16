@@ -552,7 +552,7 @@ class FTLVehicleTypeResponse(BaseModel):
     height_ft: Optional[Decimal] = None
     capacity_tons: Optional[Decimal] = None
     capacity_cft: Optional[int] = None
-    category: Optional[VehicleCategory] = None
+    category: Optional[str] = None
     is_active: bool
     created_at: datetime
 
