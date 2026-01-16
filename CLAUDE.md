@@ -490,6 +490,19 @@ alembic revision --autogenerate -m "description"
 
 ---
 
+## Completed Migrations
+
+### 2026-01-16: ENUM to VARCHAR Migration
+- **Migration file**: `alembic/versions/20260116_convert_enum_to_varchar.py`
+- **What was done**:
+  - Converted 37 ENUM columns to VARCHAR(50) in models: accounting, billing, commission, order, role, stock_transfer, technician, vendor, warehouse
+  - Converted JSON columns to JSONB for better query performance
+  - Converted TIMESTAMP to TIMESTAMPTZ for timezone safety
+  - Dropped 32 old PostgreSQL ENUM types from local database
+- **Production note**: Production (Supabase) already uses VARCHAR - migration gracefully skips already-converted columns
+
+---
+
 ## Code Style
 
 - Use async/await for all database operations
