@@ -128,6 +128,96 @@ class OrderCreate(BaseModel):
 - [ENUM vs VARCHAR Deep Dive](https://medium.com/@zulfikarditya/database-enums-vs-constrained-varchar-a-technical-deep-dive-for-modern-applications-30d9d6bba9f8)
 - [PostgreSQL ENUM Pitfalls](https://medium.com/swlh/postgresql-3-ways-to-replace-enum-305861e089bc)
 
+#### Complete Data Flow Pattern
+
+```
+INPUT (API Request):
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│  Pydantic Enum  │ →  │  .value auto    │ →  │  VARCHAR in DB  │
+│  OrderStatus.   │    │  conversion     │    │  "PENDING"      │
+│  PENDING        │    │  by Pydantic    │    │                 │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+
+OUTPUT (API Response):
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│  VARCHAR in DB  │ →  │  String in      │ →  │  Return as-is   │
+│  "PENDING"      │    │  SQLAlchemy     │    │  NO .value      │
+│                 │    │  model.status   │    │  needed!        │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+#### Code Patterns by Layer
+
+**Layer 1 - SQLAlchemy Model:**
+```python
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+class Order(Base):
+    # Use String, NOT SQLAlchemy Enum
+    # Type hint is Mapped[str], NOT Mapped[OrderStatus]
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="PENDING",
+        comment="PENDING, CONFIRMED, SHIPPED, DELIVERED, CANCELLED"
+    )
+```
+
+**Layer 2 - Pydantic Schema (Input Validation):**
+```python
+from enum import Enum
+from pydantic import BaseModel
+
+class OrderStatus(str, Enum):
+    PENDING = "PENDING"
+    CONFIRMED = "CONFIRMED"
+    SHIPPED = "SHIPPED"
+
+class OrderCreate(BaseModel):
+    status: OrderStatus = OrderStatus.PENDING  # Enum for validation
+```
+
+**Layer 3 - API Endpoint (Response):**
+```python
+@router.get("/{order_id}")
+async def get_order(order_id: UUID, db: DB):
+    order = await db.get(Order, order_id)
+    return {
+        "id": str(order.id),
+        "status": order.status,  # ✅ CORRECT: Already a string
+        # "status": order.status.value,  # ❌ WRONG: Fails with AttributeError
+    }
+```
+
+**Layer 4 - Business Logic (Comparisons):**
+```python
+from app.core.enum_utils import is_status, status_in, get_enum_value
+
+# Comparing DB value with enum
+if is_status(order.status, OrderStatus.PENDING):
+    # Process pending order
+
+# Check multiple statuses
+if status_in(order.status, OrderStatus.PENDING, OrderStatus.CONFIRMED):
+    # Process
+
+# Safe value extraction (works for both enum and string)
+status_str = get_enum_value(data.status)  # Works whether data is Pydantic or DB
+```
+
+#### Utility Module: `app/core/enum_utils.py`
+
+```python
+from app.core.enum_utils import (
+    get_enum_value,    # Safe .value extraction
+    get_enum_name,     # Safe .name extraction
+    to_enum,           # Convert string to enum
+    is_status,         # Compare DB string with enum
+    status_in,         # Check if DB string in multiple enums
+    enum_comment,      # Generate column comment string
+)
+```
+
 ---
 
 ### 3. JSON Fields
@@ -286,10 +376,12 @@ These tables use `VARCHAR` in production, not `UUID`:
 ### Columns Only in Local (Remove or Migrate)
 - `role_permissions.granted_by`
 
-### Type Mismatches to Fix
-- Change `JSON` → `JSONB` in local
-- Change `TIMESTAMP` → `TIMESTAMPTZ` in local
-- Change SQLAlchemy `Enum` → `String` in models
+### Type Mismatches (FIXED - 2026-01-16)
+All type mismatches have been resolved:
+- ✅ `JSON` → `JSONB` (194 columns)
+- ✅ `TIMESTAMP` → `TIMESTAMPTZ` (478 columns)
+- ✅ SQLAlchemy `Enum` → `String(50)` (150 columns)
+- ✅ Removed `.value`/`.name` calls on VARCHAR fields (200 occurrences)
 
 ---
 
@@ -492,14 +584,41 @@ alembic revision --autogenerate -m "description"
 
 ## Completed Migrations
 
-### 2026-01-16: ENUM to VARCHAR Migration
-- **Migration file**: `alembic/versions/20260116_convert_enum_to_varchar.py`
-- **What was done**:
-  - Converted 37 ENUM columns to VARCHAR(50) in models: accounting, billing, commission, order, role, stock_transfer, technician, vendor, warehouse
-  - Converted JSON columns to JSONB for better query performance
-  - Converted TIMESTAMP to TIMESTAMPTZ for timezone safety
-  - Dropped 32 old PostgreSQL ENUM types from local database
-- **Production note**: Production (Supabase) already uses VARCHAR - migration gracefully skips already-converted columns
+### 2026-01-16: ENUM to VARCHAR Migration (Complete)
+
+**Migration files**:
+- `alembic/versions/20260116_convert_enum_to_varchar.py` (Phase 1)
+- `alembic/versions/20260116_convert_enum_to_varchar_phase2.py` (Phase 2)
+
+**Scope of Changes**:
+| Type | Count | Details |
+|------|-------|---------|
+| ENUM → VARCHAR | ~150 columns | All status/type fields across 48 model files |
+| JSON → JSONB | ~194 columns | All JSON fields for better query performance |
+| TIMESTAMP → TIMESTAMPTZ | ~478 columns | All timestamps for timezone safety |
+| Code fixes (.value removal) | ~200 occurrences | 39 endpoint/service files |
+
+**Git Commits**:
+1. `4871464` - refactor: Convert all remaining models to production schema
+2. `90db682` - fix: Remove .name/.value calls on VARCHAR fields in auth
+3. `ffb8eb8` - fix: Pin bcrypt<4.1.0 for passlib compatibility
+4. `db7d315` - fix: Remove .value/.name calls on VARCHAR fields (39 files)
+
+**Files Modified**:
+- Models (48): All files in `app/models/`
+- Endpoints (27): accounting, approvals, auth, billing, purchase, etc.
+- Services (11): customer360, serialization, allocation, etc.
+- Middleware (1): region_filter.py
+- Utilities (1): `app/core/enum_utils.py` (NEW - helper functions)
+
+**Architectural Pattern Established**:
+```
+Database (VARCHAR) → SQLAlchemy (String) → API Response (use directly)
+                                        ↑
+Pydantic (Enum) ─────────────────────────┘ (for INPUT validation only)
+```
+
+**Production note**: Production (Supabase) already uses VARCHAR - migration gracefully skips already-converted columns
 
 ---
 
