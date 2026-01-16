@@ -165,6 +165,11 @@ from app.models.billing import (
     PaymentMode as BillingPaymentMode,
     InvoiceNumberSequence,
 )
+# Document Sequence (PR/PO/GRN numbering)
+from app.models.document_sequence import (
+    DocumentSequence,
+    DocumentType as DocumentSequenceType,
+)
 # TDS (Tax Deducted at Source)
 from app.models.tds import (
     TDSDeduction,
@@ -588,6 +593,9 @@ __all__ = [
     "PaymentReceipt",
     "BillingPaymentMode",
     "InvoiceNumberSequence",
+    # Document Sequence (PR/PO/GRN)
+    "DocumentSequence",
+    "DocumentSequenceType",
     # TDS (Tax Deducted at Source)
     "TDSDeduction",
     "TDSRate",

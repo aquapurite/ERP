@@ -59,6 +59,7 @@ from app.schemas.purchase import (
 from app.api.deps import DB, CurrentUser, get_current_user, require_permissions
 from app.services.audit_service import AuditService
 from app.services.approval_service import ApprovalService
+from app.services.document_sequence_service import DocumentSequenceService
 from app.models.approval import ApprovalEntityType
 
 router = APIRouter()
@@ -70,93 +71,54 @@ router = APIRouter()
 async def get_next_pr_number(
     db: DB,
 ):
-    """Get the next available Purchase Requisition number."""
-    today = date.today()
+    """Get the next available Purchase Requisition number.
 
-    # Find the highest PR number for today
-    result = await db.execute(
-        select(PurchaseRequisition.requisition_number)
-        .where(func.date(PurchaseRequisition.created_at) == today)
-        .order_by(PurchaseRequisition.requisition_number.desc())
-        .limit(1)
-    )
-    last_pr = result.scalar_one_or_none()
+    Returns financial year based format: PR/APL/25-26/00001
+    """
+    service = DocumentSequenceService(db)
+    next_pr = await service.preview_next_number("PR")
 
-    if last_pr:
-        try:
-            # Extract the sequence number from PR-YYYYMMDD-XXXX
-            last_num = int(last_pr.split("-")[-1])
-            next_num = last_num + 1
-        except (IndexError, ValueError):
-            next_num = 1
-    else:
-        next_num = 1
+    # Extract prefix (everything except the sequence number)
+    parts = next_pr.rsplit("/", 1)
+    prefix = parts[0] if len(parts) > 1 else "PR/APL"
 
-    next_pr = f"PR-{today.strftime('%Y%m%d')}-{str(next_num).zfill(4)}"
-    return {"next_number": next_pr, "prefix": f"PR-{today.strftime('%Y%m%d')}"}
+    return {"next_number": next_pr, "prefix": prefix}
 
 
 @router.get("/orders/next-number")
 async def get_next_po_number(
     db: DB,
 ):
-    """Get the next available Purchase Order number."""
-    today = date.today()
-    fy_year = today.year if today.month >= 4 else today.year - 1
-    fy_suffix = f"{str(fy_year)[-2:]}-{str(fy_year + 1)[-2:]}"
+    """Get the next available Purchase Order number.
 
-    # Find the highest PO number for this financial year
-    result = await db.execute(
-        select(PurchaseOrder.po_number)
-        .where(PurchaseOrder.po_number.like(f"PO/APL/{fy_suffix}/%"))
-        .order_by(PurchaseOrder.po_number.desc())
-        .limit(1)
-    )
-    last_po = result.scalar_one_or_none()
+    Returns financial year based format: PO/APL/25-26/00001
+    """
+    service = DocumentSequenceService(db)
+    next_po = await service.preview_next_number("PO")
 
-    if last_po:
-        try:
-            # Extract the sequence number from PO/APL/YY-YY/XXXX
-            last_num = int(last_po.split("/")[-1])
-            next_num = last_num + 1
-        except (IndexError, ValueError):
-            next_num = 1
-    else:
-        next_num = 1
+    # Extract prefix (everything except the sequence number)
+    parts = next_po.rsplit("/", 1)
+    prefix = parts[0] if len(parts) > 1 else "PO/APL"
 
-    next_po = f"PO/APL/{fy_suffix}/{str(next_num).zfill(4)}"
-    return {"next_number": next_po, "prefix": f"PO/APL/{fy_suffix}"}
+    return {"next_number": next_po, "prefix": prefix}
 
 
 @router.get("/grn/next-number")
 async def get_next_grn_number(
     db: DB,
 ):
-    """Get the next available Goods Receipt Note number."""
-    today = date.today()
-    fy_year = today.year if today.month >= 4 else today.year - 1
-    fy_suffix = f"{str(fy_year)[-2:]}-{str(fy_year + 1)[-2:]}"
+    """Get the next available Goods Receipt Note number.
 
-    # Find the highest GRN number for this financial year
-    result = await db.execute(
-        select(GoodsReceiptNote.grn_number)
-        .where(GoodsReceiptNote.grn_number.like(f"GRN/APL/{fy_suffix}/%"))
-        .order_by(GoodsReceiptNote.grn_number.desc())
-        .limit(1)
-    )
-    last_grn = result.scalar_one_or_none()
+    Returns financial year based format: GRN/APL/25-26/00001
+    """
+    service = DocumentSequenceService(db)
+    next_grn = await service.preview_next_number("GRN")
 
-    if last_grn:
-        try:
-            last_num = int(last_grn.split("/")[-1])
-            next_num = last_num + 1
-        except (IndexError, ValueError):
-            next_num = 1
-    else:
-        next_num = 1
+    # Extract prefix (everything except the sequence number)
+    parts = next_grn.rsplit("/", 1)
+    prefix = parts[0] if len(parts) > 1 else "GRN/APL"
 
-    next_grn = f"GRN/APL/{fy_suffix}/{str(next_num).zfill(4)}"
-    return {"next_number": next_grn, "prefix": f"GRN/APL/{fy_suffix}"}
+    return {"next_number": next_grn, "prefix": prefix}
 
 
 # ==================== Purchase Requisition (PR) ====================
@@ -167,28 +129,15 @@ async def create_purchase_requisition(
     db: DB,
     current_user: User = Depends(get_current_user),
 ):
-    """Create a new Purchase Requisition."""
-    # Generate PR number - find highest existing and increment
+    """Create a new Purchase Requisition.
+
+    Uses atomic sequence generation with financial year format: PR/APL/25-26/00001
+    """
     today = date.today()
-    result = await db.execute(
-        select(PurchaseRequisition.requisition_number)
-        .where(func.date(PurchaseRequisition.created_at) == today)
-        .order_by(PurchaseRequisition.requisition_number.desc())
-        .limit(1)
-    )
-    last_pr = result.scalar_one_or_none()
 
-    if last_pr:
-        try:
-            # Extract the sequence number from PR-YYYYMMDD-XXXX
-            last_num = int(last_pr.split("-")[-1])
-            next_num = last_num + 1
-        except (IndexError, ValueError):
-            next_num = 1
-    else:
-        next_num = 1
-
-    pr_number = f"PR-{today.strftime('%Y%m%d')}-{str(next_num).zfill(4)}"
+    # Generate PR number using atomic sequence service
+    service = DocumentSequenceService(db)
+    pr_number = await service.get_next_number("PR")
 
     # Calculate estimated total
     estimated_total = sum(
@@ -649,29 +598,9 @@ async def convert_requisition_to_po(
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
 
-    # Generate PO number - using financial year format PO/APL/YY-YY/XXXX
-    today = date.today()
-    fy_year = today.year if today.month >= 4 else today.year - 1
-    fy_suffix = f"{str(fy_year)[-2:]}-{str(fy_year + 1)[-2:]}"
-
-    result = await db.execute(
-        select(PurchaseOrder.po_number)
-        .where(PurchaseOrder.po_number.like(f"PO/APL/{fy_suffix}/%"))
-        .order_by(PurchaseOrder.po_number.desc())
-        .limit(1)
-    )
-    last_po = result.scalar_one_or_none()
-
-    if last_po:
-        try:
-            last_num = int(last_po.split("/")[-1])
-            next_num = last_num + 1
-        except (IndexError, ValueError):
-            next_num = 1
-    else:
-        next_num = 1
-
-    po_number = f"PO/APL/{fy_suffix}/{str(next_num).zfill(4)}"
+    # Generate PO number using atomic sequence service
+    service = DocumentSequenceService(db)
+    po_number = await service.get_next_number("PO")
 
     # Get warehouse
     wh_result = await db.execute(
@@ -1144,29 +1073,9 @@ async def create_purchase_order(
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
 
-    # Generate PO number - using financial year format PO/APL/YY-YY/XXXX
-    today = date.today()
-    fy_year = today.year if today.month >= 4 else today.year - 1
-    fy_suffix = f"{str(fy_year)[-2:]}-{str(fy_year + 1)[-2:]}"
-
-    result = await db.execute(
-        select(PurchaseOrder.po_number)
-        .where(PurchaseOrder.po_number.like(f"PO/APL/{fy_suffix}/%"))
-        .order_by(PurchaseOrder.po_number.desc())
-        .limit(1)
-    )
-    last_po = result.scalar_one_or_none()
-
-    if last_po:
-        try:
-            last_num = int(last_po.split("/")[-1])
-            next_num = last_num + 1
-        except (IndexError, ValueError):
-            next_num = 1
-    else:
-        next_num = 1
-
-    po_number = f"PO/APL/{fy_suffix}/{str(next_num).zfill(4)}"
+    # Generate PO number using atomic sequence service
+    service = DocumentSequenceService(db)
+    po_number = await service.get_next_number("PO")
 
     # Determine if inter-state (for IGST)
     # Get warehouse state
@@ -2290,15 +2199,9 @@ async def create_grn(
             detail="PO must be confirmed before receiving goods"
         )
 
-    # Generate GRN number
-    today = date.today()
-    count_result = await db.execute(
-        select(func.count(GoodsReceiptNote.id)).where(
-            func.date(GoodsReceiptNote.created_at) == today
-        )
-    )
-    count = count_result.scalar() or 0
-    grn_number = f"GRN-{today.strftime('%Y%m%d')}-{str(count + 1).zfill(4)}"
+    # Generate GRN number using atomic sequence service
+    service = DocumentSequenceService(db)
+    grn_number = await service.get_next_number("GRN")
 
     # Create GRN
     grn = GoodsReceiptNote(
@@ -5471,29 +5374,10 @@ async def convert_proforma_to_po(
             detail="Only approved proformas can be converted to PO"
         )
 
-    # Generate PO number - using financial year format PO/APL/YY-YY/XXXX
+    # Generate PO number using atomic sequence service
     today = date.today()
-    fy_year = today.year if today.month >= 4 else today.year - 1
-    fy_suffix = f"{str(fy_year)[-2:]}-{str(fy_year + 1)[-2:]}"
-
-    result = await db.execute(
-        select(PurchaseOrder.po_number)
-        .where(PurchaseOrder.po_number.like(f"PO/APL/{fy_suffix}/%"))
-        .order_by(PurchaseOrder.po_number.desc())
-        .limit(1)
-    )
-    last_po = result.scalar_one_or_none()
-
-    if last_po:
-        try:
-            last_num = int(last_po.split("/")[-1])
-            next_num = last_num + 1
-        except (IndexError, ValueError):
-            next_num = 1
-    else:
-        next_num = 1
-
-    po_number = f"PO/APL/{fy_suffix}/{str(next_num).zfill(4)}"
+    service = DocumentSequenceService(db)
+    po_number = await service.get_next_number("PO")
 
     # Get vendor
     vendor = await db.get(Vendor, proforma.vendor_id)
@@ -6001,18 +5885,9 @@ async def create_srn(
     if not wh_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Warehouse not found")
 
-    # Generate SRN number
-    today = date.today()
-    fy_year = today.year if today.month >= 4 else today.year - 1
-    fy_suffix = f"{str(fy_year)[-2:]}-{str(fy_year + 1)[-2:]}"
-
-    count_result = await db.execute(
-        select(func.count(SalesReturnNote.id)).where(
-            SalesReturnNote.srn_number.like(f"SRN/APL/{fy_suffix}/%")
-        )
-    )
-    count = count_result.scalar() or 0
-    srn_number = f"SRN/APL/{fy_suffix}/{str(count + 1).zfill(4)}"
+    # Generate SRN number using atomic sequence service
+    service = DocumentSequenceService(db)
+    srn_number = await service.get_next_number("SRN")
 
     # Determine initial status based on pickup requirement
     initial_status = SRNStatus.PENDING_RECEIPT if srn_in.pickup_required else SRNStatus.RECEIVED
