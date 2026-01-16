@@ -40,7 +40,7 @@ export default function DashboardLayout({
       <div
         className={cn(
           'transition-all duration-300',
-          isCollapsed ? 'pl-16' : 'pl-64'
+          isCollapsed ? 'pl-16' : 'pl-72'
         )}
       >
         <Header />

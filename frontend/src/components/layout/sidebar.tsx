@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { ChevronDown, ChevronLeft, Menu } from 'lucide-react';
+import { ChevronDown, ChevronLeft, Menu, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -16,6 +16,78 @@ interface SidebarProps {
   isCollapsed: boolean;
   onToggle: () => void;
 }
+
+// Zoho/Freshworks-style module colors - vibrant and distinct
+const moduleColors: Record<string, { bg: string; text: string; hover: string; gradient: string }> = {
+  'Dashboard': {
+    bg: 'bg-violet-100 dark:bg-violet-900/30',
+    text: 'text-violet-600 dark:text-violet-400',
+    hover: 'hover:bg-violet-50 dark:hover:bg-violet-900/20',
+    gradient: 'from-violet-500 to-purple-600'
+  },
+  'Intelligence': {
+    bg: 'bg-fuchsia-100 dark:bg-fuchsia-900/30',
+    text: 'text-fuchsia-600 dark:text-fuchsia-400',
+    hover: 'hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/20',
+    gradient: 'from-fuchsia-500 to-pink-600'
+  },
+  'Sales & Distribution': {
+    bg: 'bg-blue-100 dark:bg-blue-900/30',
+    text: 'text-blue-600 dark:text-blue-400',
+    hover: 'hover:bg-blue-50 dark:hover:bg-blue-900/20',
+    gradient: 'from-blue-500 to-cyan-600'
+  },
+  'Supply Chain': {
+    bg: 'bg-emerald-100 dark:bg-emerald-900/30',
+    text: 'text-emerald-600 dark:text-emerald-400',
+    hover: 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20',
+    gradient: 'from-emerald-500 to-teal-600'
+  },
+  'Finance': {
+    bg: 'bg-amber-100 dark:bg-amber-900/30',
+    text: 'text-amber-600 dark:text-amber-400',
+    hover: 'hover:bg-amber-50 dark:hover:bg-amber-900/20',
+    gradient: 'from-amber-500 to-orange-600'
+  },
+  'Service': {
+    bg: 'bg-rose-100 dark:bg-rose-900/30',
+    text: 'text-rose-600 dark:text-rose-400',
+    hover: 'hover:bg-rose-50 dark:hover:bg-rose-900/20',
+    gradient: 'from-rose-500 to-red-600'
+  },
+  'Human Resources': {
+    bg: 'bg-indigo-100 dark:bg-indigo-900/30',
+    text: 'text-indigo-600 dark:text-indigo-400',
+    hover: 'hover:bg-indigo-50 dark:hover:bg-indigo-900/20',
+    gradient: 'from-indigo-500 to-blue-600'
+  },
+  'Products': {
+    bg: 'bg-cyan-100 dark:bg-cyan-900/30',
+    text: 'text-cyan-600 dark:text-cyan-400',
+    hover: 'hover:bg-cyan-50 dark:hover:bg-cyan-900/20',
+    gradient: 'from-cyan-500 to-sky-600'
+  },
+  'Administration': {
+    bg: 'bg-slate-100 dark:bg-slate-800/50',
+    text: 'text-slate-600 dark:text-slate-400',
+    hover: 'hover:bg-slate-50 dark:hover:bg-slate-800/30',
+    gradient: 'from-slate-500 to-gray-600'
+  },
+  'Notifications': {
+    bg: 'bg-orange-100 dark:bg-orange-900/30',
+    text: 'text-orange-600 dark:text-orange-400',
+    hover: 'hover:bg-orange-50 dark:hover:bg-orange-900/20',
+    gradient: 'from-orange-500 to-red-600'
+  },
+};
+
+// Badge colors for different badge types
+const badgeStyles: Record<string, string> = {
+  'NEW': 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white',
+  'AI': 'bg-gradient-to-r from-fuchsia-500 to-purple-500 text-white',
+  'pending': 'bg-gradient-to-r from-amber-500 to-orange-500 text-white animate-pulse',
+  'default': 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white',
+};
 
 export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
@@ -42,66 +114,132 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
 
   const filteredNavigation = navigation.filter(canAccess);
 
-  const renderNavItem = (item: NavItem, level: number = 0) => {
+  const getModuleColor = (title: string) => {
+    return moduleColors[title] || moduleColors['Administration'];
+  };
+
+  const renderBadge = (badge?: string) => {
+    if (!badge) return null;
+    const style = badgeStyles[badge] || badgeStyles['default'];
+    return (
+      <span className={cn(
+        'ml-auto px-1.5 py-0.5 text-[9px] font-bold rounded-full uppercase tracking-wider shadow-sm',
+        style
+      )}>
+        {badge === 'AI' ? <Sparkles className="h-2.5 w-2.5" /> : badge}
+      </span>
+    );
+  };
+
+  const renderNavItem = (item: NavItem, level: number = 0, parentColor?: typeof moduleColors[string]) => {
     if (!canAccess(item)) return null;
 
     const hasChildren = item.children && item.children.length > 0;
     const isExpanded = expandedItems.includes(item.title);
     const active = isActive(item.href);
     const Icon = item.icon;
+    const colors = level === 0 ? getModuleColor(item.title) : parentColor;
 
     if (hasChildren) {
       const filteredChildren = item.children!.filter(canAccess);
       if (filteredChildren.length === 0) return null;
 
       return (
-        <div key={item.title}>
+        <div key={item.title} className="mb-1">
           <button
             onClick={() => toggleExpand(item.title)}
             className={cn(
-              'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-              'hover:bg-accent hover:text-accent-foreground',
-              isExpanded && 'bg-accent/50'
+              'group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200',
+              colors?.hover,
+              isExpanded && colors?.bg,
+              'hover:shadow-sm'
             )}
           >
-            {Icon && <Icon className="h-4 w-4 shrink-0" />}
+            {Icon && (
+              <div className={cn(
+                'flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200',
+                isExpanded ? colors?.bg : 'bg-transparent group-hover:' + colors?.bg?.replace('bg-', 'bg-'),
+                colors?.text
+              )}>
+                <Icon className="h-4 w-4" />
+              </div>
+            )}
             {!isCollapsed && (
               <>
-                <span className="flex-1 text-left">{item.title}</span>
+                <span className={cn(
+                  'flex-1 text-left font-semibold',
+                  isExpanded && colors?.text
+                )}>
+                  {item.title}
+                </span>
+                {renderBadge(item.badge)}
                 <ChevronDown
                   className={cn(
-                    'h-4 w-4 transition-transform',
-                    isExpanded && 'rotate-180'
+                    'h-4 w-4 transition-transform duration-200',
+                    isExpanded && 'rotate-180',
+                    colors?.text
                   )}
                 />
               </>
             )}
           </button>
           {!isCollapsed && isExpanded && (
-            <div className="ml-4 mt-1 space-y-1 border-l pl-4">
-              {filteredChildren.map((child) => renderNavItem(child, level + 1))}
+            <div className={cn(
+              'ml-5 mt-1 space-y-0.5 border-l-2 pl-4 py-1',
+              colors?.text?.replace('text-', 'border-')
+            )}>
+              {filteredChildren.map((child) => renderNavItem(child, level + 1, colors))}
             </div>
           )}
         </div>
       );
     }
 
+    // Leaf item (no children)
     return (
       <Link
         key={item.title}
         href={item.href || '#'}
         className={cn(
-          'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-          'hover:bg-accent hover:text-accent-foreground',
-          active && 'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
+          'group flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-200',
+          level === 0 ? 'font-medium' : 'font-normal',
+          level === 0 && colors?.hover,
+          active
+            ? cn(
+                'shadow-md',
+                level === 0
+                  ? `bg-gradient-to-r ${colors?.gradient} text-white`
+                  : `${colors?.bg} ${colors?.text} font-semibold`
+              )
+            : level > 0
+              ? 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+              : ''
         )}
       >
-        {Icon && <Icon className="h-4 w-4 shrink-0" />}
-        {!isCollapsed && <span>{item.title}</span>}
-        {!isCollapsed && item.badge && (
-          <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-[10px] text-destructive-foreground">
-            !
-          </span>
+        {Icon && (
+          <div className={cn(
+            'flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200',
+            active && level === 0
+              ? 'bg-white/20'
+              : level === 0
+                ? cn('group-hover:' + colors?.bg?.replace('bg-', 'bg-'), colors?.text)
+                : ''
+          )}>
+            <Icon className={cn(
+              'h-4 w-4',
+              active && level === 0 ? 'text-white' : ''
+            )} />
+          </div>
+        )}
+        {!isCollapsed && (
+          <>
+            <span className={cn(
+              active && level > 0 && 'font-semibold'
+            )}>
+              {item.title}
+            </span>
+            {renderBadge(item.badge)}
+          </>
         )}
       </Link>
     );
@@ -110,31 +248,51 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   return (
     <aside
       className={cn(
-        'fixed inset-y-0 left-0 z-50 flex flex-col border-r bg-background transition-all duration-300',
-        isCollapsed ? 'w-16' : 'w-64'
+        'fixed inset-y-0 left-0 z-50 flex flex-col border-r bg-gradient-to-b from-background via-background to-muted/20 transition-all duration-300 shadow-xl',
+        isCollapsed ? 'w-16' : 'w-72'
       )}
     >
-      {/* Header */}
-      <div className="flex h-16 items-center justify-between border-b px-4">
+      {/* Header with gradient */}
+      <div className={cn(
+        'relative flex h-16 items-center justify-between border-b px-4',
+        'bg-gradient-to-r from-primary/10 via-secondary/10 to-primary/5'
+      )}>
         {!isCollapsed && (
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <Image
-              src="/logo.png"
-              alt="Aquapurite Logo"
-              width={32}
-              height={32}
-              className="rounded-lg"
-            />
-            <span className="font-semibold text-sm">{siteConfig.name}</span>
+          <Link href="/dashboard" className="flex items-center gap-3 group">
+            <div className="relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-primary to-secondary rounded-xl blur-sm opacity-50 group-hover:opacity-75 transition-opacity" />
+              <Image
+                src="/logo.png"
+                alt="Aquapurite Logo"
+                width={36}
+                height={36}
+                className="relative rounded-xl shadow-md"
+              />
+            </div>
+            <div className="flex flex-col">
+              <span className="font-bold text-sm bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                Aquapurite
+              </span>
+              <span className="text-[10px] text-muted-foreground font-medium">
+                ERP System
+              </span>
+            </div>
           </Link>
         )}
         <Button
           variant="ghost"
           size="icon"
           onClick={onToggle}
-          className={cn(isCollapsed && 'mx-auto')}
+          className={cn(
+            'rounded-xl hover:bg-primary/10 transition-all',
+            isCollapsed && 'mx-auto'
+          )}
         >
-          {isCollapsed ? <Menu className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          {isCollapsed ? (
+            <Menu className="h-4 w-4" />
+          ) : (
+            <ChevronLeft className="h-4 w-4" />
+          )}
         </Button>
       </div>
 
@@ -145,10 +303,19 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         </nav>
       </ScrollArea>
 
-      {/* Footer */}
+      {/* Footer with gradient */}
       {!isCollapsed && (
-        <div className="border-t p-4">
-          <p className="text-xs text-muted-foreground">
+        <div className={cn(
+          'border-t p-4',
+          'bg-gradient-to-r from-muted/50 via-background to-muted/30'
+        )}>
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <p className="text-xs text-muted-foreground">
+              System Online
+            </p>
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1">
             &copy; {new Date().getFullYear()} {siteConfig.company}
           </p>
         </div>
