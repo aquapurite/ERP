@@ -5,6 +5,10 @@ from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 
+# Note: Franchisee tables use VARCHAR(36) for IDs in production database
+# - Response schemas use `str` for franchisee id/franchisee_id (matches DB VARCHAR)
+# - Input schemas use `UUID` for franchisee_id (validated by Pydantic, then converted to str in endpoint)
+
 from app.models.franchisee import (
     FranchiseeStatus, FranchiseeType, FranchiseeTier,
     ContractStatus, TerritoryStatus,
@@ -108,7 +112,7 @@ class FranchiseeResponse(BaseModel):
     """Response schema for Franchisee."""
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
+    id: str  # VARCHAR in production
     franchisee_code: str
     name: str
     legal_name: Optional[str] = None
@@ -157,9 +161,9 @@ class FranchiseeDetailResponse(FranchiseeResponse):
     bank_account_number: Optional[str] = None
     bank_ifsc: Optional[str] = None
 
-    parent_franchisee_id: Optional[UUID] = None
-    region_id: Optional[UUID] = None
-    account_manager_id: Optional[UUID] = None
+    parent_franchisee_id: Optional[str] = None  # VARCHAR FK
+    region_id: Optional[str] = None
+    account_manager_id: Optional[str] = None
 
     payment_terms_days: int
     security_deposit: Decimal
@@ -249,8 +253,8 @@ class FranchiseeContractResponse(BaseModel):
     """Response schema for Contract."""
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
-    franchisee_id: UUID
+    id: str  # VARCHAR in production
+    franchisee_id: str  # VARCHAR FK
     contract_number: str
     contract_type: str
     status: str
@@ -325,8 +329,8 @@ class FranchiseeTerritoryResponse(BaseModel):
     """Response schema for Territory."""
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
-    franchisee_id: UUID
+    id: str  # VARCHAR in production
+    franchisee_id: str  # VARCHAR FK
     territory_name: str
     territory_type: str
     status: str
@@ -382,8 +386,8 @@ class FranchiseePerformanceResponse(BaseModel):
     """Response schema for Performance."""
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
-    franchisee_id: UUID
+    id: str  # VARCHAR in production
+    franchisee_id: str  # VARCHAR FK
     period_type: str
     period_start: date
     period_end: date
@@ -472,8 +476,8 @@ class FranchiseeTrainingResponse(BaseModel):
     """Response schema for Training."""
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
-    franchisee_id: UUID
+    id: str  # VARCHAR in production
+    franchisee_id: str  # VARCHAR FK
     training_code: str
     training_name: str
     training_type: TrainingType
@@ -548,8 +552,8 @@ class FranchiseeSupportResponse(BaseModel):
     """Response schema for Support Ticket."""
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
-    franchisee_id: UUID
+    id: str  # VARCHAR in production
+    franchisee_id: str  # VARCHAR FK
     ticket_number: str
     subject: str
     description: str
@@ -561,7 +565,7 @@ class FranchiseeSupportResponse(BaseModel):
     contact_name: str
     contact_email: Optional[str] = None
 
-    assigned_to_id: Optional[UUID] = None
+    assigned_to_id: Optional[str] = None
     assigned_at: Optional[datetime] = None
 
     sla_due_at: Optional[datetime] = None
@@ -622,8 +626,8 @@ class SupportCommentResponse(BaseModel):
     """Response for comment."""
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
-    ticket_id: UUID
+    id: str  # VARCHAR in production
+    ticket_id: str  # VARCHAR FK
     comment: str
     is_internal: bool
     author_type: str
@@ -660,8 +664,8 @@ class FranchiseeAuditResponse(BaseModel):
     """Response schema for Audit."""
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
-    franchisee_id: UUID
+    id: str  # VARCHAR in production
+    franchisee_id: str  # VARCHAR FK
     audit_number: str
     audit_type: AuditType
     status: str

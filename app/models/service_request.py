@@ -3,6 +3,7 @@ from enum import Enum
 from datetime import datetime, date, timezone
 from sqlalchemy import Column, String, Text, Boolean, ForeignKey, Integer, DateTime, Date, Float, Numeric
 from sqlalchemy.dialects.postgresql import UUID, JSONB
+# Note: franchisee_id uses String(36) because franchisees.id is VARCHAR in production
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -119,7 +120,7 @@ class ServiceRequest(Base, TimestampMixin):
 
     # Assignment
     technician_id = Column(UUID(as_uuid=True), ForeignKey("technicians.id"))
-    franchisee_id = Column(UUID(as_uuid=True), ForeignKey("franchisees.id"))  # For franchisee allocation
+    franchisee_id = Column(String(36), ForeignKey("franchisees.id"))  # For franchisee allocation (VARCHAR in production)
     assigned_at = Column(DateTime)
     assigned_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
 

@@ -116,7 +116,7 @@ class PostDeliveryService:
 
         # Also update Installation with the assigned franchisee/technician
         if assignment.get("franchisee_id"):
-            installation.franchisee_id = UUID(assignment["franchisee_id"])
+            installation.franchisee_id = assignment["franchisee_id"]  # Already a string (VARCHAR in production)
             installation.assigned_at = datetime.utcnow()
         elif assignment.get("technician_id"):
             installation.technician_id = UUID(assignment["technician_id"])
@@ -468,16 +468,14 @@ class PostDeliveryService:
                     continue
 
             # Check if franchisee is active
-            import uuid as uuid_mod
+            # franchisee_id is already a string (VARCHAR in production)
             franchisee_id = serviceability.franchisee_id
-            if isinstance(franchisee_id, str):
-                franchisee_id = uuid_mod.UUID(franchisee_id) if len(franchisee_id) == 36 else franchisee_id
 
             franchisee_stmt = (
                 select(Franchisee)
                 .where(
                     and_(
-                        Franchisee.id == str(franchisee_id),
+                        Franchisee.id == franchisee_id,
                         Franchisee.status == FranchiseeStatus.ACTIVE,
                     )
                 )

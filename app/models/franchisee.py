@@ -174,8 +174,9 @@ class Franchisee(Base):
     """Franchisee master entity."""
     __tablename__ = "franchisees"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    # Production uses VARCHAR for id, not UUID
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
 
     # Identification
@@ -219,9 +220,9 @@ class Franchisee(Base):
     bank_account_number: Mapped[Optional[str]] = mapped_column(String(50))
     bank_ifsc: Mapped[Optional[str]] = mapped_column(String(20))
 
-    # Hierarchy
-    parent_franchisee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), nullable=True
+    # Hierarchy (VARCHAR FK to match parent table)
+    parent_franchisee_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("franchisees.id"), nullable=True
     )
     region_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("regions.id"), nullable=True
@@ -288,11 +289,12 @@ class FranchiseeContract(Base):
     """Franchisee contract/agreement."""
     __tablename__ = "franchisee_contracts"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    # Production uses VARCHAR for id, not UUID
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    franchisee_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
+    franchisee_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("franchisees.id"), index=True
     )
 
     # Contract Details
@@ -353,11 +355,12 @@ class FranchiseeTerritory(Base):
     """Territory/area assignment for franchisee."""
     __tablename__ = "franchisee_territories"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    # Production uses VARCHAR for id, not UUID
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    franchisee_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
+    franchisee_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("franchisees.id"), index=True
     )
 
     # Territory Definition
@@ -409,14 +412,15 @@ class FranchiseeServiceability(Base):
     """
     __tablename__ = "franchisee_serviceability"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    # Production uses VARCHAR for id, not UUID
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    franchisee_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
+    franchisee_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("franchisees.id"), index=True
     )
-    territory_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("franchisee_territories.id"), nullable=True
+    territory_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("franchisee_territories.id"), nullable=True
     )
 
     # Pincode mapping (indexed for fast lookups)
@@ -468,11 +472,12 @@ class FranchiseePerformance(Base):
     """Monthly/periodic performance tracking."""
     __tablename__ = "franchisee_performance"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    # Production uses VARCHAR for id, not UUID
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    franchisee_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
+    franchisee_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("franchisees.id"), index=True
     )
 
     # Period
@@ -537,11 +542,12 @@ class FranchiseeTraining(Base):
     """Training and certification tracking."""
     __tablename__ = "franchisee_trainings"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    # Production uses VARCHAR for id, not UUID
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    franchisee_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
+    franchisee_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("franchisees.id"), index=True
     )
 
     # Training Details
@@ -611,11 +617,12 @@ class FranchiseeSupport(Base):
     """Support tickets from franchisees."""
     __tablename__ = "franchisee_support_tickets"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    # Production uses VARCHAR for id, not UUID
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    franchisee_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
+    franchisee_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("franchisees.id"), index=True
     )
 
     # Ticket Details
@@ -695,11 +702,12 @@ class FranchiseeSupportComment(Base):
     """Comments on support tickets."""
     __tablename__ = "franchisee_support_comments"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    # Production uses VARCHAR for id, not UUID
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    ticket_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("franchisee_support_tickets.id"), index=True
+    ticket_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("franchisee_support_tickets.id"), index=True
     )
 
     comment: Mapped[str] = mapped_column(Text)
@@ -724,11 +732,12 @@ class FranchiseeAudit(Base):
     """Compliance and quality audits."""
     __tablename__ = "franchisee_audits"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    # Production uses VARCHAR for id, not UUID
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    franchisee_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("franchisees.id"), index=True
+    franchisee_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("franchisees.id"), index=True
     )
 
     # Audit Details
