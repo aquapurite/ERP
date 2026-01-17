@@ -83,6 +83,18 @@ from app.api.v1.endpoints import (
     storefront,
     # Customer Self-Service Portal
     portal,
+    # D2C Customer Authentication
+    d2c_auth,
+    # Product Reviews
+    reviews,
+    # Coupons
+    coupons,
+    # Returns & Refunds
+    returns,
+    # Order Tracking
+    order_tracking,
+    # Abandoned Cart
+    abandoned_cart,
 )
 
 
@@ -408,4 +420,40 @@ api_router.include_router(
     snop.router,
     prefix="/snop",
     tags=["S&OP (Sales & Operations Planning)"]
+)
+
+# ==================== D2C Customer Authentication ====================
+api_router.include_router(
+    d2c_auth.router,
+    tags=["D2C Customer Authentication"]
+)
+
+# ==================== Product Reviews ====================
+api_router.include_router(
+    reviews.router,
+    tags=["Product Reviews"]
+)
+
+# ==================== Coupons ====================
+api_router.include_router(
+    coupons.router,
+    tags=["Coupons"]
+)
+
+# ==================== Returns & Refunds ====================
+api_router.include_router(
+    returns.router,
+    tags=["Returns & Refunds"]
+)
+
+# ==================== Order Tracking ====================
+api_router.include_router(
+    order_tracking.router,
+    tags=["Order Tracking"]
+)
+
+# ==================== Abandoned Cart ====================
+api_router.include_router(
+    abandoned_cart.router,
+    tags=["Abandoned Cart"]
 )

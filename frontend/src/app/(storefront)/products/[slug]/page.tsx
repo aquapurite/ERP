@@ -25,8 +25,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import ProductCard from '@/components/storefront/product/product-card';
 import PinCodeChecker from '@/components/storefront/product/pincode-checker';
+import { ProductReviews } from '@/components/storefront/reviews';
 import { StorefrontProduct, ProductVariant } from '@/types/storefront';
-import { productsApi } from '@/lib/storefront/api';
+import { productsApi, reviewsApi } from '@/lib/storefront/api';
 import { useCartStore } from '@/lib/storefront/cart-store';
 import { formatCurrency } from '@/lib/utils';
 
@@ -40,6 +41,10 @@ export default function ProductDetailPage() {
   const [selectedImage, setSelectedImage] = useState(0);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const [quantity, setQuantity] = useState(1);
+  const [reviewSummary, setReviewSummary] = useState<{
+    average_rating: number;
+    total_reviews: number;
+  } | null>(null);
 
   const addItem = useCartStore((state) => state.addItem);
 
@@ -55,9 +60,15 @@ export default function ProductDetailPage() {
           setSelectedVariant(data.variants[0]);
         }
 
-        // Fetch related products
-        const related = await productsApi.getRelated(data.id, data.category_id);
+        // Fetch related products and review summary in parallel
+        const [related, summary] = await Promise.all([
+          productsApi.getRelated(data.id, data.category_id),
+          reviewsApi.getReviewSummary(data.id).catch(() => null),
+        ]);
         setRelatedProducts(related);
+        if (summary) {
+          setReviewSummary(summary);
+        }
       } catch (error) {
         console.error('Failed to fetch product:', error);
       } finally {
@@ -246,15 +257,21 @@ export default function ProductDetailPage() {
               <h1 className="text-2xl md:text-3xl font-bold">{product.name}</h1>
 
               {/* Rating */}
-              <div className="flex items-center gap-2">
-                <div className="flex items-center bg-green-600 text-white px-2 py-0.5 rounded text-sm">
-                  <Star className="h-3 w-3 fill-current mr-1" />
-                  4.5
+              {reviewSummary && reviewSummary.total_reviews > 0 ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center bg-green-600 text-white px-2 py-0.5 rounded text-sm">
+                    <Star className="h-3 w-3 fill-current mr-1" />
+                    {reviewSummary.average_rating.toFixed(1)}
+                  </div>
+                  <span className="text-muted-foreground text-sm">
+                    {reviewSummary.total_reviews} Review{reviewSummary.total_reviews !== 1 ? 's' : ''}
+                  </span>
                 </div>
-                <span className="text-muted-foreground text-sm">
-                  234 Ratings & 56 Reviews
-                </span>
-              </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  No reviews yet - Be the first to review!
+                </div>
+              )}
 
               {/* Price */}
               <div className="space-y-1">
@@ -450,10 +467,7 @@ export default function ProductDetailPage() {
             </TabsContent>
 
             <TabsContent value="reviews">
-              <h3 className="font-semibold text-lg mb-4">Customer Reviews</h3>
-              <p className="text-muted-foreground">
-                Reviews coming soon. Be the first to review this product!
-              </p>
+              <ProductReviews productId={product.id} productName={product.name} />
             </TabsContent>
           </Tabs>
         </div>

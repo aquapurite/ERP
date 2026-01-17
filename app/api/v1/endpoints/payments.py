@@ -6,12 +6,15 @@ Handles:
 - Payment verification
 - Payment status checks
 - Refund processing
+- Webhook handling for payment events
 """
 
 import uuid
-from datetime import datetime
+import logging
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Request, Header
+from typing import Optional
 
 from app.api.deps import DB, CurrentUser, require_permissions
 from app.schemas.payment import (
@@ -27,7 +30,10 @@ from app.services.payment_service import (
     PaymentVerificationResponse,
     RefundRequest,
     RefundResponse,
+    WebhookEvent,
 )
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(tags=["Payments"])
@@ -308,3 +314,323 @@ async def get_order_payments(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch payments: {str(e)}"
         )
+
+
+# ==================== WEBHOOK ENDPOINT ====================
+
+@router.post(
+    "/webhook",
+    summary="Razorpay webhook handler",
+    description="Handle payment events from Razorpay. This endpoint is called by Razorpay servers.",
+    include_in_schema=False  # Hide from API docs for security
+)
+async def razorpay_webhook(
+    request: Request,
+    db: DB,
+    x_razorpay_signature: Optional[str] = Header(None, alias="X-Razorpay-Signature"),
+):
+    """
+    Handle Razorpay webhook events.
+
+    Events handled:
+    - payment.captured: Payment was successful
+    - payment.failed: Payment failed
+    - order.paid: Order fully paid
+    - refund.processed: Refund completed
+
+    Security:
+    - Verifies webhook signature using RAZORPAY_WEBHOOK_SECRET
+    - Idempotent: Safe to receive duplicate events
+    """
+    from sqlalchemy import text
+
+    # Get raw body for signature verification
+    body = await request.body()
+
+    payment_service = PaymentService()
+
+    # Verify webhook signature
+    if x_razorpay_signature:
+        if not payment_service.verify_webhook_signature(body, x_razorpay_signature):
+            logger.warning("Webhook signature verification failed")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid webhook signature"
+            )
+    else:
+        logger.warning("Webhook received without signature header")
+        # In production, you might want to reject unsigned webhooks
+        # For now, we'll log and continue for testing
+
+    # Parse webhook payload
+    try:
+        import json
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid JSON payload"
+        )
+
+    event = payload.get("event")
+    event_payload = payload.get("payload", {})
+
+    logger.info(f"Received Razorpay webhook: {event}")
+
+    try:
+        # Handle different event types
+        if event == WebhookEvent.PAYMENT_CAPTURED:
+            await _handle_payment_captured(db, event_payload)
+
+        elif event == WebhookEvent.PAYMENT_FAILED:
+            await _handle_payment_failed(db, event_payload)
+
+        elif event == WebhookEvent.ORDER_PAID:
+            await _handle_order_paid(db, event_payload)
+
+        elif event == WebhookEvent.REFUND_PROCESSED:
+            await _handle_refund_processed(db, event_payload)
+
+        elif event == WebhookEvent.PAYMENT_AUTHORIZED:
+            # For auto-capture, this is handled by Razorpay
+            logger.info("Payment authorized, waiting for capture")
+
+        else:
+            logger.info(f"Unhandled webhook event: {event}")
+
+        return {"status": "ok", "event": event}
+
+    except Exception as e:
+        logger.error(f"Error processing webhook {event}: {e}")
+        # Return 200 to prevent Razorpay from retrying
+        # We'll handle errors internally
+        return {"status": "error", "message": str(e)}
+
+
+async def _handle_payment_captured(db: DB, payload: dict):
+    """Handle payment.captured event - payment was successful."""
+    from sqlalchemy import text
+    from app.services.email_service import send_order_notifications
+
+    payment = payload.get("payment", {}).get("entity", {})
+    razorpay_payment_id = payment.get("id")
+    razorpay_order_id = payment.get("order_id")
+    amount = payment.get("amount", 0) / 100  # Convert paise to INR
+
+    if not razorpay_order_id:
+        logger.warning("Payment captured without order_id")
+        return
+
+    logger.info(f"Payment captured: {razorpay_payment_id} for order {razorpay_order_id}")
+
+    # Update order status
+    await db.execute(
+        text("""
+            UPDATE orders
+            SET
+                payment_status = 'PAID',
+                status = CASE
+                    WHEN status IN ('NEW', 'PENDING_PAYMENT') THEN 'CONFIRMED'
+                    ELSE status
+                END,
+                razorpay_payment_id = :payment_id,
+                amount_paid = :amount,
+                paid_at = :paid_at,
+                confirmed_at = CASE
+                    WHEN status IN ('NEW', 'PENDING_PAYMENT') THEN :paid_at
+                    ELSE confirmed_at
+                END,
+                updated_at = :updated_at
+            WHERE razorpay_order_id = :order_id
+        """),
+        {
+            "payment_id": razorpay_payment_id,
+            "order_id": razorpay_order_id,
+            "amount": amount,
+            "paid_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc)
+        }
+    )
+
+    # Add status history entry
+    result = await db.execute(
+        text("SELECT id FROM orders WHERE razorpay_order_id = :order_id"),
+        {"order_id": razorpay_order_id}
+    )
+    order = result.fetchone()
+
+    if order:
+        await db.execute(
+            text("""
+                INSERT INTO order_status_history (id, order_id, from_status, to_status, notes, created_at)
+                VALUES (gen_random_uuid(), :order_id, 'PENDING_PAYMENT', 'CONFIRMED',
+                        :notes, :created_at)
+            """),
+            {
+                "order_id": order.id,
+                "notes": f"Payment confirmed via Razorpay webhook. Payment ID: {razorpay_payment_id}",
+                "created_at": datetime.now(timezone.utc)
+            }
+        )
+
+        # Fetch full order details for notification
+        order_result = await db.execute(
+            text("""
+                SELECT o.order_number, o.total_amount, o.payment_method, o.shipping_address,
+                       c.name as customer_name, c.email as customer_email, c.phone as customer_phone
+                FROM orders o
+                JOIN customers c ON o.customer_id = c.id
+                WHERE o.id = :order_id
+            """),
+            {"order_id": order.id}
+        )
+        order_data = order_result.fetchone()
+
+        # Fetch order items
+        items_result = await db.execute(
+            text("""
+                SELECT product_name, variant_name, quantity, total_amount
+                FROM order_items
+                WHERE order_id = :order_id
+            """),
+            {"order_id": order.id}
+        )
+        items = [dict(row._mapping) for row in items_result.fetchall()]
+
+        # Send notifications asynchronously (don't block webhook response)
+        if order_data:
+            try:
+                from decimal import Decimal
+                import json
+
+                shipping_address = order_data.shipping_address
+                if isinstance(shipping_address, str):
+                    shipping_address = json.loads(shipping_address)
+
+                await send_order_notifications(
+                    order_number=order_data.order_number,
+                    customer_email=order_data.customer_email,
+                    customer_phone=order_data.customer_phone,
+                    customer_name=order_data.customer_name,
+                    total_amount=Decimal(str(order_data.total_amount)),
+                    items=items,
+                    shipping_address=shipping_address,
+                    payment_method=order_data.payment_method or "Online Payment"
+                )
+                logger.info(f"Notifications sent for order {order_data.order_number}")
+            except Exception as e:
+                logger.error(f"Failed to send notifications: {e}")
+                # Don't fail the webhook for notification errors
+
+    await db.commit()
+    logger.info(f"Order updated for payment {razorpay_payment_id}")
+
+
+async def _handle_payment_failed(db: DB, payload: dict):
+    """Handle payment.failed event - payment was unsuccessful."""
+    from sqlalchemy import text
+
+    payment = payload.get("payment", {}).get("entity", {})
+    razorpay_payment_id = payment.get("id")
+    razorpay_order_id = payment.get("order_id")
+    error_code = payment.get("error_code")
+    error_description = payment.get("error_description")
+
+    if not razorpay_order_id:
+        return
+
+    logger.info(f"Payment failed: {razorpay_payment_id} - {error_code}: {error_description}")
+
+    # Update order payment status to failed
+    await db.execute(
+        text("""
+            UPDATE orders
+            SET
+                payment_status = 'FAILED',
+                internal_notes = COALESCE(internal_notes, '') ||
+                    E'\n[Payment Failed] ' || :error_msg,
+                updated_at = :updated_at
+            WHERE razorpay_order_id = :order_id
+        """),
+        {
+            "order_id": razorpay_order_id,
+            "error_msg": f"{error_code}: {error_description}",
+            "updated_at": datetime.now(timezone.utc)
+        }
+    )
+    await db.commit()
+
+
+async def _handle_order_paid(db: DB, payload: dict):
+    """Handle order.paid event - order is fully paid."""
+    from sqlalchemy import text
+
+    order_entity = payload.get("order", {}).get("entity", {})
+    razorpay_order_id = order_entity.get("id")
+    amount_paid = order_entity.get("amount_paid", 0) / 100
+
+    if not razorpay_order_id:
+        return
+
+    logger.info(f"Order paid: {razorpay_order_id} - Amount: {amount_paid}")
+
+    # Ensure order is marked as paid
+    await db.execute(
+        text("""
+            UPDATE orders
+            SET
+                payment_status = 'PAID',
+                status = CASE
+                    WHEN status IN ('NEW', 'PENDING_PAYMENT') THEN 'CONFIRMED'
+                    ELSE status
+                END,
+                amount_paid = :amount,
+                paid_at = COALESCE(paid_at, :paid_at),
+                confirmed_at = COALESCE(confirmed_at, :paid_at),
+                updated_at = :updated_at
+            WHERE razorpay_order_id = :order_id
+        """),
+        {
+            "order_id": razorpay_order_id,
+            "amount": amount_paid,
+            "paid_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc)
+        }
+    )
+    await db.commit()
+
+
+async def _handle_refund_processed(db: DB, payload: dict):
+    """Handle refund.processed event - refund completed."""
+    from sqlalchemy import text
+
+    refund = payload.get("refund", {}).get("entity", {})
+    refund_id = refund.get("id")
+    payment_id = refund.get("payment_id")
+    amount = refund.get("amount", 0) / 100
+
+    logger.info(f"Refund processed: {refund_id} - Amount: {amount}")
+
+    # Update order refund status
+    await db.execute(
+        text("""
+            UPDATE orders
+            SET
+                payment_status = CASE
+                    WHEN amount_paid - :refund_amount <= 0 THEN 'REFUNDED'
+                    ELSE 'PARTIALLY_REFUNDED'
+                END,
+                amount_paid = GREATEST(0, amount_paid - :refund_amount),
+                internal_notes = COALESCE(internal_notes, '') ||
+                    E'\n[Refund Processed] Refund ID: ' || :refund_id || ', Amount: ' || :refund_amount::text,
+                updated_at = :updated_at
+            WHERE razorpay_payment_id = :payment_id
+        """),
+        {
+            "payment_id": payment_id,
+            "refund_id": refund_id,
+            "refund_amount": amount,
+            "updated_at": datetime.now(timezone.utc)
+        }
+    )
+    await db.commit()

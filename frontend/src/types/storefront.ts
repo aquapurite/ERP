@@ -149,6 +149,8 @@ export interface D2COrderRequest {
   subtotal: number;
   tax_amount: number;
   shipping_amount: number;
+  discount_amount?: number;
+  coupon_code?: string;
   total_amount: number;
   notes?: string;
 }

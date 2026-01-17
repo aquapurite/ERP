@@ -55,6 +55,16 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_SECRET: str = ""  # Razorpay Key Secret
     RAZORPAY_WEBHOOK_SECRET: Optional[str] = None  # For webhook verification
 
+    # SMS Gateway (MSG91)
+    MSG91_AUTH_KEY: str = ""  # MSG91 Auth Key
+    MSG91_SENDER_ID: str = "AQUAPU"  # 6-char sender ID
+    MSG91_TEMPLATE_ID_ORDER_CONFIRMED: str = ""  # DLT Template ID for order confirmation
+    MSG91_TEMPLATE_ID_ORDER_SHIPPED: str = ""  # DLT Template ID for order shipped
+    MSG91_TEMPLATE_ID_OTP: str = ""  # DLT Template ID for OTP
+
+    # D2C Storefront URLs
+    D2C_FRONTEND_URL: str = "https://www.aquapurite.com"
+
     @field_validator('CORS_ORIGINS', mode='before')
     @classmethod
     def parse_cors_origins(cls, v):

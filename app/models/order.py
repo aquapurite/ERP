@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from app.models.warehouse import Warehouse
     from app.models.shipment import Shipment
     from app.models.dealer import Dealer
+    from app.models.return_order import ReturnOrder, Refund
 
 
 class OrderStatus(str, Enum):
@@ -210,6 +211,25 @@ class Order(Base):
         nullable=False
     )
 
+    # Razorpay Integration
+    razorpay_order_id: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        index=True,
+        comment="Razorpay order ID (order_xxx)"
+    )
+    razorpay_payment_id: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        index=True,
+        comment="Razorpay payment ID (pay_xxx)"
+    )
+    paid_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Timestamp when payment was confirmed"
+    )
+
     # Addresses (stored as JSONB for historical record)
     shipping_address: Mapped[dict] = mapped_column(JSONB, nullable=False)
     billing_address: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
@@ -303,6 +323,16 @@ class Order(Base):
     )
     shipments: Mapped[List["Shipment"]] = relationship(
         "Shipment",
+        back_populates="order",
+        cascade="all, delete-orphan"
+    )
+    returns: Mapped[List["ReturnOrder"]] = relationship(
+        "ReturnOrder",
+        back_populates="order",
+        cascade="all, delete-orphan"
+    )
+    refunds: Mapped[List["Refund"]] = relationship(
+        "Refund",
         back_populates="order",
         cascade="all, delete-orphan"
     )

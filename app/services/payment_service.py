@@ -312,3 +312,78 @@ class PaymentService:
         except Exception as e:
             logger.error(f"Failed to fetch order payments: {e}")
             raise
+
+    def verify_webhook_signature(self, body: bytes, signature: str) -> bool:
+        """
+        Verify Razorpay webhook signature.
+
+        Args:
+            body: Raw request body bytes
+            signature: X-Razorpay-Signature header value
+
+        Returns:
+            True if signature is valid, False otherwise
+        """
+        webhook_secret = settings.RAZORPAY_WEBHOOK_SECRET
+
+        if not webhook_secret:
+            logger.warning("Webhook secret not configured")
+            return False
+
+        try:
+            # Generate expected signature
+            expected_signature = hmac.new(
+                webhook_secret.encode(),
+                body,
+                hashlib.sha256
+            ).hexdigest()
+
+            # Compare signatures (constant-time comparison)
+            is_valid = hmac.compare_digest(expected_signature, signature)
+
+            if not is_valid:
+                logger.warning("Invalid webhook signature")
+
+            return is_valid
+
+        except Exception as e:
+            logger.error(f"Webhook signature verification failed: {e}")
+            return False
+
+    def fetch_payment(self, payment_id: str) -> Dict[str, Any]:
+        """
+        Fetch full payment details from Razorpay.
+
+        Args:
+            payment_id: Razorpay payment ID
+
+        Returns:
+            Full payment details
+        """
+        try:
+            return self.client.payment.fetch(payment_id)
+        except Exception as e:
+            logger.error(f"Failed to fetch payment {payment_id}: {e}")
+            raise
+
+
+# Webhook event types
+class WebhookEvent:
+    """Razorpay webhook event types."""
+    PAYMENT_AUTHORIZED = "payment.authorized"
+    PAYMENT_CAPTURED = "payment.captured"
+    PAYMENT_FAILED = "payment.failed"
+    ORDER_PAID = "order.paid"
+    REFUND_CREATED = "refund.created"
+    REFUND_PROCESSED = "refund.processed"
+    REFUND_FAILED = "refund.failed"
+
+
+class WebhookPayload(BaseModel):
+    """Razorpay webhook payload structure."""
+    entity: str
+    account_id: str
+    event: str
+    contains: list
+    payload: Dict[str, Any]
+    created_at: int

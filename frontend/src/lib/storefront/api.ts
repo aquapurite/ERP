@@ -11,6 +11,7 @@ import {
   D2COrderResponse,
   CompanyInfo,
 } from '@/types/storefront';
+import { useAuthStore, CustomerProfile, CustomerAddress } from './auth-store';
 
 // Create a separate axios instance for storefront (no auth required)
 const storefrontClient = axios.create({
@@ -252,7 +253,645 @@ export const companyApi = {
   },
 };
 
+// Auth API - D2C customer authentication
+export const authApi = {
+  sendOTP: async (phone: string): Promise<{
+    success: boolean;
+    message: string;
+    expires_in_seconds: number;
+    resend_in_seconds: number;
+  }> => {
+    const { data } = await storefrontClient.post(`${API_PATH}/d2c/auth/send-otp`, { phone });
+    return data;
+  },
+
+  verifyOTP: async (phone: string, otp: string): Promise<{
+    success: boolean;
+    message: string;
+    access_token?: string;
+    refresh_token?: string;
+    customer?: CustomerProfile;
+    is_new_customer: boolean;
+  }> => {
+    const { data } = await storefrontClient.post(`${API_PATH}/d2c/auth/verify-otp`, { phone, otp });
+    return data;
+  },
+
+  refreshToken: async (refreshToken: string): Promise<{
+    access_token: string;
+    token_type: string;
+  }> => {
+    const { data } = await storefrontClient.post(
+      `${API_PATH}/d2c/auth/refresh-token`,
+      {},
+      { headers: { Authorization: `Bearer ${refreshToken}` } }
+    );
+    return data;
+  },
+
+  getProfile: async (): Promise<CustomerProfile> => {
+    const token = useAuthStore.getState().accessToken;
+    const { data } = await storefrontClient.get(`${API_PATH}/d2c/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return data;
+  },
+
+  updateProfile: async (profile: { first_name?: string; last_name?: string; email?: string }): Promise<CustomerProfile> => {
+    const token = useAuthStore.getState().accessToken;
+    const { data } = await storefrontClient.put(`${API_PATH}/d2c/auth/me`, profile, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return data;
+  },
+
+  getAddresses: async (): Promise<CustomerAddress[]> => {
+    const token = useAuthStore.getState().accessToken;
+    const { data } = await storefrontClient.get(`${API_PATH}/d2c/auth/addresses`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return data;
+  },
+
+  addAddress: async (address: Omit<CustomerAddress, 'id'>): Promise<CustomerAddress> => {
+    const token = useAuthStore.getState().accessToken;
+    const { data } = await storefrontClient.post(`${API_PATH}/d2c/auth/addresses`, address, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return data;
+  },
+
+  deleteAddress: async (addressId: string): Promise<void> => {
+    const token = useAuthStore.getState().accessToken;
+    await storefrontClient.delete(`${API_PATH}/d2c/auth/addresses/${addressId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  getOrders: async (page = 1, size = 10): Promise<{
+    orders: Array<{
+      id: string;
+      order_number: string;
+      status: string;
+      total_amount: number;
+      created_at: string;
+      items_count: number;
+    }>;
+    total: number;
+    page: number;
+    size: number;
+  }> => {
+    const token = useAuthStore.getState().accessToken;
+    const { data } = await storefrontClient.get(`${API_PATH}/d2c/auth/orders?page=${page}&size=${size}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return data;
+  },
+
+  getOrderByNumber: async (orderNumber: string): Promise<{
+    id: string;
+    order_number: string;
+    status: string;
+    payment_status: string;
+    payment_method: string;
+    subtotal: number;
+    tax_amount: number;
+    shipping_amount: number;
+    discount_amount: number;
+    grand_total: number;
+    created_at: string;
+    shipped_at?: string;
+    delivered_at?: string;
+    shipping_address: {
+      full_name: string;
+      phone: string;
+      email?: string;
+      address_line1: string;
+      address_line2?: string;
+      city: string;
+      state: string;
+      pincode: string;
+    };
+    items: Array<{
+      id: string;
+      product_name: string;
+      sku: string;
+      quantity: number;
+      unit_price: number;
+      total_price: number;
+    }>;
+    tracking_number?: string;
+    courier_name?: string;
+  }> => {
+    const token = useAuthStore.getState().accessToken;
+    const { data } = await storefrontClient.get(`${API_PATH}/d2c/auth/orders/${orderNumber}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return data;
+  },
+
+  logout: async (): Promise<void> => {
+    const token = useAuthStore.getState().accessToken;
+    try {
+      await storefrontClient.post(`${API_PATH}/d2c/auth/logout`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch {
+      // Ignore errors on logout
+    }
+  },
+};
+
+// Reviews API
+export const reviewsApi = {
+  getProductReviews: async (
+    productId: string,
+    page = 1,
+    size = 10,
+    sortBy: 'recent' | 'helpful' | 'rating_high' | 'rating_low' = 'recent',
+    ratingFilter?: number
+  ): Promise<{
+    reviews: Array<{
+      id: string;
+      rating: number;
+      title?: string;
+      review_text?: string;
+      is_verified_purchase: boolean;
+      helpful_count: number;
+      created_at: string;
+      customer_name: string;
+      admin_response?: string;
+      admin_response_at?: string;
+    }>;
+    summary: {
+      average_rating: number;
+      total_reviews: number;
+      rating_distribution: Record<string, number>;
+      verified_purchase_count: number;
+    };
+    total: number;
+    page: number;
+    size: number;
+  }> => {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      size: size.toString(),
+      sort_by: sortBy,
+    });
+    if (ratingFilter) params.append('rating_filter', ratingFilter.toString());
+
+    const { data } = await storefrontClient.get(
+      `${API_PATH}/reviews/product/${productId}?${params.toString()}`
+    );
+    return data;
+  },
+
+  getReviewSummary: async (productId: string): Promise<{
+    average_rating: number;
+    total_reviews: number;
+    rating_distribution: Record<string, number>;
+    verified_purchase_count: number;
+  }> => {
+    const { data } = await storefrontClient.get(
+      `${API_PATH}/reviews/product/${productId}/summary`
+    );
+    return data;
+  },
+
+  canReview: async (productId: string): Promise<{
+    can_review: boolean;
+    reason?: string;
+    is_verified_purchase: boolean;
+  }> => {
+    const token = useAuthStore.getState().accessToken;
+    if (!token) {
+      return { can_review: false, reason: 'Login required', is_verified_purchase: false };
+    }
+    const { data } = await storefrontClient.get(
+      `${API_PATH}/reviews/can-review/${productId}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return data;
+  },
+
+  createReview: async (
+    productId: string,
+    rating: number,
+    title?: string,
+    reviewText?: string
+  ): Promise<{
+    id: string;
+    rating: number;
+    title?: string;
+    review_text?: string;
+  }> => {
+    const token = useAuthStore.getState().accessToken;
+    const { data } = await storefrontClient.post(
+      `${API_PATH}/reviews`,
+      { product_id: productId, rating, title, review_text: reviewText },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return data;
+  },
+
+  voteHelpful: async (reviewId: string, isHelpful: boolean): Promise<void> => {
+    const token = useAuthStore.getState().accessToken;
+    await storefrontClient.post(
+      `${API_PATH}/reviews/${reviewId}/helpful`,
+      { is_helpful: isHelpful },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+  },
+};
+
+// Coupons API
+export interface CouponValidationRequest {
+  code: string;
+  cart_total: number;
+  cart_items: number;
+  product_ids?: string[];
+  category_ids?: string[];
+}
+
+export interface CouponValidationResponse {
+  valid: boolean;
+  code: string;
+  discount_type?: 'PERCENTAGE' | 'FIXED_AMOUNT' | 'FREE_SHIPPING';
+  discount_value?: number;
+  discount_amount?: number;
+  message: string;
+  name?: string;
+  description?: string;
+  minimum_order_amount?: number;
+}
+
+export interface ActiveCoupon {
+  code: string;
+  name: string;
+  description?: string;
+  discount_type: 'PERCENTAGE' | 'FIXED_AMOUNT' | 'FREE_SHIPPING';
+  discount_value: number;
+  minimum_order_amount?: number;
+  max_discount_amount?: number;
+  valid_until?: string;
+  first_order_only: boolean;
+}
+
+export const couponsApi = {
+  validate: async (request: CouponValidationRequest): Promise<CouponValidationResponse> => {
+    const token = useAuthStore.getState().accessToken;
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const { data } = await storefrontClient.post(
+      `${API_PATH}/coupons/validate`,
+      request,
+      { headers }
+    );
+    return data;
+  },
+
+  getActive: async (): Promise<ActiveCoupon[]> => {
+    const token = useAuthStore.getState().accessToken;
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const { data } = await storefrontClient.get(`${API_PATH}/coupons/active`, { headers });
+    return data;
+  },
+};
+
+// Returns API
+export interface ReturnItemRequest {
+  order_item_id: string;
+  quantity_returned: number;
+  condition: 'UNOPENED' | 'OPENED_UNUSED' | 'USED' | 'DAMAGED' | 'DEFECTIVE';
+  condition_notes?: string;
+  customer_images?: string[];
+}
+
+export interface ReturnRequest {
+  order_number: string;
+  phone: string;
+  return_reason: 'DAMAGED' | 'DEFECTIVE' | 'WRONG_ITEM' | 'NOT_AS_DESCRIBED' | 'CHANGED_MIND' | 'SIZE_FIT_ISSUE' | 'QUALITY_ISSUE' | 'OTHER';
+  return_reason_details?: string;
+  items: ReturnItemRequest[];
+  pickup_address?: {
+    full_name: string;
+    phone: string;
+    address_line1: string;
+    address_line2?: string;
+    city: string;
+    state: string;
+    pincode: string;
+    country?: string;
+  };
+}
+
+export interface ReturnItem {
+  id: string;
+  order_item_id: string;
+  product_id: string;
+  product_name: string;
+  sku: string;
+  quantity_ordered: number;
+  quantity_returned: number;
+  condition: string;
+  condition_notes?: string;
+  inspection_result?: string;
+  inspection_notes?: string;
+  accepted_quantity?: number;
+  unit_price: number;
+  total_amount: number;
+  refund_amount: number;
+  serial_number?: string;
+  customer_images?: string[];
+}
+
+export interface ReturnStatusHistory {
+  id: string;
+  from_status?: string;
+  to_status: string;
+  notes?: string;
+  created_at: string;
+}
+
+export interface ReturnStatus {
+  rma_number: string;
+  status: string;
+  status_message: string;
+  requested_at: string;
+  estimated_refund_date?: string;
+  refund_amount?: number;
+  refund_status?: string;
+  tracking_number?: string;
+  courier?: string;
+  items: ReturnItem[];
+  timeline: ReturnStatusHistory[];
+}
+
+export interface ReturnListItem {
+  id: string;
+  rma_number: string;
+  order_id: string;
+  order_number?: string;
+  return_type: string;
+  return_reason: string;
+  status: string;
+  status_message: string;
+  requested_at: string;
+  total_return_amount: number;
+  net_refund_amount: number;
+  items_count: number;
+}
+
+export const returnsApi = {
+  requestReturn: async (request: ReturnRequest): Promise<ReturnStatus> => {
+    const token = useAuthStore.getState().accessToken;
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const { data } = await storefrontClient.post(
+      `${API_PATH}/returns/request`,
+      request,
+      { headers }
+    );
+    return data;
+  },
+
+  trackReturn: async (rmaNumber: string, phone: string): Promise<ReturnStatus> => {
+    const { data } = await storefrontClient.get(
+      `${API_PATH}/returns/track/${rmaNumber}?phone=${encodeURIComponent(phone)}`
+    );
+    return data;
+  },
+
+  getMyReturns: async (page = 1, size = 10): Promise<{
+    items: ReturnListItem[];
+    total: number;
+    page: number;
+    size: number;
+    pages: number;
+  }> => {
+    const token = useAuthStore.getState().accessToken;
+    const { data } = await storefrontClient.get(
+      `${API_PATH}/returns/my-returns?page=${page}&size=${size}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return data;
+  },
+
+  cancelReturn: async (rmaNumber: string): Promise<{ message: string; rma_number: string }> => {
+    const token = useAuthStore.getState().accessToken;
+    const { data } = await storefrontClient.post(
+      `${API_PATH}/returns/${rmaNumber}/cancel`,
+      {},
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return data;
+  },
+};
+
 // Export all APIs
+// Order Tracking API
+export interface TimelineEvent {
+  event_type: 'ORDER' | 'PAYMENT' | 'SHIPMENT' | 'DELIVERY' | 'RETURN';
+  status: string;
+  title: string;
+  description?: string;
+  timestamp: string;
+  location?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface ShipmentInfo {
+  shipment_id: string;
+  tracking_number?: string;
+  courier_name?: string;
+  status: string;
+  status_message: string;
+  shipped_at?: string;
+  estimated_delivery?: string;
+  delivered_at?: string;
+  current_location?: string;
+  tracking_url?: string;
+  tracking_events: Array<{
+    status: string;
+    message: string;
+    location?: string;
+    remarks?: string;
+    timestamp?: string;
+  }>;
+}
+
+export interface OrderTrackingResponse {
+  order_number: string;
+  order_id: string;
+  status: string;
+  status_message: string;
+  payment_status: string;
+  payment_method: string;
+  placed_at: string;
+  confirmed_at?: string;
+  shipped_at?: string;
+  delivered_at?: string;
+  cancelled_at?: string;
+  subtotal: number;
+  tax_amount: number;
+  shipping_amount: number;
+  discount_amount: number;
+  total_amount: number;
+  amount_paid: number;
+  shipping_address: Record<string, any>;
+  items: Array<{
+    id: string;
+    product_id: string;
+    product_name: string;
+    sku: string;
+    quantity: number;
+    unit_price: number;
+    total_price: number;
+  }>;
+  timeline: TimelineEvent[];
+  shipments: ShipmentInfo[];
+  active_return?: {
+    rma_number: string;
+    status: string;
+    requested_at: string;
+    refund_amount: number;
+  };
+  can_cancel: boolean;
+  can_return: boolean;
+}
+
+export const orderTrackingApi = {
+  trackPublic: async (orderNumber: string, phone: string): Promise<OrderTrackingResponse> => {
+    const { data } = await storefrontClient.get(
+      `${API_PATH}/order-tracking/track/${orderNumber}?phone=${encodeURIComponent(phone)}`
+    );
+    return data;
+  },
+
+  trackMyOrder: async (orderNumber: string): Promise<OrderTrackingResponse> => {
+    const token = useAuthStore.getState().accessToken;
+    const { data } = await storefrontClient.get(
+      `${API_PATH}/order-tracking/my-order/${orderNumber}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return data;
+  },
+};
+
+// Abandoned Cart API
+export interface CartItemSync {
+  product_id: string;
+  product_name: string;
+  sku: string;
+  quantity: number;
+  price: number;
+  variant_id?: string;
+  variant_name?: string;
+  image_url?: string;
+}
+
+export interface CartSyncRequest {
+  session_id: string;
+  items: CartItemSync[];
+  subtotal: number;
+  tax_amount: number;
+  shipping_amount: number;
+  discount_amount: number;
+  total_amount: number;
+  coupon_code?: string;
+  email?: string;
+  phone?: string;
+  customer_name?: string;
+  checkout_step?: string;
+  shipping_address?: Record<string, any>;
+  selected_payment_method?: string;
+  source?: string;
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
+  referrer_url?: string;
+  user_agent?: string;
+  device_type?: string;
+  device_fingerprint?: string;
+}
+
+export interface CartSyncResponse {
+  cart_id: string;
+  session_id: string;
+  status: string;
+  items_count: number;
+  total_amount: number;
+  recovery_token?: string;
+  message: string;
+}
+
+export interface RecoveredCartItem {
+  product_id: string;
+  product_name: string;
+  sku: string;
+  quantity: number;
+  price: number;
+  variant_id?: string;
+  variant_name?: string;
+  image_url?: string;
+}
+
+export interface RecoveredCartResponse {
+  cart_id: string;
+  items: RecoveredCartItem[];
+  subtotal: number;
+  tax_amount: number;
+  shipping_amount: number;
+  discount_amount: number;
+  total_amount: number;
+  coupon_code?: string;
+  shipping_address?: Record<string, any>;
+  message: string;
+}
+
+export const abandonedCartApi = {
+  sync: async (request: CartSyncRequest): Promise<CartSyncResponse> => {
+    const token = useAuthStore.getState().accessToken;
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const { data } = await storefrontClient.post(
+      `${API_PATH}/abandoned-cart/sync`,
+      request,
+      { headers }
+    );
+    return data;
+  },
+
+  recover: async (token: string): Promise<RecoveredCartResponse> => {
+    const { data } = await storefrontClient.get(
+      `${API_PATH}/abandoned-cart/recover/${token}`
+    );
+    return data;
+  },
+
+  markConverted: async (sessionId: string, orderId: string): Promise<void> => {
+    const token = useAuthStore.getState().accessToken;
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    await storefrontClient.post(
+      `${API_PATH}/abandoned-cart/mark-converted/${sessionId}?order_id=${orderId}`,
+      {},
+      { headers }
+    );
+  },
+};
+
 export const storefrontApi = {
   products: productsApi,
   categories: categoriesApi,
@@ -261,6 +900,12 @@ export const storefrontApi = {
   orders: ordersApi,
   search: searchApi,
   company: companyApi,
+  auth: authApi,
+  reviews: reviewsApi,
+  coupons: couponsApi,
+  returns: returnsApi,
+  orderTracking: orderTrackingApi,
+  abandonedCart: abandonedCartApi,
 };
 
 export default storefrontApi;

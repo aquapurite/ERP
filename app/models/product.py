@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.category import Category
     from app.models.brand import Brand
     from app.models.inventory import StockItem
+    from app.models.product_review import ProductReview
 
 
 class ProductStatus(str, Enum):
@@ -232,6 +233,11 @@ class Product(Base):
     stock_items: Mapped[List["StockItem"]] = relationship(
         "StockItem",
         back_populates="product"
+    )
+    reviews: Mapped[List["ProductReview"]] = relationship(
+        "ProductReview",
+        back_populates="product",
+        cascade="all, delete-orphan"
     )
 
     @property

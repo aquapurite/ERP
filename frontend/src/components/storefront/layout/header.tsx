@@ -33,8 +33,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useCartStore } from '@/lib/storefront/cart-store';
+import { useAuthStore, useIsAuthenticated, useCustomer } from '@/lib/storefront/auth-store';
 import { StorefrontCategory, CompanyInfo } from '@/types/storefront';
-import { categoriesApi, companyApi } from '@/lib/storefront/api';
+import { categoriesApi, companyApi, authApi } from '@/lib/storefront/api';
 import CartDrawer from '../cart/cart-drawer';
 
 export default function StorefrontHeader() {
@@ -49,6 +50,17 @@ export default function StorefrontHeader() {
 
   const cartItemCount = useCartStore((state) => state.getItemCount());
   const openCart = useCartStore((state) => state.openCart);
+
+  // Auth state
+  const isAuthenticated = useIsAuthenticated();
+  const customer = useCustomer();
+  const logout = useAuthStore((state) => state.logout);
+
+  const handleLogout = async () => {
+    await authApi.logout();
+    logout();
+    router.push('/');
+  };
 
   // Prevent hydration mismatch
   useEffect(() => {
@@ -201,15 +213,37 @@ export default function StorefrontHeader() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem asChild>
-                    <Link href="/account">My Account</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/account/orders">My Orders</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/login">Login / Register</Link>
-                  </DropdownMenuItem>
+                  {isAuthenticated && customer ? (
+                    <>
+                      <div className="px-2 py-1.5 text-sm font-medium border-b mb-1">
+                        Hi, {customer.first_name}
+                      </div>
+                      <DropdownMenuItem asChild>
+                        <Link href="/account">My Account</Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/account/orders">My Orders</Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/account/addresses">Saved Addresses</Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={handleLogout}
+                        className="text-red-600 focus:text-red-600"
+                      >
+                        Logout
+                      </DropdownMenuItem>
+                    </>
+                  ) : (
+                    <>
+                      <DropdownMenuItem asChild>
+                        <Link href="/account/login">Login / Sign Up</Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/track">Track Order</Link>
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
 
@@ -325,27 +359,60 @@ export default function StorefrontHeader() {
               ))}
             </div>
             <div className="border-t pt-4">
-              <Link
-                href="/account"
-                className="block py-2 text-base"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                My Account
-              </Link>
-              <Link
-                href="/account/orders"
-                className="block py-2 text-base"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                My Orders
-              </Link>
-              <Link
-                href="/track"
-                className="block py-2 text-base"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                Track Order
-              </Link>
+              {isAuthenticated && customer ? (
+                <>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Hi, {customer.first_name}
+                  </p>
+                  <Link
+                    href="/account"
+                    className="block py-2 text-base"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    My Account
+                  </Link>
+                  <Link
+                    href="/account/orders"
+                    className="block py-2 text-base"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    My Orders
+                  </Link>
+                  <Link
+                    href="/account/addresses"
+                    className="block py-2 text-base"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Saved Addresses
+                  </Link>
+                  <button
+                    onClick={() => {
+                      handleLogout();
+                      setMobileMenuOpen(false);
+                    }}
+                    className="block py-2 text-base text-red-600 w-full text-left"
+                  >
+                    Logout
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link
+                    href="/account/login"
+                    className="block py-2 text-base font-medium text-primary"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Login / Sign Up
+                  </Link>
+                  <Link
+                    href="/track"
+                    className="block py-2 text-base"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Track Order
+                  </Link>
+                </>
+              )}
             </div>
             <div className="border-t pt-4">
               <Link

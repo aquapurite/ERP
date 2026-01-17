@@ -447,6 +447,14 @@ from app.models.snop import (
     ScenarioStatus,
     ExternalFactorType,
 )
+# Abandoned Cart
+from app.models.abandoned_cart import (
+    AbandonedCart,
+    CartRecoveryEmail,
+    CartStatus,
+    RecoveryChannel,
+    RecoveryStatus,
+)
 
 __all__ = [
     # Access Control
@@ -813,4 +821,10 @@ __all__ = [
     "SupplyPlanStatus",
     "ScenarioStatus",
     "ExternalFactorType",
+    # Abandoned Cart
+    "AbandonedCart",
+    "CartRecoveryEmail",
+    "CartStatus",
+    "RecoveryChannel",
+    "RecoveryStatus",
 ]

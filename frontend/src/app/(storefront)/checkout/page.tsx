@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -11,6 +11,11 @@ import {
   ArrowLeft,
   Loader2,
   Check,
+  MapPin,
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  Banknote,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,11 +23,23 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
 import { useCartStore, useCartSummary } from '@/lib/storefront/cart-store';
-import { ordersApi } from '@/lib/storefront/api';
+import { ordersApi, inventoryApi, couponsApi, CouponValidationResponse, ActiveCoupon } from '@/lib/storefront/api';
+import { useAuthStore } from '@/lib/storefront/auth-store';
 import { formatCurrency } from '@/lib/utils';
 import { D2COrderRequest, ShippingAddress } from '@/types/storefront';
+import { Tag, X, Percent, Gift } from 'lucide-react';
+
+// Serviceability check result type
+interface ServiceabilityResult {
+  serviceable: boolean;
+  estimate_days?: number;
+  message?: string;
+  cod_available?: boolean;
+  shipping_cost?: number;
+}
 
 const indianStates = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
@@ -36,11 +53,26 @@ const indianStates = [
 export default function CheckoutPage() {
   const router = useRouter();
   const clearCart = useCartStore((state) => state.clearCart);
+  const setCheckoutStep = useCartStore((state) => state.setCheckoutStep);
+  const syncToBackend = useCartStore((state) => state.syncToBackend);
+  const markAsConverted = useCartStore((state) => state.markAsConverted);
   const { items, subtotal, tax, shipping, total } = useCartSummary();
 
   const [step, setStep] = useState<'shipping' | 'payment' | 'review'>('shipping');
   const [loading, setLoading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'RAZORPAY' | 'COD'>('RAZORPAY');
+
+  // Serviceability state
+  const [checkingPincode, setCheckingPincode] = useState(false);
+  const [serviceability, setServiceability] = useState<ServiceabilityResult | null>(null);
+  const [lastCheckedPincode, setLastCheckedPincode] = useState('');
+
+  // Coupon state
+  const [couponCode, setCouponCode] = useState('');
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<CouponValidationResponse | null>(null);
+  const [availableCoupons, setAvailableCoupons] = useState<ActiveCoupon[]>([]);
+  const [showCoupons, setShowCoupons] = useState(false);
 
   const [formData, setFormData] = useState<ShippingAddress>({
     full_name: '',
@@ -55,6 +87,119 @@ export default function CheckoutPage() {
   });
 
   const [errors, setErrors] = useState<Partial<ShippingAddress>>({});
+
+  // Check pincode serviceability
+  const checkPincodeServiceability = useCallback(async (pincode: string) => {
+    if (pincode.length !== 6 || !/^\d{6}$/.test(pincode)) {
+      setServiceability(null);
+      return;
+    }
+
+    // Don't recheck the same pincode
+    if (pincode === lastCheckedPincode) {
+      return;
+    }
+
+    setCheckingPincode(true);
+    try {
+      const result = await inventoryApi.checkDelivery(pincode);
+      setServiceability(result);
+      setLastCheckedPincode(pincode);
+
+      // If COD is not available, default to RAZORPAY
+      if (result.serviceable && !result.cod_available && paymentMethod === 'COD') {
+        setPaymentMethod('RAZORPAY');
+      }
+    } catch (error) {
+      setServiceability({
+        serviceable: false,
+        message: 'Unable to check delivery availability. Please try again.',
+      });
+    } finally {
+      setCheckingPincode(false);
+    }
+  }, [lastCheckedPincode, paymentMethod]);
+
+  // Auto-check pincode when it becomes valid
+  useEffect(() => {
+    const pincode = formData.pincode;
+    if (pincode.length === 6 && /^\d{6}$/.test(pincode)) {
+      checkPincodeServiceability(pincode);
+    }
+  }, [formData.pincode, checkPincodeServiceability]);
+
+  // Fetch available coupons on mount
+  useEffect(() => {
+    const fetchCoupons = async () => {
+      try {
+        const coupons = await couponsApi.getActive();
+        setAvailableCoupons(coupons);
+      } catch (error) {
+        // Silently fail - coupons are optional
+      }
+    };
+    fetchCoupons();
+  }, []);
+
+  // Track checkout initiation
+  useEffect(() => {
+    if (items.length > 0) {
+      setCheckoutStep('SHIPPING');
+      syncToBackend();
+    }
+  }, []); // Only on initial mount
+
+  // Calculate discount amount
+  const discountAmount = appliedCoupon?.valid ? (appliedCoupon.discount_amount || 0) : 0;
+  const finalTotal = total - discountAmount;
+
+  // Validate coupon
+  const handleValidateCoupon = async (codeOverride?: string) => {
+    const codeToValidate = codeOverride || couponCode.trim();
+    if (!codeToValidate) {
+      toast.error('Please enter a coupon code');
+      return;
+    }
+
+    setValidatingCoupon(true);
+    try {
+      const result = await couponsApi.validate({
+        code: codeToValidate,
+        cart_total: subtotal,
+        cart_items: items.reduce((sum, item) => sum + item.quantity, 0),
+        product_ids: items.map(item => item.product.id),
+        category_ids: items.map(item => item.product.category_id).filter(Boolean) as string[],
+      });
+
+      if (result.valid) {
+        setAppliedCoupon(result);
+        toast.success(result.message);
+      } else {
+        toast.error(result.message);
+        setAppliedCoupon(null);
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'Failed to validate coupon');
+      setAppliedCoupon(null);
+    } finally {
+      setValidatingCoupon(false);
+    }
+  };
+
+  // Remove coupon
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode('');
+    toast.info('Coupon removed');
+  };
+
+  // Apply coupon from available list
+  const handleApplyCoupon = (code: string) => {
+    setCouponCode(code);
+    setShowCoupons(false);
+    // Validate with the code directly to avoid race condition
+    handleValidateCoupon(code);
+  };
 
   // Redirect if cart is empty
   if (items.length === 0) {
@@ -88,19 +233,42 @@ export default function CheckoutPage() {
     if (!formData.pincode.trim()) newErrors.pincode = 'Pincode is required';
     else if (!/^\d{6}$/.test(formData.pincode))
       newErrors.pincode = 'Enter valid 6-digit pincode';
+    else if (serviceability && !serviceability.serviceable)
+      newErrors.pincode = 'Delivery not available to this pincode';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleShippingSubmit = () => {
+  const handleShippingSubmit = async () => {
+    // If serviceability hasn't been checked yet, check it first
+    if (formData.pincode.length === 6 && !serviceability) {
+      await checkPincodeServiceability(formData.pincode);
+    }
+
+    // Check if delivery is not serviceable
+    if (serviceability && !serviceability.serviceable) {
+      toast.error('Delivery not available to this pincode');
+      return;
+    }
+
     if (validateShipping()) {
       setStep('payment');
+      // Track checkout progress and sync contact info
+      setCheckoutStep('PAYMENT');
+      syncToBackend({
+        email: formData.email || undefined,
+        phone: formData.phone,
+        customer_name: formData.full_name,
+        shipping_address: formData,
+      });
     }
   };
 
   const handlePaymentSubmit = () => {
     setStep('review');
+    setCheckoutStep('REVIEW');
+    syncToBackend({ selected_payment_method: paymentMethod });
   };
 
   const handlePlaceOrder = async () => {
@@ -124,7 +292,9 @@ export default function CheckoutPage() {
         subtotal,
         tax_amount: tax,
         shipping_amount: shipping,
-        total_amount: total,
+        discount_amount: discountAmount,
+        coupon_code: appliedCoupon?.valid ? appliedCoupon.code : undefined,
+        total_amount: finalTotal,
       };
 
       if (paymentMethod === 'RAZORPAY') {
@@ -139,7 +309,7 @@ export default function CheckoutPage() {
         // Initialize Razorpay
         const options = {
           key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_xxx',
-          amount: total * 100, // Amount in paise
+          amount: finalTotal * 100, // Amount in paise
           currency: 'INR',
           name: 'AQUAPURITE',
           description: `Order #${order.order_number}`,
@@ -149,8 +319,9 @@ export default function CheckoutPage() {
             email: formData.email,
             contact: formData.phone,
           },
-          handler: function (response: any) {
-            // Payment successful
+          handler: async function (response: any) {
+            // Payment successful - mark cart as converted
+            await markAsConverted(order.id);
             clearCart();
             router.push(`/order-success?order=${order.order_number}`);
           },
@@ -167,6 +338,8 @@ export default function CheckoutPage() {
       } else {
         // COD Order
         const order = await ordersApi.createD2C(orderData);
+        // Mark cart as converted
+        await markAsConverted(order.id);
         clearCart();
         router.push(`/order-success?order=${order.order_number}`);
       }
@@ -387,19 +560,73 @@ export default function CheckoutPage() {
                     </div>
                     <div>
                       <Label htmlFor="pincode">Pincode *</Label>
-                      <Input
-                        id="pincode"
-                        value={formData.pincode}
-                        onChange={(e) =>
-                          updateFormData('pincode', e.target.value.replace(/\D/g, '').slice(0, 6))
-                        }
-                        className={errors.pincode ? 'border-red-500' : ''}
-                      />
+                      <div className="relative">
+                        <Input
+                          id="pincode"
+                          value={formData.pincode}
+                          onChange={(e) =>
+                            updateFormData('pincode', e.target.value.replace(/\D/g, '').slice(0, 6))
+                          }
+                          className={errors.pincode ? 'border-red-500' : ''}
+                          placeholder="e.g., 110001"
+                        />
+                        {checkingPincode && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                          </div>
+                        )}
+                      </div>
                       {errors.pincode && (
                         <p className="text-red-500 text-xs mt-1">{errors.pincode}</p>
                       )}
                     </div>
                   </div>
+
+                  {/* Serviceability Status */}
+                  {serviceability && formData.pincode.length === 6 && (
+                    <div className="mt-4">
+                      {serviceability.serviceable ? (
+                        <Alert className="bg-green-50 border-green-200">
+                          <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          <AlertDescription className="ml-2">
+                            <div className="flex flex-col gap-1">
+                              <span className="font-medium text-green-800">
+                                Delivery available to {formData.pincode}
+                              </span>
+                              <div className="flex flex-wrap gap-4 text-sm text-green-700">
+                                {serviceability.estimate_days && (
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="h-3.5 w-3.5" />
+                                    Delivery in {serviceability.estimate_days} days
+                                  </span>
+                                )}
+                                {serviceability.cod_available !== undefined && (
+                                  <span className="flex items-center gap-1">
+                                    <Banknote className="h-3.5 w-3.5" />
+                                    {serviceability.cod_available
+                                      ? 'Cash on Delivery available'
+                                      : 'COD not available'}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </AlertDescription>
+                        </Alert>
+                      ) : (
+                        <Alert variant="destructive" className="bg-red-50 border-red-200">
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertDescription className="ml-2">
+                            <span className="font-medium">
+                              {serviceability.message || 'Delivery not available to this pincode'}
+                            </span>
+                            <p className="text-sm mt-1">
+                              Please enter a different pincode or contact support.
+                            </p>
+                          </AlertDescription>
+                        </Alert>
+                      )}
+                    </div>
+                  )}
 
                   <div className="flex justify-between pt-4">
                     <Button variant="ghost" asChild>
@@ -444,12 +671,31 @@ export default function CheckoutPage() {
                         className="h-6"
                       />
                     </div>
-                    <div className="flex items-center space-x-3 p-4 border rounded-lg">
-                      <RadioGroupItem value="COD" id="cod" />
-                      <Label htmlFor="cod" className="flex-1 cursor-pointer">
+                    <div
+                      className={`flex items-center space-x-3 p-4 border rounded-lg ${
+                        serviceability && !serviceability.cod_available
+                          ? 'opacity-50 cursor-not-allowed'
+                          : ''
+                      }`}
+                    >
+                      <RadioGroupItem
+                        value="COD"
+                        id="cod"
+                        disabled={serviceability !== null && !serviceability.cod_available}
+                      />
+                      <Label
+                        htmlFor="cod"
+                        className={`flex-1 ${
+                          serviceability && !serviceability.cod_available
+                            ? 'cursor-not-allowed'
+                            : 'cursor-pointer'
+                        }`}
+                      >
                         <div className="font-medium">Cash on Delivery</div>
                         <div className="text-sm text-muted-foreground">
-                          Pay when you receive your order
+                          {serviceability && !serviceability.cod_available
+                            ? 'Not available for this pincode'
+                            : 'Pay when you receive your order'}
                         </div>
                       </Label>
                     </div>
@@ -521,6 +767,44 @@ export default function CheckoutPage() {
                     </div>
                   </div>
 
+                  {/* Applied Coupon */}
+                  {appliedCoupon?.valid && (
+                    <div>
+                      <h4 className="font-medium mb-2">Applied Coupon</h4>
+                      <div className="bg-green-50 p-4 rounded-lg flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Tag className="h-5 w-5 text-green-600" />
+                          <div>
+                            <p className="font-medium text-green-800">
+                              {appliedCoupon.code}
+                            </p>
+                            <p className="text-sm text-green-700">
+                              Saving {formatCurrency(discountAmount)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Delivery Estimate */}
+                  {serviceability?.serviceable && serviceability.estimate_days && (
+                    <div>
+                      <h4 className="font-medium mb-2">Estimated Delivery</h4>
+                      <div className="bg-green-50 p-4 rounded-lg flex items-center gap-3">
+                        <Truck className="h-5 w-5 text-green-600" />
+                        <div>
+                          <p className="font-medium text-green-800">
+                            Delivery in {serviceability.estimate_days} days
+                          </p>
+                          <p className="text-sm text-green-700">
+                            to {formData.city}, {formData.pincode}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Order Items */}
                   <div>
                     <h4 className="font-medium mb-2">Order Items</h4>
@@ -560,7 +844,7 @@ export default function CheckoutPage() {
                           Processing...
                         </>
                       ) : (
-                        `Place Order - ${formatCurrency(total)}`
+                        `Place Order - ${formatCurrency(finalTotal)}`
                       )}
                     </Button>
                   </div>
@@ -590,6 +874,124 @@ export default function CheckoutPage() {
 
                 <Separator />
 
+                {/* Coupon Section */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Tag className="h-4 w-4" />
+                    <span>Apply Coupon</span>
+                  </div>
+
+                  {appliedCoupon?.valid ? (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          <div>
+                            <p className="font-medium text-green-800 text-sm">
+                              {appliedCoupon.code}
+                            </p>
+                            <p className="text-xs text-green-600">
+                              {appliedCoupon.message}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleRemoveCoupon}
+                          className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Enter coupon code"
+                          value={couponCode}
+                          onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                          className="flex-1 uppercase"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleValidateCoupon();
+                            }
+                          }}
+                        />
+                        <Button
+                          variant="secondary"
+                          onClick={handleValidateCoupon}
+                          disabled={validatingCoupon || !couponCode.trim()}
+                        >
+                          {validatingCoupon ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            'Apply'
+                          )}
+                        </Button>
+                      </div>
+
+                      {/* Available Coupons */}
+                      {availableCoupons.length > 0 && (
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => setShowCoupons(!showCoupons)}
+                            className="text-xs text-primary hover:underline flex items-center gap-1"
+                          >
+                            <Gift className="h-3 w-3" />
+                            View available coupons ({availableCoupons.length})
+                          </button>
+
+                          {showCoupons && (
+                            <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
+                              {availableCoupons.map((coupon) => (
+                                <div
+                                  key={coupon.code}
+                                  className="border rounded-lg p-2 bg-muted/50 hover:bg-muted cursor-pointer transition-colors"
+                                  onClick={() => handleApplyCoupon(coupon.code)}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <div className="bg-primary/10 px-2 py-0.5 rounded text-xs font-mono font-medium text-primary">
+                                        {coupon.code}
+                                      </div>
+                                      {coupon.discount_type === 'PERCENTAGE' ? (
+                                        <span className="text-xs text-green-600 font-medium">
+                                          {coupon.discount_value}% OFF
+                                        </span>
+                                      ) : coupon.discount_type === 'FIXED_AMOUNT' ? (
+                                        <span className="text-xs text-green-600 font-medium">
+                                          {formatCurrency(coupon.discount_value)} OFF
+                                        </span>
+                                      ) : (
+                                        <span className="text-xs text-green-600 font-medium">
+                                          FREE SHIPPING
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                                    {coupon.description || coupon.name}
+                                  </p>
+                                  {coupon.minimum_order_amount && (
+                                    <p className="text-xs text-muted-foreground">
+                                      Min. order: {formatCurrency(coupon.minimum_order_amount)}
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <Separator />
+
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Subtotal</span>
@@ -609,14 +1011,41 @@ export default function CheckoutPage() {
                     <span className="text-muted-foreground">Tax (GST)</span>
                     <span>{formatCurrency(tax)}</span>
                   </div>
+                  {discountAmount > 0 && (
+                    <div className="flex justify-between text-green-600">
+                      <span className="flex items-center gap-1">
+                        <Percent className="h-3 w-3" />
+                        Discount
+                      </span>
+                      <span>-{formatCurrency(discountAmount)}</span>
+                    </div>
+                  )}
                 </div>
 
                 <Separator />
 
                 <div className="flex justify-between text-lg font-semibold">
                   <span>Total</span>
-                  <span className="text-primary">{formatCurrency(total)}</span>
+                  <span className="text-primary">{formatCurrency(finalTotal)}</span>
                 </div>
+                {discountAmount > 0 && (
+                  <p className="text-xs text-green-600 text-right">
+                    You save {formatCurrency(discountAmount)} on this order!
+                  </p>
+                )}
+
+                {/* Delivery Estimate */}
+                {serviceability?.serviceable && serviceability.estimate_days && (
+                  <>
+                    <Separator />
+                    <div className="flex items-center gap-2 text-sm text-green-600">
+                      <Truck className="h-4 w-4" />
+                      <span>
+                        Estimated delivery in {serviceability.estimate_days} days
+                      </span>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </div>
