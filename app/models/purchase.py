@@ -245,7 +245,7 @@ class PurchaseRequisition(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Conversion to PO
@@ -539,8 +539,8 @@ class PurchaseOrder(Base):
     special_instructions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Communication
-    sent_to_vendor_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    vendor_acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    sent_to_vendor_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    vendor_acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Documents
     po_pdf_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
@@ -556,7 +556,7 @@ class PurchaseOrder(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Multi-level Approval
     approval_request_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -1132,7 +1132,7 @@ class GoodsReceiptNote(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    qc_done_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    qc_done_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     qc_remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Receiving
@@ -1145,7 +1145,7 @@ class GoodsReceiptNote(Base):
 
     # Put Away Status
     put_away_complete: Mapped[bool] = mapped_column(Boolean, default=False)
-    put_away_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    put_away_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Documents
     grn_pdf_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
@@ -1440,13 +1440,13 @@ class VendorInvoice(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Internal
     internal_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -1854,8 +1854,8 @@ class SalesReturnNote(Base):
         nullable=True,
         comment="AWB Number"
     )
-    pickup_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    pickup_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    pickup_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    pickup_completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Quality Control
     qc_required: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -1869,7 +1869,7 @@ class SalesReturnNote(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    qc_done_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    qc_done_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     qc_remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Quantities Summary
@@ -1887,7 +1887,7 @@ class SalesReturnNote(Base):
 
     # Put-away
     put_away_complete: Mapped[bool] = mapped_column(Boolean, default=False)
-    put_away_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    put_away_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Receiving
     received_by: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -1895,7 +1895,7 @@ class SalesReturnNote(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
-    received_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    received_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     receiving_remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Documents

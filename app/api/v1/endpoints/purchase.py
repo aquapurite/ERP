@@ -1,7 +1,7 @@
 """API endpoints for Purchase/Procurement management (P2P Cycle)."""
 from typing import Optional, List
 from uuid import UUID
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -399,7 +399,7 @@ async def approve_purchase_requisition(
     if request.action == "APPROVE":
         pr.status = RequisitionStatus.APPROVED.value
         pr.approved_by = current_user.id
-        pr.approved_at = datetime.utcnow()
+        pr.approved_at = datetime.now(timezone.utc)
     else:  # REJECT
         if not request.rejection_reason:
             raise HTTPException(status_code=400, detail="Rejection reason is required")
@@ -1684,7 +1684,7 @@ async def approve_purchase_order(
     if request.action == "APPROVE":
         po.status = POStatus.APPROVED.value
         po.approved_by = current_user.id
-        po.approved_at = datetime.utcnow()
+        po.approved_at = datetime.now(timezone.utc)
         # Update all delivery schedules to ADVANCE_PENDING status
         for schedule in po.delivery_schedules:
             schedule.status = DeliveryLotStatus.ADVANCE_PENDING.value
@@ -2001,7 +2001,7 @@ async def send_po_to_vendor(
                 print(f"Warning: Failed to generate serials for PO {po.po_number}: {e}")
 
     po.status = POStatus.SENT_TO_VENDOR.value
-    po.sent_to_vendor_at = datetime.utcnow()
+    po.sent_to_vendor_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(po)
@@ -2030,7 +2030,7 @@ async def confirm_purchase_order(
         raise HTTPException(status_code=404, detail="Purchase Order not found")
 
     po.status = POStatus.CONFIRMED.value
-    po.vendor_acknowledged_at = datetime.utcnow()
+    po.vendor_acknowledged_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(po)
@@ -2490,7 +2490,7 @@ async def process_grn_quality_check(
         grn.qc_status = QualityCheckResult.PARTIAL.value
 
     grn.qc_done_by = current_user.id
-    grn.qc_done_at = datetime.utcnow()
+    grn.qc_done_at = datetime.now(timezone.utc)
     grn.qc_remarks = qc_request.overall_remarks
     grn.status = GRNStatus.PENDING_PUTAWAY.value
 
@@ -2604,7 +2604,7 @@ async def process_grn_putaway(
     # Update GRN status
     grn.status = GRNStatus.COMPLETED.value
     grn.put_away_complete = True
-    grn.put_away_at = datetime.utcnow()
+    grn.put_away_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(grn)
@@ -2712,7 +2712,7 @@ async def create_vendor_invoice(
         net_payable=net_payable,
         balance_due=net_payable,
         received_by=current_user.id,
-        received_at=datetime.utcnow(),
+        received_at=datetime.now(timezone.utc),
         created_by=current_user.id,
     )
 
@@ -2897,7 +2897,7 @@ async def perform_three_way_match(
         invoice.matching_variance = variance_amount
         invoice.status = VendorInvoiceStatus.VERIFIED.value
         invoice.verified_by = current_user.id
-        invoice.verified_at = datetime.utcnow()
+        invoice.verified_at = datetime.now(timezone.utc)
 
         recommendations.append("Invoice matched successfully. Ready for payment approval.")
     else:
@@ -3135,7 +3135,7 @@ async def fix_and_test_po(
 
     # Step 3: Reset to DRAFT then APPROVE
     po.status = POStatus.APPROVED.value
-    po.approved_at = datetime.utcnow()
+    po.approved_at = datetime.now(timezone.utc)
     await db.commit()
     steps.append({"step": 3, "action": "Set status to APPROVED", "result": "Done"})
 
@@ -5157,7 +5157,7 @@ async def create_vendor_proforma(
         vendor_remarks=proforma_in.vendor_remarks,
         internal_notes=proforma_in.internal_notes,
         received_by=current_user.id,
-        received_at=datetime.utcnow(),
+        received_at=datetime.now(timezone.utc),
     )
 
     db.add(proforma)
@@ -5332,7 +5332,7 @@ async def approve_vendor_proforma(
     if request.action == "APPROVE":
         proforma.status = ProformaStatus.APPROVED.value
         proforma.approved_by = current_user.id
-        proforma.approved_at = datetime.utcnow()
+        proforma.approved_at = datetime.now(timezone.utc)
     else:
         proforma.status = ProformaStatus.REJECTED.value
         proforma.rejection_reason = request.rejection_reason
@@ -6245,7 +6245,7 @@ async def schedule_srn_pickup(
     srn.pickup_scheduled_date = request.pickup_date
     srn.pickup_scheduled_slot = request.pickup_slot
     srn.pickup_status = PickupStatus.SCHEDULED.value
-    srn.pickup_requested_at = datetime.utcnow()
+    srn.pickup_requested_at = datetime.now(timezone.utc)
 
     if request.pickup_address:
         srn.pickup_address = request.pickup_address
@@ -6310,9 +6310,9 @@ async def update_srn_pickup(
 
         # If delivered, mark pickup as complete and update SRN status
         if request.pickup_status == PickupStatus.DELIVERED.value:
-            srn.pickup_completed_at = datetime.utcnow()
+            srn.pickup_completed_at = datetime.now(timezone.utc)
             srn.status = SRNStatus.RECEIVED.value
-            srn.received_at = datetime.utcnow()
+            srn.received_at = datetime.now(timezone.utc)
             srn.received_by = current_user.id
 
     await db.commit()
@@ -6347,7 +6347,7 @@ async def receive_srn(
 
     # Update receiving details
     srn.received_by = current_user.id
-    srn.received_at = datetime.utcnow()
+    srn.received_at = datetime.now(timezone.utc)
     srn.receiving_remarks = request.receiving_remarks
 
     if request.photos_urls:
@@ -6356,7 +6356,7 @@ async def receive_srn(
     # Update pickup status if this was a pickup
     if srn.pickup_required and srn.pickup_status != PickupStatus.DELIVERED.value:
         srn.pickup_status = PickupStatus.DELIVERED.value
-        srn.pickup_completed_at = datetime.utcnow()
+        srn.pickup_completed_at = datetime.now(timezone.utc)
 
     # Determine next status based on QC requirement
     if srn.qc_required:
@@ -6462,7 +6462,7 @@ async def process_srn_quality_check(
     srn.total_value = new_total_value
 
     srn.qc_done_by = current_user.id
-    srn.qc_done_at = datetime.utcnow()
+    srn.qc_done_at = datetime.now(timezone.utc)
     srn.qc_remarks = qc_request.overall_remarks
     srn.status = SRNStatus.PUT_AWAY_PENDING.value
 
@@ -6598,7 +6598,7 @@ async def process_srn_putaway(
     # Update SRN status
     srn.status = SRNStatus.PUT_AWAY_COMPLETE.value
     srn.put_away_complete = True
-    srn.put_away_at = datetime.utcnow()
+    srn.put_away_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(srn)
