@@ -43,3 +43,4 @@ openpyxl>=3.1.0
 
 # Production server
 gunicorn>=21.2.0
+PyJWT>=2.8.0
