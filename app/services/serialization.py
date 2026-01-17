@@ -572,6 +572,7 @@ class SerializationService:
                 )
 
                 # Use native UUIDs - database columns are now native PostgreSQL UUID type
+                # Convert Enum to string value for VARCHAR columns in production
                 po_serial = POSerial(
                     id=uuid.uuid4(),
                     po_id=request.po_id if isinstance(request.po_id, uuid.UUID) else uuid.UUID(str(request.po_id)),
@@ -579,14 +580,14 @@ class SerializationService:
                     product_id=item.product_id if isinstance(item.product_id, uuid.UUID) else uuid.UUID(str(item.product_id)) if item.product_id else None,
                     product_sku=item.product_sku,
                     model_code=item.model_code.upper(),
-                    item_type=item.item_type,
+                    item_type=item.item_type.value if hasattr(item.item_type, 'value') else str(item.item_type),
                     brand_prefix=self.BRAND_PREFIX,
                     supplier_code=request.supplier_code.upper(),
                     year_code=year_code if item.item_type != ItemType.SPARE_PART else year_code[0],
                     month_code=month_code,
                     serial_number=serial_num,
                     barcode=barcode,
-                    status=SerialStatus.GENERATED,
+                    status=SerialStatus.GENERATED.value,
                 )
                 self.db.add(po_serial)
                 item_barcodes.append(barcode)

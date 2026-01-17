@@ -3164,28 +3164,24 @@ async def fix_and_test_po(
         model_code = None
         item_type = ItemType.SPARE_PART  # Default to spare part for this vendor
 
-        # Try to find model code reference
+        # Try to find model code reference (item_type column may not exist in production)
         if item.product_id:
             ref_result = await db.execute(
-                text("SELECT model_code, item_type FROM model_code_references WHERE product_id = :product_id LIMIT 1"),
+                text("SELECT model_code FROM model_code_references WHERE product_id = :product_id LIMIT 1"),
                 {"product_id": str(item.product_id)}
             )
             ref_row = ref_result.first()
             if ref_row:
                 model_code = ref_row[0]
-                if ref_row[1] and ref_row[1] in ItemType.__members__:
-                    item_type = ItemType[ref_row[1]]
 
         if not model_code and item.sku:
             ref_result = await db.execute(
-                text("SELECT model_code, item_type FROM model_code_references WHERE product_sku = :sku LIMIT 1"),
+                text("SELECT model_code FROM model_code_references WHERE product_sku = :sku LIMIT 1"),
                 {"sku": item.sku}
             )
             ref_row = ref_result.first()
             if ref_row:
                 model_code = ref_row[0]
-                if ref_row[1] and ref_row[1] in ItemType.__members__:
-                    item_type = ItemType[ref_row[1]]
 
         if not model_code:
             # Generate from SKU or product name - use first 3 alpha chars
@@ -3402,28 +3398,24 @@ async def manually_generate_serials(
         model_code = None
         item_type = ItemType.FINISHED_GOODS
 
-        # Try to find model code reference
+        # Try to find model code reference (item_type column may not exist in production)
         if item.product_id:
             ref_result = await db.execute(
-                text("SELECT model_code, item_type FROM model_code_references WHERE product_id = :product_id LIMIT 1"),
+                text("SELECT model_code FROM model_code_references WHERE product_id = :product_id LIMIT 1"),
                 {"product_id": str(item.product_id)}
             )
             ref_row = ref_result.first()
             if ref_row:
                 model_code = ref_row[0]
-                if ref_row[1] and ref_row[1] in ItemType.__members__:
-                    item_type = ItemType[ref_row[1]]
 
         if not model_code and item.sku:
             ref_result = await db.execute(
-                text("SELECT model_code, item_type FROM model_code_references WHERE product_sku = :sku LIMIT 1"),
+                text("SELECT model_code FROM model_code_references WHERE product_sku = :sku LIMIT 1"),
                 {"sku": item.sku}
             )
             ref_row = ref_result.first()
             if ref_row:
                 model_code = ref_row[0]
-                if ref_row[1] and ref_row[1] in ItemType.__members__:
-                    item_type = ItemType[ref_row[1]]
 
         if not model_code:
             # Generate from product name
