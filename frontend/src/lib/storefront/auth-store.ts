@@ -28,6 +28,7 @@ export interface CustomerAddress {
 interface AuthState {
   // Auth state
   isAuthenticated: boolean;
+  isLoading: boolean;
   accessToken: string | null;
   refreshToken: string | null;
   customer: CustomerProfile | null;
@@ -37,12 +38,14 @@ interface AuthState {
   logout: () => void;
   updateProfile: (profile: Partial<CustomerProfile>) => void;
   setTokens: (accessToken: string, refreshToken?: string) => void;
+  setLoading: (loading: boolean) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       isAuthenticated: false,
+      isLoading: true, // Initially loading until hydration completes
       accessToken: null,
       refreshToken: null,
       customer: null,
@@ -50,6 +53,7 @@ export const useAuthStore = create<AuthState>()(
       login: (accessToken, refreshToken, customer) =>
         set({
           isAuthenticated: true,
+          isLoading: false,
           accessToken,
           refreshToken,
           customer,
@@ -58,6 +62,7 @@ export const useAuthStore = create<AuthState>()(
       logout: () =>
         set({
           isAuthenticated: false,
+          isLoading: false,
           accessToken: null,
           refreshToken: null,
           customer: null,
@@ -73,6 +78,8 @@ export const useAuthStore = create<AuthState>()(
           accessToken,
           refreshToken: refreshToken || state.refreshToken,
         })),
+
+      setLoading: (loading) => set({ isLoading: loading }),
     }),
     {
       name: 'd2c-auth-storage',
@@ -82,6 +89,12 @@ export const useAuthStore = create<AuthState>()(
         refreshToken: state.refreshToken,
         customer: state.customer,
       }),
+      onRehydrateStorage: () => (state) => {
+        // Set isLoading to false after hydration completes
+        if (state) {
+          state.setLoading(false);
+        }
+      },
     }
   )
 );
