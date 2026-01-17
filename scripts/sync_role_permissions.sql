@@ -488,6 +488,68 @@ WHERE UPPER(r.code) = 'TECHNICIAN_SUPERVISOR'
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- =====================================================
+-- SYSTEM: System role (same as SUPER_ADMIN - all permissions)
+-- =====================================================
+INSERT INTO role_permissions (id, role_id, permission_id, created_at)
+SELECT
+    gen_random_uuid(),
+    r.id,
+    p.id,
+    NOW()
+FROM roles r
+CROSS JOIN permissions p
+WHERE UPPER(r.code) = 'SYSTEM'
+  AND r.is_active = true
+  AND p.is_active = true
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- =====================================================
+-- MANAGER: Generic manager role (combined permissions)
+-- =====================================================
+INSERT INTO role_permissions (id, role_id, permission_id, created_at)
+SELECT
+    gen_random_uuid(),
+    r.id,
+    p.id,
+    NOW()
+FROM roles r
+CROSS JOIN permissions p
+WHERE UPPER(r.code) = 'MANAGER'
+  AND r.is_active = true
+  AND p.is_active = true
+  AND (
+    -- Dashboard
+    LOWER(p.code) LIKE '%dashboard%'
+    -- Products (view)
+    OR (LOWER(p.code) LIKE '%product%' AND LOWER(p.code) LIKE '%view%')
+    -- Orders (view, create, update, export)
+    OR (LOWER(p.code) LIKE '%order%' AND (LOWER(p.code) LIKE '%view%' OR LOWER(p.code) LIKE '%create%' OR LOWER(p.code) LIKE '%update%' OR LOWER(p.code) LIKE '%export%'))
+    -- Inventory (view, create, update, transfer, adjust)
+    OR LOWER(p.code) LIKE '%inventory%'
+    -- Service (view, create, update, assign, close)
+    OR (LOWER(p.code) LIKE '%service%' AND NOT LOWER(p.code) LIKE '%escalate%')
+    -- Complaints (view, update, assign, resolve)
+    OR (LOWER(p.code) LIKE '%complaint%' AND NOT LOWER(p.code) LIKE '%escalate%')
+    -- CRM/Customers (view, create, update)
+    OR (LOWER(p.code) LIKE '%crm%' AND (LOWER(p.code) LIKE '%view%' OR LOWER(p.code) LIKE '%create%' OR LOWER(p.code) LIKE '%update%'))
+    OR (LOWER(p.code) LIKE '%customer%' AND (LOWER(p.code) LIKE '%view%' OR LOWER(p.code) LIKE '%create%' OR LOWER(p.code) LIKE '%update%'))
+    -- Logistics (view, create, assign)
+    OR (LOWER(p.code) LIKE '%logistics%' AND (LOWER(p.code) LIKE '%view%' OR LOWER(p.code) LIKE '%create%' OR LOWER(p.code) LIKE '%assign%'))
+    -- Procurement/Purchase (view, receive)
+    OR (LOWER(p.code) LIKE '%procurement%' AND (LOWER(p.code) LIKE '%view%' OR LOWER(p.code) LIKE '%receive%'))
+    OR (LOWER(p.code) LIKE '%purchase%' AND (LOWER(p.code) LIKE '%view%' OR LOWER(p.code) LIKE '%receive%'))
+    -- GRN (view, create, update)
+    OR (LOWER(p.code) LIKE '%grn%' AND (LOWER(p.code) LIKE '%view%' OR LOWER(p.code) LIKE '%create%' OR LOWER(p.code) LIKE '%update%'))
+    -- Reports (view, export)
+    OR (LOWER(p.code) LIKE '%report%' AND (LOWER(p.code) LIKE '%view%' OR LOWER(p.code) LIKE '%export%'))
+    -- Notifications (view)
+    OR (LOWER(p.code) LIKE '%notification%' AND LOWER(p.code) LIKE '%view%')
+    -- Marketing (view, create, update)
+    OR (LOWER(p.code) LIKE '%marketing%' AND (LOWER(p.code) LIKE '%view%' OR LOWER(p.code) LIKE '%create%' OR LOWER(p.code) LIKE '%update%'))
+  )
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- =====================================================
 -- FINAL REPORT: Show permission counts per role
 -- =====================================================
 SELECT
