@@ -39,7 +39,8 @@ export interface Role {
   code: string;
   level: RoleLevel;
   description?: string;
-  permissions: Permission[];
+  permissions?: Permission[];
+  permission_count?: number;
 }
 
 export type RoleLevel = 'SUPER_ADMIN' | 'DIRECTOR' | 'HEAD' | 'MANAGER' | 'EXECUTIVE';

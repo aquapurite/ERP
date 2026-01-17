@@ -77,11 +77,11 @@ const columns: ColumnDef<Role>[] = [
     ),
   },
   {
-    accessorKey: 'permissions',
+    accessorKey: 'permission_count',
     header: 'Permissions',
     cell: ({ row }) => (
       <span className="text-sm">
-        {row.original.permissions?.length ?? 0} permissions
+        {row.original.permission_count ?? row.original.permissions?.length ?? 0} permissions
       </span>
     ),
   },

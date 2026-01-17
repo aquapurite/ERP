@@ -54,6 +54,7 @@ class RoleResponse(BaseModel):
     department: Optional[str] = None
     is_system: bool
     is_active: bool
+    permission_count: int = 0
     created_at: datetime
     updated_at: datetime
 

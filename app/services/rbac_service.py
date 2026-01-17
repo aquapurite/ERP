@@ -33,24 +33,50 @@ class RBACService:
         skip: int = 0,
         limit: int = 100,
         include_inactive: bool = False
-    ) -> tuple[List[Role], int]:
-        """Get paginated list of roles."""
+    ) -> tuple[List[Dict[str, Any]], int]:
+        """Get paginated list of roles with permission counts."""
         # Count query
         count_stmt = select(func.count(Role.id))
         if not include_inactive:
             count_stmt = count_stmt.where(Role.is_active == True)
         total = (await self.db.execute(count_stmt)).scalar()
 
-        # Data query
-        stmt = select(Role).order_by(Role.level, Role.name)
+        # Subquery for permission count
+        perm_count_subq = (
+            select(
+                RolePermission.role_id,
+                func.count(RolePermission.permission_id).label('permission_count')
+            )
+            .group_by(RolePermission.role_id)
+            .subquery()
+        )
+
+        # Data query with permission count
+        stmt = (
+            select(
+                Role,
+                func.coalesce(perm_count_subq.c.permission_count, 0).label('permission_count')
+            )
+            .outerjoin(perm_count_subq, Role.id == perm_count_subq.c.role_id)
+            .order_by(Role.level, Role.name)
+        )
         if not include_inactive:
             stmt = stmt.where(Role.is_active == True)
         stmt = stmt.offset(skip).limit(limit)
 
         result = await self.db.execute(stmt)
-        roles = result.scalars().all()
+        rows = result.all()
 
-        return list(roles), total
+        # Build result with permission count attached
+        roles_with_count = []
+        for row in rows:
+            role = row[0]
+            perm_count = row[1]
+            # Attach permission_count as attribute
+            role.permission_count = perm_count
+            roles_with_count.append(role)
+
+        return roles_with_count, total
 
     async def get_role_by_id(
         self,
