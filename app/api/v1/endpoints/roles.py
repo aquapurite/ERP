@@ -361,8 +361,7 @@ async def update_role_permissions(
 
     await rbac_service.update_role_permissions(
         role_id,
-        data.permission_ids,
-        granted_by=current_user.id
+        data.permission_ids
     )
 
     # Audit log

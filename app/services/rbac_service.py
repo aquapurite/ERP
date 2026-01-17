@@ -93,8 +93,7 @@ class RBACService:
         if data.permission_ids:
             await self.update_role_permissions(
                 role.id,
-                data.permission_ids,
-                granted_by=created_by
+                data.permission_ids
             )
 
         await self.db.commit()
@@ -217,8 +216,7 @@ class RBACService:
     async def update_role_permissions(
         self,
         role_id: uuid.UUID,
-        permission_ids: List[uuid.UUID],
-        granted_by: Optional[uuid.UUID] = None
+        permission_ids: List[uuid.UUID]
     ) -> None:
         """Update all permissions for a role (replace existing)."""
         # Remove existing permissions
@@ -230,8 +228,7 @@ class RBACService:
         for perm_id in permission_ids:
             role_perm = RolePermission(
                 role_id=role_id,
-                permission_id=perm_id,
-                granted_by=granted_by
+                permission_id=perm_id
             )
             self.db.add(role_perm)
 

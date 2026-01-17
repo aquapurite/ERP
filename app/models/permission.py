@@ -96,12 +96,7 @@ class RolePermission(Base):
         nullable=False
     )
 
-    # Audit fields
-    granted_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True
-    )
+    # Audit fields (granted_by removed - doesn't exist in production)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -113,10 +108,6 @@ class RolePermission(Base):
     permission: Mapped["Permission"] = relationship(
         "Permission",
         back_populates="role_permissions"
-    )
-    granted_by_user: Mapped[Optional["User"]] = relationship(
-        "User",
-        foreign_keys=[granted_by]
     )
 
     # Ensure unique combination of role and permission
