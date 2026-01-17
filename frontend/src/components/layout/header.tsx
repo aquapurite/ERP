@@ -14,6 +14,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useAuth } from '@/providers';
 import { Breadcrumbs } from './breadcrumbs';
+import { GlobalSearchTrigger } from './global-search';
 import { getInitials } from '@/lib/utils';
 import { getUserDisplayName } from '@/types';
 
@@ -33,6 +34,9 @@ export function Header() {
       <Breadcrumbs />
 
       <div className="flex items-center gap-4">
+        {/* Global Search */}
+        <GlobalSearchTrigger />
+
         {/* Notifications */}
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="h-5 w-5" />

@@ -4975,4 +4975,46 @@ export const snopApi = {
   },
 };
 
+// Company API
+import type { Company, CompanyBankAccount, CompanyBankAccountCreate, CompanyBankAccountUpdate } from '@/types/company';
+
+export const companyApi = {
+  // Get primary company with branches and bank accounts
+  getPrimary: async (): Promise<Company> => {
+    const { data } = await apiClient.get<Company>('/company/primary');
+    return data;
+  },
+
+  // Update primary company
+  updatePrimary: async (company: Partial<Company>): Promise<Company> => {
+    const { data } = await apiClient.put<Company>('/company/primary', company);
+    return data;
+  },
+
+  // Bank Accounts
+  listBankAccounts: async (companyId: string): Promise<CompanyBankAccount[]> => {
+    const { data } = await apiClient.get<CompanyBankAccount[]>(`/company/${companyId}/bank-accounts`);
+    return data;
+  },
+
+  createBankAccount: async (companyId: string, account: CompanyBankAccountCreate): Promise<CompanyBankAccount> => {
+    const { data } = await apiClient.post<CompanyBankAccount>(`/company/${companyId}/bank-accounts`, account);
+    return data;
+  },
+
+  updateBankAccount: async (companyId: string, accountId: string, account: CompanyBankAccountUpdate): Promise<CompanyBankAccount> => {
+    const { data } = await apiClient.put<CompanyBankAccount>(`/company/${companyId}/bank-accounts/${accountId}`, account);
+    return data;
+  },
+
+  deleteBankAccount: async (companyId: string, accountId: string): Promise<void> => {
+    await apiClient.delete(`/company/${companyId}/bank-accounts/${accountId}`);
+  },
+
+  setPrimaryBankAccount: async (companyId: string, accountId: string): Promise<CompanyBankAccount> => {
+    const { data } = await apiClient.put<CompanyBankAccount>(`/company/${companyId}/bank-accounts/${accountId}`, { is_primary: true });
+    return data;
+  },
+};
+
 export default apiClient;
