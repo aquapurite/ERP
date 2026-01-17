@@ -163,11 +163,11 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       if (filteredChildren.length === 0) return null;
 
       return (
-        <div key={item.title} className="mb-1">
+        <div key={item.title}>
           <button
             onClick={() => toggleExpand(item.title)}
             className={cn(
-              'group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200',
+              'group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium transition-all duration-200',
               colors?.hover,
               isExpanded && colors?.bg,
               'hover:shadow-sm'
@@ -175,11 +175,11 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           >
             {Icon && (
               <div className={cn(
-                'flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200',
+                'flex h-6 w-6 items-center justify-center rounded-md transition-all duration-200',
                 isExpanded ? colors?.bg : 'bg-transparent group-hover:' + colors?.bg?.replace('bg-', 'bg-'),
                 colors?.text
               )}>
-                <Icon className="h-4 w-4" />
+                <Icon className="h-3.5 w-3.5" />
               </div>
             )}
             {!isCollapsed && (
@@ -193,7 +193,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                 {renderBadge(item.badge)}
                 <ChevronDown
                   className={cn(
-                    'h-4 w-4 transition-transform duration-200',
+                    'h-3.5 w-3.5 transition-transform duration-200',
                     isExpanded && 'rotate-180',
                     colors?.text
                   )}
@@ -203,7 +203,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           </button>
           {!isCollapsed && isExpanded && (
             <div className={cn(
-              'ml-5 mt-1 space-y-0.5 border-l-2 pl-4 py-1',
+              'ml-4 mt-0.5 space-y-0 border-l-2 pl-3 py-0.5',
               colors?.text?.replace('text-', 'border-')
             )}>
               {filteredChildren.map((child) => renderNavItem(child, level + 1, colors))}
@@ -219,8 +219,8 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         key={item.title}
         href={item.href || '#'}
         className={cn(
-          'group flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-all duration-200',
-          level === 0 ? 'font-medium' : 'font-normal',
+          'group flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-all duration-200',
+          level === 0 ? 'font-medium' : 'font-normal text-[13px]',
           level === 0 && colors?.hover,
           active
             ? cn(
@@ -236,7 +236,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       >
         {Icon && (
           <div className={cn(
-            'flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200',
+            'flex h-6 w-6 items-center justify-center rounded-md transition-all duration-200',
             active && level === 0
               ? 'bg-white/20'
               : level === 0
@@ -244,7 +244,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                 : ''
           )}>
             <Icon className={cn(
-              'h-4 w-4',
+              'h-3.5 w-3.5',
               active && level === 0 ? 'text-white' : ''
             )} />
           </div>
@@ -315,8 +315,8 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       </div>
 
       {/* Navigation */}
-      <ScrollArea className="flex-1 px-3 py-4">
-        <nav className="space-y-1">
+      <ScrollArea className="flex-1 px-3 py-2">
+        <nav className="space-y-0.5">
           {filteredNavigation.map((item) => renderNavItem(item))}
         </nav>
       </ScrollArea>
@@ -324,16 +324,16 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       {/* Footer with gradient */}
       {!isCollapsed && (
         <div className={cn(
-          'border-t p-4',
+          'border-t px-3 py-2',
           'bg-gradient-to-r from-muted/50 via-background to-muted/30'
         )}>
           <div className="flex items-center gap-2">
-            <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <p className="text-xs text-muted-foreground">
+            <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <p className="text-[10px] text-muted-foreground">
               System Online
             </p>
           </div>
-          <p className="text-[10px] text-muted-foreground mt-1">
+          <p className="text-[9px] text-muted-foreground mt-0.5">
             &copy; {new Date().getFullYear()} {siteConfig.company}
           </p>
         </div>
