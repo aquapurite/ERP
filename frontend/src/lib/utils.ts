@@ -148,3 +148,92 @@ export function toTitleCase(str: string | undefined | null): string {
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
 }
+
+// ============================================
+// ENUM NORMALIZATION UTILITIES
+// ============================================
+// These utilities handle case sensitivity issues between
+// database (VARCHAR), backend (Pydantic), and frontend (TypeScript).
+// All enum values should be UPPERCASE across all layers.
+
+/**
+ * Normalize an enum-like value to UPPERCASE and validate against allowed values.
+ * Returns the default value if input is invalid or not in the allowed list.
+ *
+ * @param value - The value to normalize (may be lowercase, mixed case, or undefined)
+ * @param validValues - Array of valid UPPERCASE values
+ * @param defaultValue - Default value to return if input is invalid
+ * @returns Normalized UPPERCASE value or default
+ *
+ * @example
+ * normalizeEnumValue('head', ['SUPER_ADMIN', 'HEAD', 'MANAGER'], 'MANAGER') // Returns 'HEAD'
+ * normalizeEnumValue('invalid', ['ACTIVE', 'INACTIVE'], 'ACTIVE') // Returns 'ACTIVE'
+ */
+export function normalizeEnumValue<T extends string>(
+  value: string | undefined | null,
+  validValues: readonly T[],
+  defaultValue: T
+): T {
+  if (!value) return defaultValue;
+
+  const upperValue = value.toUpperCase() as T;
+  return validValues.includes(upperValue) ? upperValue : defaultValue;
+}
+
+/**
+ * Create a normalizer function for a specific enum type.
+ * Useful for reusable normalization across components.
+ *
+ * @example
+ * const normalizeRoleLevel = createEnumNormalizer(
+ *   ['SUPER_ADMIN', 'DIRECTOR', 'HEAD', 'MANAGER', 'EXECUTIVE'] as const,
+ *   'EXECUTIVE'
+ * );
+ * normalizeRoleLevel('head') // Returns 'HEAD'
+ */
+export function createEnumNormalizer<T extends string>(
+  validValues: readonly T[],
+  defaultValue: T
+): (value: string | undefined | null) => T {
+  return (value) => normalizeEnumValue(value, validValues, defaultValue);
+}
+
+// Pre-built normalizers for common enum types
+export const ROLE_LEVELS = ['SUPER_ADMIN', 'DIRECTOR', 'HEAD', 'MANAGER', 'EXECUTIVE'] as const;
+export const normalizeRoleLevel = createEnumNormalizer(ROLE_LEVELS, 'EXECUTIVE');
+
+export const ORDER_STATUSES = [
+  'NEW', 'PENDING_PAYMENT', 'CONFIRMED', 'ALLOCATED', 'PICKLIST_CREATED',
+  'PICKING', 'PACKED', 'READY_TO_SHIP', 'SHIPPED', 'IN_TRANSIT',
+  'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED', 'RETURNED', 'REFUNDED'
+] as const;
+export const normalizeOrderStatus = createEnumNormalizer(ORDER_STATUSES, 'NEW');
+
+export const PAYMENT_STATUSES = [
+  'PENDING', 'AUTHORIZED', 'CAPTURED', 'PAID', 'PARTIALLY_PAID',
+  'REFUNDED', 'PARTIALLY_REFUNDED', 'CANCELLED', 'FAILED'
+] as const;
+export const normalizePaymentStatus = createEnumNormalizer(PAYMENT_STATUSES, 'PENDING');
+
+export const DEALER_STATUSES = [
+  'PENDING_APPROVAL', 'ACTIVE', 'INACTIVE', 'SUSPENDED', 'BLACKLISTED', 'TERMINATED'
+] as const;
+export const normalizeDealerStatus = createEnumNormalizer(DEALER_STATUSES, 'PENDING_APPROVAL');
+
+export const VENDOR_STATUSES = ['ACTIVE', 'INACTIVE', 'PENDING_APPROVAL', 'BLACKLISTED'] as const;
+export const normalizeVendorStatus = createEnumNormalizer(VENDOR_STATUSES, 'ACTIVE');
+
+export const COMPANY_TYPES = [
+  'PRIVATE_LIMITED', 'PUBLIC_LIMITED', 'LLP', 'PARTNERSHIP',
+  'PROPRIETORSHIP', 'OPC', 'TRUST', 'SOCIETY', 'HUF', 'GOVERNMENT'
+] as const;
+export const normalizeCompanyType = createEnumNormalizer(COMPANY_TYPES, 'PRIVATE_LIMITED');
+
+export const GST_REGISTRATION_TYPES = [
+  'REGULAR', 'COMPOSITION', 'CASUAL', 'SEZ_UNIT', 'SEZ_DEVELOPER',
+  'ISD', 'TDS_DEDUCTOR', 'TCS_COLLECTOR', 'NON_RESIDENT', 'UNREGISTERED'
+] as const;
+export const normalizeGSTRegistrationType = createEnumNormalizer(GST_REGISTRATION_TYPES, 'REGULAR');
+
+export const BANK_ACCOUNT_TYPES = ['CURRENT', 'SAVINGS', 'OD', 'CC'] as const;
+export const normalizeBankAccountType = createEnumNormalizer(BANK_ACCOUNT_TYPES, 'CURRENT');

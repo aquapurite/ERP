@@ -24,6 +24,7 @@ import {
 import { PageHeader } from '@/components/common';
 import { rolesApi, permissionsApi } from '@/lib/api';
 import { RoleLevel } from '@/types';
+import { normalizeRoleLevel } from '@/lib/utils';
 
 interface RoleForm {
   name: string;
@@ -69,17 +70,11 @@ export default function EditRolePage() {
 
   useEffect(() => {
     if (role) {
-      // Normalize level to uppercase to match Select options
-      const normalizedLevel = (role.level?.toUpperCase() || 'EXECUTIVE') as RoleLevel;
-      // Validate it's a valid level
-      const validLevels: RoleLevel[] = ['SUPER_ADMIN', 'DIRECTOR', 'HEAD', 'MANAGER', 'EXECUTIVE'];
-      const level = validLevels.includes(normalizedLevel) ? normalizedLevel : 'EXECUTIVE';
-
       setFormData({
         name: role.name || '',
         code: role.code || '',
         description: role.description || '',
-        level,
+        level: normalizeRoleLevel(role.level) as RoleLevel,
         permission_ids: role.permissions?.map((p: { id: string }) => p.id) || [],
       });
     }

@@ -1,11 +1,13 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Literal
 from datetime import datetime
 import uuid
 
 
 # String-based enum for API input/output (matches VARCHAR in database)
+# IMPORTANT: All values MUST be UPPERCASE to match database convention
 RoleLevelType = Literal["SUPER_ADMIN", "DIRECTOR", "HEAD", "MANAGER", "EXECUTIVE"]
+VALID_ROLE_LEVELS = {"SUPER_ADMIN", "DIRECTOR", "HEAD", "MANAGER", "EXECUTIVE"}
 
 
 class RoleBase(BaseModel):
@@ -15,6 +17,16 @@ class RoleBase(BaseModel):
     description: Optional[str] = Field(None, description="Role description")
     level: RoleLevelType = Field(..., description="Role hierarchy level")
     department: Optional[str] = Field(None, max_length=50, description="Department association")
+
+    @field_validator('level', mode='before')
+    @classmethod
+    def normalize_level_to_uppercase(cls, v):
+        """Convert level to UPPERCASE before validation. Accepts case-insensitive input."""
+        if isinstance(v, str):
+            upper_v = v.upper()
+            if upper_v in VALID_ROLE_LEVELS:
+                return upper_v
+        return v  # Let Pydantic handle validation error for invalid values
 
 
 class RoleCreate(RoleBase):
@@ -32,6 +44,18 @@ class RoleUpdate(BaseModel):
     level: Optional[RoleLevelType] = None
     department: Optional[str] = Field(None, max_length=50)
     is_active: Optional[bool] = None
+
+    @field_validator('level', mode='before')
+    @classmethod
+    def normalize_level_to_uppercase(cls, v):
+        """Convert level to UPPERCASE before validation. Accepts case-insensitive input."""
+        if v is None:
+            return v
+        if isinstance(v, str):
+            upper_v = v.upper()
+            if upper_v in VALID_ROLE_LEVELS:
+                return upper_v
+        return v  # Let Pydantic handle validation error for invalid values
 
 
 class PermissionBasicInfo(BaseModel):
