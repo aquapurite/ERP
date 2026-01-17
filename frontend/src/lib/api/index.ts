@@ -2386,85 +2386,7 @@ export const serializationApi = {
   },
 };
 
-// Company API
-export interface Company {
-  id: string;
-  legal_name: string;
-  trade_name?: string;
-  code: string;
-  company_type: string;
-  gstin: string;
-  gst_registration_type: string;
-  state_code: string;
-  pan: string;
-  tan?: string;
-  cin?: string;
-  llpin?: string;
-  msme_registered: boolean;
-  udyam_number?: string;
-  msme_category?: string;
-  address_line1: string;
-  address_line2?: string;
-  city: string;
-  district?: string;
-  state: string;
-  pincode: string;
-  country: string;
-  email: string;
-  phone: string;
-  mobile?: string;
-  fax?: string;
-  website?: string;
-  bank_name?: string;
-  bank_branch?: string;
-  bank_account_number?: string;
-  bank_ifsc?: string;
-  bank_account_type?: string;
-  bank_account_name?: string;
-  logo_url?: string;
-  logo_small_url?: string;
-  favicon_url?: string;
-  signature_url?: string;
-  invoice_prefix?: string;
-  invoice_suffix?: string;
-  invoice_terms?: string;
-  invoice_notes?: string;
-  invoice_footer?: string;
-  po_prefix?: string;
-  po_terms?: string;
-  currency_code: string;
-  currency_symbol: string;
-  is_active: boolean;
-  is_primary: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export const companyApi = {
-  // Get primary company (most commonly used for documents)
-  getPrimary: async (): Promise<Company> => {
-    const { data } = await apiClient.get<Company>('/company/primary');
-    return data;
-  },
-
-  // List all companies
-  list: async (params?: { is_active?: boolean }) => {
-    const { data } = await apiClient.get<{ items: Company[]; total: number }>('/company', { params });
-    return data;
-  },
-
-  // Get company by ID
-  getById: async (id: string): Promise<Company> => {
-    const { data } = await apiClient.get<Company>(`/company/${id}`);
-    return data;
-  },
-
-  // Update company
-  update: async (id: string, company: Partial<Company>) => {
-    const { data } = await apiClient.put<Company>(`/company/${id}`, company);
-    return data;
-  },
-};
+// Company type is imported at the bottom with companyApi
 
 // ============================================
 // HR & PAYROLL API
@@ -4976,7 +4898,9 @@ export const snopApi = {
 };
 
 // Company API
-import type { Company, CompanyBankAccount, CompanyBankAccountCreate, CompanyBankAccountUpdate } from '@/types/company';
+import type { Company as CompanyType, CompanyBankAccount, CompanyBankAccountCreate, CompanyBankAccountUpdate } from '@/types/company';
+export type { Company } from '@/types/company';
+type Company = CompanyType;
 
 export const companyApi = {
   // Get primary company with branches and bank accounts
@@ -4988,6 +4912,24 @@ export const companyApi = {
   // Update primary company
   updatePrimary: async (company: Partial<Company>): Promise<Company> => {
     const { data } = await apiClient.put<Company>('/company/primary', company);
+    return data;
+  },
+
+  // List all companies
+  list: async (params?: { is_active?: boolean }) => {
+    const { data } = await apiClient.get<{ items: Company[]; total: number }>('/company', { params });
+    return data;
+  },
+
+  // Get company by ID
+  getById: async (id: string): Promise<Company> => {
+    const { data } = await apiClient.get<Company>(`/company/${id}`);
+    return data;
+  },
+
+  // Update company by ID
+  update: async (id: string, company: Partial<Company>) => {
+    const { data } = await apiClient.put<Company>(`/company/${id}`, company);
     return data;
   },
 
