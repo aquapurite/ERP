@@ -60,8 +60,12 @@ class RBACService:
         """Get a role by ID."""
         stmt = select(Role).where(Role.id == role_id)
         if include_permissions:
+            # Need to load: role_permissions -> permission -> module
+            # for accessing rp.permission.module.name in endpoints
             stmt = stmt.options(
-                selectinload(Role.role_permissions).selectinload(RolePermission.permission)
+                selectinload(Role.role_permissions)
+                .selectinload(RolePermission.permission)
+                .selectinload(Permission.module)
             )
 
         result = await self.db.execute(stmt)
