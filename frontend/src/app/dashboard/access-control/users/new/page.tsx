@@ -76,7 +76,7 @@ export default function NewUserPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       toast.success('User created successfully');
-      router.push('/access-control/users');
+      router.push('/dashboard/access-control/users');
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to create user');
