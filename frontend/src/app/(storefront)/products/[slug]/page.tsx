@@ -16,18 +16,17 @@ import {
   RotateCcw,
   Package,
   Check,
-  AlertCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import ProductCard from '@/components/storefront/product/product-card';
+import PinCodeChecker from '@/components/storefront/product/pincode-checker';
 import { StorefrontProduct, ProductVariant } from '@/types/storefront';
-import { productsApi, inventoryApi } from '@/lib/storefront/api';
+import { productsApi } from '@/lib/storefront/api';
 import { useCartStore } from '@/lib/storefront/cart-store';
 import { formatCurrency } from '@/lib/utils';
 
@@ -41,12 +40,6 @@ export default function ProductDetailPage() {
   const [selectedImage, setSelectedImage] = useState(0);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const [quantity, setQuantity] = useState(1);
-  const [pincode, setPincode] = useState('');
-  const [deliveryInfo, setDeliveryInfo] = useState<{
-    serviceable: boolean;
-    estimate?: string;
-  } | null>(null);
-  const [checkingDelivery, setCheckingDelivery] = useState(false);
 
   const addItem = useCartStore((state) => state.addItem);
 
@@ -91,28 +84,6 @@ export default function ProductDetailPage() {
     if (!product) return;
     addItem(product, quantity, selectedVariant || undefined);
     window.location.href = '/checkout';
-  };
-
-  const handleCheckDelivery = async () => {
-    if (!pincode || pincode.length !== 6) {
-      toast.error('Please enter a valid 6-digit pincode');
-      return;
-    }
-
-    setCheckingDelivery(true);
-    try {
-      const result = await inventoryApi.checkDelivery(pincode);
-      setDeliveryInfo({
-        serviceable: result.serviceable,
-        estimate: result.estimate_days
-          ? `Delivery in ${result.estimate_days} days`
-          : result.message,
-      });
-    } catch (error) {
-      setDeliveryInfo({ serviceable: true, estimate: 'Delivery in 5-7 days' });
-    } finally {
-      setCheckingDelivery(false);
-    }
   };
 
   if (loading) {
@@ -365,42 +336,7 @@ export default function ProductDetailPage() {
               </div>
 
               {/* Delivery Check */}
-              <div className="bg-muted/50 rounded-lg p-4">
-                <Label className="text-sm font-semibold mb-2 block">
-                  Check Delivery
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Enter pincode"
-                    value={pincode}
-                    onChange={(e) => setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    className="max-w-[150px]"
-                  />
-                  <Button
-                    variant="outline"
-                    onClick={handleCheckDelivery}
-                    disabled={checkingDelivery}
-                  >
-                    {checkingDelivery ? 'Checking...' : 'Check'}
-                  </Button>
-                </div>
-                {deliveryInfo && (
-                  <div
-                    className={`mt-2 text-sm flex items-center gap-1 ${
-                      deliveryInfo.serviceable
-                        ? 'text-green-600'
-                        : 'text-red-600'
-                    }`}
-                  >
-                    {deliveryInfo.serviceable ? (
-                      <Check className="h-4 w-4" />
-                    ) : (
-                      <AlertCircle className="h-4 w-4" />
-                    )}
-                    {deliveryInfo.estimate}
-                  </div>
-                )}
-              </div>
+              <PinCodeChecker productPrice={currentPrice} />
 
               {/* Action Buttons */}
               <div className="flex gap-3">
