@@ -1789,41 +1789,27 @@ async def approve_purchase_order(
                 item_type = ItemType.FINISHED_GOODS
                 logging.info(f"Processing item {idx+1}: SKU={item_data['product_sku']}, qty={item_data['quantity']}, product_id={item_data['product_id']}")
 
-                # Try to find model code reference
+                # Try to find model code reference (item_type column may not exist in production)
                 # Use raw SQL to handle VARCHAR/UUID type mismatch in database
                 if item_data["product_id"]:
                     ref_result = await db.execute(
-                        text("SELECT model_code, item_type FROM model_code_references WHERE product_id = :product_id LIMIT 1"),
+                        text("SELECT model_code FROM model_code_references WHERE product_id = :product_id LIMIT 1"),
                         {"product_id": str(item_data["product_id"])}
                     )
                     ref_row = ref_result.first()
                     if ref_row:
                         model_code = ref_row[0]
-                        if ref_row[1]:
-                            # Safe enum lookup with fallback
-                            item_type_str = str(ref_row[1])
-                            if item_type_str in ItemType.__members__:
-                                item_type = ItemType[item_type_str]
-                            else:
-                                logging.warning(f"Unknown item_type '{item_type_str}', using FINISHED_GOODS")
-                        logging.info(f"Found model_code_ref by product_id: model_code={model_code}, item_type={item_type}")
+                        logging.info(f"Found model_code_ref by product_id: model_code={model_code}")
 
                 if not model_code and item_data["product_sku"]:
                     ref_result = await db.execute(
-                        text("SELECT model_code, item_type FROM model_code_references WHERE product_sku = :product_sku LIMIT 1"),
+                        text("SELECT model_code FROM model_code_references WHERE product_sku = :product_sku LIMIT 1"),
                         {"product_sku": item_data["product_sku"]}
                     )
                     ref_row = ref_result.first()
                     if ref_row:
                         model_code = ref_row[0]
-                        if ref_row[1]:
-                            # Safe enum lookup with fallback
-                            item_type_str = str(ref_row[1])
-                            if item_type_str in ItemType.__members__:
-                                item_type = ItemType[item_type_str]
-                            else:
-                                logging.warning(f"Unknown item_type '{item_type_str}', using FINISHED_GOODS")
-                        logging.info(f"Found model_code_ref by SKU: model_code={model_code}, item_type={item_type}")
+                        logging.info(f"Found model_code_ref by SKU: model_code={model_code}")
 
                 if not model_code:
                     product_name = item_data["product_name"] or item_data["product_sku"] or "UNK"
@@ -1945,34 +1931,24 @@ async def send_po_to_vendor(
             item_type = ItemType.FINISHED_GOODS
 
             if item.product_id:
-                # Use raw SQL to handle VARCHAR/UUID type mismatch
+                # Use raw SQL to handle VARCHAR/UUID type mismatch (item_type column may not exist)
                 ref_result = await db.execute(
-                    text("SELECT model_code, item_type FROM model_code_references WHERE product_id = :product_id LIMIT 1"),
+                    text("SELECT model_code FROM model_code_references WHERE product_id = :product_id LIMIT 1"),
                     {"product_id": str(item.product_id)}
                 )
                 ref_row = ref_result.first()
                 if ref_row:
                     model_code = ref_row[0]
-                    if ref_row[1]:
-                        # Safe enum lookup with fallback
-                        item_type_str = str(ref_row[1])
-                        if item_type_str in ItemType.__members__:
-                            item_type = ItemType[item_type_str]
 
             if not model_code and item.sku:
                 # Try by SKU - use raw SQL
                 ref_result = await db.execute(
-                    text("SELECT model_code, item_type FROM model_code_references WHERE product_sku = :product_sku LIMIT 1"),
+                    text("SELECT model_code FROM model_code_references WHERE product_sku = :product_sku LIMIT 1"),
                     {"product_sku": item.sku}
                 )
                 ref_row = ref_result.first()
                 if ref_row:
                     model_code = ref_row[0]
-                    if ref_row[1]:
-                        # Safe enum lookup with fallback
-                        item_type_str = str(ref_row[1])
-                        if item_type_str in ItemType.__members__:
-                            item_type = ItemType[item_type_str]
 
             if not model_code:
                 # Generate model code from product name (first 3 letters)
