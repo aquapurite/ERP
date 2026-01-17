@@ -58,7 +58,7 @@ export default function NewRolePage() {
     mutationFn: rolesApi.create,
     onSuccess: () => {
       toast.success('Role created successfully');
-      router.push('/access-control/roles');
+      router.push('/dashboard/access-control/roles');
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to create role');

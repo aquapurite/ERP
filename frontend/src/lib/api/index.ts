@@ -102,9 +102,30 @@ export const permissionsApi = {
   },
   getByModule: async (): Promise<Record<string, Permission[]>> => {
     try {
-      // Try to get permissions grouped by module from backend
-      const { data } = await apiClient.get<Record<string, Permission[]>>('/permissions/by-module');
-      return data;
+      // Backend returns: { modules: [...], total_permissions: N }
+      // Frontend expects: { module_name: [...permissions] }
+      interface BackendModule {
+        module_id: string;
+        module_name: string;
+        module_code: string;
+        permissions: Permission[];
+      }
+      interface BackendResponse {
+        modules: BackendModule[];
+        total_permissions: number;
+      }
+
+      const { data } = await apiClient.get<BackendResponse>('/permissions/by-module');
+
+      // Transform backend response to frontend format
+      const grouped: Record<string, Permission[]> = {};
+      if (data.modules && Array.isArray(data.modules)) {
+        data.modules.forEach((moduleGroup) => {
+          const moduleName = moduleGroup.module_name || moduleGroup.module_code || 'general';
+          grouped[moduleName] = moduleGroup.permissions || [];
+        });
+      }
+      return grouped;
     } catch {
       // Fallback: fetch all permissions and group by module on client
       const { data } = await apiClient.get<Permission[]>('/permissions');

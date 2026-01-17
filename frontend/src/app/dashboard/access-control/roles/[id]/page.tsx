@@ -83,7 +83,7 @@ export default function EditRolePage() {
       queryClient.invalidateQueries({ queryKey: ['roles'] });
       queryClient.invalidateQueries({ queryKey: ['role', roleId] });
       toast.success('Role updated successfully');
-      router.push('/access-control/roles');
+      router.push('/dashboard/access-control/roles');
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to update role');
