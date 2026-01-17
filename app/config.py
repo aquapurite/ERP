@@ -47,8 +47,11 @@ class Settings(BaseSettings):
     # Redis Cache Settings
     REDIS_URL: Optional[str] = None  # e.g., "redis://localhost:6379/0"
     CACHE_ENABLED: bool = True
-    SERVICEABILITY_CACHE_TTL: int = 3600  # 1 hour in seconds
-    PRODUCT_CACHE_TTL: int = 300  # 5 minutes in seconds
+    SERVICEABILITY_CACHE_TTL: int = 3600  # 1 hour for pincode serviceability
+    PRODUCT_CACHE_TTL: int = 300  # 5 minutes for product data
+    STOCK_CACHE_TTL: int = 30  # 30 seconds for real-time stock (short for accuracy)
+    CATEGORY_CACHE_TTL: int = 1800  # 30 minutes for categories
+    COMPANY_CACHE_TTL: int = 3600  # 1 hour for company info
 
     # Razorpay Payment Gateway
     RAZORPAY_KEY_ID: str = ""  # Razorpay Key ID

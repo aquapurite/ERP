@@ -33,7 +33,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useCartStore, useCartSummary } from '@/lib/storefront/cart-store';
-import { ordersApi, inventoryApi, couponsApi, CouponValidationResponse, ActiveCoupon } from '@/lib/storefront/api';
+import { ordersApi, inventoryApi, couponsApi, companyApi, CouponValidationResponse, ActiveCoupon, CompanyInfo } from '@/lib/storefront/api';
 import { useAuthStore, useIsAuthenticated } from '@/lib/storefront/auth-store';
 import { formatCurrency } from '@/lib/utils';
 import { D2COrderRequest, ShippingAddress } from '@/types/storefront';
@@ -91,6 +91,9 @@ export default function CheckoutPage() {
   const [gstInvoice, setGstInvoice] = useState(false);
   const [gstin, setGstin] = useState('');
   const [businessName, setBusinessName] = useState('');
+
+  // Company info state
+  const [company, setCompany] = useState<CompanyInfo | null>(null);
 
   const [formData, setFormData] = useState<ShippingAddress>({
     full_name: '',
@@ -157,6 +160,19 @@ export default function CheckoutPage() {
       }
     };
     fetchCoupons();
+  }, []);
+
+  // Fetch company info on mount
+  useEffect(() => {
+    const fetchCompany = async () => {
+      try {
+        const data = await companyApi.getInfo();
+        setCompany(data);
+      } catch (error) {
+        // Silently fail - will use fallback 'AQUAPURITE'
+      }
+    };
+    fetchCompany();
   }, []);
 
   // Track checkout initiation
@@ -329,7 +345,7 @@ export default function CheckoutPage() {
           key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_xxx',
           amount: finalTotal * 100, // Amount in paise
           currency: 'INR',
-          name: 'AQUAPURITE',
+          name: company?.trade_name || company?.name || 'AQUAPURITE',
           description: `Order #${order.order_number}`,
           order_id: order.id, // This should be razorpay_order_id from backend
           prefill: {

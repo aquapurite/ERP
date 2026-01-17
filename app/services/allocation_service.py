@@ -38,6 +38,7 @@ from app.models.transporter import Transporter, TransporterServiceability
 from app.models.warehouse import Warehouse
 from app.models.inventory import InventorySummary, StockItem, StockItemStatus
 from app.models.order import Order, OrderItem, OrderStatus
+from app.services.cache_service import get_cache
 from app.schemas.serviceability import (
     OrderAllocationRequest,
     AllocationDecision,
@@ -91,12 +92,25 @@ class AllocationService:
         order_items = request.items or []
         product_ids = [item.get("product_id") for item in order_items if item.get("product_id")]
 
+        # Build quantities dict: {product_id: quantity}
+        quantities: Dict[str, int] = {}
+        for item in order_items:
+            pid = item.get("product_id")
+            qty = item.get("quantity", 1)
+            if pid:
+                quantities[pid] = quantities.get(pid, 0) + qty
+
         if order:
-            # Get product IDs from order items
+            # Get product IDs and quantities from order items
             order_items_query = select(OrderItem).where(OrderItem.order_id == order_id)
             items_result = await self.db.execute(order_items_query)
             order_items_db = items_result.scalars().all()
             product_ids = [str(item.product_id) for item in order_items_db]
+            # Update quantities from database
+            quantities = {}
+            for item in order_items_db:
+                pid = str(item.product_id)
+                quantities[pid] = quantities.get(pid, 0) + item.quantity
 
         # 2. Get applicable allocation rules
         rules = await self._get_allocation_rules(channel_code, request.payment_mode, request.order_value)
@@ -132,7 +146,8 @@ class AllocationService:
                 serviceable_warehouses,
                 product_ids,
                 pincode,
-                request.payment_mode
+                request.payment_mode,
+                quantities
             )
 
             if selected_warehouse:
@@ -279,9 +294,20 @@ class AllocationService:
         serviceable_warehouses: List[WarehouseServiceability],
         product_ids: List[str],
         customer_pincode: str,
-        payment_mode: Optional[str] = None
+        payment_mode: Optional[str] = None,
+        quantities: Optional[Dict[str, int]] = None
     ) -> Tuple[Optional[WarehouseServiceability], Dict]:
-        """Apply allocation rule and return selected warehouse."""
+        """
+        Apply allocation rule and return selected warehouse.
+
+        Args:
+            rule: Allocation rule to apply
+            serviceable_warehouses: List of warehouses that service the pincode
+            product_ids: List of product IDs to check
+            customer_pincode: Customer's delivery pincode
+            payment_mode: PREPAID or COD
+            quantities: Dict of {product_id: quantity_needed}
+        """
         decision_factors = {
             "rule_name": rule.name,
             "allocation_type": rule.allocation_type if hasattr(rule.allocation_type, 'value') else str(rule.allocation_type),
@@ -303,8 +329,8 @@ class AllocationService:
         if rule.allocation_type == AllocationType.FIXED and rule.fixed_warehouse_id:
             for ws in candidates:
                 if ws.warehouse_id == rule.fixed_warehouse_id:
-                    # Check stock
-                    has_stock = await self._check_stock(ws.warehouse_id, product_ids)
+                    # Check stock with quantities
+                    has_stock = await self._check_stock(ws.warehouse_id, product_ids, quantities)
                     if has_stock:
                         decision_factors["selected_by"] = "FIXED_WAREHOUSE"
                         return ws, decision_factors
@@ -324,7 +350,7 @@ class AllocationService:
                     # Use priority (lower = better, so invert for scoring)
                     score += (1000 - ws.priority)
                 elif factor == "INVENTORY":
-                    has_stock = await self._check_stock(ws.warehouse_id, product_ids)
+                    has_stock = await self._check_stock(ws.warehouse_id, product_ids, quantities)
                     if has_stock:
                         score += 500
                 elif factor == "COST":
@@ -343,7 +369,7 @@ class AllocationService:
 
         # Select best candidate with stock
         for ws, score in scored_candidates:
-            has_stock = await self._check_stock(ws.warehouse_id, product_ids)
+            has_stock = await self._check_stock(ws.warehouse_id, product_ids, quantities)
             if has_stock or not product_ids:  # If no products specified, any warehouse works
                 decision_factors["selected_by"] = priority_factors[0] if priority_factors else "PRIORITY"
                 decision_factors["score"] = score
@@ -355,9 +381,20 @@ class AllocationService:
     async def _check_stock(
         self,
         warehouse_id: uuid.UUID,
-        product_ids: List[str]
+        product_ids: List[str],
+        quantities: Optional[Dict[str, int]] = None
     ) -> bool:
-        """Check if warehouse has stock for all products."""
+        """
+        Check if warehouse has stock for all products.
+
+        Args:
+            warehouse_id: Warehouse to check
+            product_ids: List of product IDs to check
+            quantities: Optional dict of {product_id: quantity_needed}
+
+        Returns:
+            True if warehouse has sufficient stock for all products
+        """
         if not product_ids:
             return True
 
@@ -367,18 +404,226 @@ class AllocationService:
             except ValueError:
                 continue
 
+            # Get required quantity (default 1 if not specified)
+            required_qty = quantities.get(product_id, 1) if quantities else 1
+
             query = select(InventorySummary).where(
                 and_(
                     InventorySummary.warehouse_id == warehouse_id,
-                    InventorySummary.product_id == pid,
-                    InventorySummary.available_quantity > 0
+                    InventorySummary.product_id == pid
                 )
             )
             result = await self.db.execute(query)
-            if not result.scalar_one_or_none():
+            inventory = result.scalar_one_or_none()
+
+            if not inventory:
+                return False
+
+            # Calculate actual available = DB available - DB reserved - soft reserved
+            db_available = inventory.available_quantity or 0
+            db_reserved = inventory.reserved_quantity or 0
+            soft_reserved = await self._get_soft_reserved(product_id)
+
+            actual_available = db_available - db_reserved - soft_reserved
+
+            if actual_available < required_qty:
                 return False
 
         return True
+
+    async def _get_soft_reserved(self, product_id: str) -> int:
+        """Get total soft-reserved quantity from cache (checkout reservations)."""
+        try:
+            cache = get_cache()
+            key = f"stock:reserved:{product_id}"
+            value = await cache.get(key)
+            return int(value) if value else 0
+        except Exception:
+            return 0
+
+    async def check_inventory_availability(
+        self,
+        warehouse_id: uuid.UUID,
+        items: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Detailed inventory check with availability breakdown.
+
+        Args:
+            warehouse_id: Warehouse to check
+            items: List of {product_id, quantity} dicts
+
+        Returns:
+            Detailed availability info including:
+            - is_available: bool
+            - items: List of item-level availability
+            - total_available: int
+            - total_requested: int
+        """
+        result = {
+            "is_available": True,
+            "warehouse_id": str(warehouse_id),
+            "items": [],
+            "total_available": 0,
+            "total_requested": 0
+        }
+
+        for item in items:
+            product_id = item.get("product_id")
+            requested_qty = item.get("quantity", 1)
+            result["total_requested"] += requested_qty
+
+            try:
+                pid = uuid.UUID(str(product_id))
+            except ValueError:
+                result["items"].append({
+                    "product_id": product_id,
+                    "requested": requested_qty,
+                    "available": 0,
+                    "is_available": False,
+                    "reason": "Invalid product ID"
+                })
+                result["is_available"] = False
+                continue
+
+            # Get inventory from database
+            query = select(InventorySummary).where(
+                and_(
+                    InventorySummary.warehouse_id == warehouse_id,
+                    InventorySummary.product_id == pid
+                )
+            )
+            db_result = await self.db.execute(query)
+            inventory = db_result.scalar_one_or_none()
+
+            if not inventory:
+                result["items"].append({
+                    "product_id": product_id,
+                    "requested": requested_qty,
+                    "available": 0,
+                    "db_available": 0,
+                    "db_reserved": 0,
+                    "soft_reserved": 0,
+                    "is_available": False,
+                    "reason": "Product not in warehouse inventory"
+                })
+                result["is_available"] = False
+                continue
+
+            # Calculate availability
+            db_available = inventory.available_quantity or 0
+            db_reserved = inventory.reserved_quantity or 0
+            soft_reserved = await self._get_soft_reserved(product_id)
+
+            actual_available = max(0, db_available - db_reserved - soft_reserved)
+            is_item_available = actual_available >= requested_qty
+
+            result["items"].append({
+                "product_id": product_id,
+                "requested": requested_qty,
+                "available": actual_available,
+                "db_available": db_available,
+                "db_reserved": db_reserved,
+                "soft_reserved": soft_reserved,
+                "is_available": is_item_available,
+                "reason": None if is_item_available else f"Only {actual_available} available, {requested_qty} requested"
+            })
+
+            result["total_available"] += actual_available
+
+            if not is_item_available:
+                result["is_available"] = False
+
+        return result
+
+    async def find_best_warehouse_for_items(
+        self,
+        pincode: str,
+        items: List[Dict[str, Any]],
+        payment_mode: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Find the best warehouse that can fulfill all items.
+
+        Args:
+            pincode: Customer pincode
+            items: List of {product_id, quantity} dicts
+            payment_mode: PREPAID or COD
+
+        Returns:
+            Best warehouse with availability details, or None if not found
+        """
+        # Get serviceable warehouses
+        serviceable = await self._get_serviceable_warehouses(pincode)
+
+        if not serviceable:
+            return {
+                "found": False,
+                "reason": "No warehouse services this pincode",
+                "warehouses_checked": 0
+            }
+
+        # Filter by payment mode
+        candidates = serviceable
+        if payment_mode == "COD":
+            candidates = [ws for ws in candidates if ws.cod_available]
+        elif payment_mode == "PREPAID":
+            candidates = [ws for ws in candidates if ws.prepaid_available]
+
+        if not candidates:
+            return {
+                "found": False,
+                "reason": f"No warehouse supports {payment_mode} payment mode",
+                "warehouses_checked": len(serviceable)
+            }
+
+        # Check each warehouse for availability
+        best_warehouse = None
+        best_score = -1
+        warehouse_results = []
+
+        for ws in candidates:
+            availability = await self.check_inventory_availability(
+                warehouse_id=ws.warehouse_id,
+                items=items
+            )
+
+            warehouse_result = {
+                "warehouse_id": str(ws.warehouse_id),
+                "warehouse_code": ws.warehouse.code,
+                "warehouse_name": ws.warehouse.name,
+                "is_available": availability["is_available"],
+                "priority": ws.priority,
+                "estimated_days": ws.estimated_days,
+                "shipping_cost": ws.shipping_cost,
+                "items": availability["items"]
+            }
+            warehouse_results.append(warehouse_result)
+
+            if availability["is_available"]:
+                # Score: lower priority is better, more available stock is better
+                score = (1000 - ws.priority) + availability["total_available"]
+                if score > best_score:
+                    best_score = score
+                    best_warehouse = {
+                        **warehouse_result,
+                        "serviceability": ws
+                    }
+
+        if best_warehouse:
+            return {
+                "found": True,
+                "warehouse": best_warehouse,
+                "warehouses_checked": len(candidates),
+                "all_results": warehouse_results
+            }
+        else:
+            return {
+                "found": False,
+                "reason": "No warehouse has sufficient inventory for all items",
+                "warehouses_checked": len(candidates),
+                "all_results": warehouse_results
+            }
 
     async def _select_transporter(
         self,

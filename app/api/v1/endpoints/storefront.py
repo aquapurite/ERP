@@ -1,13 +1,16 @@
 """Public Storefront API endpoints.
 
 These endpoints are accessible without authentication for the D2C website.
+Includes Redis caching for improved performance.
 """
+import time
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB
+from app.config import settings
 from app.models.company import Company
 from app.models.product import Product, ProductImage
 from app.models.category import Category
@@ -24,6 +27,7 @@ from app.schemas.storefront import (
     SearchBrandSuggestion,
     SearchSuggestionsResponse,
 )
+from app.services.cache_service import get_cache
 
 router = APIRouter()
 
@@ -33,6 +37,7 @@ router = APIRouter()
 @router.get("/products", response_model=PaginatedProductsResponse)
 async def list_products(
     db: DB,
+    response: Response,
     category_id: Optional[str] = None,
     brand_id: Optional[str] = None,
     min_price: Optional[float] = None,
@@ -48,8 +53,33 @@ async def list_products(
 ):
     """
     List products for the public storefront.
-    No authentication required.
+    No authentication required. Results are cached for 5 minutes.
     """
+    start_time = time.time()
+    cache = get_cache()
+
+    # Build cache key from query params
+    cache_params = {
+        "category_id": category_id,
+        "brand_id": brand_id,
+        "min_price": min_price,
+        "max_price": max_price,
+        "is_featured": is_featured,
+        "is_bestseller": is_bestseller,
+        "is_new_arrival": is_new_arrival,
+        "search": search,
+        "sort_by": sort_by,
+        "sort_order": sort_order,
+        "page": page,
+        "size": size,
+    }
+
+    # Try to get from cache
+    cached_result = await cache.get_product_list(cache_params)
+    if cached_result:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+        return PaginatedProductsResponse(**cached_result)
     query = (
         select(Product)
         .options(selectinload(Product.images))
@@ -135,7 +165,7 @@ async def list_products(
 
     pages = (total + size - 1) // size
 
-    return PaginatedProductsResponse(
+    result_data = PaginatedProductsResponse(
         items=items,
         total=total,
         page=page,
@@ -143,13 +173,31 @@ async def list_products(
         pages=pages,
     )
 
+    # Cache the result
+    await cache.set_product_list(cache_params, result_data.model_dump())
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result_data
+
 
 @router.get("/products/{slug}", response_model=StorefrontProductResponse)
-async def get_product_by_slug(slug: str, db: DB):
+async def get_product_by_slug(slug: str, db: DB, response: Response):
     """
     Get a single product by slug for the public storefront.
-    No authentication required.
+    No authentication required. Cached for 5 minutes.
     """
+    start_time = time.time()
+    cache = get_cache()
+
+    # Try to get from cache using slug as key
+    cache_key = f"product:slug:{slug}"
+    cached_product = await cache.get(cache_key)
+    if cached_product:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+        return StorefrontProductResponse(**cached_product)
+
     query = (
         select(Product)
         .options(selectinload(Product.images))
@@ -172,7 +220,7 @@ async def get_product_by_slug(slug: str, db: DB):
         for img in (product.images or [])
     ]
 
-    return StorefrontProductResponse(
+    result_data = StorefrontProductResponse(
         id=str(product.id),
         name=product.name,
         slug=product.slug,
@@ -192,15 +240,33 @@ async def get_product_by_slug(slug: str, db: DB):
         images=images,
     )
 
+    # Cache the result
+    await cache.set(cache_key, result_data.model_dump(), ttl=settings.PRODUCT_CACHE_TTL)
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result_data
+
 
 # ==================== Categories Endpoint ====================
 
 @router.get("/categories", response_model=List[StorefrontCategoryResponse])
-async def list_categories(db: DB):
+async def list_categories(db: DB, response: Response):
     """
     List all active categories for the public storefront.
-    No authentication required.
+    No authentication required. Cached for 30 minutes.
     """
+    start_time = time.time()
+    cache = get_cache()
+
+    # Try to get from cache
+    cache_key = "categories:all"
+    cached_categories = await cache.get(cache_key)
+    if cached_categories:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+        return [StorefrontCategoryResponse(**c) for c in cached_categories]
+
     query = (
         select(Category)
         .where(Category.is_active == True)
@@ -209,7 +275,7 @@ async def list_categories(db: DB):
     result = await db.execute(query)
     categories = result.scalars().all()
 
-    return [
+    result_data = [
         StorefrontCategoryResponse(
             id=str(c.id),
             name=c.name,
@@ -221,15 +287,33 @@ async def list_categories(db: DB):
         for c in categories
     ]
 
+    # Cache the result
+    await cache.set(cache_key, [r.model_dump() for r in result_data], ttl=settings.CATEGORY_CACHE_TTL)
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result_data
+
 
 # ==================== Brands Endpoint ====================
 
 @router.get("/brands", response_model=List[StorefrontBrandResponse])
-async def list_brands(db: DB):
+async def list_brands(db: DB, response: Response):
     """
     List all active brands for the public storefront.
-    No authentication required.
+    No authentication required. Cached for 30 minutes.
     """
+    start_time = time.time()
+    cache = get_cache()
+
+    # Try to get from cache
+    cache_key = "brands:all"
+    cached_brands = await cache.get(cache_key)
+    if cached_brands:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+        return [StorefrontBrandResponse(**b) for b in cached_brands]
+
     query = (
         select(Brand)
         .where(Brand.is_active == True)
@@ -238,7 +322,7 @@ async def list_brands(db: DB):
     result = await db.execute(query)
     brands = result.scalars().all()
 
-    return [
+    result_data = [
         StorefrontBrandResponse(
             id=str(b.id),
             name=b.name,
@@ -249,13 +333,31 @@ async def list_brands(db: DB):
         for b in brands
     ]
 
+    # Cache the result
+    await cache.set(cache_key, [r.model_dump() for r in result_data], ttl=settings.CATEGORY_CACHE_TTL)
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result_data
+
 
 @router.get("/company", response_model=StorefrontCompanyInfo)
-async def get_storefront_company(db: DB):
+async def get_storefront_company(db: DB, response: Response):
     """
     Get public company info for the storefront.
-    No authentication required.
+    No authentication required. Cached for 1 hour.
     """
+    start_time = time.time()
+    cache = get_cache()
+
+    # Try to get from cache
+    cache_key = "company:info"
+    cached_company = await cache.get(cache_key)
+    if cached_company:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+        return StorefrontCompanyInfo(**cached_company)
+
     # Get primary company or first active company
     query = (
         select(Company)
@@ -276,7 +378,7 @@ async def get_storefront_company(db: DB):
 
     if not company:
         # Return default company info if none configured
-        return StorefrontCompanyInfo(
+        result_data = StorefrontCompanyInfo(
             name="AQUAPURITE",
             trade_name="AQUAPURITE",
             logo_url=None,
@@ -288,21 +390,28 @@ async def get_storefront_company(db: DB):
             state="Uttar Pradesh",
             pincode="201301"
         )
+    else:
+        result_data = StorefrontCompanyInfo(
+            name=company.legal_name,
+            trade_name=company.trade_name or company.legal_name,
+            logo_url=company.logo_url,
+            logo_small_url=company.logo_small_url,
+            favicon_url=company.favicon_url,
+            email=company.email,
+            phone=company.phone,
+            website=company.website,
+            address=company.address_line1 + (f", {company.address_line2}" if company.address_line2 else ""),
+            city=company.city,
+            state=company.state,
+            pincode=company.pincode
+        )
 
-    return StorefrontCompanyInfo(
-        name=company.legal_name,
-        trade_name=company.trade_name or company.legal_name,
-        logo_url=company.logo_url,
-        logo_small_url=company.logo_small_url,
-        favicon_url=company.favicon_url,
-        email=company.email,
-        phone=company.phone,
-        website=company.website,
-        address=company.address_line1 + (f", {company.address_line2}" if company.address_line2 else ""),
-        city=company.city,
-        state=company.state,
-        pincode=company.pincode
-    )
+    # Cache the result
+    await cache.set(cache_key, result_data.model_dump(), ttl=settings.COMPANY_CACHE_TTL)
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result_data
 
 
 # ==================== Search Suggestions Endpoint ====================

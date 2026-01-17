@@ -163,6 +163,250 @@ async def verify_stock_bulk(
     )
 
 
+# ==================== STOCK RESERVATION (Checkout) ====================
+
+from app.services.stock_reservation_service import (
+    StockReservationService,
+    ReservationItem,
+)
+from pydantic import BaseModel
+
+
+class StockReservationRequest(BaseModel):
+    """Request to create a stock reservation for checkout."""
+    items: List[StockVerificationRequest]
+    customer_id: Optional[str] = None
+    session_id: Optional[str] = None
+
+
+class StockReservationResponse(BaseModel):
+    """Response from stock reservation."""
+    success: bool
+    reservation_id: Optional[str] = None
+    message: str
+    reserved_items: List[dict] = []
+    failed_items: List[dict] = []
+    expires_in_seconds: int = 600
+
+
+@router.post(
+    "/reserve-stock",
+    response_model=StockReservationResponse,
+    summary="Reserve stock for checkout",
+    description="Create a temporary stock reservation when customer proceeds to checkout. Reservations auto-expire after 10 minutes."
+)
+async def reserve_stock_for_checkout(
+    data: StockReservationRequest,
+    db: DB,
+):
+    """
+    Reserve stock for checkout process.
+
+    Call this endpoint when customer clicks "Proceed to Checkout".
+    The reservation prevents overselling by temporarily holding stock.
+
+    - Reservation expires after 10 minutes if not confirmed
+    - Call /confirm-reservation after successful payment
+    - Call /release-reservation if payment fails
+
+    No authentication required (uses session_id for guests).
+    """
+    service = StockReservationService(db)
+
+    reservation_items = [
+        ReservationItem(
+            product_id=item.product_id,
+            quantity=item.quantity,
+            warehouse_id=item.warehouse_id,
+        )
+        for item in data.items
+    ]
+
+    result = await service.create_reservation(
+        items=reservation_items,
+        customer_id=data.customer_id,
+        session_id=data.session_id,
+    )
+
+    return StockReservationResponse(
+        success=result.success,
+        reservation_id=result.reservation_id,
+        message=result.message,
+        reserved_items=result.reserved_items,
+        failed_items=result.failed_items,
+        expires_in_seconds=600,
+    )
+
+
+class ConfirmReservationRequest(BaseModel):
+    """Request to confirm a reservation after payment."""
+    reservation_id: str
+    order_id: str
+
+
+@router.post(
+    "/confirm-reservation",
+    summary="Confirm stock reservation after payment",
+    description="Convert temporary reservation to permanent allocation after successful payment."
+)
+async def confirm_stock_reservation(
+    data: ConfirmReservationRequest,
+    db: DB,
+):
+    """
+    Confirm a stock reservation after successful payment.
+
+    This converts the soft reservation to a hard allocation in the database.
+    Call this after Razorpay payment success webhook.
+    """
+    service = StockReservationService(db)
+    success = await service.confirm_reservation(
+        reservation_id=data.reservation_id,
+        order_id=data.order_id,
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Reservation not found or already processed"
+        )
+
+    return {"success": True, "message": "Reservation confirmed and stock allocated"}
+
+
+class ReleaseReservationRequest(BaseModel):
+    """Request to release a reservation."""
+    reservation_id: str
+
+
+@router.post(
+    "/release-reservation",
+    summary="Release stock reservation",
+    description="Release a stock reservation when payment fails or is cancelled."
+)
+async def release_stock_reservation(
+    data: ReleaseReservationRequest,
+    db: DB,
+):
+    """
+    Release a stock reservation.
+
+    Call this when:
+    - Payment fails
+    - Customer cancels checkout
+    - Payment times out
+
+    This frees up the reserved stock for other customers.
+    """
+    service = StockReservationService(db)
+    success = await service.release_reservation(data.reservation_id)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Reservation not found or already released"
+        )
+
+    return {"success": True, "message": "Reservation released"}
+
+
+@router.get(
+    "/reservation/{reservation_id}",
+    summary="Get reservation details",
+    description="Check the status of a stock reservation."
+)
+async def get_reservation_status(
+    reservation_id: str,
+    db: DB,
+):
+    """Get the current status of a stock reservation."""
+    service = StockReservationService(db)
+    reservation = await service.get_reservation(reservation_id)
+
+    if not reservation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Reservation not found or expired"
+        )
+
+    return reservation
+
+
+# ==================== WAREHOUSE AVAILABILITY CHECK ====================
+
+class WarehouseAvailabilityItem(BaseModel):
+    """Item to check availability for."""
+    product_id: str
+    quantity: int = 1
+
+
+class WarehouseAvailabilityRequest(BaseModel):
+    """Request to check warehouse availability."""
+    pincode: str
+    items: List[WarehouseAvailabilityItem]
+    payment_mode: Optional[str] = None  # PREPAID or COD
+
+
+@router.post(
+    "/check-warehouse-availability",
+    summary="Check inventory availability across warehouses",
+    description="Find the best warehouse that can fulfill all items for a given pincode."
+)
+async def check_warehouse_availability(
+    data: WarehouseAvailabilityRequest,
+    db: DB,
+):
+    """
+    Check which warehouse can fulfill the order items.
+
+    This endpoint:
+    1. Finds warehouses that service the given pincode
+    2. Checks inventory availability for each item (including soft reservations)
+    3. Returns the best warehouse that can fulfill all items
+
+    Use this before checkout to verify delivery is possible.
+    """
+    from app.services.allocation_service import AllocationService
+
+    service = AllocationService(db)
+
+    # Convert to items format expected by the service
+    items = [
+        {"product_id": item.product_id, "quantity": item.quantity}
+        for item in data.items
+    ]
+
+    result = await service.find_best_warehouse_for_items(
+        pincode=data.pincode,
+        items=items,
+        payment_mode=data.payment_mode
+    )
+
+    if result["found"]:
+        warehouse = result["warehouse"]
+        return {
+            "available": True,
+            "warehouse": {
+                "id": warehouse["warehouse_id"],
+                "code": warehouse["warehouse_code"],
+                "name": warehouse["warehouse_name"],
+                "estimated_days": warehouse["estimated_days"],
+                "shipping_cost": warehouse["shipping_cost"]
+            },
+            "items": warehouse["items"],
+            "warehouses_checked": result["warehouses_checked"],
+            "message": f"All items available from {warehouse['warehouse_name']}"
+        }
+    else:
+        return {
+            "available": False,
+            "reason": result["reason"],
+            "warehouses_checked": result["warehouses_checked"],
+            "all_results": result.get("all_results", []),
+            "message": result["reason"]
+        }
+
+
 # ==================== STOCK ITEMS ====================
 
 @router.get(

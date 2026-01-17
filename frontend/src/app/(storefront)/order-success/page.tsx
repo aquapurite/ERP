@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -14,10 +14,24 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { companyApi, CompanyInfo } from '@/lib/storefront/api';
 
 function OrderSuccessContent() {
   const searchParams = useSearchParams();
   const orderNumber = searchParams.get('order') || 'ORD-XXXXXX';
+  const [company, setCompany] = useState<CompanyInfo | null>(null);
+
+  useEffect(() => {
+    const fetchCompany = async () => {
+      try {
+        const data = await companyApi.getInfo();
+        setCompany(data);
+      } catch (error) {
+        // Silently fail - will use fallbacks
+      }
+    };
+    fetchCompany();
+  }, []);
 
   return (
     <div className="min-h-screen bg-muted/50 py-12">
@@ -31,7 +45,7 @@ function OrderSuccessContent() {
             Order Placed Successfully!
           </h1>
           <p className="text-muted-foreground">
-            Thank you for shopping with AQUAPURITE
+            Thank you for shopping with {company?.trade_name || company?.name || 'us'}
           </p>
         </div>
 
@@ -125,7 +139,7 @@ function OrderSuccessContent() {
             <h3 className="font-semibold mb-4">Need Help?</h3>
             <div className="grid md:grid-cols-2 gap-4">
               <a
-                href="tel:18001234567"
+                href={`tel:${company?.phone?.replace(/[^0-9]/g, '') || '18001234567'}`}
                 className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
               >
                 <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
@@ -133,11 +147,11 @@ function OrderSuccessContent() {
                 </div>
                 <div>
                   <p className="font-medium">Call Us</p>
-                  <p className="text-sm text-muted-foreground">1800-123-4567</p>
+                  <p className="text-sm text-muted-foreground">{company?.phone || '1800-123-4567'}</p>
                 </div>
               </a>
               <a
-                href="mailto:support@aquapurite.com"
+                href={`mailto:${company?.email || 'support@aquapurite.com'}`}
                 className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
               >
                 <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
@@ -146,7 +160,7 @@ function OrderSuccessContent() {
                 <div>
                   <p className="font-medium">Email Us</p>
                   <p className="text-sm text-muted-foreground">
-                    support@aquapurite.com
+                    {company?.email || 'support@aquapurite.com'}
                   </p>
                 </div>
               </a>
