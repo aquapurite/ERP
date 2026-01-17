@@ -1926,7 +1926,7 @@ async def send_po_to_vendor(
     # Check if serials already exist for this PO - use raw SQL for VARCHAR/UUID mismatch
     existing_serials = await db.execute(
         text("SELECT COUNT(*) FROM po_serials WHERE po_id = :po_id"),
-        {"po_id": po.id}
+        {"po_id": str(po.id)}
     )
     existing_count = existing_serials.scalar() or 0
 
@@ -3136,7 +3136,7 @@ async def fix_and_test_po(
     # Step 2: Delete existing serials
     delete_result = await db.execute(
         text("DELETE FROM po_serials WHERE po_id = :po_id"),
-        {"po_id": po.id}
+        {"po_id": str(po.id)}
     )
     steps.append({"step": 2, "action": "Deleted existing serials", "result": "Done"})
 
@@ -3232,7 +3232,7 @@ async def fix_and_test_po(
     # Step 7: Verify serials in database
     verify_result = await db.execute(
         text("SELECT COUNT(*) FROM po_serials WHERE po_id = :po_id"),
-        {"po_id": po.id}
+        {"po_id": str(po.id)}
     )
     final_count = verify_result.scalar() or 0
     steps.append({"step": 7, "action": "Verified serials in DB", "result": f"{final_count} serials"})
@@ -3240,7 +3240,7 @@ async def fix_and_test_po(
     # Step 8: Get sample barcodes
     sample_result = await db.execute(
         text("SELECT barcode, model_code FROM po_serials WHERE po_id = :po_id LIMIT 5"),
-        {"po_id": po.id}
+        {"po_id": str(po.id)}
     )
     samples = [{"barcode": r[0], "model_code": r[1]} for r in sample_result.all()]
     steps.append({"step": 8, "action": "Sample barcodes", "result": samples})
@@ -3285,14 +3285,14 @@ async def verify_serials(po_id: UUID, db: DB):
     # Count serials
     count_result = await db.execute(
         text("SELECT COUNT(*) FROM po_serials WHERE po_id = :po_id"),
-        {"po_id": po.id}
+        {"po_id": str(po.id)}
     )
     count = count_result.scalar() or 0
 
     # Get sample barcodes
     samples_result = await db.execute(
         text("SELECT barcode, model_code, supplier_code FROM po_serials WHERE po_id = :po_id ORDER BY serial_number LIMIT 10"),
-        {"po_id": po.id}
+        {"po_id": str(po.id)}
     )
     samples = [{"barcode": r[0], "model_code": r[1], "supplier_code": r[2]} for r in samples_result.all()]
 
@@ -3327,7 +3327,7 @@ async def reset_po_to_draft(
     # Delete any existing serials for this PO
     await db.execute(
         text("DELETE FROM po_serials WHERE po_id = :po_id"),
-        {"po_id": po.id}
+        {"po_id": str(po.id)}
     )
 
     # Reset PO to DRAFT
@@ -3374,10 +3374,10 @@ async def manually_generate_serials(
     if po.status != POStatus.APPROVED:
         raise HTTPException(status_code=400, detail=f"PO must be APPROVED to generate serials. Current status: {po.status}")
 
-    # Check if serials already exist
+    # Check if serials already exist (po_serials.po_id is VARCHAR)
     existing_result = await db.execute(
         text("SELECT COUNT(*) FROM po_serials WHERE po_id = :po_id"),
-        {"po_id": po.id}
+        {"po_id": str(po.id)}
     )
     existing_count = existing_result.scalar() or 0
 
@@ -3495,7 +3495,7 @@ async def diagnose_po_serials(
     # Check serials
     serials_result = await db.execute(
         text("SELECT COUNT(*) as count FROM po_serials WHERE po_id = :po_id"),
-        {"po_id": po.id}
+        {"po_id": str(po.id)}
     )
     serial_count = serials_result.scalar() or 0
 
@@ -3504,7 +3504,7 @@ async def diagnose_po_serials(
     if serial_count > 0:
         sample_result = await db.execute(
             text("SELECT barcode, model_code, item_type FROM po_serials WHERE po_id = :po_id LIMIT 5"),
-            {"po_id": po.id}
+            {"po_id": str(po.id)}
         )
         sample_serials = [{"barcode": r[0], "model_code": r[1], "item_type": r[2]} for r in sample_result.all()]
 
@@ -3604,7 +3604,7 @@ async def download_purchase_order(
                 GROUP BY model_code, item_type, product_sku
                 ORDER BY model_code
             """),
-            {"po_id": po.id}
+            {"po_id": str(po.id)}
         )
         serial_groups = serials_result.all()
         total_serials = sum(sg.quantity for sg in serial_groups) if serial_groups else 0
