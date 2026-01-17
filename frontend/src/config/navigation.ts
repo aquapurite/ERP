@@ -10,7 +10,6 @@ import {
   FileText,
   Wrench,
   Store,
-  MapPin,
   UserCircle,
   Megaphone,
   Barcode,
@@ -46,6 +45,29 @@ import {
   Boxes,
   GitBranch,
   Cog,
+  PackageSearch,
+  Handshake,
+  Phone,
+  UserPlus,
+  FileInput,
+  FileOutput,
+  Clipboard,
+  MapPin,
+  Route,
+  BadgePercent,
+  Banknote,
+  Building,
+  Landmark,
+  ScrollText,
+  IndianRupee,
+  CalendarCheck,
+  HeartHandshake,
+  ShieldCheck,
+  HardHat,
+  Headphones,
+  UsersRound,
+  GraduationCap,
+  Award,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -58,190 +80,244 @@ export interface NavItem {
 }
 
 /**
- * CONSOLIDATED NAVIGATION - Industry Standard (SAP/Oracle/NetSuite Pattern)
+ * AQUAPURITE ERP - NAVIGATION STRUCTURE
  *
- * Structure: 8 Main Modules instead of 23+ scattered sections
- * 1. Dashboard & Intelligence - Overview, KPIs, AI Insights
- * 2. Sales & Distribution - Orders, Channels, CRM, Marketing, Dealers
- * 3. Supply Chain - Inventory, Warehouses, WMS, Procurement, Logistics, S&OP
- * 4. Finance & Accounting - GL, AP/AR, Reports, Billing, Compliance
- * 5. Service Management - Service, Installations, AMC, Technicians
- * 6. Human Resources - Employees, Payroll, Attendance
- * 7. Product Management - Catalog, Serialization
- * 8. Administration - Users, Roles, Settings, Audit
+ * Based on Industry Best Practices (SAP, Oracle NetSuite, Zoho, Microsoft Dynamics)
+ *
+ * Structure:
+ * 1. Dashboard - Overview & KPIs
+ * 2. Sales & CRM - Customer-facing operations
+ * 3. Procurement - Vendor-facing operations (P2P)
+ * 4. Inventory - Stock management
+ * 5. Warehouse (WMS) - Physical warehouse operations
+ * 6. Logistics - Shipping & fulfillment
+ * 7. Planning (S&OP) - Demand forecasting & supply planning
+ * 8. Finance - Accounting, billing, tax compliance
+ * 9. Service - After-sales support
+ * 10. Human Resources - Employee management
+ * 11. Master Data - Products & configuration
+ * 12. Intelligence - AI & analytics
+ * 13. Administration - System settings
  */
 
 export const navigation: NavItem[] = [
-  // ==================== 1. DASHBOARD & INTELLIGENCE ====================
+  // ==================== 1. DASHBOARD ====================
   {
     title: 'Dashboard',
     href: '/dashboard',
     icon: LayoutDashboard,
     permissions: [],
   },
-  {
-    title: 'Intelligence',
-    icon: Brain,
-    permissions: [],
-    badge: 'AI',
-    children: [
-      { title: 'AI Hub', href: '/dashboard/ai', icon: Lightbulb, permissions: [], badge: 'NEW' },
-      { title: 'Insights Overview', href: '/dashboard/insights', icon: TrendingUp, permissions: [] },
-      { title: 'Reorder Suggestions', href: '/dashboard/insights/reorder', permissions: [] },
-      { title: 'Churn Risk Analysis', href: '/dashboard/insights/churn-risk', permissions: [] },
-      { title: 'Slow Moving Stock', href: '/dashboard/insights/slow-moving', permissions: [] },
-    ],
-  },
 
-  // ==================== 2. SALES & DISTRIBUTION ====================
+  // ==================== 2. SALES & CRM ====================
   {
-    title: 'Sales & Distribution',
+    title: 'Sales & CRM',
     icon: ShoppingCart,
-    permissions: ['ORDERS_VIEW', 'CHANNELS_VIEW', 'CUSTOMERS_VIEW', 'DEALERS_VIEW'],
+    permissions: ['ORDERS_VIEW', 'CUSTOMERS_VIEW', 'LEADS_VIEW', 'CHANNELS_VIEW', 'DEALERS_VIEW'],
     children: [
       // Orders
       { title: 'All Orders', href: '/dashboard/orders', icon: ShoppingCart, permissions: ['ORDERS_VIEW'] },
-      { title: 'Picklists', href: '/dashboard/orders/picklists', icon: ClipboardList, permissions: ['ORDERS_VIEW'] },
-      { title: 'Order Allocation', href: '/dashboard/orders/allocation', permissions: ['ORDERS_VIEW'] },
+      { title: 'New Order', href: '/dashboard/orders/new', icon: FileInput, permissions: ['ORDERS_CREATE'] },
+      // Customers
+      { title: 'Customers', href: '/dashboard/crm/customers', icon: UserCircle, permissions: ['CUSTOMERS_VIEW'] },
+      { title: 'Customer 360', href: '/dashboard/crm/customer-360', icon: Target, permissions: ['CUSTOMERS_VIEW'] },
+      // Leads & Pipeline
+      { title: 'Leads', href: '/dashboard/crm/leads', icon: UserPlus, permissions: ['LEADS_VIEW'] },
       // Channels
       { title: 'Sales Channels', href: '/dashboard/channels', icon: Network, permissions: ['CHANNELS_VIEW'] },
-      { title: 'Marketplaces', href: '/dashboard/channels/marketplaces', icon: Store, permissions: ['CHANNELS_VIEW'], badge: 'NEW' },
+      { title: 'Marketplaces', href: '/dashboard/channels/marketplaces', icon: Store, permissions: ['CHANNELS_VIEW'] },
       { title: 'Channel Pricing', href: '/dashboard/channels/pricing', permissions: ['CHANNELS_VIEW'] },
-      // CRM
-      { title: 'Customers', href: '/dashboard/crm/customers', icon: UserCircle, permissions: ['CUSTOMERS_VIEW'] },
-      { title: 'Customer 360', href: '/dashboard/crm/customer-360', permissions: ['CUSTOMERS_VIEW'] },
-      { title: 'Leads', href: '/dashboard/crm/leads', permissions: ['LEADS_VIEW'] },
-      { title: 'Call Center', href: '/dashboard/crm/call-center', permissions: ['CUSTOMERS_VIEW'] },
-      // Distribution
-      { title: 'Dealers', href: '/dashboard/distribution/dealers', icon: Store, permissions: ['DEALERS_VIEW'] },
-      { title: 'Franchisees', href: '/dashboard/distribution/franchisees', permissions: ['DEALERS_VIEW'] },
+      // Distribution Network
+      { title: 'Dealers', href: '/dashboard/distribution/dealers', icon: Handshake, permissions: ['DEALERS_VIEW'] },
+      { title: 'Franchisees', href: '/dashboard/distribution/franchisees', icon: Building2, permissions: ['DEALERS_VIEW'] },
       { title: 'Pricing Tiers', href: '/dashboard/distribution/pricing-tiers', permissions: ['DEALERS_VIEW'] },
-      // Marketing
-      { title: 'Campaigns', href: '/dashboard/marketing/campaigns', icon: Megaphone, permissions: ['CAMPAIGNS_VIEW'] },
-      { title: 'Promotions', href: '/dashboard/marketing/promotions', permissions: ['CAMPAIGNS_VIEW'] },
+      // Promotions
+      { title: 'Promotions', href: '/dashboard/marketing/promotions', icon: BadgePercent, permissions: ['CAMPAIGNS_VIEW'] },
+      { title: 'Commissions', href: '/dashboard/marketing/commissions', icon: Banknote, permissions: ['CAMPAIGNS_VIEW'] },
+      // Support
+      { title: 'Call Center', href: '/dashboard/crm/call-center', icon: Phone, permissions: ['CUSTOMERS_VIEW'] },
     ],
   },
 
-  // ==================== 3. SUPPLY CHAIN ====================
+  // ==================== 3. PROCUREMENT (P2P) ====================
   {
-    title: 'Supply Chain',
-    icon: Boxes,
-    permissions: ['INVENTORY_VIEW', 'PURCHASE_VIEW', 'SHIPMENTS_VIEW', 'SNOP_VIEW'],
+    title: 'Procurement',
+    icon: FileInput,
+    permissions: ['VENDORS_VIEW', 'PURCHASE_VIEW', 'GRN_VIEW'],
     children: [
-      // S&OP / Planning (NEW - was missing!)
-      { title: 'S&OP Dashboard', href: '/dashboard/snop', icon: Target, permissions: ['SNOP_VIEW'], badge: 'NEW' },
-      { title: 'Demand Forecasting', href: '/dashboard/snop/forecasts', icon: LineChart, permissions: ['SNOP_VIEW'], badge: 'NEW' },
-      { title: 'Supply Planning', href: '/dashboard/snop/supply-plans', icon: GitBranch, permissions: ['SNOP_VIEW'] },
-      { title: 'Scenario Analysis', href: '/dashboard/snop/scenarios', permissions: ['SNOP_VIEW'] },
-      { title: 'Inventory Optimization', href: '/dashboard/snop/inventory-optimization', permissions: ['SNOP_VIEW'] },
-      // Inventory
-      { title: 'Stock Summary', href: '/dashboard/inventory', icon: Warehouse, permissions: ['INVENTORY_VIEW'] },
-      { title: 'Stock Items', href: '/dashboard/inventory/stock-items', permissions: ['INVENTORY_VIEW'] },
-      { title: 'Warehouses', href: '/dashboard/inventory/warehouses', permissions: ['WAREHOUSES_VIEW'] },
-      { title: 'Stock Transfers', href: '/dashboard/inventory/transfers', permissions: ['TRANSFERS_VIEW'] },
-      { title: 'Adjustments', href: '/dashboard/inventory/adjustments', permissions: ['INVENTORY_VIEW'] },
-      // WMS
-      { title: 'WMS Zones', href: '/dashboard/wms/zones', icon: Grid3X3, permissions: ['WMS_VIEW'] },
-      { title: 'WMS Bins', href: '/dashboard/wms/bins', permissions: ['WMS_VIEW'] },
-      { title: 'Putaway Rules', href: '/dashboard/wms/putaway-rules', permissions: ['WMS_VIEW'] },
-      // Procurement
       { title: 'Vendors', href: '/dashboard/procurement/vendors', icon: Building2, permissions: ['VENDORS_VIEW'] },
-      { title: 'Purchase Requisitions', href: '/dashboard/procurement/requisitions', permissions: ['PURCHASE_VIEW'] },
-      { title: 'Purchase Orders', href: '/dashboard/procurement/purchase-orders', permissions: ['PURCHASE_VIEW'] },
-      { title: 'GRN', href: '/dashboard/procurement/grn', permissions: ['GRN_VIEW'] },
-      { title: 'Vendor Invoices', href: '/dashboard/procurement/vendor-invoices', permissions: ['PURCHASE_VIEW'] },
-      { title: '3-Way Match', href: '/dashboard/procurement/three-way-match', permissions: ['PURCHASE_VIEW'] },
-      // Logistics
-      { title: 'Shipments', href: '/dashboard/logistics/shipments', icon: Truck, permissions: ['SHIPMENTS_VIEW'] },
-      { title: 'Manifests', href: '/dashboard/logistics/manifests', permissions: ['SHIPMENTS_VIEW'] },
-      { title: 'Transporters', href: '/dashboard/logistics/transporters', permissions: ['SHIPMENTS_VIEW'] },
-      { title: 'Rate Cards', href: '/dashboard/logistics/rate-cards', permissions: ['SHIPMENTS_VIEW'] },
-      { title: 'Serviceability', href: '/dashboard/logistics/serviceability', permissions: ['SHIPMENTS_VIEW'] },
+      { title: 'Purchase Requisitions', href: '/dashboard/procurement/requisitions', icon: FileText, permissions: ['PURCHASE_VIEW'] },
+      { title: 'Purchase Orders', href: '/dashboard/procurement/purchase-orders', icon: Clipboard, permissions: ['PURCHASE_VIEW'] },
+      { title: 'Goods Receipt (GRN)', href: '/dashboard/procurement/grn', icon: PackageSearch, permissions: ['GRN_VIEW'] },
+      { title: 'Vendor Invoices', href: '/dashboard/procurement/vendor-invoices', icon: Receipt, permissions: ['PURCHASE_VIEW'] },
+      { title: 'Vendor Proformas', href: '/dashboard/procurement/vendor-proformas', icon: FileCheck, permissions: ['PURCHASE_VIEW'] },
+      { title: 'Sales Returns (SRN)', href: '/dashboard/procurement/sales-returns', icon: FileOutput, permissions: ['PURCHASE_VIEW'] },
+      { title: '3-Way Matching', href: '/dashboard/procurement/three-way-match', icon: Scale, permissions: ['PURCHASE_VIEW'] },
     ],
   },
 
-  // ==================== 4. FINANCE & ACCOUNTING ====================
+  // ==================== 4. INVENTORY ====================
+  {
+    title: 'Inventory',
+    icon: Boxes,
+    permissions: ['INVENTORY_VIEW', 'WAREHOUSES_VIEW', 'TRANSFERS_VIEW'],
+    children: [
+      { title: 'Stock Summary', href: '/dashboard/inventory', icon: BarChart3, permissions: ['INVENTORY_VIEW'] },
+      { title: 'Stock Items', href: '/dashboard/inventory/stock-items', icon: Package, permissions: ['INVENTORY_VIEW'] },
+      { title: 'Warehouses', href: '/dashboard/inventory/warehouses', icon: Warehouse, permissions: ['WAREHOUSES_VIEW'] },
+      { title: 'Stock Transfers', href: '/dashboard/inventory/transfers', icon: ArrowRightLeft, permissions: ['TRANSFERS_VIEW'] },
+      { title: 'Stock Adjustments', href: '/dashboard/inventory/adjustments', icon: Calculator, permissions: ['INVENTORY_VIEW'] },
+    ],
+  },
+
+  // ==================== 5. WAREHOUSE (WMS) ====================
+  {
+    title: 'Warehouse (WMS)',
+    icon: Grid3X3,
+    permissions: ['WMS_VIEW', 'ORDERS_VIEW'],
+    children: [
+      { title: 'Zones', href: '/dashboard/wms/zones', icon: Layers, permissions: ['WMS_VIEW'] },
+      { title: 'Bins & Locations', href: '/dashboard/wms/bins', icon: Grid3X3, permissions: ['WMS_VIEW'] },
+      { title: 'Bin Enquiry', href: '/dashboard/wms/bin-enquiry', icon: PackageSearch, permissions: ['WMS_VIEW'] },
+      { title: 'Putaway Rules', href: '/dashboard/wms/putaway-rules', icon: Route, permissions: ['WMS_VIEW'] },
+      { title: 'Picklists', href: '/dashboard/orders/picklists', icon: ClipboardList, permissions: ['ORDERS_VIEW'] },
+    ],
+  },
+
+  // ==================== 6. LOGISTICS & SHIPPING ====================
+  {
+    title: 'Logistics',
+    icon: Truck,
+    permissions: ['SHIPMENTS_VIEW'],
+    children: [
+      { title: 'Shipments', href: '/dashboard/logistics/shipments', icon: Truck, permissions: ['SHIPMENTS_VIEW'] },
+      { title: 'Manifests', href: '/dashboard/logistics/manifests', icon: FileText, permissions: ['SHIPMENTS_VIEW'] },
+      { title: 'Order Allocation', href: '/dashboard/orders/allocation', icon: GitBranch, permissions: ['ORDERS_VIEW'] },
+      { title: 'Allocation Rules', href: '/dashboard/logistics/allocation-rules', permissions: ['SHIPMENTS_VIEW'] },
+      { title: 'Transporters', href: '/dashboard/logistics/transporters', icon: Building2, permissions: ['SHIPMENTS_VIEW'] },
+      { title: 'Rate Cards', href: '/dashboard/logistics/rate-cards', icon: IndianRupee, permissions: ['SHIPMENTS_VIEW'] },
+      { title: 'Rate Cards - B2B', href: '/dashboard/logistics/rate-cards/b2b', permissions: ['SHIPMENTS_VIEW'] },
+      { title: 'Rate Cards - FTL', href: '/dashboard/logistics/rate-cards/ftl', permissions: ['SHIPMENTS_VIEW'] },
+      { title: 'Serviceability', href: '/dashboard/logistics/serviceability', icon: MapPin, permissions: ['SHIPMENTS_VIEW'] },
+      { title: 'E-Way Bills', href: '/dashboard/billing/eway-bills', icon: ScrollText, permissions: ['BILLING_VIEW'] },
+      { title: 'SLA Dashboard', href: '/dashboard/logistics/sla-dashboard', icon: Gauge, permissions: ['SHIPMENTS_VIEW'] },
+    ],
+  },
+
+  // ==================== 7. PLANNING (S&OP) ====================
+  {
+    title: 'Planning (S&OP)',
+    icon: Target,
+    permissions: ['SNOP_VIEW'],
+    badge: 'NEW',
+    children: [
+      { title: 'S&OP Dashboard', href: '/dashboard/snop', icon: Target, permissions: ['SNOP_VIEW'] },
+      { title: 'Demand Forecasting', href: '/dashboard/snop/forecasts', icon: LineChart, permissions: ['SNOP_VIEW'] },
+      { title: 'Supply Planning', href: '/dashboard/snop/supply-plans', icon: GitBranch, permissions: ['SNOP_VIEW'] },
+      { title: 'Scenario Analysis', href: '/dashboard/snop/scenarios', icon: Layers, permissions: ['SNOP_VIEW'] },
+      { title: 'Inventory Optimization', href: '/dashboard/snop/inventory-optimization', icon: TrendingUp, permissions: ['SNOP_VIEW'] },
+    ],
+  },
+
+  // ==================== 8. FINANCE & ACCOUNTING ====================
   {
     title: 'Finance',
     icon: DollarSign,
     permissions: ['ACCOUNTING_VIEW', 'BILLING_VIEW', 'REPORTS_VIEW'],
     children: [
       // Core Accounting
-      { title: 'Chart of Accounts', href: '/dashboard/finance/chart-of-accounts', permissions: ['ACCOUNTING_VIEW'] },
-      { title: 'Journal Entries', href: '/dashboard/finance/journal-entries', permissions: ['ACCOUNTING_VIEW'] },
-      { title: 'Auto Journal', href: '/dashboard/finance/auto-journal', permissions: ['ACCOUNTING_VIEW'], badge: 'NEW' },
-      { title: 'General Ledger', href: '/dashboard/finance/general-ledger', permissions: ['ACCOUNTING_VIEW'] },
-      { title: 'Cost Centers', href: '/dashboard/finance/cost-centers', permissions: ['ACCOUNTING_VIEW'] },
-      { title: 'Financial Periods', href: '/dashboard/finance/periods', permissions: ['ACCOUNTING_VIEW'] },
-      // Banking
-      { title: 'Bank Reconciliation', href: '/dashboard/finance/bank-reconciliation', permissions: ['ACCOUNTING_VIEW'] },
+      { title: 'Chart of Accounts', href: '/dashboard/finance/chart-of-accounts', icon: FolderTree, permissions: ['ACCOUNTING_VIEW'] },
+      { title: 'Journal Entries', href: '/dashboard/finance/journal-entries', icon: FileText, permissions: ['ACCOUNTING_VIEW'] },
+      { title: 'Auto Journal', href: '/dashboard/finance/auto-journal', icon: Cog, permissions: ['ACCOUNTING_VIEW'] },
+      { title: 'General Ledger', href: '/dashboard/finance/general-ledger', icon: ScrollText, permissions: ['ACCOUNTING_VIEW'] },
+      { title: 'Cost Centers', href: '/dashboard/finance/cost-centers', icon: Building, permissions: ['ACCOUNTING_VIEW'] },
+      { title: 'Financial Periods', href: '/dashboard/finance/periods', icon: Calendar, permissions: ['ACCOUNTING_VIEW'] },
       // Billing & AR
-      { title: 'Invoices', href: '/dashboard/billing/invoices', icon: FileText, permissions: ['BILLING_VIEW'] },
-      { title: 'E-Way Bills', href: '/dashboard/billing/eway-bills', permissions: ['BILLING_VIEW'] },
-      { title: 'Credit Notes', href: '/dashboard/billing/credit-notes', permissions: ['BILLING_VIEW'] },
-      { title: 'Receipts', href: '/dashboard/billing/receipts', permissions: ['BILLING_VIEW'] },
-      // Tax & Compliance
-      { title: 'TDS Management', href: '/dashboard/finance/tds', permissions: ['ACCOUNTING_VIEW'], badge: 'NEW' },
-      { title: 'GSTR-1', href: '/dashboard/finance/gstr1', permissions: ['ACCOUNTING_VIEW'] },
+      { title: 'Invoices', href: '/dashboard/billing/invoices', icon: Receipt, permissions: ['BILLING_VIEW'] },
+      { title: 'Credit Notes', href: '/dashboard/billing/credit-notes', icon: FileOutput, permissions: ['BILLING_VIEW'] },
+      { title: 'Receipts', href: '/dashboard/billing/receipts', icon: Banknote, permissions: ['BILLING_VIEW'] },
+      // Banking
+      { title: 'Bank Reconciliation', href: '/dashboard/finance/bank-reconciliation', icon: Landmark, permissions: ['ACCOUNTING_VIEW'] },
+      // Assets
+      { title: 'Fixed Assets', href: '/dashboard/finance/fixed-assets', icon: Building2, permissions: ['ACCOUNTING_VIEW'] },
+      // Tax Compliance
+      { title: 'TDS Management', href: '/dashboard/finance/tds', icon: IndianRupee, permissions: ['ACCOUNTING_VIEW'] },
+      { title: 'GSTR-1', href: '/dashboard/finance/gstr1', icon: FileCheck, permissions: ['ACCOUNTING_VIEW'] },
       { title: 'GSTR-2A', href: '/dashboard/finance/gstr2a', permissions: ['ACCOUNTING_VIEW'] },
       { title: 'GSTR-3B', href: '/dashboard/finance/gstr3b', permissions: ['ACCOUNTING_VIEW'] },
       { title: 'HSN Summary', href: '/dashboard/finance/hsn-summary', permissions: ['ACCOUNTING_VIEW'] },
-      // Assets
-      { title: 'Fixed Assets', href: '/dashboard/finance/fixed-assets', permissions: ['ACCOUNTING_VIEW'] },
       // Reports
       { title: 'Trial Balance', href: '/dashboard/reports/trial-balance', icon: BarChart3, permissions: ['REPORTS_VIEW'] },
-      { title: 'Profit & Loss', href: '/dashboard/reports/profit-loss', permissions: ['REPORTS_VIEW'] },
-      { title: 'Balance Sheet', href: '/dashboard/reports/balance-sheet', permissions: ['REPORTS_VIEW'] },
+      { title: 'Profit & Loss', href: '/dashboard/reports/profit-loss', icon: TrendingUp, permissions: ['REPORTS_VIEW'] },
+      { title: 'Balance Sheet', href: '/dashboard/reports/balance-sheet', icon: Scale, permissions: ['REPORTS_VIEW'] },
       { title: 'Channel P&L', href: '/dashboard/reports/channel-pl', permissions: ['REPORTS_VIEW'] },
     ],
   },
 
-  // ==================== 5. SERVICE MANAGEMENT ====================
+  // ==================== 9. SERVICE & SUPPORT ====================
   {
     title: 'Service',
     icon: Wrench,
     permissions: ['SERVICE_VIEW', 'TECHNICIANS_VIEW'],
     children: [
-      { title: 'Service Requests', href: '/dashboard/service/requests', permissions: ['SERVICE_VIEW'] },
-      { title: 'Installations', href: '/dashboard/service/installations', permissions: ['SERVICE_VIEW'] },
-      { title: 'Warranty Claims', href: '/dashboard/service/warranty-claims', icon: AlertTriangle, permissions: ['SERVICE_VIEW'] },
-      { title: 'AMC Contracts', href: '/dashboard/service/amc', permissions: ['SERVICE_VIEW'] },
-      { title: 'Technicians', href: '/dashboard/service/technicians', icon: Users, permissions: ['TECHNICIANS_VIEW'] },
-      { title: 'Escalations', href: '/dashboard/crm/escalations', permissions: ['SERVICE_VIEW'] },
+      { title: 'Service Requests', href: '/dashboard/service/requests', icon: Headphones, permissions: ['SERVICE_VIEW'] },
+      { title: 'New Request', href: '/dashboard/service/requests/new', icon: FileInput, permissions: ['SERVICE_VIEW'] },
+      { title: 'Installations', href: '/dashboard/service/installations', icon: CalendarCheck, permissions: ['SERVICE_VIEW'] },
+      { title: 'Warranty Claims', href: '/dashboard/service/warranty-claims', icon: ShieldCheck, permissions: ['SERVICE_VIEW'] },
+      { title: 'AMC Contracts', href: '/dashboard/service/amc', icon: HeartHandshake, permissions: ['SERVICE_VIEW'] },
+      { title: 'Technicians', href: '/dashboard/service/technicians', icon: HardHat, permissions: ['TECHNICIANS_VIEW'] },
+      { title: 'Escalations', href: '/dashboard/crm/escalations', icon: AlertTriangle, permissions: ['SERVICE_VIEW'] },
     ],
   },
 
-  // ==================== 6. HUMAN RESOURCES ====================
+  // ==================== 10. HUMAN RESOURCES ====================
   {
     title: 'Human Resources',
     icon: Briefcase,
     permissions: ['HR_VIEW'],
     children: [
-      { title: 'HR Dashboard', href: '/dashboard/hr', permissions: ['HR_VIEW'] },
-      { title: 'Employees', href: '/dashboard/hr/employees', icon: Users, permissions: ['HR_VIEW'] },
-      { title: 'Departments', href: '/dashboard/hr/departments', permissions: ['HR_VIEW'] },
-      { title: 'Attendance', href: '/dashboard/hr/attendance', icon: Calendar, permissions: ['ATTENDANCE_VIEW'] },
-      { title: 'Leave Management', href: '/dashboard/hr/leaves', permissions: ['LEAVE_VIEW'] },
+      { title: 'HR Dashboard', href: '/dashboard/hr', icon: BarChart3, permissions: ['HR_VIEW'] },
+      { title: 'Employees', href: '/dashboard/hr/employees', icon: UsersRound, permissions: ['HR_VIEW'] },
+      { title: 'Departments', href: '/dashboard/hr/departments', icon: Building2, permissions: ['HR_VIEW'] },
+      { title: 'Attendance', href: '/dashboard/hr/attendance', icon: CalendarCheck, permissions: ['ATTENDANCE_VIEW'] },
+      { title: 'Leave Management', href: '/dashboard/hr/leaves', icon: Calendar, permissions: ['LEAVE_VIEW'] },
       { title: 'Payroll', href: '/dashboard/hr/payroll', icon: CreditCard, permissions: ['PAYROLL_VIEW'] },
-      { title: 'Performance', href: '/dashboard/hr/performance', permissions: ['HR_VIEW'] },
-      { title: 'HR Reports', href: '/dashboard/hr/reports', permissions: ['HR_VIEW'] },
+      { title: 'Performance', href: '/dashboard/hr/performance', icon: Award, permissions: ['HR_VIEW'] },
+      { title: 'HR Reports', href: '/dashboard/hr/reports', icon: BarChart3, permissions: ['HR_VIEW'] },
     ],
   },
 
-  // ==================== 7. PRODUCT MANAGEMENT ====================
+  // ==================== 11. MASTER DATA ====================
   {
-    title: 'Products',
+    title: 'Master Data',
     icon: Package,
     permissions: ['PRODUCTS_VIEW', 'CATEGORIES_VIEW', 'BRANDS_VIEW'],
     children: [
-      { title: 'All Products', href: '/dashboard/catalog', permissions: ['PRODUCTS_VIEW'] },
+      { title: 'Products', href: '/dashboard/catalog', icon: Package, permissions: ['PRODUCTS_VIEW'] },
+      { title: 'New Product', href: '/dashboard/catalog/new', icon: FileInput, permissions: ['PRODUCTS_CREATE'] },
       { title: 'Categories', href: '/dashboard/catalog/categories', icon: FolderTree, permissions: ['CATEGORIES_VIEW'] },
       { title: 'Brands', href: '/dashboard/catalog/brands', icon: Tag, permissions: ['BRANDS_VIEW'] },
       { title: 'Serialization', href: '/dashboard/serialization', icon: Barcode, permissions: ['PRODUCTS_VIEW'] },
     ],
   },
 
-  // ==================== 8. ADMINISTRATION ====================
+  // ==================== 12. INTELLIGENCE (AI) ====================
+  {
+    title: 'Intelligence',
+    icon: Brain,
+    permissions: [],
+    badge: 'AI',
+    children: [
+      { title: 'AI Hub', href: '/dashboard/ai', icon: Lightbulb, permissions: [] },
+      { title: 'Insights Dashboard', href: '/dashboard/insights', icon: TrendingUp, permissions: [] },
+      { title: 'Reorder Suggestions', href: '/dashboard/insights/reorder', icon: PackageSearch, permissions: [] },
+      { title: 'Churn Risk Analysis', href: '/dashboard/insights/churn-risk', icon: AlertTriangle, permissions: [] },
+      { title: 'Slow Moving Stock', href: '/dashboard/insights/slow-moving', icon: Clock, permissions: [] },
+      { title: 'Campaigns', href: '/dashboard/marketing/campaigns', icon: Megaphone, permissions: ['CAMPAIGNS_VIEW'] },
+    ],
+  },
+
+  // ==================== 13. ADMINISTRATION ====================
   {
     title: 'Administration',
     icon: Cog,
@@ -249,18 +325,11 @@ export const navigation: NavItem[] = [
     children: [
       { title: 'Users', href: '/dashboard/access-control/users', icon: Users, permissions: ['USERS_VIEW'] },
       { title: 'Roles', href: '/dashboard/access-control/roles', icon: Shield, permissions: ['ROLES_VIEW'] },
-      { title: 'Permissions', href: '/dashboard/access-control/permissions', permissions: ['ROLES_VIEW'] },
-      { title: 'Approvals', href: '/dashboard/approvals', icon: CheckSquare, permissions: ['APPROVALS_VIEW'], badge: 'pending' },
+      { title: 'Permissions', href: '/dashboard/access-control/permissions', icon: ShieldCheck, permissions: ['ROLES_VIEW'] },
+      { title: 'Approvals', href: '/dashboard/approvals', icon: CheckSquare, permissions: ['APPROVALS_VIEW'] },
       { title: 'Audit Logs', href: '/dashboard/audit-logs', icon: History, permissions: ['AUDIT_VIEW'] },
+      { title: 'Notifications', href: '/dashboard/notifications', icon: Bell, permissions: [] },
       { title: 'Settings', href: '/dashboard/settings', icon: Settings, permissions: [] },
     ],
-  },
-
-  // Quick Access Items (always visible)
-  {
-    title: 'Notifications',
-    href: '/dashboard/notifications',
-    icon: Bell,
-    permissions: [],
   },
 ];

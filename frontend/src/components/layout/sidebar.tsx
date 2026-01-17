@@ -25,59 +25,77 @@ const moduleColors: Record<string, { bg: string; text: string; hover: string; gr
     hover: 'hover:bg-violet-50 dark:hover:bg-violet-900/20',
     gradient: 'from-violet-500 to-purple-600'
   },
+  'Sales & CRM': {
+    bg: 'bg-blue-100 dark:bg-blue-900/30',
+    text: 'text-blue-600 dark:text-blue-400',
+    hover: 'hover:bg-blue-50 dark:hover:bg-blue-900/20',
+    gradient: 'from-blue-500 to-cyan-600'
+  },
+  'Procurement': {
+    bg: 'bg-orange-100 dark:bg-orange-900/30',
+    text: 'text-orange-600 dark:text-orange-400',
+    hover: 'hover:bg-orange-50 dark:hover:bg-orange-900/20',
+    gradient: 'from-orange-500 to-amber-600'
+  },
+  'Inventory': {
+    bg: 'bg-emerald-100 dark:bg-emerald-900/30',
+    text: 'text-emerald-600 dark:text-emerald-400',
+    hover: 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20',
+    gradient: 'from-emerald-500 to-teal-600'
+  },
+  'Warehouse (WMS)': {
+    bg: 'bg-teal-100 dark:bg-teal-900/30',
+    text: 'text-teal-600 dark:text-teal-400',
+    hover: 'hover:bg-teal-50 dark:hover:bg-teal-900/20',
+    gradient: 'from-teal-500 to-cyan-600'
+  },
+  'Logistics': {
+    bg: 'bg-sky-100 dark:bg-sky-900/30',
+    text: 'text-sky-600 dark:text-sky-400',
+    hover: 'hover:bg-sky-50 dark:hover:bg-sky-900/20',
+    gradient: 'from-sky-500 to-blue-600'
+  },
+  'Planning (S&OP)': {
+    bg: 'bg-purple-100 dark:bg-purple-900/30',
+    text: 'text-purple-600 dark:text-purple-400',
+    hover: 'hover:bg-purple-50 dark:hover:bg-purple-900/20',
+    gradient: 'from-purple-500 to-indigo-600'
+  },
+  'Finance': {
+    bg: 'bg-amber-100 dark:bg-amber-900/30',
+    text: 'text-amber-600 dark:text-amber-400',
+    hover: 'hover:bg-amber-50 dark:hover:bg-amber-900/20',
+    gradient: 'from-amber-500 to-yellow-600'
+  },
+  'Service': {
+    bg: 'bg-rose-100 dark:bg-rose-900/30',
+    text: 'text-rose-600 dark:text-rose-400',
+    hover: 'hover:bg-rose-50 dark:hover:bg-rose-900/20',
+    gradient: 'from-rose-500 to-pink-600'
+  },
+  'Human Resources': {
+    bg: 'bg-indigo-100 dark:bg-indigo-900/30',
+    text: 'text-indigo-600 dark:text-indigo-400',
+    hover: 'hover:bg-indigo-50 dark:hover:bg-indigo-900/20',
+    gradient: 'from-indigo-500 to-violet-600'
+  },
+  'Master Data': {
+    bg: 'bg-cyan-100 dark:bg-cyan-900/30',
+    text: 'text-cyan-600 dark:text-cyan-400',
+    hover: 'hover:bg-cyan-50 dark:hover:bg-cyan-900/20',
+    gradient: 'from-cyan-500 to-sky-600'
+  },
   'Intelligence': {
     bg: 'bg-fuchsia-100 dark:bg-fuchsia-900/30',
     text: 'text-fuchsia-600 dark:text-fuchsia-400',
     hover: 'hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/20',
     gradient: 'from-fuchsia-500 to-pink-600'
   },
-  'Sales & Distribution': {
-    bg: 'bg-blue-100 dark:bg-blue-900/30',
-    text: 'text-blue-600 dark:text-blue-400',
-    hover: 'hover:bg-blue-50 dark:hover:bg-blue-900/20',
-    gradient: 'from-blue-500 to-cyan-600'
-  },
-  'Supply Chain': {
-    bg: 'bg-emerald-100 dark:bg-emerald-900/30',
-    text: 'text-emerald-600 dark:text-emerald-400',
-    hover: 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20',
-    gradient: 'from-emerald-500 to-teal-600'
-  },
-  'Finance': {
-    bg: 'bg-amber-100 dark:bg-amber-900/30',
-    text: 'text-amber-600 dark:text-amber-400',
-    hover: 'hover:bg-amber-50 dark:hover:bg-amber-900/20',
-    gradient: 'from-amber-500 to-orange-600'
-  },
-  'Service': {
-    bg: 'bg-rose-100 dark:bg-rose-900/30',
-    text: 'text-rose-600 dark:text-rose-400',
-    hover: 'hover:bg-rose-50 dark:hover:bg-rose-900/20',
-    gradient: 'from-rose-500 to-red-600'
-  },
-  'Human Resources': {
-    bg: 'bg-indigo-100 dark:bg-indigo-900/30',
-    text: 'text-indigo-600 dark:text-indigo-400',
-    hover: 'hover:bg-indigo-50 dark:hover:bg-indigo-900/20',
-    gradient: 'from-indigo-500 to-blue-600'
-  },
-  'Products': {
-    bg: 'bg-cyan-100 dark:bg-cyan-900/30',
-    text: 'text-cyan-600 dark:text-cyan-400',
-    hover: 'hover:bg-cyan-50 dark:hover:bg-cyan-900/20',
-    gradient: 'from-cyan-500 to-sky-600'
-  },
   'Administration': {
     bg: 'bg-slate-100 dark:bg-slate-800/50',
     text: 'text-slate-600 dark:text-slate-400',
     hover: 'hover:bg-slate-50 dark:hover:bg-slate-800/30',
     gradient: 'from-slate-500 to-gray-600'
-  },
-  'Notifications': {
-    bg: 'bg-orange-100 dark:bg-orange-900/30',
-    text: 'text-orange-600 dark:text-orange-400',
-    hover: 'hover:bg-orange-50 dark:hover:bg-orange-900/20',
-    gradient: 'from-orange-500 to-red-600'
   },
 };
 
