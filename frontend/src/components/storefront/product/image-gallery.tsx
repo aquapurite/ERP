@@ -16,7 +16,6 @@ import {
   DialogContent,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 
 interface ProductImage {
   id: string;
@@ -192,9 +191,7 @@ export default function ImageGallery({ images, productName }: ImageGalleryProps)
           className="max-w-[95vw] max-h-[95vh] w-full h-full p-0 bg-black/95"
           onKeyDown={handleKeyDown}
         >
-          <VisuallyHidden>
-            <DialogTitle>Product Image Gallery</DialogTitle>
-          </VisuallyHidden>
+          <DialogTitle className="sr-only">Product Image Gallery</DialogTitle>
 
           {/* Close button */}
           <Button
