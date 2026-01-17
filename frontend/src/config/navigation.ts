@@ -86,17 +86,17 @@ export interface NavItem {
  *
  * Structure:
  * 1. Dashboard - Overview & KPIs
- * 2. Sales & CRM - Customer-facing operations
- * 3. Procurement - Vendor-facing operations (P2P)
- * 4. Inventory - Stock management
- * 5. Warehouse (WMS) - Physical warehouse operations
- * 6. Logistics - Shipping & fulfillment
- * 7. Planning (S&OP) - Demand forecasting & supply planning
- * 8. Finance - Accounting, billing, tax compliance
- * 9. Service - After-sales support
- * 10. Human Resources - Employee management
- * 11. Master Data - Products & configuration
- * 12. Intelligence - AI & analytics
+ * 2. Intelligence - AI & analytics (prominent placement for AI-first approach)
+ * 3. Sales & CRM - Customer-facing operations
+ * 4. Procurement - Vendor-facing operations (P2P)
+ * 5. Inventory - Stock management
+ * 6. Warehouse (WMS) - Physical warehouse operations
+ * 7. Logistics - Shipping & fulfillment
+ * 8. Planning (S&OP) - Demand forecasting & supply planning
+ * 9. Finance - Accounting, billing, tax compliance
+ * 10. Service - After-sales support
+ * 11. Human Resources - Employee management
+ * 12. Master Data - Products & configuration
  * 13. Administration - System settings
  */
 
@@ -109,7 +109,23 @@ export const navigation: NavItem[] = [
     permissions: [],
   },
 
-  // ==================== 2. SALES & CRM ====================
+  // ==================== 2. INTELLIGENCE (AI) ====================
+  {
+    title: 'Intelligence',
+    icon: Brain,
+    permissions: [],
+    badge: 'AI',
+    children: [
+      { title: 'AI Hub', href: '/dashboard/ai', icon: Lightbulb, permissions: [] },
+      { title: 'Insights Dashboard', href: '/dashboard/insights', icon: TrendingUp, permissions: [] },
+      { title: 'Reorder Suggestions', href: '/dashboard/insights/reorder', icon: PackageSearch, permissions: [] },
+      { title: 'Churn Risk Analysis', href: '/dashboard/insights/churn-risk', icon: AlertTriangle, permissions: [] },
+      { title: 'Slow Moving Stock', href: '/dashboard/insights/slow-moving', icon: Clock, permissions: [] },
+      { title: 'Campaigns', href: '/dashboard/marketing/campaigns', icon: Megaphone, permissions: ['CAMPAIGNS_VIEW'] },
+    ],
+  },
+
+  // ==================== 3. SALES & CRM ====================
   {
     title: 'Sales & CRM',
     icon: ShoppingCart,
@@ -139,7 +155,7 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 3. PROCUREMENT (P2P) ====================
+  // ==================== 4. PROCUREMENT (P2P) ====================
   {
     title: 'Procurement',
     icon: FileInput,
@@ -156,7 +172,7 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 4. INVENTORY ====================
+  // ==================== 5. INVENTORY ====================
   {
     title: 'Inventory',
     icon: Boxes,
@@ -170,7 +186,7 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 5. WAREHOUSE (WMS) ====================
+  // ==================== 6. WAREHOUSE (WMS) ====================
   {
     title: 'Warehouse (WMS)',
     icon: Grid3X3,
@@ -184,7 +200,7 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 6. LOGISTICS & SHIPPING ====================
+  // ==================== 7. LOGISTICS & SHIPPING ====================
   {
     title: 'Logistics',
     icon: Truck,
@@ -204,7 +220,7 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 7. PLANNING (S&OP) ====================
+  // ==================== 8. PLANNING (S&OP) ====================
   {
     title: 'Planning (S&OP)',
     icon: Target,
@@ -219,7 +235,7 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 8. FINANCE & ACCOUNTING ====================
+  // ==================== 9. FINANCE & ACCOUNTING ====================
   {
     title: 'Finance',
     icon: DollarSign,
@@ -254,7 +270,7 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 9. SERVICE & SUPPORT ====================
+  // ==================== 10. SERVICE & SUPPORT ====================
   {
     title: 'Service',
     icon: Wrench,
@@ -270,7 +286,7 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 10. HUMAN RESOURCES ====================
+  // ==================== 11. HUMAN RESOURCES ====================
   {
     title: 'Human Resources',
     icon: Briefcase,
@@ -287,7 +303,7 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 11. MASTER DATA ====================
+  // ==================== 12. MASTER DATA ====================
   {
     title: 'Master Data',
     icon: Package,
@@ -298,22 +314,6 @@ export const navigation: NavItem[] = [
       { title: 'Categories', href: '/dashboard/catalog/categories', icon: FolderTree, permissions: ['CATEGORIES_VIEW'] },
       { title: 'Brands', href: '/dashboard/catalog/brands', icon: Tag, permissions: ['BRANDS_VIEW'] },
       { title: 'Serialization', href: '/dashboard/serialization', icon: Barcode, permissions: ['PRODUCTS_VIEW'] },
-    ],
-  },
-
-  // ==================== 12. INTELLIGENCE (AI) ====================
-  {
-    title: 'Intelligence',
-    icon: Brain,
-    permissions: [],
-    badge: 'AI',
-    children: [
-      { title: 'AI Hub', href: '/dashboard/ai', icon: Lightbulb, permissions: [] },
-      { title: 'Insights Dashboard', href: '/dashboard/insights', icon: TrendingUp, permissions: [] },
-      { title: 'Reorder Suggestions', href: '/dashboard/insights/reorder', icon: PackageSearch, permissions: [] },
-      { title: 'Churn Risk Analysis', href: '/dashboard/insights/churn-risk', icon: AlertTriangle, permissions: [] },
-      { title: 'Slow Moving Stock', href: '/dashboard/insights/slow-moving', icon: Clock, permissions: [] },
-      { title: 'Campaigns', href: '/dashboard/marketing/campaigns', icon: Megaphone, permissions: ['CAMPAIGNS_VIEW'] },
     ],
   },
 
