@@ -921,7 +921,7 @@ export default function CheckoutPage() {
                         />
                         <Button
                           variant="secondary"
-                          onClick={handleValidateCoupon}
+                          onClick={() => handleValidateCoupon()}
                           disabled={validatingCoupon || !couponCode.trim()}
                         >
                           {validatingCoupon ? (

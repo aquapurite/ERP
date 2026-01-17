@@ -202,7 +202,7 @@ export const useCartStore = create<CartStore>()(
               price: item.price,
               variant_id: item.variant?.id,
               variant_name: item.variant?.name,
-              image_url: item.product.images?.[0]?.url || item.product.thumbnail_url,
+              image_url: item.product.images?.[0]?.image_url || item.product.images?.[0]?.thumbnail_url,
             })),
             subtotal,
             tax_amount: tax,
@@ -249,15 +249,22 @@ export const useCartStore = create<CartStore>()(
             product: {
               id: item.product_id,
               name: item.product_name,
+              slug: item.product_id, // Use product_id as slug for recovered items
               sku: item.sku,
               selling_price: item.price,
               mrp: item.price,
-              thumbnail_url: item.image_url,
-              images: item.image_url ? [{ url: item.image_url }] : [],
+              is_active: true,
+              images: item.image_url ? [{
+                id: '1',
+                image_url: item.image_url,
+                is_primary: true,
+                sort_order: 0
+              }] : [],
             } as StorefrontProduct,
             variant: item.variant_id ? {
               id: item.variant_id,
-              name: item.variant_name,
+              name: item.variant_name || '',
+              sku: item.sku,
             } as ProductVariant : undefined,
             quantity: item.quantity,
             price: item.price,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -11,7 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useCartStore } from '@/lib/storefront/cart-store';
 import { abandonedCartApi, RecoveredCartResponse } from '@/lib/storefront/api';
 
-export default function RecoverCartPage() {
+function RecoverCartContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const token = searchParams.get('token');
@@ -291,5 +291,20 @@ export default function RecoverCartPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function RecoverCartPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+          <h1 className="text-xl font-semibold mb-2">Loading...</h1>
+        </div>
+      </div>
+    }>
+      <RecoverCartContent />
+    </Suspense>
   );
 }
