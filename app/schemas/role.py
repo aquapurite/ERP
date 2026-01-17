@@ -1,9 +1,11 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Literal
 from datetime import datetime
 import uuid
 
-from app.models.role import RoleLevel
+
+# String-based enum for API input/output (matches VARCHAR in database)
+RoleLevelType = Literal["SUPER_ADMIN", "DIRECTOR", "HEAD", "MANAGER", "EXECUTIVE"]
 
 
 class RoleBase(BaseModel):
@@ -11,7 +13,7 @@ class RoleBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="Role name")
     code: str = Field(..., min_length=1, max_length=50, description="Unique role code")
     description: Optional[str] = Field(None, description="Role description")
-    level: RoleLevel = Field(..., description="Role hierarchy level")
+    level: RoleLevelType = Field(..., description="Role hierarchy level")
     department: Optional[str] = Field(None, max_length=50, description="Department association")
 
 
@@ -27,7 +29,7 @@ class RoleUpdate(BaseModel):
     """Role update schema."""
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     description: Optional[str] = None
-    level: Optional[RoleLevel] = None
+    level: Optional[RoleLevelType] = None
     department: Optional[str] = Field(None, max_length=50)
     is_active: Optional[bool] = None
 
