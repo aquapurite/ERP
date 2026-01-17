@@ -37,7 +37,7 @@ class PermissionBasicInfo(BaseModel):
     id: uuid.UUID
     name: str
     code: str
-    action: str
+    action: Optional[str] = None
     module_name: Optional[str] = None
 
     class Config:
