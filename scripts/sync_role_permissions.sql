@@ -30,7 +30,7 @@ SELECT
     NOW()
 FROM roles r
 CROSS JOIN permissions p
-WHERE r.code = 'super_admin'
+WHERE UPPER(r.code) = 'SUPER_ADMIN'
   AND r.is_active = true
   AND p.is_active = true
 ON CONFLICT (role_id, permission_id) DO NOTHING;
@@ -46,7 +46,7 @@ SELECT
     NOW()
 FROM roles r
 CROSS JOIN permissions p
-WHERE r.code = 'director'
+WHERE UPPER(r.code) = 'DIRECTOR'
   AND r.is_active = true
   AND p.is_active = true
   AND (
@@ -77,7 +77,7 @@ SELECT
     NOW()
 FROM roles r
 CROSS JOIN permissions p
-WHERE r.code = 'sales_head'
+WHERE UPPER(r.code) = 'SALES_HEAD'
   AND r.is_active = true
   AND p.is_active = true
   AND (
@@ -108,7 +108,7 @@ SELECT
     NOW()
 FROM roles r
 CROSS JOIN permissions p
-WHERE r.code = 'service_head'
+WHERE UPPER(r.code) = 'SERVICE_HEAD'
   AND r.is_active = true
   AND p.is_active = true
   AND (
@@ -143,7 +143,7 @@ SELECT
     NOW()
 FROM roles r
 CROSS JOIN permissions p
-WHERE r.code = 'accounts_head'
+WHERE UPPER(r.code) = 'ACCOUNTS_HEAD'
   AND r.is_active = true
   AND p.is_active = true
   AND (
@@ -191,7 +191,7 @@ SELECT
     NOW()
 FROM roles r
 CROSS JOIN permissions p
-WHERE r.code = 'finance_head'
+WHERE UPPER(r.code) = 'FINANCE_HEAD'
   AND r.is_active = true
   AND p.is_active = true
   AND (
@@ -251,7 +251,7 @@ SELECT
     NOW()
 FROM roles r
 CROSS JOIN permissions p
-WHERE r.code = 'operations_head'
+WHERE UPPER(r.code) = 'OPERATIONS_HEAD'
   AND r.is_active = true
   AND p.is_active = true
   AND (
@@ -290,7 +290,7 @@ SELECT
     NOW()
 FROM roles r
 CROSS JOIN permissions p
-WHERE r.code = 'regional_manager'
+WHERE UPPER(r.code) = 'REGIONAL_MANAGER'
   AND r.is_active = true
   AND p.is_active = true
   AND (
@@ -316,7 +316,7 @@ SELECT
     NOW()
 FROM roles r
 CROSS JOIN permissions p
-WHERE r.code = 'warehouse_manager'
+WHERE UPPER(r.code) = 'WAREHOUSE_MANAGER'
   AND r.is_active = true
   AND p.is_active = true
   AND (
@@ -343,7 +343,7 @@ SELECT
     NOW()
 FROM roles r
 CROSS JOIN permissions p
-WHERE r.code = 'service_manager'
+WHERE UPPER(r.code) = 'SERVICE_MANAGER'
   AND r.is_active = true
   AND p.is_active = true
   AND (
@@ -370,7 +370,7 @@ SELECT
     NOW()
 FROM roles r
 CROSS JOIN permissions p
-WHERE r.code = 'marketing_manager'
+WHERE UPPER(r.code) = 'MARKETING_MANAGER'
   AND r.is_active = true
   AND p.is_active = true
   AND (
@@ -395,7 +395,7 @@ SELECT
     NOW()
 FROM roles r
 CROSS JOIN permissions p
-WHERE r.code = 'customer_service_executive'
+WHERE UPPER(r.code) = 'CUSTOMER_SERVICE_EXECUTIVE'
   AND r.is_active = true
   AND p.is_active = true
   AND (
@@ -421,7 +421,7 @@ SELECT
     NOW()
 FROM roles r
 CROSS JOIN permissions p
-WHERE r.code = 'sales_executive'
+WHERE UPPER(r.code) = 'SALES_EXECUTIVE'
   AND r.is_active = true
   AND p.is_active = true
   AND (
@@ -446,7 +446,7 @@ SELECT
     NOW()
 FROM roles r
 CROSS JOIN permissions p
-WHERE r.code = 'accounts_executive'
+WHERE UPPER(r.code) = 'ACCOUNTS_EXECUTIVE'
   AND r.is_active = true
   AND p.is_active = true
   AND (
@@ -473,7 +473,7 @@ SELECT
     NOW()
 FROM roles r
 CROSS JOIN permissions p
-WHERE r.code = 'technician_supervisor'
+WHERE UPPER(r.code) = 'TECHNICIAN_SUPERVISOR'
   AND r.is_active = true
   AND p.is_active = true
   AND (
