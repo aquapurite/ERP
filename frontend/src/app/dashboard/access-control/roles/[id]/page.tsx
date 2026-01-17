@@ -69,11 +69,17 @@ export default function EditRolePage() {
 
   useEffect(() => {
     if (role) {
+      // Normalize level to uppercase to match Select options
+      const normalizedLevel = (role.level?.toUpperCase() || 'EXECUTIVE') as RoleLevel;
+      // Validate it's a valid level
+      const validLevels: RoleLevel[] = ['SUPER_ADMIN', 'DIRECTOR', 'HEAD', 'MANAGER', 'EXECUTIVE'];
+      const level = validLevels.includes(normalizedLevel) ? normalizedLevel : 'EXECUTIVE';
+
       setFormData({
         name: role.name || '',
         code: role.code || '',
         description: role.description || '',
-        level: role.level || 'EXECUTIVE',
+        level,
         permission_ids: role.permissions?.map((p: { id: string }) => p.id) || [],
       });
     }
