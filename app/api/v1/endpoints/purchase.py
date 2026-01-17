@@ -1677,9 +1677,10 @@ async def approve_purchase_order(
             detail=f"Cannot {request.action.lower()} PO in {po.status} status"
         )
 
-    # Store data needed for serial generation before commit
-    should_generate_serials = False
-    serial_gen_data = None
+    # Capture item data BEFORE commit (while po.items is still loaded)
+    import logging
+    item_data_for_serials = None
+    po_data_for_serials = None
 
     if request.action == "APPROVE":
         po.status = POStatus.APPROVED.value
@@ -1689,67 +1690,73 @@ async def approve_purchase_order(
         for schedule in po.delivery_schedules:
             schedule.status = DeliveryLotStatus.ADVANCE_PENDING.value
 
-        # Prepare serial generation data (but don't generate yet)
-        # Wrapped in try/except to ensure approval succeeds even if serial check fails
-        import logging
-        logging.info(f"Preparing serial generation for PO {po.po_number}, items_count={len(po.items) if po.items else 0}")
-        try:
-            from app.models.serialization import POSerial, SupplierCode
-            from sqlalchemy import text
-
-            # Use raw SQL to avoid UUID/VARCHAR type mismatch issues
-            existing_serials = await db.execute(
-                text("SELECT COUNT(*) FROM po_serials WHERE po_id = :po_id"),
-                {"po_id": po.id}
-            )
-            existing_count = existing_serials.scalar() or 0
-            logging.info(f"Existing serials for PO {po.po_number}: {existing_count}")
-
-            if existing_count == 0 and po.items:
-                logging.info(f"Will generate serials: existing_count=0, items_count={len(po.items)}")
-                # Get vendor for supplier code using raw SQL
-                supplier_code = "AP"  # Default
-                if po.vendor_id:
-                    logging.info(f"Looking up supplier_code for vendor_id={po.vendor_id}")
-                    supplier_code_result = await db.execute(
-                        text("SELECT code FROM supplier_codes WHERE vendor_id = :vendor_id LIMIT 1"),
-                        {"vendor_id": str(po.vendor_id)}
-                    )
-                    supplier_code_row = supplier_code_result.first()
-                    if supplier_code_row:
-                        supplier_code = supplier_code_row[0]
-                        logging.info(f"Found supplier_code: {supplier_code}")
-                    else:
-                        logging.warning(f"No supplier_code found for vendor_id={po.vendor_id}, using default 'AP'")
-
-                logging.info(f"Setting should_generate_serials=True with supplier_code={supplier_code}")
-                should_generate_serials = True
-                serial_gen_data = {
-                    "po_id": str(po.id),
-                    "po_number": po.po_number,
-                    "supplier_code": supplier_code,
-                    "items": [
-                        {
-                            "item_id": str(item.id),
-                            "product_id": str(item.product_id) if item.product_id else None,
-                            "product_sku": item.sku,
-                            "product_name": item.product_name,
-                            "quantity": item.quantity_ordered
-                        }
-                        for item in po.items
-                    ]
+        # Capture data needed for serial generation (before commit, while items are loaded)
+        if po.items:
+            logging.info(f"Capturing item data for serial generation: PO {po.po_number}, items_count={len(po.items)}")
+            po_data_for_serials = {
+                "po_id": str(po.id),
+                "po_number": po.po_number,
+                "vendor_id": str(po.vendor_id) if po.vendor_id else None,
+            }
+            item_data_for_serials = [
+                {
+                    "item_id": str(item.id),
+                    "product_id": str(item.product_id) if item.product_id else None,
+                    "product_sku": item.sku,
+                    "product_name": item.product_name,
+                    "quantity": item.quantity_ordered
                 }
-        except Exception as serial_check_error:
-            import logging
-            logging.warning(f"Serial check failed (will skip serial generation): {serial_check_error}")
+                for item in po.items
+            ]
     else:
         po.status = POStatus.CANCELLED.value
         # Cancel all delivery schedules
         for schedule in po.delivery_schedules:
             schedule.status = DeliveryLotStatus.CANCELLED.value
 
-    # Commit the approval/rejection first
+    # Commit the approval/rejection first - this MUST succeed
     await db.commit()
+
+    # Now check for serial generation AFTER commit (in a clean transaction state)
+    # This way, if serial check fails, the approval is already committed
+    should_generate_serials = False
+    serial_gen_data = None
+
+    if request.action == "APPROVE" and item_data_for_serials:
+        try:
+            from sqlalchemy import text
+
+            # Check if serials already exist (using fresh transaction)
+            existing_serials = await db.execute(
+                text("SELECT COUNT(*) FROM po_serials WHERE po_id = :po_id"),
+                {"po_id": po_data_for_serials["po_id"]}
+            )
+            existing_count = existing_serials.scalar() or 0
+            logging.info(f"Existing serials for PO {po_data_for_serials['po_number']}: {existing_count}")
+
+            if existing_count == 0:
+                # Get vendor supplier code
+                supplier_code = "AP"  # Default
+                if po_data_for_serials["vendor_id"]:
+                    supplier_code_result = await db.execute(
+                        text("SELECT code FROM supplier_codes WHERE vendor_id = :vendor_id LIMIT 1"),
+                        {"vendor_id": po_data_for_serials["vendor_id"]}
+                    )
+                    supplier_code_row = supplier_code_result.first()
+                    if supplier_code_row:
+                        supplier_code = supplier_code_row[0]
+                        logging.info(f"Found supplier_code: {supplier_code}")
+
+                should_generate_serials = True
+                serial_gen_data = {
+                    "po_id": po_data_for_serials["po_id"],
+                    "po_number": po_data_for_serials["po_number"],
+                    "supplier_code": supplier_code,
+                    "items": item_data_for_serials
+                }
+                logging.info(f"Will generate serials for PO {po_data_for_serials['po_number']}")
+        except Exception as serial_check_error:
+            logging.warning(f"Serial check failed (will skip serial generation): {serial_check_error}")
 
     # Re-fetch PO with all relationships for response
     result = await db.execute(
