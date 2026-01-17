@@ -95,6 +95,8 @@ from app.api.v1.endpoints import (
     order_tracking,
     # Abandoned Cart
     abandoned_cart,
+    # Shipping (Shiprocket Integration)
+    shipping,
 )
 
 
@@ -456,4 +458,11 @@ api_router.include_router(
 api_router.include_router(
     abandoned_cart.router,
     tags=["Abandoned Cart"]
+)
+
+# ==================== Shipping (Shiprocket) ====================
+api_router.include_router(
+    shipping.router,
+    prefix="/shipping",
+    tags=["Shipping (Shiprocket)"]
 )

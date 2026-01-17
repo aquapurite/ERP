@@ -68,6 +68,14 @@ class Settings(BaseSettings):
     # D2C Storefront URLs
     D2C_FRONTEND_URL: str = "https://www.aquapurite.com"
 
+    # Shiprocket Integration
+    SHIPROCKET_EMAIL: str = ""  # Shiprocket account email
+    SHIPROCKET_PASSWORD: str = ""  # Shiprocket account password
+    SHIPROCKET_API_URL: str = "https://apiv2.shiprocket.in/v1/external"
+    SHIPROCKET_WEBHOOK_SECRET: Optional[str] = None  # For webhook verification
+    SHIPROCKET_DEFAULT_PICKUP_LOCATION: str = ""  # Default pickup location name
+    SHIPROCKET_AUTO_SHIP: bool = False  # Auto-assign courier on order creation
+
     @field_validator('CORS_ORIGINS', mode='before')
     @classmethod
     def parse_cors_origins(cls, v):

@@ -294,6 +294,72 @@ class Order(Base):
         comment="When order was shipped"
     )
 
+    # Shiprocket Integration
+    shiprocket_order_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        index=True,
+        comment="Shiprocket order ID"
+    )
+    shiprocket_shipment_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        index=True,
+        comment="Shiprocket shipment ID"
+    )
+    awb_code: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        index=True,
+        comment="Airway Bill number from courier"
+    )
+    courier_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Shiprocket courier company ID"
+    )
+    courier_name: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="Courier company name (e.g., Delhivery, BlueDart)"
+    )
+    tracking_status: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="Current tracking status from courier"
+    )
+    tracking_status_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Shiprocket status ID"
+    )
+    last_tracking_update: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Last tracking sync timestamp"
+    )
+    last_tracking_location: Mapped[Optional[str]] = mapped_column(
+        String(200),
+        nullable=True,
+        comment="Last known shipment location"
+    )
+    last_tracking_activity: Mapped[Optional[str]] = mapped_column(
+        String(500),
+        nullable=True,
+        comment="Last tracking activity description"
+    )
+    estimated_delivery: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Estimated delivery date from courier"
+    )
+    weight_kg: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(8, 3),
+        nullable=True,
+        default=Decimal("0.500"),
+        comment="Package weight in kg"
+    )
+
     # Relationships
     customer: Mapped["Customer"] = relationship("Customer", back_populates="orders")
     region: Mapped[Optional["Region"]] = relationship("Region")
