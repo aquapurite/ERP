@@ -37,14 +37,15 @@ import { useAuthStore, useIsAuthenticated, useCustomer } from '@/lib/storefront/
 import { StorefrontCategory, CompanyInfo } from '@/types/storefront';
 import { categoriesApi, companyApi, authApi } from '@/lib/storefront/api';
 import CartDrawer from '../cart/cart-drawer';
+import SearchAutocomplete from '../search/search-autocomplete';
 
 export default function StorefrontHeader() {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [categories, setCategories] = useState<StorefrontCategory[]>([]);
   const [company, setCompany] = useState<CompanyInfo | null>(null);
 
@@ -90,13 +91,6 @@ export default function StorefrontHeader() {
     };
     fetchData();
   }, []);
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      router.push(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
-    }
-  };
 
   return (
     <>
@@ -160,32 +154,22 @@ export default function StorefrontHeader() {
             </Link>
 
             {/* Search Bar - Desktop */}
-            <form
-              onSubmit={handleSearch}
-              className="hidden md:flex flex-1 max-w-xl mx-8"
-            >
-              <div className="relative w-full">
-                <Input
-                  type="search"
-                  placeholder="Search for products..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-4 pr-12 h-11 rounded-full border-2 border-gray-200 focus:border-primary"
-                />
-                <Button
-                  type="submit"
-                  size="icon"
-                  className="absolute right-1 top-1/2 -translate-y-1/2 rounded-full h-9 w-9"
-                >
-                  <Search className="h-4 w-4" />
-                </Button>
-              </div>
-            </form>
+            <div className="hidden md:flex flex-1 max-w-xl mx-8">
+              <SearchAutocomplete
+                placeholder="Search for products..."
+                className="w-full"
+              />
+            </div>
 
             {/* Right Actions */}
             <div className="flex items-center gap-2 md:gap-4">
               {/* Search - Mobile */}
-              <Button variant="ghost" size="icon" className="md:hidden">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:hidden"
+                onClick={() => setMobileSearchOpen(true)}
+              >
                 <Search className="h-5 w-5" />
               </Button>
 
@@ -443,6 +427,20 @@ export default function StorefrontHeader() {
 
       {/* Cart Drawer */}
       <CartDrawer />
+
+      {/* Mobile Search Overlay */}
+      <Sheet open={mobileSearchOpen} onOpenChange={setMobileSearchOpen}>
+        <SheetContent side="top" className="h-auto pb-8">
+          <SheetHeader className="mb-4">
+            <SheetTitle>Search Products</SheetTitle>
+          </SheetHeader>
+          <SearchAutocomplete
+            placeholder="Search for products..."
+            autoFocus
+            onClose={() => setMobileSearchOpen(false)}
+          />
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

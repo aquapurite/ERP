@@ -6,6 +6,7 @@ import CategoryGrid from '@/components/storefront/home/category-grid';
 import ProductSection from '@/components/storefront/home/product-section';
 import WhyChooseUs from '@/components/storefront/home/why-choose-us';
 import Testimonials from '@/components/storefront/home/testimonials';
+import RecentlyViewed from '@/components/storefront/product/recently-viewed';
 import { StorefrontProduct, StorefrontCategory } from '@/types/storefront';
 import { productsApi, categoriesApi } from '@/lib/storefront/api';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -92,6 +93,9 @@ export default function HomePage() {
           </div>
         )
       )}
+
+      {/* Recently Viewed Products */}
+      <RecentlyViewed maxItems={8} />
 
       {/* Testimonials */}
       <Testimonials />

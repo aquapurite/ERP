@@ -19,6 +19,10 @@ from app.schemas.storefront import (
     StorefrontBrandResponse,
     PaginatedProductsResponse,
     StorefrontCompanyInfo,
+    SearchProductSuggestion,
+    SearchCategorySuggestion,
+    SearchBrandSuggestion,
+    SearchSuggestionsResponse,
 )
 
 router = APIRouter()
@@ -298,4 +302,108 @@ async def get_storefront_company(db: DB):
         city=company.city,
         state=company.state,
         pincode=company.pincode
+    )
+
+
+# ==================== Search Suggestions Endpoint ====================
+
+@router.get("/search/suggestions", response_model=SearchSuggestionsResponse)
+async def get_search_suggestions(
+    db: DB,
+    q: str = Query(..., min_length=2, max_length=100, description="Search query"),
+    limit: int = Query(default=6, ge=1, le=10, description="Max results per category"),
+):
+    """
+    Get search suggestions for autocomplete.
+    Returns matching products, categories, and brands.
+    No authentication required.
+    """
+    search_term = f"%{q.lower()}%"
+
+    # Search products
+    products_query = (
+        select(Product)
+        .options(selectinload(Product.images))
+        .where(
+            Product.is_active == True,
+            or_(
+                func.lower(Product.name).like(search_term),
+                func.lower(Product.sku).like(search_term),
+            )
+        )
+        .order_by(Product.is_bestseller.desc(), Product.name.asc())
+        .limit(limit)
+    )
+    products_result = await db.execute(products_query)
+    products = products_result.scalars().all()
+
+    product_suggestions = []
+    for p in products:
+        primary_image = next(
+            (img for img in (p.images or []) if img.is_primary),
+            (p.images[0] if p.images else None)
+        )
+        product_suggestions.append(SearchProductSuggestion(
+            id=str(p.id),
+            name=p.name,
+            slug=p.slug,
+            image_url=primary_image.url if primary_image else None,
+            price=float(p.selling_price) if p.selling_price else float(p.mrp),
+            mrp=float(p.mrp) if p.mrp else 0,
+        ))
+
+    # Search categories
+    categories_query = (
+        select(Category, func.count(Product.id).label('product_count'))
+        .outerjoin(Product, Product.category_id == Category.id)
+        .where(
+            Category.is_active == True,
+            func.lower(Category.name).like(search_term)
+        )
+        .group_by(Category.id)
+        .order_by(func.count(Product.id).desc())
+        .limit(limit)
+    )
+    categories_result = await db.execute(categories_query)
+    categories = categories_result.all()
+
+    category_suggestions = [
+        SearchCategorySuggestion(
+            id=str(c.Category.id),
+            name=c.Category.name,
+            slug=c.Category.slug,
+            image_url=c.Category.image_url,
+            product_count=c.product_count or 0,
+        )
+        for c in categories
+    ]
+
+    # Search brands
+    brands_query = (
+        select(Brand)
+        .where(
+            Brand.is_active == True,
+            func.lower(Brand.name).like(search_term)
+        )
+        .order_by(Brand.sort_order.asc(), Brand.name.asc())
+        .limit(limit)
+    )
+    brands_result = await db.execute(brands_query)
+    brands = brands_result.scalars().all()
+
+    brand_suggestions = [
+        SearchBrandSuggestion(
+            id=str(b.id),
+            name=b.name,
+            slug=b.slug,
+            logo_url=b.logo_url,
+        )
+        for b in brands
+    ]
+
+    return SearchSuggestionsResponse(
+        products=product_suggestions,
+        categories=category_suggestions,
+        brands=brand_suggestions,
+        query=q,
     )

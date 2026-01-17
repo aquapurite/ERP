@@ -139,6 +139,38 @@ export const brandsApi = {
   },
 };
 
+// Search API types
+export interface SearchProductSuggestion {
+  id: string;
+  name: string;
+  slug: string;
+  image_url?: string;
+  price: number;
+  mrp: number;
+}
+
+export interface SearchCategorySuggestion {
+  id: string;
+  name: string;
+  slug: string;
+  image_url?: string;
+  product_count: number;
+}
+
+export interface SearchBrandSuggestion {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url?: string;
+}
+
+export interface SearchSuggestionsResponse {
+  products: SearchProductSuggestion[];
+  categories: SearchCategorySuggestion[];
+  brands: SearchBrandSuggestion[];
+  query: string;
+}
+
 // Inventory API
 export const inventoryApi = {
   verifyStock: async (request: StockVerificationRequest): Promise<StockVerificationResponse> => {
@@ -227,6 +259,16 @@ export const searchApi = {
     } catch {
       return [];
     }
+  },
+
+  getSuggestions: async (query: string, limit = 6): Promise<SearchSuggestionsResponse> => {
+    if (!query || query.length < 2) {
+      return { products: [], categories: [], brands: [], query };
+    }
+    const { data } = await storefrontClient.get(
+      `${STOREFRONT_PATH}/search/suggestions?q=${encodeURIComponent(query)}&limit=${limit}`
+    );
+    return data;
   },
 };
 
@@ -326,6 +368,84 @@ export const authApi = {
     await storefrontClient.delete(`${API_PATH}/d2c/auth/addresses/${addressId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
+  },
+
+  updateAddress: async (addressId: string, address: Omit<CustomerAddress, 'id'>): Promise<CustomerAddress> => {
+    const token = useAuthStore.getState().accessToken;
+    const { data } = await storefrontClient.put(`${API_PATH}/d2c/auth/addresses/${addressId}`, address, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return data;
+  },
+
+  setDefaultAddress: async (addressId: string): Promise<CustomerAddress> => {
+    const token = useAuthStore.getState().accessToken;
+    const { data } = await storefrontClient.put(`${API_PATH}/d2c/auth/addresses/${addressId}/default`, {}, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return data;
+  },
+
+  // Wishlist
+  getWishlist: async (): Promise<{
+    items: Array<{
+      id: string;
+      product_id: string;
+      product_name: string;
+      product_slug: string;
+      product_image?: string;
+      product_price: number;
+      product_mrp: number;
+      variant_id?: string;
+      variant_name?: string;
+      price_when_added?: number;
+      is_in_stock: boolean;
+      price_dropped: boolean;
+      created_at: string;
+    }>;
+    total: number;
+  }> => {
+    const token = useAuthStore.getState().accessToken;
+    const { data } = await storefrontClient.get(`${API_PATH}/d2c/auth/wishlist`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return data;
+  },
+
+  addToWishlist: async (productId: string, variantId?: string): Promise<{
+    id: string;
+    product_id: string;
+    product_name: string;
+    product_slug: string;
+    product_image?: string;
+    product_price: number;
+    product_mrp: number;
+    created_at: string;
+  }> => {
+    const token = useAuthStore.getState().accessToken;
+    const { data } = await storefrontClient.post(`${API_PATH}/d2c/auth/wishlist`, {
+      product_id: productId,
+      variant_id: variantId,
+    }, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return data;
+  },
+
+  removeFromWishlist: async (productId: string): Promise<void> => {
+    const token = useAuthStore.getState().accessToken;
+    await storefrontClient.delete(`${API_PATH}/d2c/auth/wishlist/${productId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  checkWishlist: async (productId: string): Promise<{ in_wishlist: boolean }> => {
+    const token = useAuthStore.getState().accessToken;
+    if (!token) return { in_wishlist: false };
+    const { data } = await storefrontClient.get(`${API_PATH}/d2c/auth/wishlist/check/${productId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return data;
   },
 
   getOrders: async (page = 1, size = 10): Promise<{
@@ -779,6 +899,28 @@ export const orderTrackingApi = {
     const token = useAuthStore.getState().accessToken;
     const { data } = await storefrontClient.get(
       `${API_PATH}/order-tracking/my-order/${orderNumber}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return data;
+  },
+
+  downloadInvoice: async (orderNumber: string): Promise<Blob> => {
+    const token = useAuthStore.getState().accessToken;
+    const response = await storefrontClient.get(
+      `${API_PATH}/orders/${orderNumber}/invoice`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob',
+      }
+    );
+    return response.data;
+  },
+
+  reorder: async (orderNumber: string): Promise<{ items_added: number; message: string }> => {
+    const token = useAuthStore.getState().accessToken;
+    const { data } = await storefrontClient.post(
+      `${API_PATH}/orders/${orderNumber}/reorder`,
+      {},
       { headers: { Authorization: `Bearer ${token}` } }
     );
     return data;

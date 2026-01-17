@@ -21,6 +21,8 @@ from app.config import settings
 from app.models.customer import Customer, CustomerAddress
 from app.models.customer_otp import CustomerOTP
 from app.models.order import Order
+from app.models.wishlist import WishlistItem
+from app.models.product import Product, ProductImage
 from app.services.otp_service import OTPService, send_otp_sms
 from app.schemas.d2c_auth import (
     SendOTPRequest,
@@ -33,6 +35,9 @@ from app.schemas.d2c_auth import (
     AddAddressRequest,
     CustomerOrderSummary,
     CustomerOrdersResponse,
+    WishlistItemResponse,
+    WishlistResponse,
+    AddToWishlistRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -406,6 +411,131 @@ async def add_address(
     )
 
 
+@router.put("/addresses/{address_id}", response_model=CustomerAddressSchema)
+async def update_address(
+    address_id: uuid.UUID,
+    request: AddAddressRequest,
+    customer: Customer = Depends(require_customer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update an existing address."""
+    result = await db.execute(
+        select(CustomerAddress)
+        .where(
+            CustomerAddress.id == address_id,
+            CustomerAddress.customer_id == customer.id,
+            CustomerAddress.is_active == True,
+        )
+    )
+    address = result.scalar_one_or_none()
+
+    if not address:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Address not found",
+        )
+
+    # If setting as default, unset other defaults
+    if request.is_default and not address.is_default:
+        other_result = await db.execute(
+            select(CustomerAddress)
+            .where(
+                CustomerAddress.customer_id == customer.id,
+                CustomerAddress.is_default == True,
+                CustomerAddress.id != address_id,
+            )
+        )
+        for addr in other_result.scalars().all():
+            addr.is_default = False
+
+    # Update fields
+    address.address_type = request.address_type
+    address.contact_name = request.contact_name
+    address.contact_phone = request.contact_phone
+    address.address_line1 = request.address_line1
+    address.address_line2 = request.address_line2
+    address.landmark = request.landmark
+    address.city = request.city
+    address.state = request.state
+    address.pincode = request.pincode
+    address.country = request.country
+    address.is_default = request.is_default
+
+    await db.commit()
+    await db.refresh(address)
+
+    return CustomerAddressSchema(
+        id=str(address.id),
+        address_type=address.address_type,
+        contact_name=address.contact_name,
+        contact_phone=address.contact_phone,
+        address_line1=address.address_line1,
+        address_line2=address.address_line2,
+        landmark=address.landmark,
+        city=address.city,
+        state=address.state,
+        pincode=address.pincode,
+        country=address.country,
+        is_default=address.is_default,
+    )
+
+
+@router.put("/addresses/{address_id}/default", response_model=CustomerAddressSchema)
+async def set_default_address(
+    address_id: uuid.UUID,
+    customer: Customer = Depends(require_customer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set an address as the default."""
+    result = await db.execute(
+        select(CustomerAddress)
+        .where(
+            CustomerAddress.id == address_id,
+            CustomerAddress.customer_id == customer.id,
+            CustomerAddress.is_active == True,
+        )
+    )
+    address = result.scalar_one_or_none()
+
+    if not address:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Address not found",
+        )
+
+    # Unset other defaults
+    other_result = await db.execute(
+        select(CustomerAddress)
+        .where(
+            CustomerAddress.customer_id == customer.id,
+            CustomerAddress.is_default == True,
+            CustomerAddress.id != address_id,
+        )
+    )
+    for addr in other_result.scalars().all():
+        addr.is_default = False
+
+    # Set this as default
+    address.is_default = True
+    await db.commit()
+    await db.refresh(address)
+
+    return CustomerAddressSchema(
+        id=str(address.id),
+        address_type=address.address_type,
+        contact_name=address.contact_name,
+        contact_phone=address.contact_phone,
+        address_line1=address.address_line1,
+        address_line2=address.address_line2,
+        landmark=address.landmark,
+        city=address.city,
+        state=address.state,
+        pincode=address.pincode,
+        country=address.country,
+        is_default=address.is_default,
+    )
+
+
 @router.delete("/addresses/{address_id}")
 async def delete_address(
     address_id: uuid.UUID,
@@ -533,6 +663,189 @@ async def get_order_detail(
         "tracking_number": order.tracking_number if hasattr(order, 'tracking_number') else None,
         "courier_name": order.courier_name if hasattr(order, 'courier_name') else None,
     }
+
+
+@router.get("/wishlist", response_model=WishlistResponse)
+async def get_wishlist(
+    customer: Customer = Depends(require_customer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get customer's wishlist."""
+    result = await db.execute(
+        select(WishlistItem)
+        .where(WishlistItem.customer_id == customer.id)
+        .options(
+            selectinload(WishlistItem.product).selectinload(Product.images)
+        )
+        .order_by(WishlistItem.created_at.desc())
+    )
+    items = result.scalars().all()
+
+    wishlist_items = []
+    for item in items:
+        product = item.product
+        if not product or not product.is_active:
+            continue
+
+        # Get primary image
+        primary_image = None
+        if product.images:
+            for img in product.images:
+                if img.is_primary:
+                    primary_image = img.image_url
+                    break
+            if not primary_image and product.images:
+                primary_image = product.images[0].image_url
+
+        # Check if price dropped
+        price_dropped = False
+        if item.price_when_added and product.selling_price:
+            price_dropped = float(product.selling_price) < float(item.price_when_added)
+
+        wishlist_items.append(WishlistItemResponse(
+            id=str(item.id),
+            product_id=str(product.id),
+            product_name=product.name,
+            product_slug=product.slug,
+            product_image=primary_image,
+            product_price=float(product.selling_price) if product.selling_price else 0,
+            product_mrp=float(product.mrp) if product.mrp else 0,
+            variant_id=str(item.variant_id) if item.variant_id else None,
+            variant_name=None,  # TODO: Load variant name if needed
+            price_when_added=item.price_when_added,
+            is_in_stock=product.is_active,  # Simplified stock check
+            price_dropped=price_dropped,
+            created_at=item.created_at,
+        ))
+
+    return WishlistResponse(
+        items=wishlist_items,
+        total=len(wishlist_items),
+    )
+
+
+@router.post("/wishlist", response_model=WishlistItemResponse)
+async def add_to_wishlist(
+    request: AddToWishlistRequest,
+    customer: Customer = Depends(require_customer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Add a product to wishlist."""
+    # Check if product exists
+    product_result = await db.execute(
+        select(Product)
+        .where(Product.id == uuid.UUID(request.product_id), Product.is_active == True)
+        .options(selectinload(Product.images))
+    )
+    product = product_result.scalar_one_or_none()
+
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found",
+        )
+
+    # Check if already in wishlist
+    existing = await db.execute(
+        select(WishlistItem)
+        .where(
+            WishlistItem.customer_id == customer.id,
+            WishlistItem.product_id == product.id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Product already in wishlist",
+        )
+
+    # Create wishlist item
+    wishlist_item = WishlistItem(
+        customer_id=customer.id,
+        product_id=product.id,
+        variant_id=uuid.UUID(request.variant_id) if request.variant_id else None,
+        price_when_added=float(product.selling_price) if product.selling_price else None,
+    )
+
+    db.add(wishlist_item)
+    await db.commit()
+    await db.refresh(wishlist_item)
+
+    # Get primary image
+    primary_image = None
+    if product.images:
+        for img in product.images:
+            if img.is_primary:
+                primary_image = img.image_url
+                break
+        if not primary_image and product.images:
+            primary_image = product.images[0].image_url
+
+    return WishlistItemResponse(
+        id=str(wishlist_item.id),
+        product_id=str(product.id),
+        product_name=product.name,
+        product_slug=product.slug,
+        product_image=primary_image,
+        product_price=float(product.selling_price) if product.selling_price else 0,
+        product_mrp=float(product.mrp) if product.mrp else 0,
+        variant_id=request.variant_id,
+        variant_name=None,
+        price_when_added=wishlist_item.price_when_added,
+        is_in_stock=True,
+        price_dropped=False,
+        created_at=wishlist_item.created_at,
+    )
+
+
+@router.delete("/wishlist/{product_id}")
+async def remove_from_wishlist(
+    product_id: uuid.UUID,
+    customer: Customer = Depends(require_customer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a product from wishlist."""
+    result = await db.execute(
+        select(WishlistItem)
+        .where(
+            WishlistItem.customer_id == customer.id,
+            WishlistItem.product_id == product_id,
+        )
+    )
+    item = result.scalar_one_or_none()
+
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not in wishlist",
+        )
+
+    await db.delete(item)
+    await db.commit()
+
+    return {"message": "Removed from wishlist"}
+
+
+@router.get("/wishlist/check/{product_id}")
+async def check_wishlist(
+    product_id: uuid.UUID,
+    customer: Optional[Customer] = Depends(get_current_customer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Check if a product is in the customer's wishlist."""
+    if not customer:
+        return {"in_wishlist": False}
+
+    result = await db.execute(
+        select(WishlistItem)
+        .where(
+            WishlistItem.customer_id == customer.id,
+            WishlistItem.product_id == product_id,
+        )
+    )
+    item = result.scalar_one_or_none()
+
+    return {"in_wishlist": item is not None}
 
 
 @router.post("/logout")

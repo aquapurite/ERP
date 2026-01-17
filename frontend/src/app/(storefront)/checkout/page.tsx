@@ -16,6 +16,11 @@ import {
   CheckCircle2,
   Clock,
   Banknote,
+  Gift,
+  FileText,
+  Tag,
+  X,
+  Percent,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,13 +29,15 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useCartStore, useCartSummary } from '@/lib/storefront/cart-store';
 import { ordersApi, inventoryApi, couponsApi, CouponValidationResponse, ActiveCoupon } from '@/lib/storefront/api';
-import { useAuthStore } from '@/lib/storefront/auth-store';
+import { useAuthStore, useIsAuthenticated } from '@/lib/storefront/auth-store';
 import { formatCurrency } from '@/lib/utils';
 import { D2COrderRequest, ShippingAddress } from '@/types/storefront';
-import { Tag, X, Percent, Gift } from 'lucide-react';
+import AddressSelector from '@/components/storefront/checkout/address-selector';
 
 // Serviceability check result type
 interface ServiceabilityResult {
@@ -57,10 +64,13 @@ export default function CheckoutPage() {
   const syncToBackend = useCartStore((state) => state.syncToBackend);
   const markAsConverted = useCartStore((state) => state.markAsConverted);
   const { items, subtotal, tax, shipping, total } = useCartSummary();
+  const isAuthenticated = useIsAuthenticated();
 
   const [step, setStep] = useState<'shipping' | 'payment' | 'review'>('shipping');
   const [loading, setLoading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'RAZORPAY' | 'COD'>('RAZORPAY');
+  const [useNewAddress, setUseNewAddress] = useState(false);
+  const [addressFromSelector, setAddressFromSelector] = useState<ShippingAddress | null>(null);
 
   // Serviceability state
   const [checkingPincode, setCheckingPincode] = useState(false);
@@ -73,6 +83,14 @@ export default function CheckoutPage() {
   const [appliedCoupon, setAppliedCoupon] = useState<CouponValidationResponse | null>(null);
   const [availableCoupons, setAvailableCoupons] = useState<ActiveCoupon[]>([]);
   const [showCoupons, setShowCoupons] = useState(false);
+
+  // Order options state
+  const [orderNotes, setOrderNotes] = useState('');
+  const [giftWrap, setGiftWrap] = useState(false);
+  const [giftMessage, setGiftMessage] = useState('');
+  const [gstInvoice, setGstInvoice] = useState(false);
+  const [gstin, setGstin] = useState('');
+  const [businessName, setBusinessName] = useState('');
 
   const [formData, setFormData] = useState<ShippingAddress>({
     full_name: '',
@@ -366,6 +384,43 @@ export default function CheckoutPage() {
     }
   };
 
+  // Handle address selection from saved addresses
+  const handleAddressSelect = (address: ShippingAddress) => {
+    setAddressFromSelector(address);
+    setFormData(address);
+    setUseNewAddress(false);
+    setErrors({});
+    // Trigger pincode check for the selected address
+    if (address.pincode && address.pincode.length === 6) {
+      setLastCheckedPincode(''); // Reset to force recheck
+    }
+  };
+
+  // Handle switching to new address form
+  const handleAddNewAddress = () => {
+    setUseNewAddress(true);
+    setAddressFromSelector(null);
+    // Clear form for new address
+    setFormData({
+      full_name: '',
+      phone: '',
+      email: '',
+      address_line1: '',
+      address_line2: '',
+      city: '',
+      state: '',
+      pincode: '',
+      country: 'India',
+    });
+    setServiceability(null);
+    setLastCheckedPincode('');
+  };
+
+  // Handle switching back to saved addresses
+  const handleUseSavedAddresses = () => {
+    setUseNewAddress(false);
+  };
+
   return (
     <div className="bg-muted/50 min-h-screen py-6">
       <div className="container mx-auto px-4 max-w-5xl">
@@ -457,7 +512,34 @@ export default function CheckoutPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid md:grid-cols-2 gap-4">
+                  {/* Address Selector for logged-in users */}
+                  {isAuthenticated && !useNewAddress && (
+                    <AddressSelector
+                      onSelectAddress={handleAddressSelect}
+                      onAddNewAddress={handleAddNewAddress}
+                      selectedAddress={addressFromSelector}
+                      isAuthenticated={isAuthenticated}
+                    />
+                  )}
+
+                  {/* Show form when: not authenticated OR user chose to add new address */}
+                  {(!isAuthenticated || useNewAddress || !addressFromSelector) && (
+                    <>
+                      {/* Back to saved addresses button */}
+                      {isAuthenticated && useNewAddress && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleUseSavedAddresses}
+                          className="mb-4"
+                        >
+                          <ArrowLeft className="h-4 w-4 mr-2" />
+                          Back to saved addresses
+                        </Button>
+                      )}
+
+                      <div className="grid md:grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="full_name">Full Name *</Label>
                       <Input
@@ -639,6 +721,8 @@ export default function CheckoutPage() {
                       Continue to Payment
                     </Button>
                   </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -700,6 +784,123 @@ export default function CheckoutPage() {
                       </Label>
                     </div>
                   </RadioGroup>
+
+                  <Separator className="my-6" />
+
+                  {/* Order Options */}
+                  <div className="space-y-4">
+                    <h4 className="font-medium">Additional Options</h4>
+
+                    {/* Order Notes */}
+                    <div>
+                      <Label htmlFor="orderNotes" className="text-sm">
+                        Order Notes (Optional)
+                      </Label>
+                      <textarea
+                        id="orderNotes"
+                        value={orderNotes}
+                        onChange={(e) => setOrderNotes(e.target.value)}
+                        placeholder="Special instructions for delivery, packaging, etc."
+                        className="mt-1 w-full h-20 px-3 py-2 text-sm border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                        maxLength={500}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {orderNotes.length}/500 characters
+                      </p>
+                    </div>
+
+                    {/* Gift Wrap */}
+                    <div className="border rounded-lg p-4">
+                      <div className="flex items-start space-x-3">
+                        <Checkbox
+                          id="giftWrap"
+                          checked={giftWrap}
+                          onCheckedChange={(checked) => setGiftWrap(checked === true)}
+                        />
+                        <div className="flex-1">
+                          <Label htmlFor="giftWrap" className="cursor-pointer">
+                            <div className="font-medium flex items-center gap-2">
+                              <Gift className="h-4 w-4 text-pink-500" />
+                              Gift Wrap This Order
+                              <Badge variant="secondary" className="text-xs">Free</Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Send as a gift with special packaging
+                            </p>
+                          </Label>
+                        </div>
+                      </div>
+                      {giftWrap && (
+                        <div className="mt-3 ml-6">
+                          <Label htmlFor="giftMessage" className="text-sm">
+                            Gift Message (Optional)
+                          </Label>
+                          <textarea
+                            id="giftMessage"
+                            value={giftMessage}
+                            onChange={(e) => setGiftMessage(e.target.value)}
+                            placeholder="Add a personal message..."
+                            className="mt-1 w-full h-16 px-3 py-2 text-sm border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                            maxLength={200}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* GST Invoice */}
+                    <div className="border rounded-lg p-4">
+                      <div className="flex items-start space-x-3">
+                        <Checkbox
+                          id="gstInvoice"
+                          checked={gstInvoice}
+                          onCheckedChange={(checked) => setGstInvoice(checked === true)}
+                        />
+                        <div className="flex-1">
+                          <Label htmlFor="gstInvoice" className="cursor-pointer">
+                            <div className="font-medium flex items-center gap-2">
+                              <FileText className="h-4 w-4 text-blue-500" />
+                              I need a GST Invoice
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              For business purchases - claim GST input credit
+                            </p>
+                          </Label>
+                        </div>
+                      </div>
+                      {gstInvoice && (
+                        <div className="mt-3 ml-6 space-y-3">
+                          <div>
+                            <Label htmlFor="gstin" className="text-sm">
+                              GSTIN *
+                            </Label>
+                            <Input
+                              id="gstin"
+                              value={gstin}
+                              onChange={(e) => setGstin(e.target.value.toUpperCase())}
+                              placeholder="22AAAAA0000A1Z5"
+                              className="mt-1"
+                              maxLength={15}
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              15-character GST Identification Number
+                            </p>
+                          </div>
+                          <div>
+                            <Label htmlFor="businessName" className="text-sm">
+                              Business/Company Name *
+                            </Label>
+                            <Input
+                              id="businessName"
+                              value={businessName}
+                              onChange={(e) => setBusinessName(e.target.value)}
+                              placeholder="Your Company Pvt Ltd"
+                              className="mt-1"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
                   <div className="flex justify-between pt-4">
                     <Button variant="ghost" onClick={() => setStep('shipping')}>

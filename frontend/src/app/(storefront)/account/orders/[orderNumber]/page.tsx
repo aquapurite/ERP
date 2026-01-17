@@ -21,6 +21,8 @@ import {
   Receipt,
   Undo2,
   Ban,
+  Download,
+  ShoppingCart,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,6 +32,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/lib/storefront/auth-store';
 import { orderTrackingApi, OrderTrackingResponse, TimelineEvent } from '@/lib/storefront/api';
+import { useCartStore } from '@/lib/storefront/cart-store';
 import { formatCurrency } from '@/lib/utils';
 
 const eventTypeIcons: Record<string, React.ReactNode> = {
@@ -56,6 +59,60 @@ export default function OrderDetailPage({ params }: { params: Promise<{ orderNum
   const [order, setOrder] = useState<OrderTrackingResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
+  const [reordering, setReordering] = useState(false);
+
+  const handleDownloadInvoice = async () => {
+    if (!order) return;
+    setDownloadingInvoice(true);
+    try {
+      const blob = await orderTrackingApi.downloadInvoice(order.order_number);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `invoice-${order.order_number}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      toast.success('Invoice downloaded successfully');
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to download invoice');
+    } finally {
+      setDownloadingInvoice(false);
+    }
+  };
+
+  const handleReorder = async () => {
+    if (!order) return;
+    setReordering(true);
+    try {
+      // Add each item from the order to cart
+      const cartStore = useCartStore.getState();
+      for (const item of order.items) {
+        // Create a minimal product object with required fields
+        cartStore.addItem(
+          {
+            id: item.product_id || item.id,
+            name: item.product_name,
+            slug: item.sku.toLowerCase(),
+            sku: item.sku,
+            selling_price: item.unit_price,
+            mrp: item.unit_price,
+            is_active: true,
+            images: [],
+          },
+          item.quantity
+        );
+      }
+      toast.success(`${order.items.length} item(s) added to cart`);
+      router.push('/cart');
+    } catch (err: any) {
+      toast.error('Failed to add items to cart');
+    } finally {
+      setReordering(false);
+    }
+  };
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -528,6 +585,40 @@ export default function OrderDetailPage({ params }: { params: Promise<{ orderNum
           {/* Actions */}
           <Card>
             <CardContent className="pt-6 space-y-3">
+              {/* Download Invoice - Available for paid orders */}
+              {['PAID', 'CONFIRMED', 'SHIPPED', 'DELIVERED'].some(s =>
+                order.status.includes(s) || order.payment_status === 'PAID'
+              ) && (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleDownloadInvoice}
+                  disabled={downloadingInvoice}
+                >
+                  {downloadingInvoice ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  Download Invoice
+                </Button>
+              )}
+
+              {/* Reorder - Add all items to cart */}
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={handleReorder}
+                disabled={reordering}
+              >
+                {reordering ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <ShoppingCart className="h-4 w-4 mr-2" />
+                )}
+                Reorder
+              </Button>
+
               {order.can_return && (
                 <Button className="w-full" asChild>
                   <Link href={`/account/orders/${order.order_number}/return`}>

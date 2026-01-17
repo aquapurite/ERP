@@ -88,3 +88,49 @@ class StorefrontCompanyInfo(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ==================== Search Suggestions ====================
+
+class SearchProductSuggestion(BaseModel):
+    """Product suggestion in search results."""
+    id: str = Field(..., description="Product ID")
+    name: str = Field(..., description="Product name")
+    slug: str = Field(..., description="URL slug")
+    image_url: Optional[str] = Field(None, description="Primary image URL")
+    price: float = Field(..., description="Selling price")
+    mrp: float = Field(..., description="MRP")
+
+    class Config:
+        from_attributes = True
+
+
+class SearchCategorySuggestion(BaseModel):
+    """Category suggestion in search results."""
+    id: str = Field(..., description="Category ID")
+    name: str = Field(..., description="Category name")
+    slug: str = Field(..., description="URL slug")
+    image_url: Optional[str] = Field(None, description="Category image")
+    product_count: int = Field(0, description="Number of products in category")
+
+    class Config:
+        from_attributes = True
+
+
+class SearchBrandSuggestion(BaseModel):
+    """Brand suggestion in search results."""
+    id: str = Field(..., description="Brand ID")
+    name: str = Field(..., description="Brand name")
+    slug: str = Field(..., description="URL slug")
+    logo_url: Optional[str] = Field(None, description="Brand logo")
+
+    class Config:
+        from_attributes = True
+
+
+class SearchSuggestionsResponse(BaseModel):
+    """Search suggestions response with products, categories, and brands."""
+    products: List[SearchProductSuggestion] = Field([], description="Product suggestions")
+    categories: List[SearchCategorySuggestion] = Field([], description="Category suggestions")
+    brands: List[SearchBrandSuggestion] = Field([], description="Brand suggestions")
+    query: str = Field(..., description="Original search query")

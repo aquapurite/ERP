@@ -26,9 +26,15 @@ import { toast } from 'sonner';
 import ProductCard from '@/components/storefront/product/product-card';
 import PinCodeChecker from '@/components/storefront/product/pincode-checker';
 import { ProductReviews } from '@/components/storefront/reviews';
+import ProductQA from '@/components/storefront/reviews/product-qa';
+import RecentlyViewed from '@/components/storefront/product/recently-viewed';
+import ImageGallery from '@/components/storefront/product/image-gallery';
+import StockStatus from '@/components/storefront/product/stock-status';
+import ShareButton from '@/components/storefront/product/share-button';
 import { StorefrontProduct, ProductVariant } from '@/types/storefront';
 import { productsApi, reviewsApi } from '@/lib/storefront/api';
 import { useCartStore } from '@/lib/storefront/cart-store';
+import { addToRecentlyViewed } from '@/lib/storefront/recently-viewed';
 import { formatCurrency } from '@/lib/utils';
 
 export default function ProductDetailPage() {
@@ -59,6 +65,17 @@ export default function ProductDetailPage() {
         if (data.variants && data.variants.length > 0) {
           setSelectedVariant(data.variants[0]);
         }
+
+        // Track this product as recently viewed
+        const primaryImg = data.images?.find((img) => img.is_primary) || data.images?.[0];
+        addToRecentlyViewed({
+          id: data.id,
+          slug: data.slug,
+          name: data.name,
+          imageUrl: primaryImg?.image_url,
+          price: data.selling_price,
+          mrp: data.mrp,
+        });
 
         // Fetch related products and review summary in parallel
         const [related, summary] = await Promise.all([
@@ -179,49 +196,17 @@ export default function ProductDetailPage() {
         {/* Product Section */}
         <div className="bg-card rounded-lg shadow-sm p-6 mb-8">
           <div className="grid lg:grid-cols-2 gap-8">
-            {/* Image Gallery */}
-            <div className="space-y-4">
-              <div className="aspect-square rounded-lg overflow-hidden bg-muted">
-                {images.length > 0 ? (
-                  <img
-                    src={
-                      images[selectedImage]?.image_url || primaryImage?.image_url
-                    }
-                    alt={
-                      images[selectedImage]?.alt_text || product.name
-                    }
-                    className="h-full w-full object-contain"
-                  />
-                ) : (
-                  <div className="h-full w-full flex items-center justify-center">
-                    <Package className="h-24 w-24 text-gray-300" />
-                  </div>
-                )}
-              </div>
-
-              {/* Thumbnails */}
-              {images.length > 1 && (
-                <div className="flex gap-2 overflow-x-auto pb-2">
-                  {images.map((image, index) => (
-                    <button
-                      key={image.id}
-                      onClick={() => setSelectedImage(index)}
-                      className={`flex-shrink-0 h-20 w-20 rounded-lg overflow-hidden border-2 transition-colors ${
-                        selectedImage === index
-                          ? 'border-primary'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <img
-                        src={image.thumbnail_url || image.image_url}
-                        alt={image.alt_text || `${product.name} - ${index + 1}`}
-                        className="h-full w-full object-cover"
-                      />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* Image Gallery with Zoom & Lightbox */}
+            <ImageGallery
+              images={images.map((img) => ({
+                id: img.id,
+                image_url: img.image_url,
+                thumbnail_url: img.thumbnail_url,
+                alt_text: img.alt_text,
+                is_primary: img.is_primary,
+              }))}
+              productName={product.name}
+            />
 
             {/* Product Info */}
             <div className="space-y-6">
@@ -294,6 +279,12 @@ export default function ProductDetailPage() {
                   Inclusive of all taxes
                 </p>
               </div>
+
+              {/* Stock Status */}
+              <StockStatus
+                productId={product.id}
+                variantId={selectedVariant?.id}
+              />
 
               {/* Variants */}
               {product.variants && product.variants.length > 0 && (
@@ -376,6 +367,10 @@ export default function ProductDetailPage() {
                 <Button size="lg" variant="outline" className="px-4">
                   <Heart className="h-5 w-5" />
                 </Button>
+                <ShareButton
+                  title={product.name}
+                  text={`Check out ${product.name} on AQUAPURITE - ${formatCurrency(currentPrice)}`}
+                />
               </div>
 
               {/* Features */}
@@ -404,6 +399,7 @@ export default function ProductDetailPage() {
               <TabsTrigger value="description">Description</TabsTrigger>
               <TabsTrigger value="specifications">Specifications</TabsTrigger>
               <TabsTrigger value="reviews">Reviews</TabsTrigger>
+              <TabsTrigger value="qa">Q&A</TabsTrigger>
             </TabsList>
 
             <TabsContent value="description" className="space-y-4">
@@ -469,6 +465,10 @@ export default function ProductDetailPage() {
             <TabsContent value="reviews">
               <ProductReviews productId={product.id} productName={product.name} />
             </TabsContent>
+
+            <TabsContent value="qa">
+              <ProductQA productId={product.id} productName={product.name} />
+            </TabsContent>
           </Tabs>
         </div>
 
@@ -483,6 +483,11 @@ export default function ProductDetailPage() {
             </div>
           </div>
         )}
+
+        {/* Recently Viewed Products */}
+        <div className="bg-card rounded-lg shadow-sm p-6 mt-8">
+          <RecentlyViewed excludeProductId={product.id} maxItems={6} />
+        </div>
       </div>
     </div>
   );

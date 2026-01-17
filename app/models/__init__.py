@@ -455,6 +455,8 @@ from app.models.abandoned_cart import (
     RecoveryChannel,
     RecoveryStatus,
 )
+# Wishlist
+from app.models.wishlist import WishlistItem
 
 __all__ = [
     # Access Control
@@ -827,4 +829,6 @@ __all__ = [
     "CartStatus",
     "RecoveryChannel",
     "RecoveryStatus",
+    # Wishlist
+    "WishlistItem",
 ]

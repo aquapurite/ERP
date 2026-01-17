@@ -12,6 +12,7 @@ import {
   ShoppingBag,
   Clock,
   Loader2,
+  Heart,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -138,6 +139,13 @@ export default function AccountPage() {
               <Button variant="outline" className="w-full justify-start">
                 <MapPin className="h-4 w-4 mr-2" />
                 Saved Addresses
+                <ChevronRight className="h-4 w-4 ml-auto" />
+              </Button>
+            </Link>
+            <Link href="/account/wishlist" className="block">
+              <Button variant="outline" className="w-full justify-start">
+                <Heart className="h-4 w-4 mr-2" />
+                Wishlist
                 <ChevronRight className="h-4 w-4 ml-auto" />
               </Button>
             </Link>

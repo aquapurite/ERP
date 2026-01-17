@@ -162,5 +162,37 @@ class CustomerOrdersResponse(BaseModel):
     size: int
 
 
+class WishlistItemResponse(BaseModel):
+    """Wishlist item response."""
+    id: str
+    product_id: str
+    product_name: str
+    product_slug: str
+    product_image: Optional[str] = None
+    product_price: float
+    product_mrp: float
+    variant_id: Optional[str] = None
+    variant_name: Optional[str] = None
+    price_when_added: Optional[float] = None
+    is_in_stock: bool = True
+    price_dropped: bool = False
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WishlistResponse(BaseModel):
+    """Wishlist response with all items."""
+    items: List[WishlistItemResponse]
+    total: int
+
+
+class AddToWishlistRequest(BaseModel):
+    """Request to add product to wishlist."""
+    product_id: str
+    variant_id: Optional[str] = None
+
+
 # Update forward references
 VerifyOTPResponse.model_rebuild()
