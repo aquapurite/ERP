@@ -339,7 +339,7 @@ class SerializationService:
 
         # Create new sequence
         sequence = SerialSequence(
-            id=uuid.uuid4(),
+            id=str(uuid.uuid4()),
             model_code=model_code.upper(),
             supplier_code=supplier_code.upper(),
             year_code=year_code,
@@ -574,7 +574,7 @@ class SerializationService:
                 # Use native UUIDs - database columns are now native PostgreSQL UUID type
                 # Convert Enum to string value for VARCHAR columns in production
                 po_serial = POSerial(
-                    id=uuid.uuid4(),
+                    id=str(uuid.uuid4()),
                     po_id=request.po_id if isinstance(request.po_id, uuid.UUID) else uuid.UUID(str(request.po_id)),
                     po_item_id=item.po_item_id if isinstance(item.po_item_id, uuid.UUID) else uuid.UUID(str(item.po_item_id)) if item.po_item_id else None,
                     product_id=item.product_id if isinstance(item.product_id, uuid.UUID) else uuid.UUID(str(item.product_id)) if item.product_id else None,
@@ -973,7 +973,7 @@ class SerializationService:
             raise ValueError(f"Supplier code {code} already exists")
 
         supplier_code = SupplierCode(
-            id=uuid.uuid4(),
+            id=str(uuid.uuid4()),
             code=code.upper(),
             name=name,
             vendor_id=vendor_id,
@@ -1016,7 +1016,7 @@ class SerializationService:
             raise ValueError(f"FG code {fg_code} already exists")
 
         model_ref = ModelCodeReference(
-            id=uuid.uuid4(),
+            id=str(uuid.uuid4()),
             fg_code=fg_code.upper(),
             model_code=model_code.upper(),
             item_type=item_type,

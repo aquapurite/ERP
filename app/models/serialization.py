@@ -48,10 +48,11 @@ class SerialSequence(Base):
     """
     __tablename__ = "serial_sequences"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    # Production uses VARCHAR for id, not UUID
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Product identification
@@ -102,10 +103,11 @@ class ProductSerialSequence(Base):
     """
     __tablename__ = "product_serial_sequences"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    # Production uses VARCHAR for id, not UUID
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Product identification - unique per (model_code + item_type) combination
@@ -161,10 +163,11 @@ class POSerial(Base):
     """
     __tablename__ = "po_serials"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    # Production uses VARCHAR for id, not UUID
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # PO linkage
@@ -253,10 +256,11 @@ class ModelCodeReference(Base):
     """
     __tablename__ = "model_code_references"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    # Production uses VARCHAR for id, not UUID
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Product linkage
@@ -301,10 +305,11 @@ class SupplierCode(Base):
     """
     __tablename__ = "supplier_codes"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+    # Production uses VARCHAR for id, not UUID
+    id: Mapped[str] = mapped_column(
+        String(36),
         primary_key=True,
-        default=uuid.uuid4
+        default=lambda: str(uuid.uuid4())
     )
 
     # Vendor linkage
