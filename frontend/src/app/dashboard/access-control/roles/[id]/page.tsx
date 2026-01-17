@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Loader2, Save } from 'lucide-react';
+import { ArrowLeft, Loader2, Save, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Select,
   SelectContent,
@@ -54,10 +55,11 @@ export default function EditRolePage() {
     permission_ids: [],
   });
 
-  const { data: role, isLoading: roleLoading } = useQuery({
+  const { data: role, isLoading: roleLoading, isError, error } = useQuery({
     queryKey: ['role', roleId],
     queryFn: () => rolesApi.getById(roleId),
     enabled: !!roleId,
+    retry: 1,
   });
 
   const { data: permissionsData } = useQuery({
@@ -78,7 +80,16 @@ export default function EditRolePage() {
   }, [role]);
 
   const updateMutation = useMutation({
-    mutationFn: (data: RoleForm) => rolesApi.update(roleId, data),
+    mutationFn: async (data: RoleForm) => {
+      // Update role details
+      await rolesApi.update(roleId, {
+        name: data.name,
+        description: data.description,
+        level: data.level,
+      });
+      // Update permissions separately
+      await rolesApi.assignPermissions(roleId, data.permission_ids);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['roles'] });
       queryClient.invalidateQueries({ queryKey: ['role', roleId] });
@@ -135,6 +146,61 @@ export default function EditRolePage() {
           <Skeleton className="h-64" />
           <Skeleton className="h-96 lg:col-span-2" />
         </div>
+      </div>
+    );
+  }
+
+  // Handle error state
+  if (isError) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to load role';
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Edit Role"
+          description="Error loading role"
+          actions={
+            <Button variant="outline" asChild>
+              <Link href="/dashboard/access-control/roles">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Roles
+              </Link>
+            </Button>
+          }
+        />
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>
+            {errorMessage}. Please try again or contact support if the issue persists.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
+  // Handle not found state
+  if (!role) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Edit Role"
+          description="Role not found"
+          actions={
+            <Button variant="outline" asChild>
+              <Link href="/dashboard/access-control/roles">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Roles
+              </Link>
+            </Button>
+          }
+        />
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Not Found</AlertTitle>
+          <AlertDescription>
+            The role you are looking for does not exist or you do not have permission to view it.
+          </AlertDescription>
+        </Alert>
       </div>
     );
   }
