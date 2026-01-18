@@ -194,13 +194,12 @@ export default function ProductDetailPage() {
   });
 
   const addImageMutation = useMutation({
-    mutationFn: (image: { image_url: string; alt_text?: string }) =>
+    mutationFn: (image: { image_url: string; thumbnail_url?: string; alt_text?: string }) =>
       productsApi.addImage(productId, image),
     onSuccess: () => {
       toast.success('Image added successfully');
       queryClient.invalidateQueries({ queryKey: ['product', productId] });
       setIsImageDialogOpen(false);
-      setNewImageUrl('');
       setNewImageAlt('');
     },
     onError: (error: Error) => {
