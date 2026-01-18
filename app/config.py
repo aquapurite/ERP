@@ -30,7 +30,10 @@ class Settings(BaseSettings):
         "https://erp-five-phi.vercel.app",
         "https://erp-woad-eight.vercel.app",
         "https://www.aquapurite.org",
-        "https://aquapurite.org"
+        "https://aquapurite.org",
+        # D2C Storefront
+        "https://www.aquapurite.com",
+        "https://aquapurite.com",
     ]
 
     # Email/SMTP Settings (Gmail)
