@@ -18,6 +18,9 @@ from app.models.brand import Brand
 from app.models.inventory import InventorySummary
 from app.schemas.storefront import (
     StorefrontProductImage,
+    StorefrontProductVariant,
+    StorefrontProductSpecification,
+    StorefrontProductDocument,
     StorefrontProductResponse,
     StorefrontCategoryResponse,
     StorefrontBrandResponse,
@@ -224,6 +227,9 @@ async def get_product_by_slug(slug: str, db: DB, response: Response):
         .options(selectinload(Product.images))
         .options(selectinload(Product.category))
         .options(selectinload(Product.brand))
+        .options(selectinload(Product.variants))
+        .options(selectinload(Product.specifications))
+        .options(selectinload(Product.documents))
         .where(Product.slug == slug, Product.is_active == True)
     )
     result = await db.execute(query)
@@ -244,6 +250,46 @@ async def get_product_by_slug(slug: str, db: DB, response: Response):
         for img in (product.images or [])
     ]
 
+    # Build variants list
+    variants = [
+        StorefrontProductVariant(
+            id=str(v.id),
+            name=v.name,
+            sku=v.sku,
+            attributes=v.attributes,
+            mrp=float(v.mrp) if v.mrp else None,
+            selling_price=float(v.selling_price) if v.selling_price else None,
+            stock_quantity=v.stock_quantity,
+            image_url=v.image_url,
+            is_active=v.is_active,
+        )
+        for v in (product.variants or []) if v.is_active
+    ]
+
+    # Build specifications list
+    specifications = [
+        StorefrontProductSpecification(
+            id=str(s.id),
+            group_name=s.group_name,
+            key=s.key,
+            value=s.value,
+            sort_order=s.sort_order or 0,
+        )
+        for s in (product.specifications or [])
+    ]
+
+    # Build documents list
+    documents = [
+        StorefrontProductDocument(
+            id=str(d.id),
+            title=d.title,
+            document_type=d.document_type,
+            file_url=d.file_url,
+            file_size_bytes=d.file_size_bytes,
+        )
+        for d in (product.documents or [])
+    ]
+
     # Get stock quantity for this product
     stock_query = (
         select(func.sum(InventorySummary.available_quantity).label('total_available'))
@@ -252,6 +298,11 @@ async def get_product_by_slug(slug: str, db: DB, response: Response):
     stock_result = await db.execute(stock_query)
     stock_qty = stock_result.scalar() or 0
 
+    # Calculate discount percentage
+    discount_pct = None
+    if product.mrp and product.selling_price and product.mrp > 0:
+        discount_pct = round(((float(product.mrp) - float(product.selling_price)) / float(product.mrp)) * 100, 1)
+
     result_data = StorefrontProductResponse(
         id=str(product.id),
         name=product.name,
@@ -259,17 +310,25 @@ async def get_product_by_slug(slug: str, db: DB, response: Response):
         sku=product.sku,
         short_description=product.short_description,
         description=product.description,
+        features=product.features,
         mrp=float(product.mrp) if product.mrp else 0,
         selling_price=float(product.selling_price) if product.selling_price else None,
+        discount_percentage=discount_pct,
+        gst_rate=float(product.gst_rate) if product.gst_rate else None,
+        hsn_code=product.hsn_code,
         category_id=str(product.category_id) if product.category_id else None,
         category_name=product.category.name if product.category else None,
         brand_id=str(product.brand_id) if product.brand_id else None,
         brand_name=product.brand.name if product.brand else None,
         warranty_months=product.warranty_months or 12,
+        warranty_type=product.warranty_terms,
         is_featured=product.is_featured or False,
         is_bestseller=product.is_bestseller or False,
         is_new_arrival=product.is_new_arrival or False,
         images=images,
+        variants=variants,
+        specifications=specifications,
+        documents=documents,
         in_stock=stock_qty > 0,
         stock_quantity=stock_qty,
     )
@@ -309,17 +368,37 @@ async def list_categories(db: DB, response: Response):
     result = await db.execute(query)
     categories = result.scalars().all()
 
-    result_data = [
-        StorefrontCategoryResponse(
+    # Build category tree with children
+    category_map = {}
+    root_categories = []
+
+    # First pass: create all category objects
+    for c in categories:
+        cat_response = StorefrontCategoryResponse(
             id=str(c.id),
             name=c.name,
             slug=c.slug,
             description=c.description,
             image_url=c.image_url,
+            icon=c.icon,
             parent_id=str(c.parent_id) if c.parent_id else None,
+            is_active=c.is_active,
+            is_featured=c.is_featured or False,
+            children=[],
         )
-        for c in categories
-    ]
+        category_map[str(c.id)] = {"obj": cat_response, "parent_id": str(c.parent_id) if c.parent_id else None}
+
+    # Second pass: build tree structure
+    for cat_id, cat_data in category_map.items():
+        if cat_data["parent_id"] and cat_data["parent_id"] in category_map:
+            # Add as child to parent
+            parent = category_map[cat_data["parent_id"]]["obj"]
+            parent.children.append(cat_data["obj"])
+        else:
+            # Root category
+            root_categories.append(cat_data["obj"])
+
+    result_data = root_categories
 
     # Cache the result
     await cache.set(cache_key, [r.model_dump() for r in result_data], ttl=settings.CATEGORY_CACHE_TTL)
@@ -363,6 +442,7 @@ async def list_brands(db: DB, response: Response):
             slug=b.slug,
             description=b.description,
             logo_url=b.logo_url,
+            is_active=b.is_active,
         )
         for b in brands
     ]

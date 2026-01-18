@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, computed_field
 from typing import Optional, List
 from datetime import datetime
 import uuid
@@ -54,6 +54,13 @@ class BrandResponse(BaseModel):
     is_featured: bool
     created_at: datetime
     updated_at: datetime
+
+    # Frontend compatibility alias
+    @computed_field
+    @property
+    def code(self) -> str:
+        """Alias for slug - frontend expects 'code' field."""
+        return self.slug
 
     class Config:
         from_attributes = True

@@ -1,7 +1,9 @@
 """Storefront schemas for public D2C website API."""
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from typing import Optional, List
 
+
+# ==================== Product Sub-schemas ====================
 
 class StorefrontProductImage(BaseModel):
     """Product image for storefront."""
@@ -16,6 +18,46 @@ class StorefrontProductImage(BaseModel):
         from_attributes = True
 
 
+class StorefrontProductVariant(BaseModel):
+    """Product variant for storefront."""
+    id: str = Field(..., description="Variant ID")
+    name: str = Field(..., description="Variant name")
+    sku: str = Field(..., description="Variant SKU")
+    attributes: Optional[dict] = Field(None, description="Variant attributes")
+    mrp: Optional[float] = Field(None, description="Variant MRP")
+    selling_price: Optional[float] = Field(None, description="Variant selling price")
+    stock_quantity: Optional[int] = Field(None, description="Stock quantity")
+    image_url: Optional[str] = Field(None, description="Variant image URL")
+    is_active: bool = Field(True, description="Whether variant is active")
+
+    class Config:
+        from_attributes = True
+
+
+class StorefrontProductSpecification(BaseModel):
+    """Product specification for storefront."""
+    id: str = Field(..., description="Specification ID")
+    group_name: Optional[str] = Field(None, description="Specification group")
+    key: str = Field(..., description="Specification key/name")
+    value: str = Field(..., description="Specification value")
+    sort_order: Optional[int] = Field(0, description="Display order")
+
+    class Config:
+        from_attributes = True
+
+
+class StorefrontProductDocument(BaseModel):
+    """Product document for storefront."""
+    id: str = Field(..., description="Document ID")
+    title: str = Field(..., description="Document title")
+    document_type: str = Field(..., description="Document type")
+    file_url: str = Field(..., description="Document file URL")
+    file_size_bytes: Optional[int] = Field(None, description="File size in bytes")
+
+    class Config:
+        from_attributes = True
+
+
 class StorefrontProductResponse(BaseModel):
     """Product response for storefront."""
     id: str = Field(..., description="Product ID")
@@ -24,17 +66,25 @@ class StorefrontProductResponse(BaseModel):
     sku: str = Field(..., description="SKU code")
     short_description: Optional[str] = Field(None, description="Short description")
     description: Optional[str] = Field(None, description="Full description")
+    features: Optional[str] = Field(None, description="Product features")
     mrp: float = Field(..., description="Maximum retail price")
     selling_price: Optional[float] = Field(None, description="Selling price")
+    discount_percentage: Optional[float] = Field(None, description="Discount percentage")
+    gst_rate: Optional[float] = Field(None, description="GST rate")
+    hsn_code: Optional[str] = Field(None, description="HSN code")
     category_id: Optional[str] = Field(None, description="Category ID")
     category_name: Optional[str] = Field(None, description="Category name")
     brand_id: Optional[str] = Field(None, description="Brand ID")
     brand_name: Optional[str] = Field(None, description="Brand name")
     warranty_months: int = Field(12, description="Warranty in months")
+    warranty_type: Optional[str] = Field(None, description="Warranty type")
     is_featured: bool = Field(False, description="Featured product flag")
     is_bestseller: bool = Field(False, description="Bestseller flag")
     is_new_arrival: bool = Field(False, description="New arrival flag")
     images: List[StorefrontProductImage] = Field([], description="Product images")
+    variants: List[StorefrontProductVariant] = Field([], description="Product variants")
+    specifications: List[StorefrontProductSpecification] = Field([], description="Product specifications")
+    documents: List[StorefrontProductDocument] = Field([], description="Product documents")
     # Stock information
     in_stock: bool = Field(True, description="Whether product is in stock")
     stock_quantity: int = Field(0, description="Available stock quantity")
@@ -50,10 +100,18 @@ class StorefrontCategoryResponse(BaseModel):
     slug: str = Field(..., description="URL slug")
     description: Optional[str] = Field(None, description="Category description")
     image_url: Optional[str] = Field(None, description="Category image URL")
+    icon: Optional[str] = Field(None, description="Category icon")
     parent_id: Optional[str] = Field(None, description="Parent category ID")
+    is_active: bool = Field(True, description="Whether category is active")
+    is_featured: Optional[bool] = Field(False, description="Featured category flag")
+    children: List["StorefrontCategoryResponse"] = Field([], description="Child categories")
 
     class Config:
         from_attributes = True
+
+
+# Enable forward reference resolution
+StorefrontCategoryResponse.model_rebuild()
 
 
 class StorefrontBrandResponse(BaseModel):
@@ -63,6 +121,14 @@ class StorefrontBrandResponse(BaseModel):
     slug: str = Field(..., description="URL slug")
     description: Optional[str] = Field(None, description="Brand description")
     logo_url: Optional[str] = Field(None, description="Brand logo URL")
+    is_active: bool = Field(True, description="Whether brand is active")
+
+    # Frontend compatibility - code is alias for slug
+    @computed_field
+    @property
+    def code(self) -> str:
+        """Alias for slug - frontend expects 'code' field."""
+        return self.slug
 
     class Config:
         from_attributes = True

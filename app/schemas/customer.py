@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, computed_field
 from typing import Optional, List
 from datetime import datetime, date
 import uuid
@@ -135,6 +135,13 @@ class CustomerResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # Frontend compatibility alias
+    @computed_field
+    @property
+    def name(self) -> str:
+        """Alias for full_name - frontend expects 'name'."""
+        return self.full_name
+
     class Config:
         from_attributes = True
 
@@ -146,6 +153,13 @@ class CustomerBrief(BaseModel):
     full_name: str
     phone: str
     email: Optional[str] = None
+
+    # Frontend compatibility alias
+    @computed_field
+    @property
+    def name(self) -> str:
+        """Alias for full_name - frontend expects 'name'."""
+        return self.full_name
 
     class Config:
         from_attributes = True

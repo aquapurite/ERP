@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
@@ -37,6 +37,25 @@ class OrderItemResponse(BaseModel):
     warranty_months: int
     serial_number: Optional[str] = None
     created_at: datetime
+
+    # Frontend compatibility aliases
+    @computed_field
+    @property
+    def discount(self) -> Decimal:
+        """Alias for discount_amount - frontend expects 'discount'."""
+        return self.discount_amount
+
+    @computed_field
+    @property
+    def tax(self) -> Decimal:
+        """Alias for tax_amount - frontend expects 'tax'."""
+        return self.tax_amount
+
+    @computed_field
+    @property
+    def total(self) -> Decimal:
+        """Alias for total_amount - frontend expects 'total'."""
+        return self.total_amount
 
     class Config:
         from_attributes = True
@@ -161,6 +180,7 @@ class OrderResponse(BaseModel):
     customer: Optional[CustomerBrief] = None
     status: str
     source: str
+    channel: Optional[str] = None  # Sales channel (D2C, B2B, etc.)
     subtotal: Decimal
     tax_amount: Decimal
     discount_amount: Decimal
@@ -244,6 +264,8 @@ class D2COrderItem(BaseModel):
     quantity: int = Field(..., ge=1, description="Quantity")
     unit_price: Decimal = Field(..., ge=0, description="Unit price")
     mrp: Decimal = Field(..., ge=0, description="MRP")
+    tax_rate: Optional[Decimal] = Field(Decimal("18"), ge=0, le=100, description="Tax rate percentage")
+    discount: Optional[Decimal] = Field(Decimal("0"), ge=0, description="Discount amount")
 
 
 class D2COrderCreate(BaseModel):

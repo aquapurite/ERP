@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator, computed_field
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Union
 from datetime import datetime
 from decimal import Decimal
 import uuid
@@ -352,6 +352,43 @@ class ProductResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     published_at: Optional[datetime] = None
+
+    # Frontend compatibility aliases for weight and dimensions
+    @computed_field
+    @property
+    def weight(self) -> Optional[float]:
+        """Alias for dead_weight_kg - frontend expects 'weight'."""
+        return float(self.dead_weight_kg) if self.dead_weight_kg else None
+
+    @computed_field
+    @property
+    def length(self) -> Optional[float]:
+        """Alias for length_cm - frontend expects 'length'."""
+        return float(self.length_cm) if self.length_cm else None
+
+    @computed_field
+    @property
+    def width(self) -> Optional[float]:
+        """Alias for width_cm - frontend expects 'width'."""
+        return float(self.width_cm) if self.width_cm else None
+
+    @computed_field
+    @property
+    def height(self) -> Optional[float]:
+        """Alias for height_cm - frontend expects 'height'."""
+        return float(self.height_cm) if self.height_cm else None
+
+    @computed_field
+    @property
+    def volumetric_weight(self) -> Optional[float]:
+        """Alias for volumetric_weight_kg - frontend expects 'volumetric_weight'."""
+        return self.volumetric_weight_kg
+
+    @computed_field
+    @property
+    def chargeable_weight(self) -> Optional[float]:
+        """Alias for chargeable_weight_kg - frontend expects 'chargeable_weight'."""
+        return self.chargeable_weight_kg
 
     class Config:
         from_attributes = True
