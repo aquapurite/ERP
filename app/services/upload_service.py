@@ -1,21 +1,11 @@
 """Upload service for file validation and processing."""
 import io
 from typing import Optional, Tuple, List
-from enum import Enum
 
 from PIL import Image
 
 from app.core.storage import StorageClient
-
-
-class UploadCategory(str, Enum):
-    """Categories for file uploads."""
-    LOGOS = "logos"
-    PRODUCTS = "products"
-    CATEGORIES = "categories"
-    BRANDS = "brands"
-    DOCUMENTS = "documents"
-    SIGNATURES = "signatures"
+from app.schemas.upload import UploadCategory
 
 
 # Allowed MIME types by category
