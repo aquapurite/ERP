@@ -32,32 +32,38 @@ from app.api.v1.endpoints import (
     warehouses,
     inventory,
     transfers,
+    stock_adjustments,  # Stock Adjustments & Audits
     # Service Management
     service_requests,
     technicians,
-    installations,  # NEW - Installation & Warranty
-    # Vendor & Procurement (NEW)
+    installations,  # Installation & Warranty
+    # Vendor & Procurement
     vendors,
     purchase,
-    # Accounting & Finance (NEW)
+    grn,  # Goods Receipt Notes
+    vendor_invoices,  # Vendor Invoice & 3-Way Matching
+    vendor_proformas,  # Vendor Proforma/Quotations
+    sales_returns,  # Sales Return Notes (SRN)
+    # Accounting & Finance
     accounting,
     billing,
     banking,  # Bank Statement Import & Reconciliation
     credentials,  # Encrypted Credentials Management
     auto_journal,  # Auto Journal Entry Generation
     tds,  # TDS Certificate Generation
-    # Dealer/Distributor (NEW)
+    # Dealer/Distributor
     dealers,
-    # Commission & Incentives (NEW)
+    # Commission & Incentives
     commissions,
-    # Promotions & Loyalty (NEW)
+    # Promotions & Loyalty
     promotions,
-    # Multi-Channel Commerce (NEW)
+    # Multi-Channel Commerce
     channels,
     marketplaces,  # Marketplace API Integration
-    # Company/Business Entity (NEW)
+    channel_reports,  # Channel P&L & Balance Sheet
+    # Company/Business Entity
     company,
-    # OMS/WMS (NEW)
+    # OMS/WMS
     transporters,
     wms,
     picklists,
@@ -65,15 +71,15 @@ from app.api.v1.endpoints import (
     manifests,
     serviceability,  # Pincode Serviceability & Order Allocation
     rate_cards,  # Rate Cards (D2C, B2B, FTL)
-    # Call Center CRM (NEW)
+    # Call Center CRM
     call_center,
-    # Lead Management (NEW)
+    # Lead Management
     leads,
-    # Escalation Management (NEW)
+    # Escalation Management
     escalations,
-    # Campaign Management (NEW)
+    # Campaign Management
     campaigns,
-    # Franchisee CRM (NEW)
+    # Franchisee CRM
     franchisees,
     # Serialization (Barcode Generation)
     serialization,
@@ -99,6 +105,12 @@ from app.api.v1.endpoints import (
     abandoned_cart,
     # Shipping (Shiprocket Integration)
     shipping,
+    # AMC/Warranty Management
+    amc,
+    # Audit Logs
+    audit_logs,
+    # Dashboard Charts
+    dashboard_charts,
 )
 
 
@@ -474,4 +486,67 @@ api_router.include_router(
     uploads.router,
     prefix="/uploads",
     tags=["File Uploads"]
+)
+
+# ==================== Goods Receipt Notes (GRN) ====================
+api_router.include_router(
+    grn.router,
+    prefix="/grn",
+    tags=["Goods Receipt Notes"]
+)
+
+# ==================== Vendor Invoices ====================
+api_router.include_router(
+    vendor_invoices.router,
+    prefix="/vendor-invoices",
+    tags=["Vendor Invoices"]
+)
+
+# ==================== Vendor Proformas/Quotations ====================
+api_router.include_router(
+    vendor_proformas.router,
+    prefix="/vendor-proformas",
+    tags=["Vendor Proformas"]
+)
+
+# ==================== Sales Returns (SRN) ====================
+api_router.include_router(
+    sales_returns.router,
+    prefix="/sales-returns",
+    tags=["Sales Returns"]
+)
+
+# ==================== Stock Adjustments ====================
+api_router.include_router(
+    stock_adjustments.router,
+    prefix="/stock-adjustments",
+    tags=["Stock Adjustments"]
+)
+
+# ==================== AMC/Warranty Management ====================
+api_router.include_router(
+    amc.router,
+    prefix="/amc",
+    tags=["AMC/Warranty"]
+)
+
+# ==================== Audit Logs ====================
+api_router.include_router(
+    audit_logs.router,
+    prefix="/audit-logs",
+    tags=["Audit Logs"]
+)
+
+# ==================== Dashboard Charts ====================
+api_router.include_router(
+    dashboard_charts.router,
+    prefix="/dashboard",
+    tags=["Dashboard Charts"]
+)
+
+# ==================== Channel Reports ====================
+api_router.include_router(
+    channel_reports.router,
+    prefix="/channel-reports",
+    tags=["Channel Reports"]
 )
