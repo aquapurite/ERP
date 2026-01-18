@@ -34,6 +34,8 @@ import {
   AlertCircle,
   MessageSquare,
 } from "lucide-react";
+import { companyApi } from "@/lib/storefront/api";
+import { CompanyInfo } from "@/types/storefront";
 
 const DEMO_CUSTOMER_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -55,6 +57,7 @@ export default function CustomerSupportPage() {
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [company, setCompany] = useState<CompanyInfo | null>(null);
 
   // New request form state
   const [newRequest, setNewRequest] = useState({
@@ -66,6 +69,8 @@ export default function CustomerSupportPage() {
 
   useEffect(() => {
     fetchRequests();
+    // Fetch company info for support contact
+    companyApi.getInfo().then(setCompany).catch(() => null);
   }, []);
 
   const fetchRequests = async () => {
@@ -406,7 +411,7 @@ export default function CustomerSupportPage() {
                 <Headphones className="h-6 w-6 text-blue-600" />
               </div>
               <h3 className="font-medium mb-2">Call Support</h3>
-              <p className="text-sm text-gray-500">1800-123-4567</p>
+              <p className="text-sm text-gray-500">{company?.phone || '1800-123-4567'}</p>
               <p className="text-xs text-gray-400">Mon-Sat, 9 AM - 6 PM</p>
             </CardContent>
           </Card>
@@ -417,7 +422,7 @@ export default function CustomerSupportPage() {
                 <MessageSquare className="h-6 w-6 text-green-600" />
               </div>
               <h3 className="font-medium mb-2">WhatsApp</h3>
-              <p className="text-sm text-gray-500">+91 98765 43210</p>
+              <p className="text-sm text-gray-500">{company?.phone ? `+91 ${company.phone}` : '+91 98765 43210'}</p>
               <p className="text-xs text-gray-400">24/7 Available</p>
             </CardContent>
           </Card>

@@ -7,8 +7,8 @@ import ProductSection from '@/components/storefront/home/product-section';
 import WhyChooseUs from '@/components/storefront/home/why-choose-us';
 import Testimonials from '@/components/storefront/home/testimonials';
 import RecentlyViewed from '@/components/storefront/product/recently-viewed';
-import { StorefrontProduct, StorefrontCategory } from '@/types/storefront';
-import { productsApi, categoriesApi } from '@/lib/storefront/api';
+import { StorefrontProduct, StorefrontCategory, CompanyInfo } from '@/types/storefront';
+import { productsApi, categoriesApi, companyApi } from '@/lib/storefront/api';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export default function HomePage() {
@@ -16,23 +16,26 @@ export default function HomePage() {
   const [bestsellers, setBestsellers] = useState<StorefrontProduct[]>([]);
   const [newArrivals, setNewArrivals] = useState<StorefrontProduct[]>([]);
   const [featured, setFeatured] = useState<StorefrontProduct[]>([]);
+  const [company, setCompany] = useState<CompanyInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [categoriesData, bestsellersData, newArrivalsData, featuredData] =
+        const [categoriesData, bestsellersData, newArrivalsData, featuredData, companyData] =
           await Promise.all([
             categoriesApi.getTree().catch(() => []),
             productsApi.getBestsellers(8).catch(() => []),
             productsApi.getNewArrivals(8).catch(() => []),
             productsApi.getFeatured(8).catch(() => []),
+            companyApi.getInfo().catch(() => null),
           ]);
 
         setCategories(categoriesData);
         setBestsellers(bestsellersData);
         setNewArrivals(newArrivalsData);
         setFeatured(featuredData);
+        setCompany(companyData);
       } catch (error) {
         console.error('Failed to fetch homepage data:', error);
       } finally {
@@ -112,10 +115,10 @@ export default function HomePage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
-              href="tel:18001234567"
+              href={`tel:${company?.phone?.replace(/[^0-9+]/g, '') || '18001234567'}`}
               className="inline-flex items-center justify-center px-6 py-3 bg-background text-primary font-semibold rounded-lg hover:bg-muted transition-colors"
             >
-              Call 1800-123-4567
+              Call {company?.phone || '1800-123-4567'}
             </a>
             <a
               href="/contact"

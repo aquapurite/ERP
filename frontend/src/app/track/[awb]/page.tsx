@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -19,6 +20,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { formatDate } from '@/lib/utils';
+import { companyApi } from '@/lib/storefront/api';
+import { CompanyInfo } from '@/types/storefront';
 
 interface TrackingEvent {
   id: string;
@@ -126,6 +129,12 @@ const statusColors: Record<string, string> = {
 export default function PublicTrackingPage() {
   const params = useParams();
   const awb = params.awb as string;
+  const [company, setCompany] = useState<CompanyInfo | null>(null);
+
+  // Fetch company info for support contact
+  useEffect(() => {
+    companyApi.getInfo().then(setCompany).catch(() => null);
+  }, []);
 
   const { data: tracking, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['public-tracking', awb],
@@ -133,6 +142,10 @@ export default function PublicTrackingPage() {
     enabled: !!awb,
     refetchOnWindowFocus: false,
   });
+
+  // Use company info for support contact, falling back to tracking data
+  const supportPhone = company?.phone || tracking?.support_phone || '1800-123-4567';
+  const supportEmail = company?.email || tracking?.support_email || 'support@aquapurite.com';
 
   if (isLoading) {
     return (
@@ -331,22 +344,18 @@ export default function PublicTrackingPage() {
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-2">
-                {tracking.support_phone && (
-                  <Button variant="outline" asChild>
-                    <a href={`tel:${tracking.support_phone}`}>
-                      <Phone className="mr-2 h-4 w-4" />
-                      {tracking.support_phone}
-                    </a>
-                  </Button>
-                )}
-                {tracking.support_email && (
-                  <Button variant="outline" asChild>
-                    <a href={`mailto:${tracking.support_email}`}>
-                      <ExternalLink className="mr-2 h-4 w-4" />
-                      Email Support
-                    </a>
-                  </Button>
-                )}
+                <Button variant="outline" asChild>
+                  <a href={`tel:${supportPhone.replace(/[^0-9+]/g, '')}`}>
+                    <Phone className="mr-2 h-4 w-4" />
+                    {supportPhone}
+                  </a>
+                </Button>
+                <Button variant="outline" asChild>
+                  <a href={`mailto:${supportEmail}`}>
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    Email Support
+                  </a>
+                </Button>
               </div>
             </div>
           </CardContent>
