@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -9,9 +9,10 @@ import { z } from 'zod';
 import {
   ArrowLeft, Save, Package, Loader2, Plus, X, Trash2,
   Image as ImageIcon, Star, Upload, Edit2, Check, AlertCircle,
-  FileText, List, File, DollarSign, TrendingUp, History, ExternalLink
+  FileText, List, File, DollarSign, TrendingUp, History, ExternalLink, ImagePlus
 } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -28,7 +29,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { PageHeader } from '@/components/common';
-import { productsApi, categoriesApi, brandsApi } from '@/lib/api';
+import { productsApi, categoriesApi, brandsApi, uploadsApi } from '@/lib/api';
 import { Category, Brand, Product, ProductImage, ProductVariant, ProductSpecification, ProductDocument } from '@/types';
 
 interface ProductFormData {
@@ -99,8 +100,11 @@ export default function ProductDetailPage() {
   const [activeTab, setActiveTab] = useState('details');
   const [isImageDialogOpen, setIsImageDialogOpen] = useState(false);
   const [isVariantDialogOpen, setIsVariantDialogOpen] = useState(false);
-  const [newImageUrl, setNewImageUrl] = useState('');
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [newImageAlt, setNewImageAlt] = useState('');
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(null);
 
   // Variant form state
@@ -375,9 +379,62 @@ export default function ProductDetailPage() {
     setEditingVariant(null);
   };
 
-  const handleAddImage = () => {
-    if (newImageUrl.trim()) {
-      addImageMutation.mutate({ image_url: newImageUrl, alt_text: newImageAlt });
+  const handleImageFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image size should be less than 5MB');
+      return;
+    }
+
+    setSelectedImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  };
+
+  const handleAddImage = async () => {
+    if (!selectedImageFile) return;
+
+    setIsUploadingImage(true);
+    try {
+      // Upload the image first
+      const uploadResult = await uploadsApi.uploadImage(selectedImageFile, 'products');
+
+      // Then add the image to the product
+      await addImageMutation.mutateAsync({
+        image_url: uploadResult.url,
+        thumbnail_url: uploadResult.thumbnail_url,
+        alt_text: newImageAlt || product?.name || 'Product image',
+      });
+
+      // Reset state
+      setSelectedImageFile(null);
+      setImagePreview(null);
+      setNewImageAlt('');
+      if (imageInputRef.current) {
+        imageInputRef.current.value = '';
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to upload image');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const handleCloseImageDialog = () => {
+    setIsImageDialogOpen(false);
+    setSelectedImageFile(null);
+    setImagePreview(null);
+    setNewImageAlt('');
+    if (imageInputRef.current) {
+      imageInputRef.current.value = '';
     }
   };
 
@@ -1016,45 +1073,90 @@ export default function ProductDetailPage() {
                 </CardTitle>
                 <CardDescription>Manage product images and set the primary image</CardDescription>
               </div>
-              <Dialog open={isImageDialogOpen} onOpenChange={setIsImageDialogOpen}>
+              <Dialog open={isImageDialogOpen} onOpenChange={(open) => {
+                if (!open) handleCloseImageDialog();
+                else setIsImageDialogOpen(true);
+              }}>
                 <DialogTrigger asChild>
                   <Button>
                     <Plus className="mr-2 h-4 w-4" />
                     Add Image
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="sm:max-w-md">
                   <DialogHeader>
-                    <DialogTitle>Add Product Image</DialogTitle>
-                    <DialogDescription>Enter the URL of the image to add</DialogDescription>
+                    <DialogTitle>Upload Product Image</DialogTitle>
+                    <DialogDescription>Select an image file from your computer to upload</DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 py-4">
+                    {/* File Input */}
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageFileSelect}
+                      className="hidden"
+                    />
+
+                    {/* Upload Area */}
+                    {!imagePreview ? (
+                      <div
+                        className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors"
+                        onClick={() => imageInputRef.current?.click()}
+                      >
+                        <ImagePlus className="mx-auto h-12 w-12 text-muted-foreground" />
+                        <p className="mt-2 text-sm font-medium">Click to select an image</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Supports JPEG, PNG, WebP (max 5MB)
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {/* Preview */}
+                        <div className="relative aspect-video rounded-lg border overflow-hidden bg-muted">
+                          <Image
+                            src={imagePreview}
+                            alt="Preview"
+                            fill
+                            className="object-contain"
+                          />
+                        </div>
+                        {/* Change button */}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => imageInputRef.current?.click()}
+                        >
+                          <Upload className="mr-2 h-4 w-4" />
+                          Choose Different Image
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* Alt Text */}
                     <div className="space-y-2">
-                      <Label htmlFor="image_url">Image URL *</Label>
-                      <Input
-                        id="image_url"
-                        placeholder="https://example.com/image.jpg"
-                        value={newImageUrl}
-                        onChange={(e) => setNewImageUrl(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="alt_text">Alt Text</Label>
+                      <Label htmlFor="alt_text">Alt Text (Optional)</Label>
                       <Input
                         id="alt_text"
-                        placeholder="Image description"
+                        placeholder="Image description for accessibility"
                         value={newImageAlt}
                         onChange={(e) => setNewImageAlt(e.target.value)}
                       />
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsImageDialogOpen(false)}>
+                    <Button variant="outline" onClick={handleCloseImageDialog}>
                       Cancel
                     </Button>
-                    <Button onClick={handleAddImage} disabled={!newImageUrl || addImageMutation.isPending}>
-                      {addImageMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Add Image
+                    <Button
+                      onClick={handleAddImage}
+                      disabled={!selectedImageFile || isUploadingImage || addImageMutation.isPending}
+                    >
+                      {(isUploadingImage || addImageMutation.isPending) && (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      )}
+                      Upload Image
                     </Button>
                   </DialogFooter>
                 </DialogContent>
