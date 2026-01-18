@@ -283,7 +283,13 @@ async def bulk_upload_pincodes(
 ):
     """Bulk upload pincodes for a warehouse."""
     service = ServiceabilityService(db)
-    return await service.upload_pincodes_bulk(data)
+    result = await service.upload_pincodes_bulk(data)
+
+    # Invalidate all serviceability cache after bulk upload
+    cache = get_cache()
+    await cache.invalidate_serviceability()
+
+    return result
 
 
 @router.post(
@@ -333,7 +339,7 @@ async def add_pincode_range(
 
     # Upload
     service = ServiceabilityService(db)
-    return await service.upload_pincodes_bulk(
+    result = await service.upload_pincodes_bulk(
         BulkPincodeUploadRequest(
             warehouse_id=data.warehouse_id,
             pincodes=pincodes,
@@ -341,6 +347,12 @@ async def add_pincode_range(
             default_cod_available=data.cod_available
         )
     )
+
+    # Invalidate all serviceability cache after range upload
+    cache = get_cache()
+    await cache.invalidate_serviceability()
+
+    return result
 
 
 @router.delete(
@@ -363,6 +375,10 @@ async def delete_warehouse_serviceability(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Mapping not found"
         )
+
+    # Invalidate cache for this pincode
+    cache = get_cache()
+    await cache.invalidate_serviceability(pincode)
 
 
 # ==================== Allocation Rules (Admin) ====================

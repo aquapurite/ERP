@@ -5,6 +5,7 @@ from math import ceil
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 
 from app.api.deps import DB, CurrentUser, Permissions, require_permissions
+from app.services.cache_service import get_cache
 from app.models.product import ProductStatus
 from app.schemas.product import (
     ProductCreate,
@@ -259,6 +260,11 @@ async def create_product(
         )
 
     product = await service.create_product(data)
+
+    # Invalidate product caches
+    cache = get_cache()
+    await cache.invalidate_products()
+
     return _build_product_detail_response(product)
 
 
@@ -305,6 +311,11 @@ async def update_product(
             )
 
     updated = await service.update_product(product_id, data)
+
+    # Invalidate product caches
+    cache = get_cache()
+    await cache.invalidate_products()
+
     return _build_product_detail_response(updated)
 
 
@@ -330,6 +341,10 @@ async def delete_product(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Product not found"
         )
+
+    # Invalidate product caches
+    cache = get_cache()
+    await cache.invalidate_products()
 
 
 # ==================== PRODUCT IMAGES ====================

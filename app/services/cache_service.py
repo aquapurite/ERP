@@ -258,6 +258,37 @@ class CacheService:
         count += await self.clear_pattern("products:*")
         return count
 
+    # ==================== Category Cache ====================
+
+    async def invalidate_categories(self) -> int:
+        """Invalidate all category caches."""
+        count = await self.clear_pattern("categories:*")
+        return count
+
+    # ==================== Brand Cache ====================
+
+    async def invalidate_brands(self) -> int:
+        """Invalidate all brand caches."""
+        count = await self.clear_pattern("brands:*")
+        return count
+
+    # ==================== Company Cache ====================
+
+    async def invalidate_company(self) -> int:
+        """Invalidate company cache."""
+        await self.delete("company:info")
+        return 1
+
+    # ==================== Bulk Invalidation ====================
+
+    async def invalidate_storefront(self) -> int:
+        """Invalidate all storefront-related caches."""
+        count = await self.invalidate_products()
+        count += await self.invalidate_categories()
+        count += await self.invalidate_brands()
+        count += await self.invalidate_company()
+        return count
+
 
 # Singleton cache instance
 _cache_instance: Optional[CacheService] = None

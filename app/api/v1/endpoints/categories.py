@@ -5,6 +5,7 @@ from math import ceil
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 
 from app.api.deps import DB, CurrentUser, Permissions, require_permissions
+from app.services.cache_service import get_cache
 from app.schemas.category import (
     CategoryCreate,
     CategoryUpdate,
@@ -154,6 +155,11 @@ async def create_category(
             )
 
     category = await service.create_category(data.model_dump())
+
+    # Invalidate category caches
+    cache = get_cache()
+    await cache.invalidate_categories()
+
     return CategoryResponse.model_validate(category)
 
 
@@ -195,6 +201,11 @@ async def update_category(
         category_id,
         data.model_dump(exclude_unset=True)
     )
+
+    # Invalidate category caches
+    cache = get_cache()
+    await cache.invalidate_categories()
+
     return CategoryResponse.model_validate(updated)
 
 
@@ -222,3 +233,7 @@ async def delete_category(
         )
 
     await service.update_category(category_id, {"is_active": False})
+
+    # Invalidate category caches
+    cache = get_cache()
+    await cache.invalidate_categories()

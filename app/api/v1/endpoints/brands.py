@@ -5,6 +5,7 @@ from math import ceil
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 
 from app.api.deps import DB, CurrentUser, Permissions, require_permissions
+from app.services.cache_service import get_cache
 from app.schemas.brand import (
     BrandCreate,
     BrandUpdate,
@@ -108,6 +109,11 @@ async def create_brand(
         )
 
     brand = await service.create_brand(data.model_dump())
+
+    # Invalidate brand caches
+    cache = get_cache()
+    await cache.invalidate_brands()
+
     return BrandResponse.model_validate(brand)
 
 
@@ -149,6 +155,11 @@ async def update_brand(
         brand_id,
         data.model_dump(exclude_unset=True)
     )
+
+    # Invalidate brand caches
+    cache = get_cache()
+    await cache.invalidate_brands()
+
     return BrandResponse.model_validate(updated)
 
 
@@ -176,3 +187,7 @@ async def delete_brand(
         )
 
     await service.update_brand(brand_id, {"is_active": False})
+
+    # Invalidate brand caches
+    cache = get_cache()
+    await cache.invalidate_brands()
