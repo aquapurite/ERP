@@ -5,9 +5,12 @@ from typing import Optional, List
 
 class StorefrontProductImage(BaseModel):
     """Product image for storefront."""
-    url: str = Field(..., description="Image URL")
+    id: str = Field(..., description="Image ID")
+    image_url: str = Field(..., description="Image URL")
+    thumbnail_url: Optional[str] = Field(None, description="Thumbnail URL")
     alt_text: Optional[str] = Field(None, description="Alt text for accessibility")
     is_primary: bool = Field(False, description="Whether this is the primary image")
+    sort_order: int = Field(0, description="Display order")
 
     class Config:
         from_attributes = True

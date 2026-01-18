@@ -26,6 +26,7 @@ from app.schemas.company import (
 )
 from app.api.deps import DB, CurrentUser, get_current_user
 from app.services.audit_service import AuditService
+from app.services.cache_service import get_cache
 
 router = APIRouter()
 
@@ -330,6 +331,10 @@ async def update_company(
 
     await db.commit()
     await db.refresh(company)
+
+    # Invalidate storefront company cache so changes appear immediately
+    cache = get_cache()
+    await cache.delete("company:info")
 
     # Audit log
     audit_service = AuditService(db)

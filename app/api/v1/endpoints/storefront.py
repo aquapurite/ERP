@@ -151,9 +151,12 @@ async def list_products(
     for p in products:
         images = [
             StorefrontProductImage(
-                url=img.url,
+                id=str(img.id),
+                image_url=img.image_url,
+                thumbnail_url=img.thumbnail_url,
                 alt_text=img.alt_text,
-                is_primary=img.is_primary
+                is_primary=img.is_primary,
+                sort_order=img.sort_order or 0,
             )
             for img in (p.images or [])
         ]
@@ -231,9 +234,12 @@ async def get_product_by_slug(slug: str, db: DB, response: Response):
 
     images = [
         StorefrontProductImage(
-            url=img.url,
+            id=str(img.id),
+            image_url=img.image_url,
+            thumbnail_url=img.thumbnail_url,
             alt_text=img.alt_text,
-            is_primary=img.is_primary
+            is_primary=img.is_primary,
+            sort_order=img.sort_order or 0,
         )
         for img in (product.images or [])
     ]
