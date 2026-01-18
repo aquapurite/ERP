@@ -1,11 +1,14 @@
 """Pydantic schemas for Company/Business Entity module."""
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Annotated
 from decimal import Decimal
 from uuid import UUID
-from pydantic import BaseModel, Field, ConfigDict, EmailStr
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, PlainSerializer
 
 from app.models.company import CompanyType, GSTRegistrationType
+
+# Custom serializer for Decimal to ensure JSON compatibility
+DecimalAsFloat = Annotated[Decimal, PlainSerializer(lambda x: float(x), return_type=float)]
 
 
 # ==================== Company Schemas ====================
@@ -88,14 +91,14 @@ class CompanyBase(BaseModel):
     currency_code: str = Field("INR", max_length=3)
     currency_symbol: str = Field("₹", max_length=5)
 
-    # Tax Defaults
-    default_cgst_rate: Decimal = Field(Decimal("9.00"), ge=0, le=100)
-    default_sgst_rate: Decimal = Field(Decimal("9.00"), ge=0, le=100)
-    default_igst_rate: Decimal = Field(Decimal("18.00"), ge=0, le=100)
+    # Tax Defaults (use DecimalAsFloat for JSON serialization)
+    default_cgst_rate: DecimalAsFloat = Field(Decimal("9.00"), ge=0, le=100)
+    default_sgst_rate: DecimalAsFloat = Field(Decimal("9.00"), ge=0, le=100)
+    default_igst_rate: DecimalAsFloat = Field(Decimal("18.00"), ge=0, le=100)
 
     # TDS
     tds_deductor: bool = True
-    default_tds_rate: Decimal = Field(Decimal("10.00"), ge=0, le=100)
+    default_tds_rate: DecimalAsFloat = Field(Decimal("10.00"), ge=0, le=100)
 
 
 class CompanyCreate(CompanyBase):
