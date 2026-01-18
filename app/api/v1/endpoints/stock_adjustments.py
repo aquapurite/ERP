@@ -18,6 +18,188 @@ from app.services.document_sequence_service import DocumentSequenceService
 router = APIRouter()
 
 
+# ==================== Get Adjustment Types ====================
+@router.get("/meta/types")
+async def get_adjustment_types(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get list of adjustment types with descriptions."""
+    return {
+        "types": [
+            {"value": "CYCLE_COUNT", "label": "Cycle Count", "description": "Physical count variance"},
+            {"value": "DAMAGE", "label": "Damage", "description": "Damaged goods write-off"},
+            {"value": "THEFT", "label": "Theft/Pilferage", "description": "Theft or pilferage adjustment"},
+            {"value": "EXPIRY", "label": "Expiry", "description": "Expired goods write-off"},
+            {"value": "QUALITY_ISSUE", "label": "Quality Issue", "description": "Quality defects adjustment"},
+            {"value": "CORRECTION", "label": "Data Correction", "description": "Data entry correction"},
+            {"value": "WRITE_OFF", "label": "Write Off", "description": "Complete write-off"},
+            {"value": "FOUND", "label": "Found Stock", "description": "Found stock (positive adjustment)"},
+            {"value": "OPENING_STOCK", "label": "Opening Stock", "description": "Initial stock entry"},
+            {"value": "OTHER", "label": "Other", "description": "Other adjustment reason"},
+        ]
+    }
+
+
+# ==================== Get Adjustment Statistics ====================
+@router.get("/stats/summary")
+async def get_adjustment_stats(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    warehouse_id: Optional[UUID] = None,
+    days: int = Query(30, ge=1, le=365),
+):
+    """Get stock adjustment statistics for the specified period."""
+    from datetime import timedelta
+
+    start_date = datetime.now(timezone.utc) - timedelta(days=days)
+
+    conditions = [StockAdjustment.adjustment_date >= start_date]
+    if warehouse_id:
+        conditions.append(StockAdjustment.warehouse_id == warehouse_id)
+
+    # Total adjustments
+    total_query = select(func.count()).select_from(StockAdjustment).where(and_(*conditions))
+    total = await db.scalar(total_query) or 0
+
+    # Total value impact
+    value_query = select(func.sum(StockAdjustment.total_value_impact)).where(and_(*conditions))
+    total_value = await db.scalar(value_query) or Decimal("0")
+
+    # By type
+    type_query = select(
+        StockAdjustment.adjustment_type,
+        func.count().label("count"),
+        func.sum(StockAdjustment.total_value_impact).label("value")
+    ).where(and_(*conditions)).group_by(StockAdjustment.adjustment_type)
+
+    type_result = await db.execute(type_query)
+    by_type = [
+        {
+            "type": row[0],
+            "count": row[1],
+            "value": float(row[2]) if row[2] else 0
+        }
+        for row in type_result.all()
+    ]
+
+    # By status
+    status_query = select(
+        StockAdjustment.status,
+        func.count().label("count")
+    ).where(and_(*conditions)).group_by(StockAdjustment.status)
+
+    status_result = await db.execute(status_query)
+    by_status = [{"status": row[0], "count": row[1]} for row in status_result.all()]
+
+    return {
+        "period_days": days,
+        "total_adjustments": total,
+        "total_value_impact": float(total_value),
+        "by_type": by_type,
+        "by_status": by_status,
+    }
+
+
+# ==================== List Inventory Audits ====================
+@router.get("/audits")
+async def list_inventory_audits(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    warehouse_id: Optional[UUID] = None,
+    status: Optional[str] = None,
+):
+    """List inventory audits/cycle counts."""
+    query = select(InventoryAudit).options(
+        selectinload(InventoryAudit.warehouse),
+        selectinload(InventoryAudit.assignee)
+    )
+
+    conditions = []
+    if warehouse_id:
+        conditions.append(InventoryAudit.warehouse_id == warehouse_id)
+    if status:
+        conditions.append(InventoryAudit.status == status.lower())
+
+    if conditions:
+        query = query.where(and_(*conditions))
+
+    # Count total
+    count_query = select(func.count()).select_from(InventoryAudit)
+    if conditions:
+        count_query = count_query.where(and_(*conditions))
+    total = await db.scalar(count_query) or 0
+
+    # Paginate
+    query = query.order_by(desc(InventoryAudit.scheduled_date))
+    query = query.offset((page - 1) * size).limit(size)
+
+    result = await db.execute(query)
+    audits = result.scalars().all()
+
+    return {
+        "items": [
+            {
+                "id": str(audit.id),
+                "audit_number": audit.audit_number,
+                "audit_name": audit.audit_name,
+                "warehouse_id": str(audit.warehouse_id),
+                "warehouse_name": audit.warehouse.name if audit.warehouse else None,
+                "scheduled_date": audit.scheduled_date.isoformat() if audit.scheduled_date else None,
+                "start_date": audit.start_date.isoformat() if audit.start_date else None,
+                "end_date": audit.end_date.isoformat() if audit.end_date else None,
+                "status": audit.status,
+                "assigned_to": audit.assignee.email if audit.assignee else None,
+                "total_items_counted": audit.total_items_counted,
+                "variance_items": audit.variance_items,
+                "total_variance_value": float(audit.total_variance_value) if audit.total_variance_value else 0,
+            }
+            for audit in audits
+        ],
+        "total": total,
+        "page": page,
+        "size": size,
+        "pages": (total + size - 1) // size,
+    }
+
+
+# ==================== Create Inventory Audit ====================
+@router.post("/audits", status_code=status.HTTP_201_CREATED)
+async def create_inventory_audit(
+    data: dict,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Schedule a new inventory audit/cycle count."""
+    today = date.today()
+    random_suffix = str(uuid4())[:8].upper()
+    audit_number = f"AUDIT-{today.strftime('%Y%m%d')}-{random_suffix}"
+
+    audit = InventoryAudit(
+        audit_number=audit_number,
+        audit_name=data.get("audit_name"),
+        warehouse_id=data["warehouse_id"],
+        category_id=data.get("category_id"),
+        scheduled_date=data.get("scheduled_date"),
+        status="planned",
+        assigned_to=data.get("assigned_to"),
+        created_by=current_user.id,
+        notes=data.get("notes"),
+    )
+
+    db.add(audit)
+    await db.commit()
+    await db.refresh(audit)
+
+    return {
+        "id": str(audit.id),
+        "audit_number": audit.audit_number,
+        "message": "Inventory audit scheduled successfully"
+    }
+
+
 # ==================== List Stock Adjustments ====================
 @router.get("")
 async def list_stock_adjustments(
@@ -391,184 +573,3 @@ async def reject_adjustment(
     await db.commit()
 
     return {"message": "Adjustment rejected", "status": adjustment.status}
-
-
-# ==================== Get Adjustment Types ====================
-@router.get("/meta/types")
-async def get_adjustment_types(
-    db: DB,
-    current_user: User = Depends(get_current_user),
-):
-    """Get list of adjustment types with descriptions."""
-    return {
-        "types": [
-            {"value": "CYCLE_COUNT", "label": "Cycle Count", "description": "Physical count variance"},
-            {"value": "DAMAGE", "label": "Damage", "description": "Damaged goods write-off"},
-            {"value": "THEFT", "label": "Theft/Pilferage", "description": "Theft or pilferage adjustment"},
-            {"value": "EXPIRY", "label": "Expiry", "description": "Expired goods write-off"},
-            {"value": "QUALITY_ISSUE", "label": "Quality Issue", "description": "Quality defects adjustment"},
-            {"value": "CORRECTION", "label": "Data Correction", "description": "Data entry correction"},
-            {"value": "WRITE_OFF", "label": "Write Off", "description": "Complete write-off"},
-            {"value": "FOUND", "label": "Found Stock", "description": "Found stock (positive adjustment)"},
-            {"value": "OPENING_STOCK", "label": "Opening Stock", "description": "Initial stock entry"},
-            {"value": "OTHER", "label": "Other", "description": "Other adjustment reason"},
-        ]
-    }
-
-
-# ==================== Get Adjustment Statistics ====================
-@router.get("/stats/summary")
-async def get_adjustment_stats(
-    db: DB,
-    current_user: User = Depends(get_current_user),
-    warehouse_id: Optional[UUID] = None,
-    days: int = Query(30, ge=1, le=365),
-):
-    """Get stock adjustment statistics for the specified period."""
-    from datetime import timedelta
-
-    start_date = datetime.now(timezone.utc) - timedelta(days=days)
-
-    conditions = [StockAdjustment.adjustment_date >= start_date]
-    if warehouse_id:
-        conditions.append(StockAdjustment.warehouse_id == warehouse_id)
-
-    # Total adjustments
-    total_query = select(func.count()).select_from(StockAdjustment).where(and_(*conditions))
-    total = await db.scalar(total_query) or 0
-
-    # Total value impact
-    value_query = select(func.sum(StockAdjustment.total_value_impact)).where(and_(*conditions))
-    total_value = await db.scalar(value_query) or Decimal("0")
-
-    # By type
-    type_query = select(
-        StockAdjustment.adjustment_type,
-        func.count().label("count"),
-        func.sum(StockAdjustment.total_value_impact).label("value")
-    ).where(and_(*conditions)).group_by(StockAdjustment.adjustment_type)
-
-    type_result = await db.execute(type_query)
-    by_type = [
-        {
-            "type": row[0],
-            "count": row[1],
-            "value": float(row[2]) if row[2] else 0
-        }
-        for row in type_result.all()
-    ]
-
-    # By status
-    status_query = select(
-        StockAdjustment.status,
-        func.count().label("count")
-    ).where(and_(*conditions)).group_by(StockAdjustment.status)
-
-    status_result = await db.execute(status_query)
-    by_status = [{"status": row[0], "count": row[1]} for row in status_result.all()]
-
-    return {
-        "period_days": days,
-        "total_adjustments": total,
-        "total_value_impact": float(total_value),
-        "by_type": by_type,
-        "by_status": by_status,
-    }
-
-
-# ==================== Inventory Audit Endpoints ====================
-@router.get("/audits")
-async def list_inventory_audits(
-    db: DB,
-    current_user: User = Depends(get_current_user),
-    page: int = Query(1, ge=1),
-    size: int = Query(20, ge=1, le=100),
-    warehouse_id: Optional[UUID] = None,
-    status: Optional[str] = None,
-):
-    """List inventory audits/cycle counts."""
-    query = select(InventoryAudit).options(
-        selectinload(InventoryAudit.warehouse),
-        selectinload(InventoryAudit.assignee)
-    )
-
-    conditions = []
-    if warehouse_id:
-        conditions.append(InventoryAudit.warehouse_id == warehouse_id)
-    if status:
-        conditions.append(InventoryAudit.status == status.lower())
-
-    if conditions:
-        query = query.where(and_(*conditions))
-
-    # Count total
-    count_query = select(func.count()).select_from(InventoryAudit)
-    if conditions:
-        count_query = count_query.where(and_(*conditions))
-    total = await db.scalar(count_query) or 0
-
-    # Paginate
-    query = query.order_by(desc(InventoryAudit.scheduled_date))
-    query = query.offset((page - 1) * size).limit(size)
-
-    result = await db.execute(query)
-    audits = result.scalars().all()
-
-    return {
-        "items": [
-            {
-                "id": str(audit.id),
-                "audit_number": audit.audit_number,
-                "audit_name": audit.audit_name,
-                "warehouse_id": str(audit.warehouse_id),
-                "warehouse_name": audit.warehouse.name if audit.warehouse else None,
-                "scheduled_date": audit.scheduled_date.isoformat() if audit.scheduled_date else None,
-                "start_date": audit.start_date.isoformat() if audit.start_date else None,
-                "end_date": audit.end_date.isoformat() if audit.end_date else None,
-                "status": audit.status,
-                "assigned_to": audit.assignee.email if audit.assignee else None,
-                "total_items_counted": audit.total_items_counted,
-                "variance_items": audit.variance_items,
-                "total_variance_value": float(audit.total_variance_value) if audit.total_variance_value else 0,
-            }
-            for audit in audits
-        ],
-        "total": total,
-        "page": page,
-        "size": size,
-        "pages": (total + size - 1) // size,
-    }
-
-
-@router.post("/audits", status_code=status.HTTP_201_CREATED)
-async def create_inventory_audit(
-    data: dict,
-    db: DB,
-    current_user: User = Depends(get_current_user),
-):
-    """Schedule a new inventory audit/cycle count."""
-    today = date.today()
-    random_suffix = str(uuid4())[:8].upper()
-    audit_number = f"AUDIT-{today.strftime('%Y%m%d')}-{random_suffix}"
-
-    audit = InventoryAudit(
-        audit_number=audit_number,
-        audit_name=data.get("audit_name"),
-        warehouse_id=data["warehouse_id"],
-        category_id=data.get("category_id"),
-        scheduled_date=data.get("scheduled_date"),
-        status="planned",
-        assigned_to=data.get("assigned_to"),
-        created_by=current_user.id,
-        notes=data.get("notes"),
-    )
-
-    db.add(audit)
-    await db.commit()
-    await db.refresh(audit)
-
-    return {
-        "id": str(audit.id),
-        "audit_number": audit.audit_number,
-        "message": "Inventory audit scheduled successfully"
-    }

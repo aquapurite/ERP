@@ -329,7 +329,7 @@ async def get_inventory_overview(
 
     # Total stock value
     value_query = select(
-        func.coalesce(func.sum(Inventory.quantity * Inventory.unit_cost), 0)
+        func.coalesce(func.sum(Inventory.total_quantity * Inventory.average_cost), 0)
     ).select_from(Inventory)
     if conditions:
         value_query = value_query.where(and_(*conditions))
@@ -341,9 +341,9 @@ async def get_inventory_overview(
         items_query = items_query.where(and_(*conditions))
     total_items = await db.scalar(items_query) or 0
 
-    # Low stock items (quantity <= reorder_level)
+    # Low stock items (total_quantity <= reorder_level)
     low_stock_query = select(func.count(Inventory.id)).where(
-        Inventory.quantity <= Inventory.reorder_level
+        Inventory.total_quantity <= Inventory.reorder_level
     )
     if conditions:
         low_stock_query = low_stock_query.where(and_(*conditions))
@@ -351,7 +351,7 @@ async def get_inventory_overview(
 
     # Out of stock items
     out_of_stock_query = select(func.count(Inventory.id)).where(
-        Inventory.quantity <= 0
+        Inventory.total_quantity <= 0
     )
     if conditions:
         out_of_stock_query = out_of_stock_query.where(and_(*conditions))

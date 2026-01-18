@@ -286,7 +286,7 @@ async def list_amc_contracts(
     total = await db.scalar(count_query) or 0
 
     # Paginate
-    query = query.order_by(desc(AMCContract.created_at))
+    query = query.order_by(desc(AMCContract.start_date))
     query = query.offset((page - 1) * size).limit(size)
 
     result = await db.execute(query)

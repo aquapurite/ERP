@@ -67,8 +67,8 @@ async def get_channel_pnl(
             and_(
                 Order.channel_id == channel.id,
                 Order.status.notin_(["CANCELLED", "DRAFT"]),
-                Order.order_date >= start_date,
-                Order.order_date <= end_date
+                Order.created_at >= start_date,
+                Order.created_at <= end_date
             )
         )
         revenue_result = await db.execute(revenue_query)
@@ -87,8 +87,8 @@ async def get_channel_pnl(
             and_(
                 Order.channel_id == channel.id,
                 Order.status.notin_(["CANCELLED", "DRAFT"]),
-                Order.order_date >= start_date,
-                Order.order_date <= end_date
+                Order.created_at >= start_date,
+                Order.created_at <= end_date
             )
         )
         cogs = float(await db.scalar(cogs_query) or 0)
@@ -108,8 +108,8 @@ async def get_channel_pnl(
             and_(
                 Order.channel_id == channel.id,
                 Order.status.notin_(["CANCELLED", "DRAFT"]),
-                Order.order_date >= start_date,
-                Order.order_date <= end_date
+                Order.created_at >= start_date,
+                Order.created_at <= end_date
             )
         )
         shipping_costs = float(await db.scalar(shipping_query) or 0)
@@ -217,7 +217,7 @@ async def get_channel_balance_sheet(
                 Order.channel_id == channel.id,
                 Order.status.notin_(["CANCELLED", "DRAFT"]),
                 Order.payment_status != "PAID",
-                Order.order_date <= as_of_date
+                Order.created_at <= as_of_date
             )
         )
         accounts_receivable = float(await db.scalar(ar_query) or 0)
@@ -249,8 +249,8 @@ async def get_channel_balance_sheet(
             and_(
                 Order.channel_id == channel.id,
                 Order.status == "DELIVERED",
-                Order.order_date >= as_of_date - timedelta(days=30),
-                Order.order_date <= as_of_date
+                Order.created_at >= as_of_date - timedelta(days=30),
+                Order.created_at <= as_of_date
             )
         )
         recent_sales = float(await db.scalar(pending_comm_query) or 0)
@@ -283,7 +283,7 @@ async def get_channel_balance_sheet(
             and_(
                 Order.channel_id == channel.id,
                 Order.status == "DELIVERED",
-                Order.order_date <= as_of_date
+                Order.created_at <= as_of_date
             )
         )
         cumulative_revenue = float(await db.scalar(retained_earnings_query) or 0)
@@ -383,8 +383,8 @@ async def get_channel_comparison(
             and_(
                 Order.channel_id == channel.id,
                 Order.status.notin_(["CANCELLED", "DRAFT"]),
-                Order.order_date >= start_date,
-                Order.order_date <= end_date
+                Order.created_at >= start_date,
+                Order.created_at <= end_date
             )
         )
         metrics_result = await db.execute(metrics_query)
@@ -399,8 +399,8 @@ async def get_channel_comparison(
             and_(
                 Order.channel_id == channel.id,
                 Order.status.notin_(["CANCELLED", "DRAFT"]),
-                Order.order_date >= start_date,
-                Order.order_date <= end_date
+                Order.created_at >= start_date,
+                Order.created_at <= end_date
             )
         )
         cogs = float(await db.scalar(cogs_query) or 0)
@@ -445,7 +445,7 @@ async def get_channel_comparison(
 async def get_channel_trend(
     db: DB,
     current_user: User = Depends(get_current_user),
-    channel_id: UUID = None,
+    channel_id: Optional[UUID] = None,
     days: int = Query(30, ge=7, le=365),
     group_by: str = Query("day", pattern="^(day|week|month)$"),
 ):
@@ -454,17 +454,17 @@ async def get_channel_trend(
 
     conditions = [
         Order.status.notin_(["CANCELLED", "DRAFT"]),
-        Order.order_date >= start_date
+        Order.created_at >= start_date
     ]
     if channel_id:
         conditions.append(Order.channel_id == channel_id)
 
     if group_by == "day":
-        date_expr = func.date(Order.order_date)
+        date_expr = func.date(Order.created_at)
     elif group_by == "week":
-        date_expr = func.date_trunc('week', Order.order_date)
+        date_expr = func.date_trunc('week', Order.created_at)
     else:
-        date_expr = func.date_trunc('month', Order.order_date)
+        date_expr = func.date_trunc('month', Order.created_at)
 
     query = select(
         date_expr.label("period"),
