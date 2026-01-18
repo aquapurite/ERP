@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { FileText, Download, Plus } from 'lucide-react';
+import { FileText, Download, Plus, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +18,7 @@ import {
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader } from '@/components/common';
 import { formatCurrency } from '@/lib/utils';
+import { gstReportsApi } from '@/lib/api';
 
 interface HSNItem {
   id: string;
@@ -44,63 +45,41 @@ interface HSNSummaryStats {
   gst_28_value: number;
 }
 
-const hsnApi = {
-  getStats: async (period: string): Promise<HSNSummaryStats> => {
-    return {
-      total_hsn_codes: 45,
-      total_taxable_value: 12456780,
-      total_tax: 2241220,
-      gst_5_value: 234567,
-      gst_12_value: 567890,
-      gst_18_value: 10234567,
-      gst_28_value: 1419756,
-    };
-  },
-  getOutwardHSN: async (period: string): Promise<{ items: HSNItem[] }> => {
-    return {
-      items: [
-        { id: '1', hsn_code: '84212110', description: 'Water Purifiers - RO Type', uqc: 'NOS', total_quantity: 234, total_value: 5678900, taxable_value: 4812627, igst: 456789, cgst: 216890, sgst: 216890, cess: 0, rate: 18 },
-        { id: '2', hsn_code: '84212120', description: 'Water Purifiers - UV Type', uqc: 'NOS', total_quantity: 156, total_value: 3456780, taxable_value: 2929475, igst: 278456, cgst: 132045, sgst: 132045, cess: 0, rate: 18 },
-        { id: '3', hsn_code: '84219900', description: 'Parts & Accessories for Water Purifiers', uqc: 'NOS', total_quantity: 567, total_value: 1234567, taxable_value: 1046243, igst: 94234, cgst: 47117, sgst: 47117, cess: 0, rate: 18 },
-        { id: '4', hsn_code: '85044010', description: 'Static Converters (Voltage Stabilizers)', uqc: 'NOS', total_quantity: 89, total_value: 890123, taxable_value: 754341, igst: 67890, cgst: 34012, sgst: 34012, cess: 0, rate: 18 },
-        { id: '5', hsn_code: '99833', description: 'Installation Services', uqc: 'OTH', total_quantity: 345, total_value: 1196410, taxable_value: 1013907, igst: 91309, cgst: 45741, sgst: 45741, cess: 0, rate: 18 },
-        { id: '6', hsn_code: '99872', description: 'AMC/Repair Services', uqc: 'OTH', total_quantity: 456, total_value: 890000, taxable_value: 754237, igst: 67956, cgst: 34089, sgst: 34089, cess: 0, rate: 18 },
-      ],
-    };
-  },
-  getInwardHSN: async (period: string): Promise<{ items: HSNItem[] }> => {
-    return {
-      items: [
-        { id: '1', hsn_code: '84212110', description: 'Water Purifier Units', uqc: 'NOS', total_quantity: 300, total_value: 4500000, taxable_value: 3813559, igst: 686440, cgst: 0, sgst: 0, cess: 0, rate: 18 },
-        { id: '2', hsn_code: '39269099', description: 'Plastic Components', uqc: 'KGS', total_quantity: 1200, total_value: 890000, taxable_value: 754237, igst: 135763, cgst: 0, sgst: 0, cess: 0, rate: 18 },
-        { id: '3', hsn_code: '84818090', description: 'Valves & Fittings', uqc: 'NOS', total_quantity: 2500, total_value: 675000, taxable_value: 572034, igst: 0, cgst: 51483, sgst: 51483, cess: 0, rate: 18 },
-        { id: '4', hsn_code: '85371000', description: 'Control Boards/PCB', uqc: 'NOS', total_quantity: 450, total_value: 1125000, taxable_value: 953390, igst: 171610, cgst: 0, sgst: 0, cess: 0, rate: 18 },
-        { id: '5', hsn_code: '73182900', description: 'Screws, Bolts, Nuts', uqc: 'KGS', total_quantity: 500, total_value: 125000, taxable_value: 105932, igst: 0, cgst: 9534, sgst: 9534, cess: 0, rate: 18 },
-      ],
-    };
-  },
+// Helper to parse period string to month/year
+const parsePeriod = (period: string): { month: number; year: number } => {
+  const month = parseInt(period.substring(0, 2), 10);
+  const year = parseInt(period.substring(2), 10);
+  return { month, year };
 };
 
 export default function HSNSummaryPage() {
-  const [selectedPeriod, setSelectedPeriod] = useState('012024');
+  const now = new Date();
+  const defaultPeriod = `${String(now.getMonth() + 1).padStart(2, '0')}${now.getFullYear()}`;
+  const [selectedPeriod, setSelectedPeriod] = useState(defaultPeriod);
   const [activeTab, setActiveTab] = useState('outward');
 
-  const { data: stats } = useQuery({
-    queryKey: ['hsn-stats', selectedPeriod],
-    queryFn: () => hsnApi.getStats(selectedPeriod),
+  const { month, year } = parsePeriod(selectedPeriod);
+
+  // Fetch HSN summary data from real API
+  const { data: hsnData, isLoading } = useQuery({
+    queryKey: ['hsn-summary', month, year],
+    queryFn: () => gstReportsApi.getHSNSummary(month, year),
   });
 
-  const { data: outwardData, isLoading: outwardLoading } = useQuery({
-    queryKey: ['hsn-outward', selectedPeriod],
-    queryFn: () => hsnApi.getOutwardHSN(selectedPeriod),
-    enabled: activeTab === 'outward',
-  });
+  // Derive stats from API response
+  const stats: HSNSummaryStats | undefined = hsnData?.summary;
 
-  const { data: inwardData, isLoading: inwardLoading } = useQuery({
-    queryKey: ['hsn-inward', selectedPeriod],
-    queryFn: () => hsnApi.getInwardHSN(selectedPeriod),
-    enabled: activeTab === 'inward',
-  });
+  // Get outward data (sales)
+  const outwardData = {
+    items: hsnData?.outward_items ?? [],
+  };
+  const outwardLoading = isLoading && activeTab === 'outward';
+
+  // Get inward data (purchases)
+  const inwardData = {
+    items: hsnData?.inward_items ?? [],
+  };
+  const inwardLoading = isLoading && activeTab === 'inward';
 
   const columns: ColumnDef<HSNItem>[] = [
     {

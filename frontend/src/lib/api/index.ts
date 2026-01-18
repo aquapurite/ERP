@@ -4959,4 +4959,38 @@ export const companyApi = {
   },
 };
 
+// ==================== GST REPORTS API ====================
+
+export const gstReportsApi = {
+  // GSTR-1 (Outward Supplies)
+  getGSTR1: async (month: number, year: number) => {
+    const { data } = await apiClient.get('/billing/reports/gstr1', { params: { month, year } });
+    return data;
+  },
+
+  // GSTR-2A (Inward Supplies)
+  getGSTR2A: async (month: number, year: number) => {
+    const { data } = await apiClient.get('/billing/reports/gstr2a', { params: { month, year } });
+    return data;
+  },
+
+  // GSTR-3B (Monthly Summary)
+  getGSTR3B: async (month: number, year: number) => {
+    const { data } = await apiClient.get('/billing/reports/gstr3b', { params: { month, year } });
+    return data;
+  },
+
+  // HSN Summary
+  getHSNSummary: async (month: number, year: number) => {
+    const { data } = await apiClient.get('/billing/reports/hsn-summary', { params: { month, year } });
+    return data;
+  },
+
+  // Finance Dashboard Stats
+  getFinanceDashboard: async () => {
+    const { data } = await apiClient.get('/billing/reports/finance-dashboard');
+    return data;
+  },
+};
+
 export default apiClient;

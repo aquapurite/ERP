@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { FileText, Download, Upload, CheckCircle, AlertTriangle, Calendar, Building2, RefreshCw, ExternalLink, FileJson, FileSpreadsheet } from 'lucide-react';
+import { FileText, Download, Upload, CheckCircle, AlertTriangle, Calendar, Building2, RefreshCw, ExternalLink, FileJson, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -28,34 +28,33 @@ import {
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader } from '@/components/common';
 import { formatDate, formatCurrency } from '@/lib/utils';
+import { gstReportsApi } from '@/lib/api';
 
-interface GSTR1Summary {
-  return_period: string;
-  filing_status: 'NOT_FILED' | 'FILED' | 'OVERDUE';
-  due_date: string;
-  filed_date?: string;
-  arn?: string;
-  total_invoices: number;
-  total_taxable_value: number;
-  total_igst: number;
-  total_cgst: number;
-  total_sgst: number;
-  total_cess: number;
-  total_tax: number;
-  b2b_invoices: number;
-  b2b_value: number;
-  b2c_large_invoices: number;
-  b2c_large_value: number;
-  b2cs_value: number;
-  credit_debit_notes: number;
-  cdn_value: number;
-  exports_invoices: number;
-  exports_value: number;
-  nil_rated_value: number;
-  hsn_summary_count: number;
+// API response types
+interface B2BInvoiceAPI {
+  gstin: string;
+  invoice_number: string;
+  invoice_date: string;
+  invoice_value: number;
+  place_of_supply: string;
+  taxable_value: number;
+  cgst: number;
+  sgst: number;
+  igst: number;
+  cess: number;
 }
 
-interface B2BInvoice {
+interface HSNSummaryAPI {
+  hsn_code: string;
+  quantity: number;
+  taxable_value: number;
+  igst: number;
+  cgst: number;
+  sgst: number;
+}
+
+// Transformed types for display
+interface B2BInvoiceDisplay {
   id: string;
   invoice_number: string;
   invoice_date: string;
@@ -74,7 +73,7 @@ interface B2BInvoice {
   error_message?: string;
 }
 
-interface HSNSummary {
+interface HSNSummaryDisplay {
   hsn_code: string;
   description: string;
   uqc: string;
@@ -88,56 +87,6 @@ interface HSNSummary {
   rate: number;
 }
 
-const gstr1Api = {
-  getSummary: async (period: string): Promise<GSTR1Summary> => {
-    return {
-      return_period: period,
-      filing_status: 'NOT_FILED',
-      due_date: '2024-02-11',
-      total_invoices: 456,
-      total_taxable_value: 12456780,
-      total_igst: 1245678,
-      total_cgst: 623456,
-      total_sgst: 623456,
-      total_cess: 45678,
-      total_tax: 2538268,
-      b2b_invoices: 234,
-      b2b_value: 8567890,
-      b2c_large_invoices: 12,
-      b2c_large_value: 1234567,
-      b2cs_value: 2345678,
-      credit_debit_notes: 23,
-      cdn_value: 456789,
-      exports_invoices: 5,
-      exports_value: 567890,
-      nil_rated_value: 123456,
-      hsn_summary_count: 45,
-    };
-  },
-  getB2BInvoices: async (period: string): Promise<{ items: B2BInvoice[] }> => {
-    return {
-      items: [
-        { id: '1', invoice_number: 'INV-2024-0001', invoice_date: '2024-01-05', gstin: '27AAACR5055K1ZK', party_name: 'ABC Industries Pvt Ltd', invoice_type: 'Regular', taxable_value: 125000, igst: 0, cgst: 11250, sgst: 11250, cess: 0, total_value: 147500, place_of_supply: '27-Maharashtra', reverse_charge: false, status: 'VALID' },
-        { id: '2', invoice_number: 'INV-2024-0002', invoice_date: '2024-01-08', gstin: '29AABCT1332L1ZL', party_name: 'XYZ Trading Co', invoice_type: 'Regular', taxable_value: 89000, igst: 16020, cgst: 0, sgst: 0, cess: 0, total_value: 105020, place_of_supply: '29-Karnataka', reverse_charge: false, status: 'VALID' },
-        { id: '3', invoice_number: 'INV-2024-0003', invoice_date: '2024-01-10', gstin: '07AABCU9603R1ZM', party_name: 'PQR Enterprises', invoice_type: 'Regular', taxable_value: 234500, igst: 42210, cgst: 0, sgst: 0, cess: 0, total_value: 276710, place_of_supply: '07-Delhi', reverse_charge: false, status: 'WARNING', error_message: 'GSTIN not verified recently' },
-        { id: '4', invoice_number: 'INV-2024-0004', invoice_date: '2024-01-12', gstin: '', party_name: 'MNO Services', invoice_type: 'Regular', taxable_value: 56000, igst: 0, cgst: 5040, sgst: 5040, cess: 0, total_value: 66080, place_of_supply: '27-Maharashtra', reverse_charge: false, status: 'ERROR', error_message: 'Invalid GSTIN' },
-        { id: '5', invoice_number: 'INV-2024-0005', invoice_date: '2024-01-15', gstin: '27AADCS8745F1Z8', party_name: 'DEF Solutions', invoice_type: 'SEZ with payment', taxable_value: 345000, igst: 0, cgst: 0, sgst: 0, cess: 0, total_value: 345000, place_of_supply: '27-Maharashtra', reverse_charge: false, status: 'VALID' },
-      ],
-    };
-  },
-  getHSNSummary: async (period: string): Promise<{ items: HSNSummary[] }> => {
-    return {
-      items: [
-        { hsn_code: '84212110', description: 'Water Purifiers - RO Type', uqc: 'NOS', total_quantity: 234, total_value: 5678900, taxable_value: 4812627, igst: 456789, cgst: 216890, sgst: 216890, cess: 0, rate: 18 },
-        { hsn_code: '84212120', description: 'Water Purifiers - UV Type', uqc: 'NOS', total_quantity: 156, total_value: 3456780, taxable_value: 2929475, igst: 278456, cgst: 132045, sgst: 132045, cess: 0, rate: 18 },
-        { hsn_code: '84219900', description: 'Parts & Accessories', uqc: 'NOS', total_quantity: 567, total_value: 1234567, taxable_value: 1046243, igst: 94234, cgst: 47117, sgst: 47117, cess: 0, rate: 18 },
-        { hsn_code: '85044010', description: 'Voltage Stabilizers', uqc: 'NOS', total_quantity: 89, total_value: 890123, taxable_value: 754341, igst: 67890, cgst: 34012, sgst: 34012, cess: 0, rate: 18 },
-        { hsn_code: '99833', description: 'Installation Services', uqc: 'OTH', total_quantity: 345, total_value: 1196410, taxable_value: 1013907, igst: 91309, cgst: 45741, sgst: 45741, cess: 0, rate: 18 },
-      ],
-    };
-  },
-};
-
 const statusColors: Record<string, string> = {
   VALID: 'bg-green-100 text-green-800',
   ERROR: 'bg-red-100 text-red-800',
@@ -147,37 +96,102 @@ const statusColors: Record<string, string> = {
   OVERDUE: 'bg-red-100 text-red-800',
 };
 
+// Helper to parse period string to month/year
+const parsePeriod = (period: string): { month: number; year: number } => {
+  const month = parseInt(period.substring(0, 2), 10);
+  const year = parseInt(period.substring(2), 10);
+  return { month, year };
+};
+
 export default function GSTR1Page() {
   const queryClient = useQueryClient();
-  const [selectedPeriod, setSelectedPeriod] = useState('012024');
+  const now = new Date();
+  const defaultPeriod = `${String(now.getMonth() + 1).padStart(2, '0')}${now.getFullYear()}`;
+  const [selectedPeriod, setSelectedPeriod] = useState(defaultPeriod);
   const [activeTab, setActiveTab] = useState('summary');
 
-  const { data: summary, isLoading: summaryLoading } = useQuery({
-    queryKey: ['gstr1-summary', selectedPeriod],
-    queryFn: () => gstr1Api.getSummary(selectedPeriod),
+  const { month, year } = parsePeriod(selectedPeriod);
+
+  const { data: gstr1Data, isLoading: summaryLoading } = useQuery({
+    queryKey: ['gstr1-report', month, year],
+    queryFn: () => gstReportsApi.getGSTR1(month, year),
   });
 
-  const { data: b2bData, isLoading: b2bLoading } = useQuery({
-    queryKey: ['gstr1-b2b', selectedPeriod],
-    queryFn: () => gstr1Api.getB2BInvoices(selectedPeriod),
-    enabled: activeTab === 'b2b',
-  });
+  // Derive summary from API data
+  const summary = gstr1Data ? {
+    return_period: gstr1Data.return_period,
+    filing_status: 'NOT_FILED' as const,
+    due_date: new Date(year, month, 11).toISOString().split('T')[0],
+    total_invoices: (gstr1Data.b2b?.length || 0) + (gstr1Data.b2cl?.length || 0),
+    total_taxable_value: gstr1Data.b2b?.reduce((sum: number, inv: B2BInvoiceAPI) => sum + inv.taxable_value, 0) || 0,
+    total_igst: gstr1Data.b2b?.reduce((sum: number, inv: B2BInvoiceAPI) => sum + inv.igst, 0) || 0,
+    total_cgst: gstr1Data.b2b?.reduce((sum: number, inv: B2BInvoiceAPI) => sum + inv.cgst, 0) || 0,
+    total_sgst: gstr1Data.b2b?.reduce((sum: number, inv: B2BInvoiceAPI) => sum + inv.sgst, 0) || 0,
+    total_cess: gstr1Data.b2b?.reduce((sum: number, inv: B2BInvoiceAPI) => sum + inv.cess, 0) || 0,
+    total_tax: 0,
+    b2b_invoices: gstr1Data.b2b?.length || 0,
+    b2b_value: gstr1Data.b2b?.reduce((sum: number, inv: B2BInvoiceAPI) => sum + inv.invoice_value, 0) || 0,
+    b2c_large_invoices: gstr1Data.b2cl?.length || 0,
+    b2c_large_value: gstr1Data.b2cl?.reduce((sum: number, inv: { invoice_value: number }) => sum + inv.invoice_value, 0) || 0,
+    b2cs_value: gstr1Data.b2cs?.reduce((sum: number, item: { taxable_value: number }) => sum + item.taxable_value, 0) || 0,
+    credit_debit_notes: gstr1Data.cdnr?.length || 0,
+    cdn_value: gstr1Data.cdnr?.reduce((sum: number, note: { taxable_value: number }) => sum + note.taxable_value, 0) || 0,
+    exports_invoices: 0,
+    exports_value: 0,
+    nil_rated_value: 0,
+    hsn_summary_count: gstr1Data.hsn?.length || 0,
+  } : null;
 
-  const { data: hsnData, isLoading: hsnLoading } = useQuery({
-    queryKey: ['gstr1-hsn', selectedPeriod],
-    queryFn: () => gstr1Api.getHSNSummary(selectedPeriod),
-    enabled: activeTab === 'hsn',
-  });
+  // Derive B2B data from API
+  const b2bData = gstr1Data ? {
+    items: gstr1Data.b2b?.map((inv: B2BInvoiceAPI, idx: number) => ({
+      id: String(idx + 1),
+      invoice_number: inv.invoice_number,
+      invoice_date: inv.invoice_date,
+      gstin: inv.gstin,
+      party_name: inv.gstin || 'Unknown',
+      invoice_type: 'Regular' as const,
+      taxable_value: inv.taxable_value,
+      igst: inv.igst,
+      cgst: inv.cgst,
+      sgst: inv.sgst,
+      cess: inv.cess,
+      total_value: inv.invoice_value,
+      place_of_supply: inv.place_of_supply,
+      reverse_charge: false,
+      status: inv.gstin ? 'VALID' as const : 'ERROR' as const,
+      error_message: !inv.gstin ? 'Invalid GSTIN' : undefined,
+    })) || [],
+  } : { items: [] };
+
+  // Derive HSN data from API
+  const hsnData = gstr1Data ? {
+    items: gstr1Data.hsn?.map((hsn: HSNSummaryAPI) => ({
+      hsn_code: hsn.hsn_code,
+      description: '',
+      uqc: 'NOS',
+      total_quantity: hsn.quantity,
+      total_value: hsn.taxable_value,
+      taxable_value: hsn.taxable_value,
+      igst: hsn.igst,
+      cgst: hsn.cgst,
+      sgst: hsn.sgst,
+      cess: 0,
+      rate: 18,
+    })) || [],
+  } : { items: [] };
 
   const generateMutation = useMutation({
-    mutationFn: async () => {},
+    mutationFn: async () => {
+      // Refresh data
+      await queryClient.invalidateQueries({ queryKey: ['gstr1-report'] });
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['gstr1-summary'] });
-      toast.success('GSTR-1 report generated successfully');
+      toast.success('GSTR-1 report refreshed successfully');
     },
   });
 
-  const b2bColumns: ColumnDef<B2BInvoice>[] = [
+  const b2bColumns: ColumnDef<B2BInvoiceDisplay>[] = [
     {
       accessorKey: 'invoice_number',
       header: 'Invoice',
@@ -258,7 +272,7 @@ export default function GSTR1Page() {
     },
   ];
 
-  const hsnColumns: ColumnDef<HSNSummary>[] = [
+  const hsnColumns: ColumnDef<HSNSummaryDisplay>[] = [
     {
       accessorKey: 'hsn_code',
       header: 'HSN Code',

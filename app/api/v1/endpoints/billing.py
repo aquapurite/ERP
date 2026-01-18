@@ -2089,6 +2089,325 @@ async def get_gstr3b_report(
     }
 
 
+@router.get("/reports/gstr2a")
+async def get_gstr2a_report(
+    db: DB,
+    month: int = Query(..., ge=1, le=12),
+    year: int = Query(..., ge=2017),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate GSTR-2A (Inward Supplies) report data - Auto-populated from supplier filings."""
+    from calendar import monthrange
+    from app.models.purchase import PurchaseOrder, POStatus
+
+    start_date = date(year, month, 1)
+    end_date = date(year, month, monthrange(year, month)[1])
+
+    # Get received purchase orders (inward supplies)
+    po_query = select(PurchaseOrder).where(
+        and_(
+            PurchaseOrder.po_date >= start_date,
+            PurchaseOrder.po_date <= end_date,
+            PurchaseOrder.status.in_([POStatus.RECEIVED.value, POStatus.COMPLETED.value]),
+        )
+    )
+    po_result = await db.execute(po_query)
+    purchase_orders = po_result.scalars().all()
+
+    # Calculate totals
+    total_taxable = sum(float(po.subtotal or 0) for po in purchase_orders)
+    total_igst = sum(float(po.igst_amount or 0) for po in purchase_orders)
+    total_cgst = sum(float(po.cgst_amount or 0) for po in purchase_orders)
+    total_sgst = sum(float(po.sgst_amount or 0) for po in purchase_orders)
+    total_tax = total_igst + total_cgst + total_sgst
+
+    return {
+        "return_period": f"{month:02d}{year}",
+        "summary": {
+            "total_invoices": len(purchase_orders),
+            "total_taxable_value": total_taxable,
+            "total_igst": total_igst,
+            "total_cgst": total_cgst,
+            "total_sgst": total_sgst,
+            "total_tax": total_tax,
+            "itc_available": total_tax,  # Input Tax Credit available
+        },
+        "invoices": [
+            {
+                "id": str(po.id),
+                "invoice_number": po.po_number,
+                "invoice_date": po.po_date.isoformat() if po.po_date else None,
+                "gstin": po.vendor_gstin if hasattr(po, 'vendor_gstin') else None,
+                "vendor_name": po.vendor_name if hasattr(po, 'vendor_name') else "Vendor",
+                "taxable_value": float(po.subtotal or 0),
+                "igst": float(po.igst_amount or 0),
+                "cgst": float(po.cgst_amount or 0),
+                "sgst": float(po.sgst_amount or 0),
+                "total_value": float(po.grand_total or 0),
+                "status": "MATCHED" if po.status == POStatus.COMPLETED.value else "PENDING",
+            }
+            for po in purchase_orders
+        ],
+    }
+
+
+@router.get("/reports/hsn-summary")
+async def get_hsn_summary_report(
+    db: DB,
+    month: int = Query(..., ge=1, le=12),
+    year: int = Query(..., ge=2017),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate HSN-wise summary for GST returns."""
+    from calendar import monthrange
+    from app.models.purchase import PurchaseOrderItem, PurchaseOrder, POStatus
+
+    start_date = date(year, month, 1)
+    end_date = date(year, month, monthrange(year, month)[1])
+
+    # Outward HSN (from sales invoices)
+    outward_hsn_query = select(
+        InvoiceItem.hsn_code,
+        func.sum(InvoiceItem.quantity).label("qty"),
+        func.sum(InvoiceItem.line_total).label("total_value"),
+        func.sum(InvoiceItem.taxable_amount).label("taxable"),
+        func.sum(InvoiceItem.igst_amount).label("igst"),
+        func.sum(InvoiceItem.cgst_amount).label("cgst"),
+        func.sum(InvoiceItem.sgst_amount).label("sgst"),
+    ).join(TaxInvoice).where(
+        and_(
+            TaxInvoice.invoice_date >= start_date,
+            TaxInvoice.invoice_date <= end_date,
+            TaxInvoice.status != InvoiceStatus.CANCELLED,
+            InvoiceItem.hsn_code.isnot(None),
+        )
+    ).group_by(InvoiceItem.hsn_code)
+
+    outward_result = await db.execute(outward_hsn_query)
+    outward_hsn = outward_result.all()
+
+    # Inward HSN (from purchase orders)
+    inward_hsn_query = select(
+        PurchaseOrderItem.hsn_code,
+        func.sum(PurchaseOrderItem.quantity).label("qty"),
+        func.sum(PurchaseOrderItem.total_amount).label("total_value"),
+        func.sum(PurchaseOrderItem.taxable_amount).label("taxable"),
+        func.sum(PurchaseOrderItem.igst_amount).label("igst"),
+        func.sum(PurchaseOrderItem.cgst_amount).label("cgst"),
+        func.sum(PurchaseOrderItem.sgst_amount).label("sgst"),
+    ).join(PurchaseOrder).where(
+        and_(
+            PurchaseOrder.po_date >= start_date,
+            PurchaseOrder.po_date <= end_date,
+            PurchaseOrder.status.in_([POStatus.RECEIVED.value, POStatus.COMPLETED.value]),
+            PurchaseOrderItem.hsn_code.isnot(None),
+        )
+    ).group_by(PurchaseOrderItem.hsn_code)
+
+    inward_result = await db.execute(inward_hsn_query)
+    inward_hsn = inward_result.all()
+
+    # Calculate stats
+    outward_total = sum(float(row.taxable or 0) for row in outward_hsn)
+    inward_total = sum(float(row.taxable or 0) for row in inward_hsn)
+
+    return {
+        "return_period": f"{month:02d}{year}",
+        "stats": {
+            "outward_hsn_codes": len(outward_hsn),
+            "inward_hsn_codes": len(inward_hsn),
+            "outward_taxable_value": outward_total,
+            "inward_taxable_value": inward_total,
+        },
+        "outward_hsn": [
+            {
+                "hsn_code": row.hsn_code or "N/A",
+                "description": "",  # Would need product lookup for description
+                "uqc": "NOS",
+                "total_quantity": float(row.qty or 0),
+                "total_value": float(row.total_value or 0),
+                "taxable_value": float(row.taxable or 0),
+                "igst": float(row.igst or 0),
+                "cgst": float(row.cgst or 0),
+                "sgst": float(row.sgst or 0),
+                "rate": 18,  # Default GST rate
+            }
+            for row in outward_hsn
+        ],
+        "inward_hsn": [
+            {
+                "hsn_code": row.hsn_code or "N/A",
+                "description": "",
+                "uqc": "NOS",
+                "total_quantity": float(row.qty or 0),
+                "total_value": float(row.total_value or 0),
+                "taxable_value": float(row.taxable or 0),
+                "igst": float(row.igst or 0),
+                "cgst": float(row.cgst or 0),
+                "sgst": float(row.sgst or 0),
+                "rate": 18,
+            }
+            for row in inward_hsn
+        ],
+    }
+
+
+@router.get("/reports/finance-dashboard")
+async def get_finance_dashboard_stats(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get finance dashboard statistics."""
+    from app.models.accounting import FinancialPeriod, JournalEntry, JournalEntryStatus
+    from app.models.purchase import PurchaseOrder
+    from calendar import monthrange
+
+    today = date.today()
+    # Current month range
+    month_start = date(today.year, today.month, 1)
+    _, last_day = monthrange(today.year, today.month)
+    month_end = date(today.year, today.month, last_day)
+
+    # Previous month for comparison
+    if today.month == 1:
+        prev_month_start = date(today.year - 1, 12, 1)
+        prev_month_end = date(today.year - 1, 12, 31)
+    else:
+        prev_month_start = date(today.year, today.month - 1, 1)
+        _, prev_last_day = monthrange(today.year, today.month - 1)
+        prev_month_end = date(today.year, today.month - 1, prev_last_day)
+
+    # Revenue (from invoices)
+    revenue_query = select(
+        func.sum(TaxInvoice.grand_total)
+    ).where(
+        and_(
+            TaxInvoice.invoice_date >= month_start,
+            TaxInvoice.invoice_date <= month_end,
+            TaxInvoice.status != InvoiceStatus.CANCELLED,
+        )
+    )
+    revenue_result = await db.execute(revenue_query)
+    current_revenue = float(revenue_result.scalar() or 0)
+
+    prev_revenue_query = select(
+        func.sum(TaxInvoice.grand_total)
+    ).where(
+        and_(
+            TaxInvoice.invoice_date >= prev_month_start,
+            TaxInvoice.invoice_date <= prev_month_end,
+            TaxInvoice.status != InvoiceStatus.CANCELLED,
+        )
+    )
+    prev_revenue_result = await db.execute(prev_revenue_query)
+    prev_revenue = float(prev_revenue_result.scalar() or 0)
+
+    revenue_change = ((current_revenue - prev_revenue) / prev_revenue * 100) if prev_revenue > 0 else 0
+
+    # Expenses (from purchase orders)
+    expenses_query = select(
+        func.sum(PurchaseOrder.grand_total)
+    ).where(
+        and_(
+            PurchaseOrder.po_date >= month_start,
+            PurchaseOrder.po_date <= month_end,
+        )
+    )
+    expenses_result = await db.execute(expenses_query)
+    current_expenses = float(expenses_result.scalar() or 0)
+
+    prev_expenses_query = select(
+        func.sum(PurchaseOrder.grand_total)
+    ).where(
+        and_(
+            PurchaseOrder.po_date >= prev_month_start,
+            PurchaseOrder.po_date <= prev_month_end,
+        )
+    )
+    prev_expenses_result = await db.execute(prev_expenses_query)
+    prev_expenses = float(prev_expenses_result.scalar() or 0)
+
+    expenses_change = ((current_expenses - prev_expenses) / prev_expenses * 100) if prev_expenses > 0 else 0
+
+    # Gross profit
+    gross_profit = current_revenue - current_expenses
+    profit_margin = (gross_profit / current_revenue * 100) if current_revenue > 0 else 0
+
+    # Accounts Receivable (unpaid invoices)
+    ar_query = select(
+        func.sum(TaxInvoice.grand_total - TaxInvoice.amount_paid)
+    ).where(
+        and_(
+            TaxInvoice.status.in_([InvoiceStatus.SENT.value, InvoiceStatus.PARTIALLY_PAID.value]),
+        )
+    )
+    ar_result = await db.execute(ar_query)
+    accounts_receivable = float(ar_result.scalar() or 0)
+
+    # Accounts Payable (unpaid POs) - simplified
+    ap_query = select(
+        func.sum(PurchaseOrder.grand_total)
+    ).where(
+        PurchaseOrder.status.in_(["APPROVED", "SENT"])
+    )
+    ap_result = await db.execute(ap_query)
+    accounts_payable = float(ap_result.scalar() or 0)
+
+    # Pending journal approvals
+    pending_query = select(func.count(JournalEntry.id)).where(
+        JournalEntry.status == JournalEntryStatus.PENDING_APPROVAL.value
+    )
+    pending_result = await db.execute(pending_query)
+    pending_approvals = pending_result.scalar() or 0
+
+    # Current period
+    period_query = select(FinancialPeriod).where(
+        and_(
+            FinancialPeriod.start_date <= today,
+            FinancialPeriod.end_date >= today,
+            FinancialPeriod.status == "OPEN",
+        )
+    ).order_by(FinancialPeriod.start_date.desc()).limit(1)
+    period_result = await db.execute(period_query)
+    current_period = period_result.scalar_one_or_none()
+
+    # GST filing status (simplified - based on current month)
+    gstr1_due = date(today.year, today.month, 11) if today.day <= 11 else date(
+        today.year if today.month < 12 else today.year + 1,
+        today.month + 1 if today.month < 12 else 1,
+        11
+    )
+    gstr3b_due = date(today.year, today.month, 20) if today.day <= 20 else date(
+        today.year if today.month < 12 else today.year + 1,
+        today.month + 1 if today.month < 12 else 1,
+        20
+    )
+
+    return {
+        "total_revenue": current_revenue,
+        "revenue_change": round(revenue_change, 1),
+        "total_expenses": current_expenses,
+        "expenses_change": round(expenses_change, 1),
+        "gross_profit": gross_profit,
+        "profit_margin": round(profit_margin, 1),
+        "accounts_receivable": accounts_receivable,
+        "accounts_payable": accounts_payable,
+        "pending_approvals": pending_approvals,
+        "current_period": {
+            "name": current_period.period_name if current_period else f"{today.strftime('%B %Y')}",
+            "start_date": current_period.start_date.isoformat() if current_period else month_start.isoformat(),
+            "end_date": current_period.end_date.isoformat() if current_period else month_end.isoformat(),
+            "status": current_period.status if current_period else "OPEN",
+        },
+        "gst_filing": {
+            "gstr1_due": gstr1_due.isoformat(),
+            "gstr1_status": "PENDING" if today < gstr1_due else "OVERDUE",
+            "gstr3b_due": gstr3b_due.isoformat(),
+            "gstr3b_status": "PENDING" if today < gstr3b_due else "OVERDUE",
+        },
+    }
+
+
 # ==================== Document Downloads ====================
 
 @router.get("/invoices/{invoice_id}/download")

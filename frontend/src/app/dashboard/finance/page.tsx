@@ -1,15 +1,14 @@
 'use client';
 
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { BookOpen, FileSpreadsheet, Landmark, Calendar, FileText, TrendingUp, TrendingDown, IndianRupee, ArrowUpRight, ArrowDownRight, AlertTriangle, CheckCircle } from 'lucide-react';
+import { BookOpen, FileSpreadsheet, Landmark, Calendar, FileText, TrendingUp, TrendingDown, IndianRupee, ArrowUpRight, ArrowDownRight, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { PageHeader } from '@/components/common';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatDate } from '@/lib/utils';
+import { gstReportsApi } from '@/lib/api';
 
 interface FinanceStats {
   total_revenue: number;
@@ -35,34 +34,6 @@ interface FinanceStats {
   };
 }
 
-const financeApi = {
-  getStats: async (): Promise<FinanceStats> => {
-    return {
-      total_revenue: 12456780,
-      revenue_change: 12.5,
-      total_expenses: 8234560,
-      expenses_change: 8.2,
-      gross_profit: 4222220,
-      profit_margin: 33.9,
-      accounts_receivable: 2345600,
-      accounts_payable: 1567800,
-      pending_approvals: 12,
-      current_period: {
-        name: 'Q3 FY24',
-        start_date: '2024-10-01',
-        end_date: '2024-12-31',
-        status: 'OPEN',
-      },
-      gst_filing: {
-        gstr1_due: '2024-02-11',
-        gstr1_status: 'PENDING',
-        gstr3b_due: '2024-02-20',
-        gstr3b_status: 'PENDING',
-      },
-    };
-  },
-};
-
 const gstStatusColors: Record<string, string> = {
   FILED: 'bg-green-100 text-green-800',
   PENDING: 'bg-yellow-100 text-yellow-800',
@@ -76,9 +47,9 @@ const periodStatusColors: Record<string, string> = {
 };
 
 export default function FinancePage() {
-  const { data: stats } = useQuery({
-    queryKey: ['finance-stats'],
-    queryFn: financeApi.getStats,
+  const { data: stats, isLoading } = useQuery<FinanceStats>({
+    queryKey: ['finance-dashboard'],
+    queryFn: gstReportsApi.getFinanceDashboard,
   });
 
   return (
@@ -105,9 +76,9 @@ export default function FinancePage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(stats?.total_revenue ?? 0)}</div>
-            <div className="flex items-center text-xs text-green-600 mt-1">
-              <ArrowUpRight className="h-3 w-3 mr-1" />
-              +{stats?.revenue_change ?? 0}% from last month
+            <div className={`flex items-center text-xs mt-1 ${(stats?.revenue_change ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {(stats?.revenue_change ?? 0) >= 0 ? <ArrowUpRight className="h-3 w-3 mr-1" /> : <ArrowDownRight className="h-3 w-3 mr-1" />}
+              {(stats?.revenue_change ?? 0) >= 0 ? '+' : ''}{stats?.revenue_change ?? 0}% from last month
             </div>
           </CardContent>
         </Card>

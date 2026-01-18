@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { FileText, Download, Upload, CheckCircle, AlertTriangle, Calendar, IndianRupee, Calculator, CreditCard, RefreshCw, Eye } from 'lucide-react';
+import { FileText, Download, Upload, CheckCircle, AlertTriangle, Calendar, IndianRupee, Calculator, CreditCard, RefreshCw, Eye, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/dialog';
 import { PageHeader } from '@/components/common';
 import { formatCurrency } from '@/lib/utils';
+import { gstReportsApi } from '@/lib/api';
 
 interface GSTR3BSummary {
   return_period: string;
@@ -84,46 +85,11 @@ interface GSTR3BSummary {
   late_fee: number;
 }
 
-const gstr3bApi = {
-  getSummary: async (period: string): Promise<GSTR3BSummary> => {
-    return {
-      return_period: period,
-      filing_status: 'NOT_FILED',
-      due_date: '2024-02-20',
-      outward_taxable: { taxable_value: 12456780, igst: 1245678, cgst: 623456, sgst: 623456, cess: 45678 },
-      outward_zero_rated: { taxable_value: 567890, igst: 0 },
-      outward_nil_rated: { taxable_value: 123456 },
-      outward_exempt: { taxable_value: 89012 },
-      outward_non_gst: { taxable_value: 45678 },
-      inter_state_unreg: { taxable_value: 234567, igst: 42222 },
-      inter_state_comp: { taxable_value: 56789, igst: 10222 },
-      inter_state_uin: { taxable_value: 0, igst: 0 },
-      itc_igst: 1123456,
-      itc_cgst: 567890,
-      itc_sgst: 567890,
-      itc_cess: 34567,
-      itc_ineligible_igst: 12345,
-      itc_ineligible_cgst: 6789,
-      itc_ineligible_sgst: 6789,
-      inward_exempt: 45678,
-      inward_nil: 23456,
-      inward_non_gst: 12345,
-      tax_payable_igst: 1245678,
-      tax_payable_cgst: 623456,
-      tax_payable_sgst: 623456,
-      tax_payable_cess: 45678,
-      itc_utilized_igst: 1123456,
-      itc_utilized_cgst: 567890,
-      itc_utilized_sgst: 567890,
-      itc_utilized_cess: 34567,
-      cash_igst: 122222,
-      cash_cgst: 55566,
-      cash_sgst: 55566,
-      cash_cess: 11111,
-      interest: 0,
-      late_fee: 0,
-    };
-  },
+// Helper to parse period string to month/year
+const parsePeriod = (period: string): { month: number; year: number } => {
+  const month = parseInt(period.substring(0, 2), 10);
+  const year = parseInt(period.substring(2), 10);
+  return { month, year };
 };
 
 const statusColors: Record<string, string> = {
@@ -134,14 +100,66 @@ const statusColors: Record<string, string> = {
 
 export default function GSTR3BPage() {
   const queryClient = useQueryClient();
-  const [selectedPeriod, setSelectedPeriod] = useState('012024');
+  const now = new Date();
+  const defaultPeriod = `${String(now.getMonth() + 1).padStart(2, '0')}${now.getFullYear()}`;
+  const [selectedPeriod, setSelectedPeriod] = useState(defaultPeriod);
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('summary');
 
-  const { data: summary, isLoading } = useQuery({
-    queryKey: ['gstr3b-summary', selectedPeriod],
-    queryFn: () => gstr3bApi.getSummary(selectedPeriod),
+  const { month, year } = parsePeriod(selectedPeriod);
+
+  const { data: gstr3bData, isLoading } = useQuery({
+    queryKey: ['gstr3b-report', month, year],
+    queryFn: () => gstReportsApi.getGSTR3B(month, year),
   });
+
+  // Derive summary from API data
+  const summary: GSTR3BSummary | null = gstr3bData ? {
+    return_period: gstr3bData.return_period,
+    filing_status: 'NOT_FILED',
+    due_date: new Date(year, month, 20).toISOString().split('T')[0],
+    outward_taxable: {
+      taxable_value: gstr3bData.outward_taxable_supplies?.taxable_value || 0,
+      igst: gstr3bData.outward_taxable_supplies?.igst || 0,
+      cgst: gstr3bData.outward_taxable_supplies?.cgst || 0,
+      sgst: gstr3bData.outward_taxable_supplies?.sgst || 0,
+      cess: gstr3bData.outward_taxable_supplies?.cess || 0,
+    },
+    outward_zero_rated: { taxable_value: 0, igst: 0 },
+    outward_nil_rated: { taxable_value: 0 },
+    outward_exempt: { taxable_value: 0 },
+    outward_non_gst: { taxable_value: 0 },
+    inter_state_unreg: {
+      taxable_value: gstr3bData.inter_state_supplies?.taxable_value || 0,
+      igst: gstr3bData.inter_state_supplies?.igst || 0,
+    },
+    inter_state_comp: { taxable_value: 0, igst: 0 },
+    inter_state_uin: { taxable_value: 0, igst: 0 },
+    itc_igst: 0,
+    itc_cgst: 0,
+    itc_sgst: 0,
+    itc_cess: 0,
+    itc_ineligible_igst: 0,
+    itc_ineligible_cgst: 0,
+    itc_ineligible_sgst: 0,
+    inward_exempt: 0,
+    inward_nil: 0,
+    inward_non_gst: 0,
+    tax_payable_igst: gstr3bData.tax_payable?.igst || 0,
+    tax_payable_cgst: gstr3bData.tax_payable?.cgst || 0,
+    tax_payable_sgst: gstr3bData.tax_payable?.sgst || 0,
+    tax_payable_cess: gstr3bData.tax_payable?.cess || 0,
+    itc_utilized_igst: 0,
+    itc_utilized_cgst: 0,
+    itc_utilized_sgst: 0,
+    itc_utilized_cess: 0,
+    cash_igst: gstr3bData.tax_payable?.igst || 0,
+    cash_cgst: gstr3bData.tax_payable?.cgst || 0,
+    cash_sgst: gstr3bData.tax_payable?.sgst || 0,
+    cash_cess: gstr3bData.tax_payable?.cess || 0,
+    interest: 0,
+    late_fee: 0,
+  } : null;
 
   const generateMutation = useMutation({
     mutationFn: async () => {},
