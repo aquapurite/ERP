@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ArrowLeft, Save, Package, Loader2, Plus, X } from 'lucide-react';
+import { ArrowLeft, Save, Package, Loader2, Plus, X, Upload, ImagePlus, Trash2, Lock } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -20,8 +21,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/common';
-import { productsApi, categoriesApi, brandsApi } from '@/lib/api';
+import { productsApi, categoriesApi, brandsApi, uploadsApi } from '@/lib/api';
 import { Category, Brand } from '@/types';
+
+// Image preview type
+interface ImagePreview {
+  file: File;
+  preview: string;
+  isPrimary: boolean;
+}
 
 const productSchema = z.object({
   name: z.string().min(2, 'Product name must be at least 2 characters'),
@@ -54,6 +62,9 @@ export default function NewProductPage() {
   const queryClient = useQueryClient();
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
+  const [images, setImages] = useState<ImagePreview[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: categoriesData } = useQuery({
     queryKey: ['categories'],
@@ -84,7 +95,42 @@ export default function NewProductPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: ProductFormData) => productsApi.create({ ...data, tags }),
+    mutationFn: async (data: ProductFormData) => {
+      // First create the product
+      const product = await productsApi.create({ ...data, tags });
+
+      // Then upload images if any
+      if (images.length > 0) {
+        setIsUploading(true);
+        try {
+          for (let i = 0; i < images.length; i++) {
+            const img = images[i];
+            // Upload image to storage
+            const formData = new FormData();
+            formData.append('file', img.file);
+            formData.append('category', 'products');
+
+            const uploadResult = await uploadsApi.uploadImage(img.file, 'products');
+
+            // Add image to product
+            await productsApi.addImage(product.id, {
+              image_url: uploadResult.url,
+              thumbnail_url: uploadResult.thumbnail_url,
+              alt_text: data.name,
+              is_primary: img.isPrimary || i === 0,
+              sort_order: i,
+            });
+          }
+        } catch (uploadError) {
+          console.error('Image upload error:', uploadError);
+          toast.warning('Product created but some images failed to upload');
+        } finally {
+          setIsUploading(false);
+        }
+      }
+
+      return product;
+    },
     onSuccess: () => {
       toast.success('Product created successfully');
       queryClient.invalidateQueries({ queryKey: ['products'] });
@@ -119,6 +165,71 @@ export default function NewProductPage() {
       e.preventDefault();
       handleAddTag();
     }
+  };
+
+  // Image handling functions
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const newImages: ImagePreview[] = [];
+    const maxImages = 10;
+    const remainingSlots = maxImages - images.length;
+
+    if (files.length > remainingSlots) {
+      toast.warning(`You can only add ${remainingSlots} more images (max ${maxImages})`);
+    }
+
+    const filesToProcess = Array.from(files).slice(0, remainingSlots);
+
+    filesToProcess.forEach((file) => {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        toast.error(`${file.name} is not an image file`);
+        return;
+      }
+
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error(`${file.name} is too large (max 5MB)`);
+        return;
+      }
+
+      const preview = URL.createObjectURL(file);
+      newImages.push({
+        file,
+        preview,
+        isPrimary: images.length === 0 && newImages.length === 0, // First image is primary
+      });
+    });
+
+    setImages([...images, ...newImages]);
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveImage = (index: number) => {
+    const newImages = [...images];
+    URL.revokeObjectURL(newImages[index].preview);
+    newImages.splice(index, 1);
+
+    // If removed image was primary, set first image as primary
+    if (images[index].isPrimary && newImages.length > 0) {
+      newImages[0].isPrimary = true;
+    }
+
+    setImages(newImages);
+  };
+
+  const handleSetPrimary = (index: number) => {
+    const newImages = images.map((img, i) => ({
+      ...img,
+      isPrimary: i === index,
+    }));
+    setImages(newImages);
   };
 
   // Auto-generate SKU suggestion from name
@@ -270,6 +381,106 @@ export default function NewProductPage() {
               </CardContent>
             </Card>
 
+            {/* Product Images */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ImagePlus className="h-5 w-5" />
+                  Product Images
+                </CardTitle>
+                <CardDescription>
+                  Upload product images. First image will be the primary image. You can add up to 10 images.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Upload Button */}
+                <div className="flex items-center gap-4">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleImageSelect}
+                    className="hidden"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={images.length >= 10}
+                  >
+                    <Upload className="mr-2 h-4 w-4" />
+                    Upload Images
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    {images.length}/10 images
+                  </span>
+                </div>
+
+                {/* Image Previews */}
+                {images.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    {images.map((img, index) => (
+                      <div
+                        key={index}
+                        className={`relative group rounded-lg border-2 overflow-hidden ${
+                          img.isPrimary ? 'border-primary' : 'border-border'
+                        }`}
+                      >
+                        <div className="aspect-square relative">
+                          <Image
+                            src={img.preview}
+                            alt={`Preview ${index + 1}`}
+                            fill
+                            className="object-cover"
+                          />
+                        </div>
+
+                        {/* Overlay with actions */}
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                          {!img.isPrimary && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => handleSetPrimary(index)}
+                            >
+                              Set Primary
+                            </Button>
+                          )}
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="destructive"
+                            onClick={() => handleRemoveImage(index)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+
+                        {/* Primary badge */}
+                        {img.isPrimary && (
+                          <Badge className="absolute top-2 left-2" variant="default">
+                            Primary
+                          </Badge>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="border-2 border-dashed rounded-lg p-8 text-center">
+                    <ImagePlus className="mx-auto h-12 w-12 text-muted-foreground" />
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Click "Upload Images" to add product photos
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Supports JPEG, PNG, WebP (max 5MB each)
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {/* Pricing & Tax */}
             <Card>
               <CardHeader>
@@ -329,6 +540,25 @@ export default function NewProductPage() {
                         <SelectItem value="28">28%</SelectItem>
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="cost_price" className="flex items-center gap-2">
+                      Cost Price (COGS)
+                      <Lock className="h-3 w-3 text-muted-foreground" />
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="cost_price"
+                        type="text"
+                        value="****"
+                        disabled
+                        className="bg-muted cursor-not-allowed"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Auto-calculated from Purchase Orders
+                    </p>
                   </div>
                 </div>
 
@@ -553,9 +783,9 @@ export default function NewProductPage() {
               </CardHeader>
               <CardContent className="text-sm text-muted-foreground space-y-2">
                 <p>- SKU should be unique across all products</p>
-                <p>- Add images after creating the product</p>
+                <p>- Upload multiple images (first is primary)</p>
                 <p>- HSN code is required for GST compliance</p>
-                <p>- Set channel-specific prices in Channel Pricing</p>
+                <p>- Set channel-specific prices after creation</p>
                 <p>- Cost price is auto-calculated from POs</p>
               </CardContent>
             </Card>

@@ -4981,4 +4981,59 @@ export const gstReportsApi = {
   },
 };
 
+// ==================== UPLOADS API ====================
+
+export interface UploadResponse {
+  url: string;
+  thumbnail_url?: string;
+  filename: string;
+  size: number;
+  content_type: string;
+}
+
+export const uploadsApi = {
+  uploadImage: async (file: File, category: string = 'products'): Promise<UploadResponse> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('category', category);
+    const { data } = await apiClient.post<UploadResponse>('/uploads/image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
+  },
+
+  uploadImages: async (files: File[], category: string = 'products'): Promise<{ files: UploadResponse[]; total: number }> => {
+    const formData = new FormData();
+    files.forEach((file) => {
+      formData.append('files', file);
+    });
+    formData.append('category', category);
+    const { data } = await apiClient.post('/uploads/images', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
+  },
+
+  uploadDocument: async (file: File, category: string = 'documents'): Promise<UploadResponse> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('category', category);
+    const { data } = await apiClient.post<UploadResponse>('/uploads/document', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
+  },
+
+  deleteFile: async (url: string): Promise<{ success: boolean; message: string }> => {
+    const { data } = await apiClient.delete('/uploads', { data: { url } });
+    return data;
+  },
+};
+
 export default apiClient;
