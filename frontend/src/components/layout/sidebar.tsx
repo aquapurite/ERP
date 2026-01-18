@@ -7,7 +7,6 @@ import { usePathname } from 'next/navigation';
 import { ChevronDown, ChevronLeft, Menu, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/providers';
 import { navigation, NavItem } from '@/config/navigation';
 import { siteConfig } from '@/config/site';
@@ -314,14 +313,10 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         </Button>
       </div>
 
-      {/* Navigation - with proper scrolling */}
-      <div className="flex-1 overflow-hidden">
-        <ScrollArea className="h-full">
-          <nav className="space-y-0.5 px-3 py-2">
-            {filteredNavigation.map((item) => renderNavItem(item))}
-          </nav>
-        </ScrollArea>
-      </div>
+      {/* Navigation - with native scrolling and visible scrollbar */}
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-2 space-y-0.5 sidebar-scroll">
+        {filteredNavigation.map((item) => renderNavItem(item))}
+      </nav>
 
       {/* Footer with gradient */}
       {!isCollapsed && (
