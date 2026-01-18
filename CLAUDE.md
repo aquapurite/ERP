@@ -778,14 +778,77 @@ alembic revision --autogenerate -m "description"
 
 ## Deployment
 
+### Project Structure & Vercel Configuration
+
+```
+/Users/mantosh/Desktop/Consumer durable 2/
+├── app/                    # FastAPI Backend (deployed to Render)
+├── frontend/               # Next.js Frontend (deployed to Vercel)
+├── .vercel/                # Vercel CLI config - MUST be at ROOT, not in frontend/
+│   └── project.json        # Links to "erp" project
+└── CLAUDE.md
+```
+
+### CRITICAL: Vercel Project Mapping
+
+| Vercel Project | Domain | Purpose | Deploy From |
+|----------------|--------|---------|-------------|
+| `erp` | www.aquapurite.org | ERP Admin Panel | Root directory (`Consumer durable 2/`) |
+| `d2c` | www.aquapurite.com | D2C Storefront | Same codebase, different Vercel project |
+| `frontend` | N/A | DO NOT USE | Legacy/unused |
+
+### Vercel Account
+- **Account**: `aquapurite-4359` (anupam-singhs-projects-ffea0ac8)
+- **Dashboard**: https://vercel.com/anupam-singhs-projects-ffea0ac8
+
+### Correct Deployment Commands
+
+```bash
+# ALWAYS deploy from the ROOT directory, NOT from frontend/
+cd "/Users/mantosh/Desktop/Consumer durable 2"
+
+# Check you're logged into correct account
+npx vercel whoami
+# Should show: aquapurite-4359
+
+# If wrong account, logout and re-login
+npx vercel logout
+npx vercel login
+
+# Link to ERP project (only needed once, or if .vercel is deleted)
+npx vercel link --project=erp --yes
+
+# Deploy to production
+npx vercel --prod
+```
+
+### Common Deployment Mistakes to AVOID
+
+| Mistake | Why It's Wrong | Correct Approach |
+|---------|----------------|------------------|
+| `cd frontend && vercel --prod` | Creates separate `.vercel` folder, wrong project | Always deploy from ROOT |
+| Deploying to `frontend` project | Wrong project, not linked to aquapurite.org | Use `erp` project |
+| Not checking `vercel whoami` | May deploy to wrong Vercel account | Always verify account first |
+| Deleting root `.vercel` folder | Loses project link | If deleted, re-link with `vercel link --project=erp --yes` |
+
 ### Backend (Render)
 - Push to `main` branch triggers auto-deploy
 - URL: `https://aquapurite-erp-api.onrender.com`
 - Uses `DATABASE_URL` env var pointing to Supabase PostgreSQL
 
-### Frontend (Vercel)
-- Push to `main` branch triggers auto-deploy
-- Uses `NEXT_PUBLIC_API_URL` for backend connection
+### Frontend (Vercel) - Auto-Deploy
+- Git push to `main` branch SHOULD trigger auto-deploy
+- If auto-deploy not working, manually deploy:
+  ```bash
+  cd "/Users/mantosh/Desktop/Consumer durable 2"
+  npx vercel --prod
+  ```
+
+### Vercel Project Settings (for reference)
+The `erp` project has these settings configured in Vercel dashboard:
+- **Root Directory**: `frontend`
+- **Build Command**: `pnpm install && pnpm build`
+- **Framework**: Next.js
 
 ---
 
