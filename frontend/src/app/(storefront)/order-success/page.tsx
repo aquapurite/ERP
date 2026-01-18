@@ -14,7 +14,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { companyApi, CompanyInfo } from '@/lib/storefront/api';
+import { companyApi } from '@/lib/storefront/api';
+import { CompanyInfo } from '@/types/storefront';
 
 function OrderSuccessContent() {
   const searchParams = useSearchParams();
