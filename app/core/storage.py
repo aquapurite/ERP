@@ -1,26 +1,47 @@
 """Supabase Storage client for file uploads."""
 import uuid
-from typing import Optional, Tuple
-from supabase import create_client, Client
-from supabase.lib.client_options import ClientOptions
+from typing import Optional, Tuple, TYPE_CHECKING
 
 from app.config import settings
+
+# Lazy import to avoid crash if supabase not installed
+_supabase_client = None
+_supabase_available = None
+
+def _check_supabase_available():
+    """Check if supabase package is available."""
+    global _supabase_available
+    if _supabase_available is None:
+        try:
+            import supabase
+            _supabase_available = True
+        except ImportError:
+            _supabase_available = False
+    return _supabase_available
 
 
 class StorageClient:
     """Client for Supabase Storage operations."""
 
-    _client: Optional[Client] = None
+    _client = None
 
     @classmethod
-    def get_client(cls) -> Client:
+    def get_client(cls):
         """Get or create Supabase client."""
         if cls._client is None:
+            if not _check_supabase_available():
+                raise ImportError(
+                    "supabase package not installed. "
+                    "Run: pip install supabase"
+                )
             if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_KEY:
                 raise ValueError(
                     "Supabase credentials not configured. "
                     "Set SUPABASE_URL and SUPABASE_SERVICE_KEY environment variables."
                 )
+            from supabase import create_client
+            from supabase.lib.client_options import ClientOptions
+
             cls._client = create_client(
                 settings.SUPABASE_URL,
                 settings.SUPABASE_SERVICE_KEY,
