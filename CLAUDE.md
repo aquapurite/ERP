@@ -101,6 +101,132 @@ class CompanyCreate(CompanyBase):
 
 ---
 
+# DEBUGGING GUIDE - FASTEST PATH TO ROOT CAUSE
+
+> **CRITICAL: When debugging production errors, ALWAYS get the actual error message FIRST. Do NOT guess.**
+
+## Step 1: Get the EXACT Error Message (Do This IMMEDIATELY)
+
+### For API Errors (500, 400, etc.)
+
+**FASTEST METHOD - Browser Network Tab:**
+1. Open browser DevTools (Cmd+Option+I on Mac, F12 on Windows)
+2. Go to **Network** tab
+3. Reproduce the error (click the button that fails)
+4. Click on the **failed request** (red row)
+5. Click **Response** tab → **This shows the EXACT error message**
+
+The FastAPI global exception handler returns detailed JSON:
+```json
+{
+  "error": "The actual error message",
+  "type": "ErrorClassName",
+  "path": "/api/v1/...",
+  "traceback": "Full Python traceback..."
+}
+```
+
+**DO NOT:**
+- ❌ Guess what the error might be
+- ❌ Check environment variables without seeing the error first
+- ❌ Make multiple code changes hoping one works
+- ❌ Spend 30+ minutes debugging without the actual error message
+
+### For Frontend Errors
+1. Browser Console (Cmd+Option+J) → Shows JavaScript errors
+2. Network tab → Shows failed API calls with response body
+
+### For Startup/Deploy Errors
+1. **Render Dashboard** → Logs → Look for Python tracebacks
+2. **Vercel Dashboard** → Deployments → Build logs
+
+## Step 2: Production URLs & Dashboards
+
+| Service | URL | Purpose |
+|---------|-----|---------|
+| Backend API | https://aquapurite-erp-api.onrender.com | FastAPI backend |
+| Health Check | https://aquapurite-erp-api.onrender.com/health | Verify API is running |
+| API Docs | https://aquapurite-erp-api.onrender.com/docs | Swagger UI |
+| ERP Frontend | https://aquapurite.org or https://erp-woad-eight.vercel.app | Admin panel |
+| D2C Storefront | https://www.aquapurite.com | Customer-facing site |
+| Render Dashboard | https://dashboard.render.com | Backend logs, env vars |
+| Vercel Dashboard | https://vercel.com | Frontend logs, env vars |
+| Supabase Dashboard | https://supabase.com/dashboard | Database, Storage |
+
+## Step 3: Common Error Patterns & Solutions
+
+### Error: "'ClientOptions' object has no attribute 'storage'"
+**Cause:** Supabase SDK version mismatch
+**Solution:** Use simple `create_client(url, key)` without ClientOptions
+
+### Error: "Supabase credentials not configured"
+**Cause:** Missing env vars in Render
+**Check:** Render → Environment → Verify SUPABASE_URL, SUPABASE_SERVICE_KEY, SUPABASE_STORAGE_BUCKET
+
+### Error: "Invalid URL format... Got: 'filename.png'"
+**Cause:** Validator on Base schema affecting Response (existing data has filename, not URL)
+**Solution:** Move validator to Create/Update schemas only, not Base
+
+### Error: "cannot import name 'X' from 'module'"
+**Cause:** Wrong import path
+**Solution:** `grep -r "def X" app/` to find actual location
+
+### Error: 500 on all GET requests after schema change
+**Cause:** Pydantic validator on Base schema failing for existing DB data
+**Solution:** Check if validator is on Base schema, move to input schemas
+
+### Error: App crashes on startup (Render)
+**Cause:** Usually top-level import of optional package
+**Solution:** Use lazy imports inside functions
+
+## Step 4: Quick Diagnostic Commands
+
+```bash
+# Check if API is healthy
+curl -s https://aquapurite-erp-api.onrender.com/health
+
+# Test specific endpoint (public)
+curl -s https://aquapurite-erp-api.onrender.com/api/v1/storefront/company | jq
+
+# Check what's in production database (via API)
+curl -s https://aquapurite-erp-api.onrender.com/api/v1/storefront/products | jq '.items[0]'
+
+# Find where a function is defined
+grep -r "def function_name" app/
+
+# Find where a class is defined
+grep -r "class ClassName" app/
+
+# Check if package is in requirements
+grep -i "package_name" requirements.txt
+```
+
+## Step 5: Environment Variables Reference
+
+### Render (Backend) - Required
+| Variable | Example | Purpose |
+|----------|---------|---------|
+| DATABASE_URL | postgresql+psycopg://... | Supabase PostgreSQL connection |
+| SECRET_KEY | random-string | JWT signing |
+| SUPABASE_URL | https://xxx.supabase.co | Storage API |
+| SUPABASE_SERVICE_KEY | eyJ... | Storage auth (service role) |
+| SUPABASE_STORAGE_BUCKET | uploads | Bucket name |
+
+### Vercel (Frontend) - Required
+| Variable | Example | Purpose |
+|----------|---------|---------|
+| NEXT_PUBLIC_API_URL | https://aquapurite-erp-api.onrender.com | Backend API |
+
+## Debugging Lessons Learned
+
+1. **2026-01-18: Upload 500 error** - Spent 30 min guessing. Solution was in browser Network Response tab showing `'ClientOptions' object has no attribute 'storage'`. **Lesson: ALWAYS check browser Response tab FIRST.**
+
+2. **2026-01-17: Company logo not showing** - Root cause was `logo_url` field contained filename instead of full URL. **Lesson: Check actual data in database before assuming code bug.**
+
+3. **2026-01-17: 500 errors after URL validation** - Added validator to Base schema which broke responses for existing data. **Lesson: Validators on Base schemas affect GET responses too.**
+
+---
+
 # DATABASE ARCHITECTURE STANDARDS
 
 > **CRITICAL: Production (Supabase) is the SINGLE SOURCE OF TRUTH.**
