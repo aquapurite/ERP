@@ -11,6 +11,96 @@
 
 ---
 
+# MANDATORY PRE-DEPLOYMENT CHECKLIST
+
+> **CRITICAL: Before pushing ANY code changes, complete this checklist. Do NOT skip steps.**
+
+## Before Making Changes
+
+### 1. Check Existing Data
+- [ ] Query production database to see current data format/values
+- [ ] Identify any data that might be affected by your changes
+- [ ] Example: Before adding URL validation, check if existing URLs are valid
+
+```bash
+# Example: Check existing company logo URLs
+curl -s "https://aquapurite-erp-api.onrender.com/api/v1/storefront/company" | jq '.logo_url'
+```
+
+### 2. Check Import Paths
+- [ ] Verify all imports exist in the target modules
+- [ ] Check the actual file to confirm function/class names
+- [ ] Common mistake: `from app.core.security import get_current_user` ❌
+- [ ] Correct: `from app.api.deps import get_current_user` ✅
+
+```bash
+# Find where a function is defined
+grep -r "def get_current_user" app/
+```
+
+### 3. Check Dependencies
+- [ ] If adding new imports (e.g., `supabase`), ensure package is in requirements.txt
+- [ ] Use lazy imports for optional dependencies to prevent app crashes
+
+```python
+# BAD - crashes if package not installed
+from supabase import create_client
+
+# GOOD - lazy import
+def get_client():
+    from supabase import create_client
+    return create_client(...)
+```
+
+## Before Pushing
+
+### 4. Backward Compatibility
+- [ ] Will existing data work with new validation rules?
+- [ ] Will existing API consumers break?
+- [ ] Are response schemas compatible with current frontend expectations?
+
+### 5. Test End-to-End Flow
+- [ ] Test the API endpoint locally with real data patterns
+- [ ] Check both success AND error cases
+- [ ] Verify frontend can consume the response
+
+### 6. Schema Validation Impact
+- [ ] Validators on **Base schemas** affect RESPONSES (existing data)
+- [ ] Validators on **Create/Update schemas** affect INPUTS only
+- [ ] Never add strict validation to response schemas without checking existing data
+
+```python
+# BAD - breaks responses if existing data doesn't match
+class CompanyBase(BaseModel):
+    @field_validator('logo_url')
+    def validate_url(cls, v): ...
+
+# GOOD - only validates new inputs
+class CompanyCreate(CompanyBase):
+    @field_validator('logo_url')
+    def validate_url(cls, v): ...
+```
+
+## After Deployment
+
+### 7. Verify Deployment
+- [ ] Check Render logs for startup errors
+- [ ] Test health endpoint: `curl https://aquapurite-erp-api.onrender.com/health`
+- [ ] Test affected API endpoints
+- [ ] Check frontend console for errors
+
+## Common Mistakes to Avoid
+
+| Mistake | Impact | Prevention |
+|---------|--------|------------|
+| Adding validation to Base schema | 500 errors on all GET requests | Only validate on Create/Update schemas |
+| Wrong import path | App fails to start | Grep for function definition first |
+| Missing lazy import | App crashes without package | Wrap optional imports in try/except |
+| Not checking existing data | Validation breaks current data | Query production before adding validation |
+| Pushing without testing | Production outage | Always test locally first |
+
+---
+
 # DATABASE ARCHITECTURE STANDARDS
 
 > **CRITICAL: Production (Supabase) is the SINGLE SOURCE OF TRUTH.**
