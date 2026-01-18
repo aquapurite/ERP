@@ -326,9 +326,9 @@ export default function GSTR1Page() {
     { value: '102023', label: 'October 2023' },
   ];
 
-  const validInvoices = b2bData?.items.filter((i) => i.status === 'VALID').length ?? 0;
-  const errorInvoices = b2bData?.items.filter((i) => i.status === 'ERROR').length ?? 0;
-  const warningInvoices = b2bData?.items.filter((i) => i.status === 'WARNING').length ?? 0;
+  const validInvoices = b2bData?.items.filter((i: B2BInvoiceDisplay) => i.status === 'VALID').length ?? 0;
+  const errorInvoices = b2bData?.items.filter((i: B2BInvoiceDisplay) => i.status === 'ERROR').length ?? 0;
+  const warningInvoices = b2bData?.items.filter((i: B2BInvoiceDisplay) => i.status === 'WARNING').length ?? 0;
 
   return (
     <div className="space-y-6">
@@ -532,22 +532,22 @@ export default function GSTR1Page() {
               <AlertTriangle className="mr-1 h-3 w-3" /> {errorInvoices} Errors
             </Badge>
           </div>
-          <DataTable<B2BInvoice, unknown>
+          <DataTable<B2BInvoiceDisplay, unknown>
             columns={b2bColumns}
             data={b2bData?.items ?? []}
             searchKey="invoice_number"
             searchPlaceholder="Search invoices..."
-            isLoading={b2bLoading}
+            isLoading={summaryLoading}
           />
         </TabsContent>
 
         <TabsContent value="hsn" className="mt-4">
-          <DataTable<HSNSummary, unknown>
+          <DataTable<HSNSummaryDisplay, unknown>
             columns={hsnColumns}
             data={hsnData?.items ?? []}
             searchKey="hsn_code"
             searchPlaceholder="Search HSN codes..."
-            isLoading={hsnLoading}
+            isLoading={summaryLoading}
           />
         </TabsContent>
 
@@ -568,7 +568,7 @@ export default function GSTR1Page() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {b2bData?.items.filter((i) => i.status !== 'VALID').map((item) => (
+                  {b2bData?.items.filter((i: B2BInvoiceDisplay) => i.status !== 'VALID').map((item: B2BInvoiceDisplay) => (
                     <TableRow key={item.id}>
                       <TableCell>
                         <Badge className={statusColors[item.status]}>{item.status}</Badge>

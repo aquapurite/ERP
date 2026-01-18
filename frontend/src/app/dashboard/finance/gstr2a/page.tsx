@@ -29,6 +29,7 @@ interface GSTR2AInvoice {
   id: string;
   gstin: string | null;
   vendor_name: string;
+  party_name: string;
   invoice_number: string;
   invoice_date: string | null;
   taxable_value: number;
@@ -37,6 +38,8 @@ interface GSTR2AInvoice {
   sgst: number;
   total_value: number;
   status: 'MATCHED' | 'PENDING';
+  match_status: string;
+  mismatch_reason?: string;
 }
 
 // Helper to parse period string to month/year
@@ -214,7 +217,7 @@ export default function GSTR2APage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {invoicesData?.items.map((invoice) => (
+              {invoicesData?.items.map((invoice: GSTR2AInvoice) => (
                 <TableRow key={invoice.id}>
                   <TableCell>
                     <div>{invoice.party_name}</div>

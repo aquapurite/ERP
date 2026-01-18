@@ -1564,18 +1564,6 @@ export const receiptsApi = {
   },
 };
 
-// GST Reports API
-export const gstReportsApi = {
-  getGSTR1: async (params: { return_period: string }) => {
-    const { data } = await apiClient.get('/billing/reports/gstr1', { params });
-    return data;
-  },
-  getGSTR3B: async (params: { return_period: string }) => {
-    const { data } = await apiClient.get('/billing/reports/gstr3b', { params });
-    return data;
-  },
-};
-
 // ============================================
 // PROCUREMENT API
 // ============================================
