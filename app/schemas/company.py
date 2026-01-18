@@ -3,7 +3,8 @@ from datetime import datetime
 from typing import Optional, List, Annotated
 from decimal import Decimal
 from uuid import UUID
-from pydantic import BaseModel, Field, ConfigDict, EmailStr, PlainSerializer
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, PlainSerializer, field_validator
+import re
 
 from app.models.company import CompanyType, GSTRegistrationType
 
@@ -100,6 +101,20 @@ class CompanyBase(BaseModel):
     tds_deductor: bool = True
     default_tds_rate: DecimalAsFloat = Field(Decimal("10.00"), ge=0, le=100)
 
+    @field_validator('logo_url', 'logo_small_url', 'favicon_url', 'signature_url', mode='before')
+    @classmethod
+    def validate_url_fields(cls, v):
+        """Validate that URL fields contain valid URLs, not just filenames."""
+        if v is None or v == '':
+            return v
+        # Check if it looks like a URL (starts with http://, https://, or /)
+        if not re.match(r'^(https?://|/)', v, re.IGNORECASE):
+            raise ValueError(
+                f"Invalid URL format. Please enter a complete URL starting with "
+                f"'http://' or 'https://'. Got: '{v}'"
+            )
+        return v
+
 
 class CompanyCreate(CompanyBase):
     """Schema for creating Company."""
@@ -183,6 +198,20 @@ class CompanyUpdate(BaseModel):
 
     is_active: Optional[bool] = None
     is_primary: Optional[bool] = None
+
+    @field_validator('logo_url', 'logo_small_url', 'signature_url', mode='before')
+    @classmethod
+    def validate_url_fields(cls, v):
+        """Validate that URL fields contain valid URLs, not just filenames."""
+        if v is None or v == '':
+            return v
+        # Check if it looks like a URL (starts with http://, https://, or /)
+        if not re.match(r'^(https?://|/)', v, re.IGNORECASE):
+            raise ValueError(
+                f"Invalid URL format. Please enter a complete URL starting with "
+                f"'http://' or 'https://'. Got: '{v}'"
+            )
+        return v
 
 
 class CompanyResponse(CompanyBase):

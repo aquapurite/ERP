@@ -570,7 +570,7 @@ async def get_search_suggestions(
             id=str(p.id),
             name=p.name,
             slug=p.slug,
-            image_url=primary_image.url if primary_image else None,
+            image_url=primary_image.image_url if primary_image else None,
             price=float(p.selling_price) if p.selling_price else float(p.mrp),
             mrp=float(p.mrp) if p.mrp else 0,
         ))
