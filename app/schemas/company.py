@@ -101,19 +101,19 @@ class CompanyBase(BaseModel):
     tds_deductor: bool = True
     default_tds_rate: DecimalAsFloat = Field(Decimal("10.00"), ge=0, le=100)
 
-    @field_validator('logo_url', 'logo_small_url', 'favicon_url', 'signature_url', mode='before')
-    @classmethod
-    def validate_url_fields(cls, v):
-        """Validate that URL fields contain valid URLs, not just filenames."""
-        if v is None or v == '':
-            return v
-        # Check if it looks like a URL (starts with http://, https://, or /)
-        if not re.match(r'^(https?://|/)', v, re.IGNORECASE):
-            raise ValueError(
-                f"Invalid URL format. Please enter a complete URL starting with "
-                f"'http://' or 'https://'. Got: '{v}'"
-            )
+
+# URL validation mixin - only for input schemas, not response schemas
+def validate_url_format(v):
+    """Validate that URL fields contain valid URLs, not just filenames."""
+    if v is None or v == '':
         return v
+    # Check if it looks like a URL (starts with http://, https://, or /)
+    if not re.match(r'^(https?://|/)', v, re.IGNORECASE):
+        raise ValueError(
+            f"Invalid URL format. Please enter a complete URL starting with "
+            f"'http://' or 'https://'. Got: '{v}'"
+        )
+    return v
 
 
 class CompanyCreate(CompanyBase):
