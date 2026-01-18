@@ -156,6 +156,9 @@ export default function ProductDetailPage() {
       ? Math.round(((currentMrp - currentPrice) / currentMrp) * 100)
       : 0;
 
+  // Check if product is out of stock
+  const isOutOfStock = product.in_stock === false || product.stock_quantity === 0;
+
   // Group specifications by group_name
   const specGroups = (product.specifications || []).reduce((acc, spec) => {
     const group = spec.group_name || 'General';
@@ -284,6 +287,8 @@ export default function ProductDetailPage() {
               <StockStatus
                 productId={product.id}
                 variantId={selectedVariant?.id}
+                inStock={product.in_stock}
+                stockQuantity={product.stock_quantity}
               />
 
               {/* Variants */}
@@ -352,17 +357,19 @@ export default function ProductDetailPage() {
                   size="lg"
                   className="flex-1"
                   onClick={handleAddToCart}
+                  disabled={isOutOfStock}
                 >
                   <ShoppingCart className="h-5 w-5 mr-2" />
-                  Add to Cart
+                  {isOutOfStock ? 'Out of Stock' : 'Add to Cart'}
                 </Button>
                 <Button
                   size="lg"
                   variant="secondary"
                   className="flex-1"
                   onClick={handleBuyNow}
+                  disabled={isOutOfStock}
                 >
-                  Buy Now
+                  {isOutOfStock ? 'Coming Soon' : 'Buy Now'}
                 </Button>
                 <Button size="lg" variant="outline" className="px-4">
                   <Heart className="h-5 w-5" />

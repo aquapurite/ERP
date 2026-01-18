@@ -23,6 +23,9 @@ export interface StorefrontProduct {
   is_featured?: boolean;
   is_bestseller?: boolean;
   is_new_arrival?: boolean;
+  // Stock information
+  in_stock?: boolean;
+  stock_quantity?: number;
   images?: ProductImage[];
   variants?: ProductVariant[];
   specifications?: ProductSpecification[];

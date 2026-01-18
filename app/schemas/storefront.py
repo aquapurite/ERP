@@ -32,6 +32,9 @@ class StorefrontProductResponse(BaseModel):
     is_bestseller: bool = Field(False, description="Bestseller flag")
     is_new_arrival: bool = Field(False, description="New arrival flag")
     images: List[StorefrontProductImage] = Field([], description="Product images")
+    # Stock information
+    in_stock: bool = Field(True, description="Whether product is in stock")
+    stock_quantity: int = Field(0, description="Available stock quantity")
 
     class Config:
         from_attributes = True

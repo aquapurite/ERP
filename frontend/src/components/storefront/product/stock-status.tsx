@@ -17,6 +17,9 @@ interface StockStatusProps {
   variantId?: string;
   showQuantity?: boolean;
   className?: string;
+  // Allow passing stock info directly to avoid extra API call
+  inStock?: boolean;
+  stockQuantity?: number;
 }
 
 interface StockInfo {
@@ -31,11 +34,27 @@ export default function StockStatus({
   variantId,
   showQuantity = false,
   className = '',
+  inStock: propInStock,
+  stockQuantity: propStockQuantity,
 }: StockStatusProps) {
   const [stockInfo, setStockInfo] = useState<StockInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // If stock info is provided directly, use it without API call
+    if (propInStock !== undefined) {
+      const quantity = propStockQuantity || 0;
+      const lowStockThreshold = 5;
+      setStockInfo({
+        inStock: propInStock,
+        quantity,
+        lowStock: propInStock && quantity > 0 && quantity <= lowStockThreshold,
+        message: propInStock ? 'In Stock' : 'Out of Stock',
+      });
+      setLoading(false);
+      return;
+    }
+
     const checkStock = async () => {
       setLoading(true);
       try {
@@ -68,7 +87,7 @@ export default function StockStatus({
     };
 
     checkStock();
-  }, [productId, variantId]);
+  }, [productId, variantId, propInStock, propStockQuantity]);
 
   if (loading) {
     return (
@@ -85,12 +104,12 @@ export default function StockStatus({
   if (!stockInfo.inStock) {
     return (
       <div className={`${className}`}>
-        <Badge variant="destructive" className="gap-1">
+        <Badge variant="secondary" className="gap-1 bg-gray-800 text-white hover:bg-gray-700">
           <XCircle className="h-3.5 w-3.5" />
-          Out of Stock
+          Out of Stock - Coming Soon
         </Badge>
         <p className="text-sm text-muted-foreground mt-1">
-          Currently unavailable. Check back later or explore similar products.
+          Currently unavailable. We&apos;re restocking soon - check back later!
         </p>
       </div>
     );

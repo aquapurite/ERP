@@ -15,6 +15,7 @@ from app.models.company import Company
 from app.models.product import Product, ProductImage
 from app.models.category import Category
 from app.models.brand import Brand
+from app.models.inventory import InventorySummary
 from app.schemas.storefront import (
     StorefrontProductImage,
     StorefrontProductResponse,
@@ -132,6 +133,19 @@ async def list_products(
     result = await db.execute(query)
     products = result.scalars().all()
 
+    # Get stock information for all products in one query
+    product_ids = [p.id for p in products]
+    stock_query = (
+        select(
+            InventorySummary.product_id,
+            func.sum(InventorySummary.available_quantity).label('total_available')
+        )
+        .where(InventorySummary.product_id.in_(product_ids))
+        .group_by(InventorySummary.product_id)
+    )
+    stock_result = await db.execute(stock_query)
+    stock_map = {row.product_id: row.total_available or 0 for row in stock_result.all()}
+
     # Transform to response
     items = []
     for p in products:
@@ -143,6 +157,8 @@ async def list_products(
             )
             for img in (p.images or [])
         ]
+        # Get stock quantity from pre-fetched map
+        stock_qty = stock_map.get(p.id, 0)
         items.append(StorefrontProductResponse(
             id=str(p.id),
             name=p.name,
@@ -161,6 +177,8 @@ async def list_products(
             is_bestseller=p.is_bestseller or False,
             is_new_arrival=p.is_new_arrival or False,
             images=images,
+            in_stock=stock_qty > 0,
+            stock_quantity=stock_qty,
         ))
 
     pages = (total + size - 1) // size
@@ -220,6 +238,14 @@ async def get_product_by_slug(slug: str, db: DB, response: Response):
         for img in (product.images or [])
     ]
 
+    # Get stock quantity for this product
+    stock_query = (
+        select(func.sum(InventorySummary.available_quantity).label('total_available'))
+        .where(InventorySummary.product_id == product.id)
+    )
+    stock_result = await db.execute(stock_query)
+    stock_qty = stock_result.scalar() or 0
+
     result_data = StorefrontProductResponse(
         id=str(product.id),
         name=product.name,
@@ -238,6 +264,8 @@ async def get_product_by_slug(slug: str, db: DB, response: Response):
         is_bestseller=product.is_bestseller or False,
         is_new_arrival=product.is_new_arrival or False,
         images=images,
+        in_stock=stock_qty > 0,
+        stock_quantity=stock_qty,
     )
 
     # Cache the result

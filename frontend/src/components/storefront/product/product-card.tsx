@@ -27,10 +27,15 @@ export default function ProductCard({
     ? Math.round(((product.mrp - product.selling_price) / product.mrp) * 100)
     : 0;
 
+  // Check stock status
+  const isOutOfStock = product.in_stock === false || product.stock_quantity === 0;
+
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    addItem(product, 1);
+    if (!isOutOfStock) {
+      addItem(product, 1);
+    }
   };
 
   return (
@@ -51,7 +56,12 @@ export default function ProductCard({
 
           {/* Badges */}
           <div className="absolute top-2 left-2 flex flex-col gap-1">
-            {discountPercentage > 0 && (
+            {isOutOfStock && (
+              <Badge variant="secondary" className="bg-gray-800 text-white text-xs">
+                Out of Stock - Coming Soon
+              </Badge>
+            )}
+            {!isOutOfStock && discountPercentage > 0 && (
               <Badge variant="destructive" className="text-xs">
                 {discountPercentage}% OFF
               </Badge>
@@ -79,7 +89,7 @@ export default function ProductCard({
           </Button>
 
           {/* Quick Add to Cart */}
-          {showAddToCart && (
+          {showAddToCart && !isOutOfStock && (
             <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
               <Button
                 className="w-full"
