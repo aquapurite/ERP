@@ -33,10 +33,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useCartStore, useCartSummary } from '@/lib/storefront/cart-store';
-import { ordersApi, inventoryApi, couponsApi, companyApi, CouponValidationResponse, ActiveCoupon, CompanyInfo } from '@/lib/storefront/api';
+import { ordersApi, inventoryApi, couponsApi, companyApi, CouponValidationResponse, ActiveCoupon } from '@/lib/storefront/api';
 import { useAuthStore, useIsAuthenticated } from '@/lib/storefront/auth-store';
 import { formatCurrency } from '@/lib/utils';
-import { D2COrderRequest, ShippingAddress } from '@/types/storefront';
+import { D2COrderRequest, ShippingAddress, CompanyInfo } from '@/types/storefront';
 import AddressSelector from '@/components/storefront/checkout/address-selector';
 
 // Serviceability check result type
