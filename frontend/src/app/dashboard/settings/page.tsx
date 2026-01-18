@@ -31,6 +31,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/common';
+import { ImageUpload } from '@/components/upload';
 import { companyApi } from '@/lib/api';
 import {
   Company,
@@ -522,62 +523,45 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Branding & Logo</CardTitle>
-              <CardDescription>Company logo and signature for documents</CardDescription>
+              <CardDescription>Company logo and signature for documents. Upload images or enter URLs.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="logo_url">Logo URL</Label>
-                  <Input
-                    id="logo_url"
-                    value={formData.logo_url || ''}
-                    onChange={(e) => updateField('logo_url', e.target.value)}
-                    placeholder="https://example.com/logo.png"
-                  />
-                  <p className="text-xs text-muted-foreground">Main company logo (recommended: 200x60 px)</p>
-                  {formData.logo_url && (
-                    <div className="mt-2 p-2 border rounded">
-                      <img src={formData.logo_url} alt="Logo preview" className="max-h-16 object-contain" />
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="logo_small_url">Small Logo URL</Label>
-                  <Input
-                    id="logo_small_url"
-                    value={formData.logo_small_url || ''}
-                    onChange={(e) => updateField('logo_small_url', e.target.value)}
-                    placeholder="https://example.com/logo-small.png"
-                  />
-                  <p className="text-xs text-muted-foreground">Icon/favicon version (recommended: 32x32 px)</p>
-                </div>
+            <CardContent className="space-y-6">
+              <div className="grid gap-6 md:grid-cols-2">
+                <ImageUpload
+                  value={formData.logo_url}
+                  onChange={(url) => updateField('logo_url', url || '')}
+                  category="logos"
+                  label="Company Logo"
+                  description="Main logo for documents and website. Recommended: 200x60 px"
+                  aspectRatio="logo"
+                />
+                <ImageUpload
+                  value={formData.logo_small_url}
+                  onChange={(url) => updateField('logo_small_url', url || '')}
+                  category="logos"
+                  label="Small Logo / Icon"
+                  description="Icon version for mobile and tabs. Recommended: 64x64 px"
+                  aspectRatio="square"
+                />
               </div>
               <Separator />
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="signature_url">Authorized Signature</Label>
-                  <Input
-                    id="signature_url"
-                    value={formData.signature_url || ''}
-                    onChange={(e) => updateField('signature_url', e.target.value)}
-                    placeholder="https://example.com/signature.png"
-                  />
-                  <p className="text-xs text-muted-foreground">Digital signature for invoices/documents</p>
-                  {formData.signature_url && (
-                    <div className="mt-2 p-2 border rounded bg-white">
-                      <img src={formData.signature_url} alt="Signature preview" className="max-h-12 object-contain" />
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="favicon_url">Favicon URL</Label>
-                  <Input
-                    id="favicon_url"
-                    value={formData.favicon_url || ''}
-                    onChange={(e) => updateField('favicon_url', e.target.value)}
-                    placeholder="https://example.com/favicon.ico"
-                  />
-                </div>
+              <div className="grid gap-6 md:grid-cols-2">
+                <ImageUpload
+                  value={formData.signature_url}
+                  onChange={(url) => updateField('signature_url', url || '')}
+                  category="signatures"
+                  label="Authorized Signature"
+                  description="Digital signature for invoices and documents"
+                  aspectRatio="wide"
+                />
+                <ImageUpload
+                  value={formData.favicon_url}
+                  onChange={(url) => updateField('favicon_url', url || '')}
+                  category="logos"
+                  label="Favicon"
+                  description="Browser tab icon. Recommended: 32x32 px"
+                  aspectRatio="square"
+                />
               </div>
             </CardContent>
           </Card>

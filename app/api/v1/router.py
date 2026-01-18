@@ -7,6 +7,8 @@ from app.api.v1.endpoints import (
     permissions,
     users,
     access_control,
+    # File Uploads
+    uploads,
     # HR & Payroll
     hr,
     # Fixed Assets
@@ -465,4 +467,11 @@ api_router.include_router(
     shipping.router,
     prefix="/shipping",
     tags=["Shipping (Shiprocket)"]
+)
+
+# ==================== File Uploads ====================
+api_router.include_router(
+    uploads.router,
+    prefix="/uploads",
+    tags=["File Uploads"]
 )

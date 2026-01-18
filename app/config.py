@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     SHIPROCKET_DEFAULT_PICKUP_LOCATION: str = ""  # Default pickup location name
     SHIPROCKET_AUTO_SHIP: bool = False  # Auto-assign courier on order creation
 
+    # Supabase Storage Settings
+    SUPABASE_URL: str = ""  # e.g., "https://xxxx.supabase.co"
+    SUPABASE_SERVICE_KEY: str = ""  # Service role key (NOT anon key)
+    SUPABASE_STORAGE_BUCKET: str = "uploads"  # Default bucket name
+
     @field_validator('CORS_ORIGINS', mode='before')
     @classmethod
     def parse_cors_origins(cls, v):

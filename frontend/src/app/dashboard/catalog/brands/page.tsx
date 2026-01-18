@@ -39,6 +39,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
+import { ImageUpload } from '@/components/upload';
 import { brandsApi } from '@/lib/api';
 import { Brand } from '@/types';
 
@@ -291,17 +292,16 @@ export default function BrandsPage() {
                     }
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="create-logo">Logo URL</Label>
-                  <Input
-                    id="create-logo"
-                    placeholder="https://example.com/logo.png"
-                    value={createFormData.logo_url}
-                    onChange={(e) =>
-                      setCreateFormData({ ...createFormData, logo_url: e.target.value })
-                    }
-                  />
-                </div>
+                <ImageUpload
+                  value={createFormData.logo_url || undefined}
+                  onChange={(url) =>
+                    setCreateFormData({ ...createFormData, logo_url: url || '' })
+                  }
+                  category="brands"
+                  label="Brand Logo"
+                  description="Upload logo image (recommended: 200x60 px)"
+                  aspectRatio="logo"
+                />
                 <div className="space-y-2">
                   <Label htmlFor="create-description">Description</Label>
                   <Textarea
@@ -384,17 +384,16 @@ export default function BrandsPage() {
                 }
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-logo">Logo URL</Label>
-              <Input
-                id="edit-logo"
-                placeholder="https://example.com/logo.png"
-                value={editFormData.logo_url}
-                onChange={(e) =>
-                  setEditFormData({ ...editFormData, logo_url: e.target.value })
-                }
-              />
-            </div>
+            <ImageUpload
+              value={editFormData.logo_url || undefined}
+              onChange={(url) =>
+                setEditFormData({ ...editFormData, logo_url: url || '' })
+              }
+              category="brands"
+              label="Brand Logo"
+              description="Upload logo image (recommended: 200x60 px)"
+              aspectRatio="logo"
+            />
             <div className="space-y-2">
               <Label htmlFor="edit-description">Description</Label>
               <Textarea
