@@ -263,7 +263,9 @@ export default function BankReconciliationPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {accountsLoading ? (
-                    <SelectItem value="" disabled>Loading...</SelectItem>
+                    <SelectItem value="loading" disabled>Loading...</SelectItem>
+                  ) : bankAccounts?.length === 0 ? (
+                    <SelectItem value="no-accounts" disabled>No bank accounts found</SelectItem>
                   ) : (
                     bankAccounts?.map((account) => (
                       <SelectItem key={account.id} value={account.id}>
