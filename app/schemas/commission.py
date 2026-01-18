@@ -91,7 +91,6 @@ class CommissionPlanListResponse(BaseModel):
 
 class CommissionCategoryRateBase(BaseModel):
     """Base schema for CommissionCategoryRate."""
-    plan_id: UUID
     category_id: UUID
     commission_rate: Decimal = Field(..., ge=0, le=100)
     rate_slabs: Optional[List[dict]] = None
@@ -100,6 +99,7 @@ class CommissionCategoryRateBase(BaseModel):
 
 class CommissionCategoryRateCreate(CommissionCategoryRateBase):
     """Schema for creating category rate."""
+    # Note: plan_id comes from URL path, not request body
     pass
 
 
@@ -108,6 +108,7 @@ class CommissionCategoryRateResponse(CommissionCategoryRateBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    plan_id: UUID  # Included in response from database
     created_at: datetime
 
 
@@ -115,7 +116,6 @@ class CommissionCategoryRateResponse(CommissionCategoryRateBase):
 
 class CommissionProductRateBase(BaseModel):
     """Base schema for CommissionProductRate."""
-    plan_id: UUID
     product_id: UUID
     commission_rate: Decimal = Field(..., ge=0, le=100)
     fixed_amount: Optional[Decimal] = Field(None, ge=0)
@@ -124,6 +124,7 @@ class CommissionProductRateBase(BaseModel):
 
 class CommissionProductRateCreate(CommissionProductRateBase):
     """Schema for creating product rate."""
+    # Note: plan_id comes from URL path, not request body
     pass
 
 
@@ -132,6 +133,7 @@ class CommissionProductRateResponse(CommissionProductRateBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    plan_id: UUID  # Included in response from database
     created_at: datetime
 
 

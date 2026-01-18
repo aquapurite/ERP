@@ -254,7 +254,8 @@ class CompanyBranchBase(BaseModel):
 
 class CompanyBranchCreate(CompanyBranchBase):
     """Schema for creating CompanyBranch."""
-    company_id: UUID
+    # Note: company_id comes from URL path, not request body
+    pass
 
 
 class CompanyBranchUpdate(BaseModel):

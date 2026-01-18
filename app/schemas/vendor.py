@@ -253,7 +253,6 @@ class VendorLedgerListResponse(BaseModel):
 
 class VendorContactBase(BaseModel):
     """Base schema for VendorContact."""
-    vendor_id: UUID
     name: str = Field(..., min_length=2, max_length=100)
     designation: Optional[str] = None
     department: Optional[str] = None
@@ -265,6 +264,7 @@ class VendorContactBase(BaseModel):
 
 class VendorContactCreate(VendorContactBase):
     """Schema for creating contact."""
+    # Note: vendor_id comes from URL path, not request body
     pass
 
 
@@ -273,6 +273,7 @@ class VendorContactResponse(VendorContactBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    vendor_id: UUID  # Included in response from database
     is_active: bool
     created_at: datetime
 
@@ -281,7 +282,7 @@ class VendorContactResponse(VendorContactBase):
 
 class VendorPaymentCreate(BaseModel):
     """Schema for recording vendor payment."""
-    vendor_id: UUID
+    # Note: vendor_id comes from URL path, not request body
     amount: Decimal = Field(..., gt=0)
     payment_date: date
     payment_mode: str = Field(..., pattern="^(NEFT|RTGS|CHEQUE|UPI|CASH)$")
