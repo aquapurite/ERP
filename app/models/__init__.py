@@ -457,6 +457,20 @@ from app.models.abandoned_cart import (
 )
 # Wishlist
 from app.models.wishlist import WishlistItem
+# Product Reviews
+from app.models.product_review import ProductReview
+# Return Orders & Refunds
+from app.models.return_order import (
+    ReturnOrder,
+    ReturnItem,
+    ReturnStatusHistory,
+    Refund,
+)
+# Product Cost (COGS Auto-calculation)
+from app.models.product_cost import (
+    ProductCost,
+    ValuationMethod,
+)
 
 __all__ = [
     # Access Control
@@ -831,4 +845,14 @@ __all__ = [
     "RecoveryStatus",
     # Wishlist
     "WishlistItem",
+    # Product Reviews
+    "ProductReview",
+    # Return Orders & Refunds
+    "ReturnOrder",
+    "ReturnItem",
+    "ReturnStatusHistory",
+    "Refund",
+    # Product Cost (COGS Auto-calculation)
+    "ProductCost",
+    "ValuationMethod",
 ]

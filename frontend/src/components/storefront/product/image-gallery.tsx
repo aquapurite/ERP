@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
-import Image from 'next/image';
 import {
   X,
   ChevronLeft,
@@ -33,8 +32,8 @@ interface ImageGalleryProps {
 export default function ImageGallery({ images, productName }: ImageGalleryProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
-  const [isZoomed, setIsZoomed] = useState(false);
-  const [zoomPosition, setZoomPosition] = useState({ x: 0, y: 0 });
+  const [isHovering, setIsHovering] = useState(false);
+  const [zoomPosition, setZoomPosition] = useState({ x: 50, y: 50 });
   const imageContainerRef = useRef<HTMLDivElement>(null);
 
   const currentImage = images[selectedIndex] || images[0];
@@ -83,34 +82,33 @@ export default function ImageGallery({ images, productName }: ImageGalleryProps)
       {/* Main Image with Zoom */}
       <div
         ref={imageContainerRef}
-        className="relative aspect-square rounded-lg overflow-hidden bg-muted cursor-zoom-in group"
-        onMouseEnter={() => setIsZoomed(true)}
-        onMouseLeave={() => setIsZoomed(false)}
+        className="relative aspect-square rounded-lg overflow-hidden bg-white cursor-zoom-in group"
+        onMouseEnter={() => setIsHovering(true)}
+        onMouseLeave={() => setIsHovering(false)}
         onMouseMove={handleMouseMove}
         onClick={() => setIsLightboxOpen(true)}
       >
-        {/* Base Image */}
-        <Image
+        {/* Base Image - Always Visible */}
+        <img
           src={currentImage.image_url}
           alt={currentImage.alt_text || productName}
-          fill
-          className="object-contain transition-opacity"
-          sizes="(max-width: 768px) 100vw, 50vw"
-          priority
+          className={`absolute inset-0 w-full h-full object-contain transition-opacity duration-200 ${
+            isHovering ? 'opacity-0' : 'opacity-100'
+          }`}
         />
 
-        {/* Zoomed Image Overlay */}
-        {isZoomed && (
-          <div
-            className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-            style={{
-              backgroundImage: `url(${currentImage.image_url})`,
-              backgroundPosition: `${zoomPosition.x}% ${zoomPosition.y}%`,
-              backgroundSize: '200%',
-              backgroundRepeat: 'no-repeat',
-            }}
-          />
-        )}
+        {/* Zoomed Image - Shows on Hover */}
+        <div
+          className={`absolute inset-0 transition-opacity duration-200 ${
+            isHovering ? 'opacity-100' : 'opacity-0'
+          }`}
+          style={{
+            backgroundImage: `url(${currentImage.image_url})`,
+            backgroundPosition: `${zoomPosition.x}% ${zoomPosition.y}%`,
+            backgroundSize: '200%',
+            backgroundRepeat: 'no-repeat',
+          }}
+        />
 
         {/* Zoom indicator */}
         <div className="absolute bottom-3 right-3 bg-black/60 text-white px-2 py-1 rounded text-xs flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -160,24 +158,23 @@ export default function ImageGallery({ images, productName }: ImageGalleryProps)
         )}
       </div>
 
-      {/* Thumbnails */}
+      {/* Thumbnails - Amazon Style */}
       {images.length > 1 && (
         <div className="flex gap-2 overflow-x-auto pb-2">
           {images.map((image, index) => (
             <button
               key={image.id}
               onClick={() => setSelectedIndex(index)}
-              className={`flex-shrink-0 h-20 w-20 rounded-lg overflow-hidden border-2 transition-all ${
+              onMouseEnter={() => setSelectedIndex(index)}
+              className={`flex-shrink-0 h-16 w-16 md:h-20 md:w-20 rounded-lg overflow-hidden border-2 transition-all ${
                 selectedIndex === index
                   ? 'border-primary ring-2 ring-primary/20'
-                  : 'border-gray-200 hover:border-gray-300'
+                  : 'border-gray-200 hover:border-primary'
               }`}
             >
-              <Image
+              <img
                 src={image.thumbnail_url || image.image_url}
                 alt={image.alt_text || `${productName} - ${index + 1}`}
-                width={80}
-                height={80}
                 className="h-full w-full object-cover"
               />
             </button>
@@ -210,13 +207,10 @@ export default function ImageGallery({ images, productName }: ImageGalleryProps)
 
           {/* Main lightbox image */}
           <div className="relative w-full h-full flex items-center justify-center p-8">
-            <Image
+            <img
               src={currentImage.image_url}
               alt={currentImage.alt_text || productName}
-              fill
-              className="object-contain"
-              sizes="95vw"
-              priority
+              className="max-w-full max-h-full object-contain"
             />
           </div>
 
@@ -255,11 +249,9 @@ export default function ImageGallery({ images, productName }: ImageGalleryProps)
                       : 'opacity-60 hover:opacity-100'
                   }`}
                 >
-                  <Image
+                  <img
                     src={image.thumbnail_url || image.image_url}
                     alt={image.alt_text || `${productName} - ${index + 1}`}
-                    width={64}
-                    height={64}
                     className="h-full w-full object-cover"
                   />
                 </button>

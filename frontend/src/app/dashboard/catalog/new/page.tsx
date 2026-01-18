@@ -31,8 +31,7 @@ const productSchema = z.object({
   category_id: z.string().optional(),
   brand_id: z.string().optional(),
   mrp: z.coerce.number().min(0, 'MRP must be positive'),
-  selling_price: z.coerce.number().min(0, 'Selling price must be positive'),
-  cost_price: z.coerce.number().min(0, 'Cost price must be positive').optional(),
+  selling_price: z.coerce.number().min(0, 'Selling price must be positive').optional(), // Legacy - use Channel Pricing instead
   gst_rate: z.coerce.number().min(0).max(100, 'GST rate must be between 0 and 100').optional(),
   hsn_code: z.string().optional(),
   weight: z.coerce.number().min(0).optional(),
@@ -46,9 +45,6 @@ const productSchema = z.object({
   meta_title: z.string().optional(),
   meta_description: z.string().optional(),
   tags: z.array(z.string()).optional(),
-}).refine((data) => data.selling_price <= data.mrp, {
-  message: 'Selling price cannot be greater than MRP',
-  path: ['selling_price'],
 });
 
 type ProductFormData = z.infer<typeof productSchema>;
@@ -77,8 +73,7 @@ export default function NewProductPage() {
       slug: '',
       description: '',
       mrp: 0,
-      selling_price: 0,
-      cost_price: 0,
+      selling_price: 0, // Will be set via Channel Pricing after creation
       gst_rate: 18,
       warranty_months: 12,
       is_active: true,
@@ -275,18 +270,18 @@ export default function NewProductPage() {
               </CardContent>
             </Card>
 
-            {/* Pricing */}
+            {/* Pricing & Tax */}
             <Card>
               <CardHeader>
-                <CardTitle>Pricing</CardTitle>
+                <CardTitle>Pricing & Tax</CardTitle>
                 <CardDescription>
-                  Set the pricing and tax information
+                  Set the MRP and tax information. Channel-specific selling prices can be configured after creation.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="mrp">MRP (Rs.) *</Label>
+                    <Label htmlFor="mrp">Maximum Retail Price (MRP) *</Label>
                     <Input
                       id="mrp"
                       type="number"
@@ -298,37 +293,23 @@ export default function NewProductPage() {
                     {form.formState.errors.mrp && (
                       <p className="text-sm text-destructive">{form.formState.errors.mrp.message}</p>
                     )}
+                    <p className="text-xs text-muted-foreground">
+                      The maximum price at which the product can be sold
+                    </p>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="selling_price">Selling Price (Rs.) *</Label>
+                    <Label htmlFor="hsn_code">HSN Code</Label>
                     <Input
-                      id="selling_price"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder="0.00"
-                      {...form.register('selling_price')}
+                      id="hsn_code"
+                      placeholder="Enter HSN code"
+                      {...form.register('hsn_code')}
                     />
-                    {form.formState.errors.selling_price && (
-                      <p className="text-sm text-destructive">{form.formState.errors.selling_price.message}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="cost_price">Cost Price (Rs.)</Label>
-                    <Input
-                      id="cost_price"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder="0.00"
-                      {...form.register('cost_price')}
-                    />
+                    <p className="text-xs text-muted-foreground">
+                      Required for GST compliance
+                    </p>
                   </div>
                 </div>
-
-                <Separator />
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
@@ -349,15 +330,14 @@ export default function NewProductPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="hsn_code">HSN Code</Label>
-                    <Input
-                      id="hsn_code"
-                      placeholder="Enter HSN code"
-                      {...form.register('hsn_code')}
-                    />
-                  </div>
+                <div className="bg-blue-50 dark:bg-blue-950 p-4 rounded-lg">
+                  <p className="text-sm text-blue-700 dark:text-blue-300">
+                    <strong>Note:</strong> Selling prices for different channels (D2C, B2B, Marketplace)
+                    can be configured in the Channel Pricing section after creating the product.
+                    Cost price is auto-calculated from Purchase Orders using weighted average method.
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -573,9 +553,10 @@ export default function NewProductPage() {
               </CardHeader>
               <CardContent className="text-sm text-muted-foreground space-y-2">
                 <p>- SKU should be unique across all products</p>
-                <p>- Selling price cannot exceed MRP</p>
                 <p>- Add images after creating the product</p>
                 <p>- HSN code is required for GST compliance</p>
+                <p>- Set channel-specific prices in Channel Pricing</p>
+                <p>- Cost price is auto-calculated from POs</p>
               </CardContent>
             </Card>
           </div>

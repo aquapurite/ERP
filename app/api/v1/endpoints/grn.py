@@ -19,6 +19,7 @@ from app.models.vendor import Vendor
 from app.models.warehouse import Warehouse
 from app.models.product import Product
 from app.services.document_sequence_service import DocumentSequenceService
+from app.services.costing_service import CostingService
 
 router = APIRouter()
 
@@ -506,7 +507,7 @@ async def accept_grn(
     db: DB,
     current_user: User = Depends(get_current_user),
 ):
-    """Accept GRN after QC and update PO quantities."""
+    """Accept GRN after QC and update PO quantities and product costs (COGS)."""
     grn = await db.get(GoodsReceiptNote, grn_id)
     if not grn:
         raise HTTPException(
@@ -557,10 +558,21 @@ async def accept_grn(
     grn.status = "ACCEPTED"
     await db.commit()
 
+    # Update Product Costs (COGS) using Weighted Average Cost
+    costing_result = None
+    try:
+        costing_service = CostingService(db)
+        costing_result = await costing_service.update_cost_on_grn_acceptance(grn_id)
+    except Exception as e:
+        # Log error but don't fail the GRN acceptance
+        import logging
+        logging.getLogger(__name__).error(f"Failed to update product costs for GRN {grn_id}: {e}")
+
     return {
         "message": "GRN accepted and PO updated",
         "status": grn.status,
         "po_status": po.status if po else None,
+        "cost_update": costing_result,
     }
 
 

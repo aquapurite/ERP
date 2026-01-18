@@ -22,6 +22,16 @@ from app.schemas.product import (
     BrandBrief,
 )
 from app.services.product_service import ProductService
+from app.services.costing_service import CostingService
+from app.schemas.product_cost import (
+    ProductCostResponse,
+    ProductCostBriefResponse,
+    CostHistoryResponse,
+    CostHistoryEntry,
+    ProductCostSummary,
+    WeightedAverageCostRequest,
+    WeightedAverageCostResponse,
+)
 
 
 router = APIRouter(tags=["Products"])
@@ -606,3 +616,225 @@ def _build_product_detail_response(p) -> ProductDetailResponse:
         updated_at=p.updated_at,
         published_at=p.published_at,
     )
+
+
+# ==================== PRODUCT COSTING (COGS) ====================
+
+@router.get(
+    "/{product_id}/cost",
+    response_model=ProductCostResponse,
+    dependencies=[Depends(require_permissions("products:read"))]
+)
+async def get_product_cost(
+    product_id: uuid.UUID,
+    db: DB,
+    current_user: CurrentUser,
+    variant_id: Optional[uuid.UUID] = Query(None, description="Filter by variant"),
+    warehouse_id: Optional[uuid.UUID] = Query(None, description="Filter by warehouse"),
+):
+    """
+    Get current COGS (Cost of Goods Sold) for a product.
+
+    The cost is auto-calculated using Weighted Average Cost method
+    from GRN receipts (Purchase Orders).
+
+    Requires: products:read permission
+    """
+    costing_service = CostingService(db)
+
+    product_cost = await costing_service.get_product_cost(
+        product_id=product_id,
+        variant_id=variant_id,
+        warehouse_id=warehouse_id,
+    )
+
+    if not product_cost:
+        # Try to create one with initial zero cost
+        product_cost = await costing_service.get_or_create_product_cost(
+            product_id=product_id,
+            variant_id=variant_id,
+            warehouse_id=warehouse_id,
+        )
+
+    return ProductCostResponse(
+        id=product_cost.id,
+        product_id=product_cost.product_id,
+        variant_id=product_cost.variant_id,
+        warehouse_id=product_cost.warehouse_id,
+        valuation_method=product_cost.valuation_method,
+        average_cost=product_cost.average_cost,
+        last_purchase_cost=product_cost.last_purchase_cost,
+        standard_cost=product_cost.standard_cost,
+        quantity_on_hand=product_cost.quantity_on_hand,
+        total_value=product_cost.total_value,
+        last_grn_id=product_cost.last_grn_id,
+        last_calculated_at=product_cost.last_calculated_at,
+        cost_variance=product_cost.cost_variance,
+        cost_variance_percentage=product_cost.cost_variance_percentage,
+        created_at=product_cost.created_at,
+        updated_at=product_cost.updated_at,
+    )
+
+
+@router.get(
+    "/{product_id}/cost-history",
+    dependencies=[Depends(require_permissions("products:read"))]
+)
+async def get_product_cost_history(
+    product_id: uuid.UUID,
+    db: DB,
+    current_user: CurrentUser,
+    variant_id: Optional[uuid.UUID] = Query(None),
+    warehouse_id: Optional[uuid.UUID] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+):
+    """
+    Get cost history for a product (GRN receipt history).
+
+    Shows all cost movements from GRN acceptances,
+    including running average after each receipt.
+
+    Requires: products:read permission
+    """
+    costing_service = CostingService(db)
+
+    history = await costing_service.get_cost_history(
+        product_id=product_id,
+        variant_id=variant_id,
+        warehouse_id=warehouse_id,
+        limit=limit,
+    )
+
+    return history
+
+
+@router.post(
+    "/{product_id}/cost/calculate-preview",
+    response_model=WeightedAverageCostResponse,
+    dependencies=[Depends(require_permissions("products:update"))]
+)
+async def preview_cost_calculation(
+    product_id: uuid.UUID,
+    data: WeightedAverageCostRequest,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """
+    Preview weighted average cost calculation without updating.
+
+    Use this to see what the new average cost would be
+    if a GRN with given quantity and price is accepted.
+
+    Formula:
+    New Avg = (Current Stock Value + New Purchase Value) / (Current Qty + New Qty)
+
+    Requires: products:update permission
+    """
+    costing_service = CostingService(db)
+
+    result = await costing_service.calculate_weighted_average(
+        product_id=product_id,
+        new_qty=data.new_quantity,
+        new_unit_cost=data.new_unit_cost,
+        variant_id=data.variant_id,
+        warehouse_id=data.warehouse_id,
+    )
+
+    return WeightedAverageCostResponse(**result)
+
+
+@router.put(
+    "/{product_id}/cost/standard-cost",
+    dependencies=[Depends(require_permissions("products:update"))]
+)
+async def set_standard_cost(
+    product_id: uuid.UUID,
+    standard_cost: float,
+    db: DB,
+    current_user: CurrentUser,
+    variant_id: Optional[uuid.UUID] = Query(None),
+    warehouse_id: Optional[uuid.UUID] = Query(None),
+):
+    """
+    Set standard (budgeted) cost for variance analysis.
+
+    The standard cost is compared against the actual average cost
+    to show cost variance in reports.
+
+    Requires: products:update permission
+    """
+    from decimal import Decimal
+
+    costing_service = CostingService(db)
+
+    product_cost = await costing_service.get_or_create_product_cost(
+        product_id=product_id,
+        variant_id=variant_id,
+        warehouse_id=warehouse_id,
+    )
+
+    product_cost.standard_cost = Decimal(str(standard_cost))
+    await db.commit()
+
+    return {
+        "message": "Standard cost updated",
+        "product_id": str(product_id),
+        "standard_cost": float(product_cost.standard_cost),
+        "average_cost": float(product_cost.average_cost),
+        "variance": float(product_cost.cost_variance) if product_cost.cost_variance else None,
+        "variance_percentage": product_cost.cost_variance_percentage,
+    }
+
+
+@router.get(
+    "/costs/summary",
+    response_model=ProductCostSummary,
+    dependencies=[Depends(require_permissions("products:read"))]
+)
+async def get_inventory_valuation_summary(
+    db: DB,
+    current_user: CurrentUser,
+    warehouse_id: Optional[uuid.UUID] = Query(None, description="Filter by warehouse"),
+):
+    """
+    Get inventory valuation summary.
+
+    Shows total inventory value, average stock value per product,
+    and counts by valuation method.
+
+    Requires: products:read permission
+    """
+    costing_service = CostingService(db)
+    summary = await costing_service.get_inventory_valuation_summary(warehouse_id=warehouse_id)
+
+    return ProductCostSummary(
+        total_products=summary["total_products"],
+        total_inventory_value=summary["total_inventory_value"],
+        average_stock_value_per_product=summary["average_stock_value_per_product"],
+        products_with_cost=summary["products_with_cost"],
+        products_without_cost=summary["products_without_cost"],
+        weighted_avg_count=summary["weighted_avg_count"],
+        fifo_count=summary["fifo_count"],
+        specific_id_count=summary["specific_id_count"],
+    )
+
+
+@router.post(
+    "/costs/initialize",
+    dependencies=[Depends(require_permissions("products:update"))]
+)
+async def initialize_product_costs(
+    db: DB,
+    current_user: CurrentUser,
+):
+    """
+    Initialize ProductCost records for all products without one.
+
+    Uses product's static cost_price as initial average_cost.
+    Run this once after migration to populate initial cost records.
+
+    Requires: products:update permission
+    """
+    costing_service = CostingService(db)
+    result = await costing_service.initialize_costs_from_products()
+    return result

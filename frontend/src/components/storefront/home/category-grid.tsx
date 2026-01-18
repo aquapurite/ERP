@@ -8,14 +8,10 @@ interface CategoryGridProps {
   categories: StorefrontCategory[];
 }
 
-// Default categories if API returns empty (Eureka Forbes inspired)
+// Default categories if API returns empty - Water Purifiers and Spare Parts prominently displayed
 const defaultCategories: Array<{ id: string; name: string; slug: string; icon: string; image_url?: string }> = [
-  { id: '1', name: 'RO Water Purifiers', slug: 'ro-water-purifiers', icon: 'droplet' },
-  { id: '2', name: 'UV Water Purifiers', slug: 'uv-water-purifiers', icon: 'zap' },
-  { id: '3', name: 'RO+UV Purifiers', slug: 'ro-uv-water-purifiers', icon: 'shield' },
-  { id: '4', name: 'Hot & Cold', slug: 'hot-cold-water-purifiers', icon: 'thermometer' },
-  { id: '5', name: 'Spare Parts', slug: 'spare-parts', icon: 'cog' },
-  { id: '6', name: 'Filters', slug: 'filters', icon: 'filter' },
+  { id: '1', name: 'Water Purifiers', slug: 'water-purifiers', icon: 'droplet' },
+  { id: '2', name: 'Spare Parts', slug: 'spare-parts', icon: 'cog' },
 ];
 
 const iconMap: Record<string, React.ElementType> = {
@@ -31,18 +27,34 @@ const iconMap: Record<string, React.ElementType> = {
   uv: Zap,
   'ro-uv': Shield,
   'hot-cold': ThermometerSun,
+  'water-purifiers': Droplet,
+  'spare-parts': Cog,
 };
 
 export default function CategoryGrid({ categories }: CategoryGridProps) {
+  // Use provided categories or default to Water Purifiers and Spare Parts
   const displayCategories = categories.length > 0
     ? categories.slice(0, 6).map((cat) => ({
         id: cat.id,
         name: cat.name,
         slug: cat.slug,
-        icon: cat.icon || 'droplet',
+        icon: cat.icon || cat.slug || 'droplet',
         image_url: cat.image_url,
       }))
     : defaultCategories;
+
+  // Determine grid classes based on number of categories for proper centering
+  const getGridClasses = () => {
+    const count = displayCategories.length;
+    if (count <= 2) {
+      return 'flex flex-wrap justify-center gap-8 md:gap-16';
+    } else if (count <= 3) {
+      return 'flex flex-wrap justify-center gap-6 md:gap-12';
+    } else if (count <= 4) {
+      return 'grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8 max-w-3xl mx-auto';
+    }
+    return 'grid grid-cols-3 md:grid-cols-6 gap-4 md:gap-8';
+  };
 
   return (
     <section className="py-12 md:py-16">
@@ -56,10 +68,10 @@ export default function CategoryGrid({ categories }: CategoryGridProps) {
           </p>
         </div>
 
-        {/* Eureka Forbes style - Icon cards with text below */}
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-4 md:gap-8">
+        {/* Categories - Centered layout */}
+        <div className={getGridClasses()}>
           {displayCategories.map((category) => {
-            const Icon = iconMap[category.icon] || Droplet;
+            const Icon = iconMap[category.icon] || iconMap[category.slug] || Droplet;
 
             return (
               <Link
@@ -67,20 +79,20 @@ export default function CategoryGrid({ categories }: CategoryGridProps) {
                 href={`/category/${category.slug}`}
                 className="group flex flex-col items-center text-center"
               >
-                {/* Icon Container - Eureka Forbes style */}
-                <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl bg-primary/10 flex items-center justify-center mb-3 group-hover:bg-primary group-hover:scale-105 transition-all duration-300">
+                {/* Icon Container */}
+                <div className="w-24 h-24 md:w-28 md:h-28 rounded-2xl bg-primary/10 flex items-center justify-center mb-3 group-hover:bg-primary group-hover:scale-105 transition-all duration-300 shadow-sm">
                   {category.image_url ? (
                     <img
                       src={category.image_url}
                       alt={category.name}
-                      className="w-12 h-12 md:w-14 md:h-14 object-contain"
+                      className="w-14 h-14 md:w-16 md:h-16 object-contain"
                     />
                   ) : (
-                    <Icon className="w-10 h-10 md:w-12 md:h-12 text-primary group-hover:text-primary-foreground transition-colors" />
+                    <Icon className="w-12 h-12 md:w-14 md:h-14 text-primary group-hover:text-primary-foreground transition-colors" />
                   )}
                 </div>
                 {/* Category Name */}
-                <span className="text-sm md:text-base font-medium text-foreground group-hover:text-primary transition-colors">
+                <span className="text-sm md:text-base font-semibold text-foreground group-hover:text-primary transition-colors">
                   {category.name}
                 </span>
               </Link>

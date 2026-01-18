@@ -9,7 +9,7 @@ import { z } from 'zod';
 import {
   ArrowLeft, Save, Package, Loader2, Plus, X, Trash2,
   Image as ImageIcon, Star, Upload, Edit2, Check, AlertCircle,
-  FileText, List, File
+  FileText, List, File, DollarSign, TrendingUp, History, ExternalLink
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -558,6 +558,7 @@ export default function ProductDetailPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="details">Details</TabsTrigger>
+          <TabsTrigger value="costing">Costing</TabsTrigger>
           <TabsTrigger value="images">Images ({images.length})</TabsTrigger>
           <TabsTrigger value="specs">Specifications ({specifications.length})</TabsTrigger>
           <TabsTrigger value="variants">Variants ({variants.length})</TabsTrigger>
@@ -643,32 +644,29 @@ export default function ProductDetailPage() {
                   </CardContent>
                 </Card>
 
-                {/* Pricing */}
+                {/* Pricing & Tax */}
                 <Card>
                   <CardHeader>
-                    <CardTitle>Pricing</CardTitle>
+                    <CardTitle>Pricing & Tax</CardTitle>
+                    <CardDescription>
+                      MRP and tax information. Channel-specific prices are managed in the Costing tab.
+                    </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
-                        <Label htmlFor="mrp">MRP (Rs.) *</Label>
+                        <Label htmlFor="mrp">Maximum Retail Price (MRP) *</Label>
                         <Input id="mrp" type="number" min="0" step="0.01" {...form.register('mrp')} />
                         {form.formState.errors.mrp && (
                           <p className="text-sm text-destructive">{form.formState.errors.mrp.message}</p>
                         )}
+                        <p className="text-xs text-muted-foreground">The maximum price at which the product can be sold</p>
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="selling_price">Selling Price (Rs.) *</Label>
-                        <Input id="selling_price" type="number" min="0" step="0.01" {...form.register('selling_price')} />
-                        {form.formState.errors.selling_price && (
-                          <p className="text-sm text-destructive">{form.formState.errors.selling_price.message}</p>
-                        )}
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="cost_price">Cost Price (Rs.)</Label>
-                        <Input id="cost_price" type="number" min="0" step="0.01" {...form.register('cost_price')} />
+                        <Label htmlFor="hsn_code">HSN Code</Label>
+                        <Input id="hsn_code" {...form.register('hsn_code')} />
+                        <p className="text-xs text-muted-foreground">Required for GST compliance</p>
                       </div>
                     </div>
 
@@ -691,11 +689,13 @@ export default function ProductDetailPage() {
                           </SelectContent>
                         </Select>
                       </div>
+                    </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="hsn_code">HSN Code</Label>
-                        <Input id="hsn_code" {...form.register('hsn_code')} />
-                      </div>
+                    <div className="bg-blue-50 dark:bg-blue-950 p-4 rounded-lg">
+                      <p className="text-sm text-blue-700 dark:text-blue-300">
+                        <strong>Note:</strong> Cost price is auto-calculated from Purchase Orders (see Costing tab).
+                        Channel-specific selling prices (D2C, B2B, Marketplace) can be configured in Channel Pricing.
+                      </p>
                     </div>
                   </CardContent>
                 </Card>
@@ -827,6 +827,183 @@ export default function ProductDetailPage() {
               </div>
             </div>
           </form>
+        </TabsContent>
+
+        {/* Costing Tab - Auto-calculated COGS from Purchase Orders */}
+        <TabsContent value="costing" className="mt-6">
+          <div className="grid gap-6 lg:grid-cols-3">
+            <div className="lg:col-span-2 space-y-6">
+              {/* COGS Overview */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <DollarSign className="h-5 w-5" />
+                    Cost of Goods Sold (COGS)
+                  </CardTitle>
+                  <CardDescription>
+                    Auto-calculated from Purchase Orders using Weighted Average Cost method
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="p-4 border rounded-lg bg-muted/50">
+                      <p className="text-sm text-muted-foreground">Average Cost</p>
+                      <p className="text-2xl font-bold text-primary">
+                        {formatCurrency(product?.cost_price || 0)}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Weighted average from POs
+                      </p>
+                    </div>
+
+                    <div className="p-4 border rounded-lg">
+                      <p className="text-sm text-muted-foreground">MRP</p>
+                      <p className="text-2xl font-bold">
+                        {formatCurrency(product?.mrp || 0)}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Maximum retail price
+                      </p>
+                    </div>
+
+                    <div className="p-4 border rounded-lg">
+                      <p className="text-sm text-muted-foreground">Gross Margin</p>
+                      <p className="text-2xl font-bold text-green-600">
+                        {product?.mrp && product?.cost_price && product.cost_price > 0
+                          ? `${(((product.mrp - product.cost_price) / product.mrp) * 100).toFixed(1)}%`
+                          : 'N/A'}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        (MRP - Cost) / MRP
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="bg-amber-50 dark:bg-amber-950 p-4 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <TrendingUp className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5" />
+                      <div>
+                        <p className="font-medium text-amber-800 dark:text-amber-200">Weighted Average Cost Formula</p>
+                        <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                          New Avg Cost = (Current Stock Value + New Purchase Value) / (Current Qty + New Qty)
+                        </p>
+                        <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">
+                          Cost is automatically updated when GRN is accepted after Quality Check.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Cost History */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <History className="h-5 w-5" />
+                    Cost History
+                  </CardTitle>
+                  <CardDescription>
+                    Historical cost movements from GRN receipts
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <History className="h-12 w-12 text-muted-foreground mb-4" />
+                    <h3 className="font-medium">Cost History</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Cost history will be populated when GRNs are processed
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Each GRN acceptance updates the weighted average cost
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Sidebar */}
+            <div className="space-y-6">
+              {/* Channel Pricing Card */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Channel Pricing</CardTitle>
+                  <CardDescription>
+                    Set different prices for each sales channel
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center p-3 border rounded-lg">
+                      <div>
+                        <p className="font-medium">D2C Website</p>
+                        <p className="text-sm text-muted-foreground">www.aquapurite.com</p>
+                      </div>
+                      <p className="font-medium">{formatCurrency(product?.selling_price || 0)}</p>
+                    </div>
+                    <div className="flex justify-between items-center p-3 border rounded-lg">
+                      <div>
+                        <p className="font-medium">B2B / Dealer</p>
+                        <p className="text-sm text-muted-foreground">Dealer/distributor price</p>
+                      </div>
+                      <p className="font-medium text-muted-foreground">Configure</p>
+                    </div>
+                    <div className="flex justify-between items-center p-3 border rounded-lg">
+                      <div>
+                        <p className="font-medium">Marketplace</p>
+                        <p className="text-sm text-muted-foreground">Amazon, Flipkart</p>
+                      </div>
+                      <p className="font-medium text-muted-foreground">Configure</p>
+                    </div>
+                  </div>
+                  <Button variant="outline" className="w-full" asChild>
+                    <Link href={`/dashboard/catalog/${productId}/pricing`}>
+                      <ExternalLink className="mr-2 h-4 w-4" />
+                      Manage Channel Pricing
+                    </Link>
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Valuation Method */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Valuation Method</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Badge>Weighted Average Cost</Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Ind AS 2 compliant method for fungible goods and spare parts
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Quick Stats */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Cost Variance</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Standard Cost</span>
+                    <span>Not Set</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Variance</span>
+                    <span>-</span>
+                  </div>
+                  <Separator className="my-3" />
+                  <p className="text-xs text-muted-foreground">
+                    Set a standard cost to track variance for budgeting
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="images" className="mt-6">
