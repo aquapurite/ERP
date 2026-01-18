@@ -814,12 +814,39 @@ npx vercel whoami
 # If wrong account, logout and re-login
 npx vercel logout
 npx vercel login
+```
 
+#### Deploy to ERP (www.aquapurite.org)
+```bash
 # Link to ERP project (only needed once, or if .vercel is deleted)
 npx vercel link --project=erp --yes
 
 # Deploy to production
 npx vercel --prod
+```
+
+#### Deploy to D2C Storefront (www.aquapurite.com)
+```bash
+# Switch link to D2C project
+npx vercel link --project=d2c --yes
+
+# Deploy to production
+npx vercel --prod
+
+# IMPORTANT: Switch back to ERP after D2C deployment
+npx vercel link --project=erp --yes
+```
+
+### Rollback Commands (if deployment breaks)
+```bash
+# List recent deployments
+npx vercel ls
+
+# Rollback to a specific deployment
+npx vercel promote <deployment-url> --yes
+
+# Example:
+# npx vercel promote erp-abc123-anupam-singhs-projects-ffea0ac8.vercel.app --yes
 ```
 
 ### Common Deployment Mistakes to AVOID
