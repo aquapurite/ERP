@@ -233,6 +233,10 @@ async def update_primary_company(
     await db.commit()
     await db.refresh(company)
 
+    # Invalidate storefront company cache so changes appear immediately
+    cache = get_cache()
+    await cache.delete("company:info")
+
     # Audit log
     audit_service = AuditService(db)
     await audit_service.log(
