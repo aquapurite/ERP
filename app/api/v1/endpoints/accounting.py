@@ -394,6 +394,217 @@ async def close_financial_period(
     return period
 
 
+@router.post("/periods/{period_id}/reopen", response_model=FinancialPeriodResponse)
+async def reopen_financial_period(
+    period_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Reopen a closed financial period."""
+    result = await db.execute(
+        select(FinancialPeriod).where(FinancialPeriod.id == period_id)
+    )
+    period = result.scalar_one_or_none()
+
+    if not period:
+        raise HTTPException(status_code=404, detail="Period not found")
+
+    if period.status == PeriodStatus.LOCKED:
+        raise HTTPException(status_code=400, detail="Cannot reopen a locked period")
+
+    if period.status == PeriodStatus.OPEN:
+        raise HTTPException(status_code=400, detail="Period is already open")
+
+    period.status = PeriodStatus.OPEN.value
+    period.closed_at = None
+    period.closed_by = None
+
+    await db.commit()
+    await db.refresh(period)
+
+    return period
+
+
+@router.post("/periods/{period_id}/lock", response_model=FinancialPeriodResponse)
+async def lock_financial_period(
+    period_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Permanently lock a financial period. This action is irreversible."""
+    result = await db.execute(
+        select(FinancialPeriod).where(FinancialPeriod.id == period_id)
+    )
+    period = result.scalar_one_or_none()
+
+    if not period:
+        raise HTTPException(status_code=404, detail="Period not found")
+
+    if period.status == PeriodStatus.LOCKED:
+        raise HTTPException(status_code=400, detail="Period is already locked")
+
+    if period.status == PeriodStatus.OPEN:
+        raise HTTPException(status_code=400, detail="Cannot lock an open period. Close it first.")
+
+    period.status = PeriodStatus.LOCKED.value
+
+    await db.commit()
+    await db.refresh(period)
+
+    return period
+
+
+# ==================== Fiscal Years ====================
+
+@router.get("/fiscal-years")
+async def list_fiscal_years(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """List all fiscal years with their period counts."""
+    # Get distinct fiscal years from periods
+    query = select(
+        FinancialPeriod.financial_year,
+        func.min(FinancialPeriod.start_date).label("start_date"),
+        func.max(FinancialPeriod.end_date).label("end_date"),
+        func.count(FinancialPeriod.id).label("periods_count"),
+        func.sum(
+            case(
+                (FinancialPeriod.status == PeriodStatus.OPEN, 1),
+                else_=0
+            )
+        ).label("open_periods"),
+    ).where(
+        FinancialPeriod.financial_year.isnot(None)
+    ).group_by(
+        FinancialPeriod.financial_year
+    ).order_by(
+        func.min(FinancialPeriod.start_date).desc()
+    )
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    items = []
+    for row in rows:
+        # Determine status: ACTIVE if any periods are open, CLOSED otherwise
+        status = "ACTIVE" if row.open_periods > 0 else "CLOSED"
+        items.append({
+            "id": row.financial_year,  # Use financial_year as ID for simplicity
+            "name": f"FY {row.financial_year}" if row.financial_year else "Unknown",
+            "start_date": row.start_date.isoformat() if row.start_date else None,
+            "end_date": row.end_date.isoformat() if row.end_date else None,
+            "status": status,
+            "periods_count": row.periods_count,
+            "open_periods": row.open_periods or 0,
+        })
+
+    return {"items": items, "total": len(items)}
+
+
+@router.post("/fiscal-years", status_code=status.HTTP_201_CREATED)
+async def create_fiscal_year(
+    year_data: dict,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Create a new fiscal year with auto-generated monthly periods.
+
+    Expected payload:
+    {
+        "name": "FY 2025-26",
+        "start_date": "2025-04-01",
+        "end_date": "2026-03-31"
+    }
+    """
+    from dateutil.relativedelta import relativedelta
+    from calendar import monthrange
+
+    name = year_data.get("name", "")
+    start_date_str = year_data.get("start_date")
+    end_date_str = year_data.get("end_date")
+
+    if not start_date_str or not end_date_str:
+        raise HTTPException(status_code=400, detail="start_date and end_date are required")
+
+    try:
+        start_date = date.fromisoformat(start_date_str)
+        end_date = date.fromisoformat(end_date_str)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
+    if end_date <= start_date:
+        raise HTTPException(status_code=400, detail="end_date must be after start_date")
+
+    # Extract financial year code (e.g., "2025-2026" from dates)
+    financial_year = f"{start_date.year}-{end_date.year}"
+
+    # Check if fiscal year already exists
+    existing = await db.execute(
+        select(FinancialPeriod).where(
+            FinancialPeriod.financial_year == financial_year
+        ).limit(1)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Fiscal year {financial_year} already exists"
+        )
+
+    # Generate monthly periods
+    periods_created = []
+    current_month_start = start_date
+
+    while current_month_start <= end_date:
+        # Calculate month end
+        _, last_day = monthrange(current_month_start.year, current_month_start.month)
+        month_end = date(current_month_start.year, current_month_start.month, last_day)
+
+        # Don't exceed the fiscal year end date
+        if month_end > end_date:
+            month_end = end_date
+
+        # Month code (APR-2025, MAY-2025, etc.)
+        month_code = current_month_start.strftime("%b-%Y").upper()
+        month_name = current_month_start.strftime("%B %Y")
+
+        period = FinancialPeriod(
+            period_name=month_name,
+            period_code=month_code,
+            financial_year=financial_year,
+            period_type="MONTHLY",
+            start_date=current_month_start,
+            end_date=month_end,
+            status=PeriodStatus.OPEN.value,
+            is_current=(date.today() >= current_month_start and date.today() <= month_end),
+        )
+
+        db.add(period)
+        periods_created.append({
+            "name": month_name,
+            "code": month_code,
+            "start_date": current_month_start.isoformat(),
+            "end_date": month_end.isoformat(),
+        })
+
+        # Move to next month
+        current_month_start = current_month_start + relativedelta(months=1)
+        # Reset to first day of month
+        current_month_start = date(current_month_start.year, current_month_start.month, 1)
+
+    await db.commit()
+
+    return {
+        "message": f"Fiscal year {financial_year} created with {len(periods_created)} monthly periods",
+        "financial_year": financial_year,
+        "name": name,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "periods_created": len(periods_created),
+    }
+
+
 # ==================== Cost Centers ====================
 
 @router.post("/cost-centers", response_model=CostCenterResponse, status_code=status.HTTP_201_CREATED)
