@@ -47,7 +47,7 @@ async def get_channel_pnl(
             end_date = today
 
     # Get all channels for comparison
-    channels_query = select(SalesChannel).where(SalesChannel.is_active == True)
+    channels_query = select(SalesChannel).where(SalesChannel.status == "ACTIVE")
     if channel_id:
         channels_query = channels_query.where(SalesChannel.id == channel_id)
 
@@ -198,7 +198,7 @@ async def get_channel_balance_sheet(
         as_of_date = date.today()
 
     # Get all channels
-    channels_query = select(SalesChannel).where(SalesChannel.is_active == True)
+    channels_query = select(SalesChannel).where(SalesChannel.status == "ACTIVE")
     if channel_id:
         channels_query = channels_query.where(SalesChannel.id == channel_id)
 
@@ -367,7 +367,7 @@ async def get_channel_comparison(
         end_date = date.today()
 
     # Get all active channels
-    channels_query = select(SalesChannel).where(SalesChannel.is_active == True)
+    channels_query = select(SalesChannel).where(SalesChannel.status == "ACTIVE")
     channels_result = await db.execute(channels_query)
     channels = channels_result.scalars().all()
 
