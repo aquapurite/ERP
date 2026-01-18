@@ -1,10 +1,39 @@
+import json
+from decimal import Decimal
+from datetime import datetime, date
+from typing import AsyncGenerator
+from uuid import UUID
+
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import DateTime
-from datetime import datetime
-from typing import AsyncGenerator
+from sqlalchemy import DateTime, event
+from sqlalchemy.dialects.postgresql import JSONB
+import psycopg
+from psycopg.types.json import set_json_dumps, set_json_loads
 
 from app.config import settings
+
+
+# Custom JSON encoder that handles Decimal, datetime, UUID, etc.
+class CustomJSONEncoder(json.JSONEncoder):
+    """JSON encoder that handles Decimal, datetime, UUID and other types."""
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        if isinstance(obj, UUID):
+            return str(obj)
+        return super().default(obj)
+
+
+def custom_json_dumps(obj):
+    """Custom JSON dumps function for psycopg."""
+    return json.dumps(obj, cls=CustomJSONEncoder)
+
+
+# Configure psycopg to use our custom JSON encoder globally
+set_json_dumps(custom_json_dumps)
 
 
 # SQLite doesn't support pool settings, check database type

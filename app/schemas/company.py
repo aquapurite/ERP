@@ -326,6 +326,7 @@ class CompanyBankAccountBase(BaseModel):
 class CompanyBankAccountCreate(CompanyBankAccountBase):
     """Schema for creating CompanyBankAccount."""
     company_id: UUID
+    is_active: bool = True  # Added to match frontend
 
 
 class CompanyBankAccountUpdate(BaseModel):
