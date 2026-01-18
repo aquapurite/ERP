@@ -314,12 +314,14 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         </Button>
       </div>
 
-      {/* Navigation */}
-      <ScrollArea className="flex-1 px-3 py-2">
-        <nav className="space-y-0.5">
-          {filteredNavigation.map((item) => renderNavItem(item))}
-        </nav>
-      </ScrollArea>
+      {/* Navigation - with proper scrolling */}
+      <div className="flex-1 overflow-hidden">
+        <ScrollArea className="h-full">
+          <nav className="space-y-0.5 px-3 py-2">
+            {filteredNavigation.map((item) => renderNavItem(item))}
+          </nav>
+        </ScrollArea>
+      </div>
 
       {/* Footer with gradient */}
       {!isCollapsed && (
