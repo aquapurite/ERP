@@ -40,15 +40,11 @@ class StorageClient:
                     "Set SUPABASE_URL and SUPABASE_SERVICE_KEY environment variables."
                 )
             from supabase import create_client
-            from supabase.lib.client_options import ClientOptions
 
+            # Simple client creation - works with supabase>=2.0.0
             cls._client = create_client(
                 settings.SUPABASE_URL,
-                settings.SUPABASE_SERVICE_KEY,
-                options=ClientOptions(
-                    auto_refresh_token=False,
-                    persist_session=False
-                )
+                settings.SUPABASE_SERVICE_KEY
             )
         return cls._client
 
