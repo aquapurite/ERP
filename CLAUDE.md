@@ -59,10 +59,69 @@ def get_client():
 - [ ] Will existing API consumers break?
 - [ ] Are response schemas compatible with current frontend expectations?
 
-### 5. Test End-to-End Flow
-- [ ] Test the API endpoint locally with real data patterns
-- [ ] Check both success AND error cases
-- [ ] Verify frontend can consume the response
+### 5. MANDATORY Testing Procedure (DO NOT SKIP)
+
+> **CRITICAL: Claude MUST complete ALL these steps before pushing to production. No exceptions.**
+
+#### Step 5.1: Run Local Build
+```bash
+cd "/Users/mantosh/Desktop/Consumer durable 2/frontend"
+rm -rf .next  # Clean build cache
+pnpm build    # Must pass with exit code 0
+```
+- [ ] Build completes successfully (no TypeScript errors)
+
+#### Step 5.2: Start Local Servers
+```bash
+# Terminal 1: Start backend
+cd "/Users/mantosh/Desktop/Consumer durable 2"
+uvicorn app.main:app --reload --port 8000
+
+# Terminal 2: Start frontend
+cd "/Users/mantosh/Desktop/Consumer durable 2/frontend"
+pnpm dev
+```
+- [ ] Backend running at http://localhost:8000
+- [ ] Frontend running at http://localhost:3000
+
+#### Step 5.3: Test API Endpoints with Real Data
+```bash
+# Health check
+curl -s http://localhost:8000/health | jq .
+
+# Test specific endpoints affected by changes
+curl -s "http://localhost:8000/api/v1/[endpoint]" | jq .
+```
+- [ ] Health endpoint returns `{"status": "healthy"}`
+- [ ] All modified API endpoints return expected data
+
+#### Step 5.4: Test Frontend Pages
+```bash
+# Test all modified pages return HTTP 200
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/[page-path]
+```
+- [ ] All modified pages load (HTTP 200 or 307 redirect to login)
+- [ ] No console errors in browser DevTools
+
+#### Step 5.5: Only THEN Push to Production
+```bash
+git add [files]
+git commit -m "description"
+git push origin main
+```
+
+#### Step 5.6: Post-Deployment Verification
+```bash
+# Verify API health
+curl -s https://aquapurite-erp-api.onrender.com/health | jq .
+
+# Verify all modified pages on production
+curl -s -o /dev/null -w "%{http_code}" "https://www.aquapurite.org/dashboard/[page]"
+```
+- [ ] Production API health is `healthy`
+- [ ] All modified pages return HTTP 200
+
+**LESSON LEARNED (2026-01-19):** Running `pnpm build` alone is NOT sufficient testing. Claude must start local servers and test actual page loads before deployment.
 
 ### 6. Schema Validation Impact
 - [ ] Validators on **Base schemas** affect RESPONSES (existing data)
@@ -98,6 +157,9 @@ class CompanyCreate(CompanyBase):
 | Missing lazy import | App crashes without package | Wrap optional imports in try/except |
 | Not checking existing data | Validation breaks current data | Query production before adding validation |
 | Pushing without testing | Production outage | Always test locally first |
+| Only running `pnpm build` | Misses runtime errors | Start local servers AND test pages |
+| Skipping local server test | Pages may fail at runtime | Always run `pnpm dev` and test in browser |
+| Not testing modified pages | Broken pages in production | curl each modified page for HTTP 200 |
 
 ---
 
