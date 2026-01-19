@@ -40,8 +40,8 @@ interface ProductFormData {
   category_id?: string;
   brand_id?: string;
   mrp: number;
-  selling_price: number;
-  cost_price?: number;
+  selling_price?: number; // Legacy - use Channel Pricing instead
+  cost_price?: number;    // Legacy - auto-calculated from GRNs
   gst_rate?: number;
   hsn_code?: string;
   weight?: number;
@@ -64,8 +64,8 @@ const productSchema = z.object({
   category_id: z.string().optional(),
   brand_id: z.string().optional(),
   mrp: z.coerce.number().min(0, 'MRP must be positive'),
-  selling_price: z.coerce.number().min(0, 'Selling price must be positive'),
-  cost_price: z.coerce.number().min(0, 'Cost price must be positive').optional(),
+  selling_price: z.coerce.number().min(0).optional(), // Legacy - use Channel Pricing
+  cost_price: z.coerce.number().min(0).optional(),    // Legacy - auto-calculated from GRNs
   gst_rate: z.coerce.number().min(0).max(100).optional(),
   hsn_code: z.string().optional(),
   weight: z.coerce.number().min(0).optional(),
@@ -78,7 +78,13 @@ const productSchema = z.object({
   warranty_months: z.coerce.number().min(0).optional(),
   meta_title: z.string().optional(),
   meta_description: z.string().optional(),
-}).refine((data) => data.selling_price <= data.mrp, {
+}).refine((data) => {
+  // Only validate if selling_price is provided
+  if (data.selling_price && data.selling_price > data.mrp) {
+    return false;
+  }
+  return true;
+}, {
   message: 'Selling price cannot be greater than MRP',
   path: ['selling_price'],
 });
