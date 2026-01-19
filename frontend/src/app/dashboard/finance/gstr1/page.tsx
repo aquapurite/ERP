@@ -222,6 +222,27 @@ export default function GSTR1Page() {
     },
   });
 
+  const handleExportJSON = () => {
+    if (!gstr1Data) {
+      toast.error('No data to export');
+      return;
+    }
+    const blob = new Blob([JSON.stringify(gstr1Data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `GSTR1_${month.toString().padStart(2, '0')}${year}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('GSTR-1 data exported');
+  };
+
+  const handleFileReturn = () => {
+    toast.info('GST portal filing integration coming soon. Please file directly on the GST portal.');
+  };
+
   const b2bColumns: ColumnDef<B2BInvoiceDisplay>[] = [
     {
       accessorKey: 'invoice_number',
@@ -361,15 +382,15 @@ export default function GSTR1Page() {
         description="Outward supplies (Sales) - Monthly/Quarterly filing"
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => generateMutation.mutate()}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Generate Report
+            <Button variant="outline" onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${generateMutation.isPending ? 'animate-spin' : ''}`} />
+              {generateMutation.isPending ? 'Refreshing...' : 'Refresh Data'}
             </Button>
-            <Button variant="outline">
+            <Button variant="outline" onClick={handleExportJSON}>
               <FileJson className="mr-2 h-4 w-4" />
               Export JSON
             </Button>
-            <Button>
+            <Button onClick={handleFileReturn}>
               <Upload className="mr-2 h-4 w-4" />
               File Return
             </Button>

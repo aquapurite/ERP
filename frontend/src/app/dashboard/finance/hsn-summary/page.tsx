@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import { FileText, Download, Plus, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -167,13 +168,36 @@ export default function HSNSummaryPage() {
     },
   ];
 
+  const handleExportSummary = () => {
+    if (!hsnData) {
+      toast.error('No data to export');
+      return;
+    }
+    const exportData = {
+      period: `${month.toString().padStart(2, '0')}${year}`,
+      summary: stats,
+      outward_hsn: outwardData.items,
+      inward_hsn: inwardData.items,
+    };
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `HSN_Summary_${month.toString().padStart(2, '0')}${year}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('HSN Summary exported');
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="HSN Summary"
         description="HSN/SAC wise tax summary for GST returns"
         actions={
-          <Button variant="outline">
+          <Button variant="outline" onClick={handleExportSummary}>
             <Download className="mr-2 h-4 w-4" />
             Export Summary
           </Button>

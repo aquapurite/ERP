@@ -192,22 +192,42 @@ export default function GSTR3BPage() {
     late_fee: 0,
   } : null;
 
-  const generateMutation = useMutation({
-    mutationFn: async () => {},
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['gstr3b-summary'] });
-      toast.success('GSTR-3B report generated');
-    },
-  });
+  const [isGenerating, setIsGenerating] = useState(false);
 
-  const fileMutation = useMutation({
-    mutationFn: async () => {},
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['gstr3b-summary'] });
-      toast.success('GSTR-3B filed successfully');
-      setIsPaymentOpen(false);
-    },
-  });
+  const handleGenerate = async () => {
+    setIsGenerating(true);
+    try {
+      // Refresh the data from backend
+      await queryClient.invalidateQueries({ queryKey: ['gstr3b-report', month, year] });
+      toast.success('GSTR-3B report data refreshed from invoices');
+    } catch (error) {
+      toast.error('Failed to refresh report data');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleExportJSON = () => {
+    if (!gstr3bData) {
+      toast.error('No data to export');
+      return;
+    }
+    const blob = new Blob([JSON.stringify(gstr3bData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `GSTR3B_${month.toString().padStart(2, '0')}${year}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('GSTR-3B data exported');
+  };
+
+  const handleFileReturn = () => {
+    toast.info('GST portal filing integration coming soon. Please file directly on the GST portal.');
+    setIsPaymentOpen(false);
+  };
 
   const totalTaxPayable = (summary?.tax_payable_igst ?? 0) + (summary?.tax_payable_cgst ?? 0) +
     (summary?.tax_payable_sgst ?? 0) + (summary?.tax_payable_cess ?? 0);
@@ -223,13 +243,13 @@ export default function GSTR3BPage() {
         description="Summary return - Monthly filing with tax payment"
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => generateMutation.mutate()}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Generate
+            <Button variant="outline" onClick={handleGenerate} disabled={isGenerating}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${isGenerating ? 'animate-spin' : ''}`} />
+              {isGenerating ? 'Refreshing...' : 'Refresh Data'}
             </Button>
-            <Button variant="outline">
-              <Eye className="mr-2 h-4 w-4" />
-              Preview
+            <Button variant="outline" onClick={handleExportJSON}>
+              <Download className="mr-2 h-4 w-4" />
+              Export JSON
             </Button>
             <Button onClick={() => setIsPaymentOpen(true)}>
               <Upload className="mr-2 h-4 w-4" />
@@ -682,7 +702,7 @@ export default function GSTR3BPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsPaymentOpen(false)}>Cancel</Button>
-            <Button onClick={() => fileMutation.mutate()}>
+            <Button onClick={handleFileReturn}>
               <CreditCard className="mr-2 h-4 w-4" />
               Pay & File
             </Button>

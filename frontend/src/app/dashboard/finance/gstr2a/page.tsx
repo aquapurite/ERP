@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Download, RefreshCw, CheckCircle, AlertTriangle, Calendar, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -124,6 +125,38 @@ export default function GSTR2APage() {
     })) || [],
   } : { items: [] };
 
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSyncFromPortal = async () => {
+    setIsSyncing(true);
+    try {
+      // For now, just refresh the data from our backend
+      await queryClient.invalidateQueries({ queryKey: ['gstr2a-report', month, year] });
+      toast.info('GSTR-2A sync from GST portal is coming soon. Data refreshed from local records.');
+    } catch (error) {
+      toast.error('Failed to refresh data');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleExport = () => {
+    if (!gstr2aData) {
+      toast.error('No data to export');
+      return;
+    }
+    const blob = new Blob([JSON.stringify(gstr2aData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `GSTR2A_${month.toString().padStart(2, '0')}${year}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('GSTR-2A data exported');
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -131,11 +164,11 @@ export default function GSTR2APage() {
         description="Auto-populated purchase register from supplier filings"
         actions={
           <div className="flex gap-2">
-            <Button variant="outline">
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Sync from GST Portal
+            <Button variant="outline" onClick={handleSyncFromPortal} disabled={isSyncing}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              {isSyncing ? 'Syncing...' : 'Sync from GST Portal'}
             </Button>
-            <Button variant="outline">
+            <Button variant="outline" onClick={handleExport}>
               <Download className="mr-2 h-4 w-4" />
               Export
             </Button>

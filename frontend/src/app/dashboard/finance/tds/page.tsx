@@ -49,7 +49,21 @@ import { PageHeader } from '@/components/common';
 import { tdsApi } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 
-const CURRENT_FY = '2024-25';
+// Calculate current fiscal year dynamically (Indian FY: April to March)
+const getCurrentFiscalYear = (): string => {
+  const now = new Date();
+  const month = now.getMonth(); // 0-11
+  const year = now.getFullYear();
+  // FY starts in April (month 3)
+  // If current month is Jan-Mar (0-2), FY is previous year to current year
+  // If current month is Apr-Dec (3-11), FY is current year to next year
+  if (month < 3) {
+    return `${year - 1}-${String(year).slice(-2)}`;
+  }
+  return `${year}-${String(year + 1).slice(-2)}`;
+};
+
+const CURRENT_FY = getCurrentFiscalYear();
 const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'];
 
 interface TDSDeduction {
