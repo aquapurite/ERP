@@ -142,6 +142,20 @@ export default function ProductDetailPage() {
     queryFn: () => brandsApi.list({ size: 100 }),
   });
 
+  // Product Cost (COGS) query
+  const { data: productCost, isLoading: isLoadingCost } = useQuery({
+    queryKey: ['product-cost', productId],
+    queryFn: () => productsApi.getCost(productId),
+    enabled: !!productId,
+  });
+
+  // Cost History query
+  const { data: costHistory, isLoading: isLoadingHistory } = useQuery({
+    queryKey: ['product-cost-history', productId],
+    queryFn: () => productsApi.getCostHistory(productId, { limit: 20 }),
+    enabled: !!productId,
+  });
+
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema) as any,
     values: product ? {
@@ -901,39 +915,68 @@ export default function ProductDetailPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    <div className="p-4 border rounded-lg bg-muted/50">
-                      <p className="text-sm text-muted-foreground">Average Cost</p>
-                      <p className="text-2xl font-bold text-primary">
-                        {formatCurrency(product?.cost_price || 0)}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Weighted average from POs
-                      </p>
+                  {isLoadingCost ? (
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      {[1, 2, 3].map((i) => (
+                        <Skeleton key={i} className="h-24 w-full" />
+                      ))}
                     </div>
+                  ) : (
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <div className="p-4 border rounded-lg bg-muted/50">
+                        <p className="text-sm text-muted-foreground">Average Cost</p>
+                        <p className="text-2xl font-bold text-primary">
+                          {formatCurrency(productCost?.average_cost || product?.cost_price || 0)}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Weighted average from POs
+                        </p>
+                      </div>
 
-                    <div className="p-4 border rounded-lg">
-                      <p className="text-sm text-muted-foreground">MRP</p>
-                      <p className="text-2xl font-bold">
-                        {formatCurrency(product?.mrp || 0)}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Maximum retail price
-                      </p>
-                    </div>
+                      <div className="p-4 border rounded-lg">
+                        <p className="text-sm text-muted-foreground">Last Purchase Cost</p>
+                        <p className="text-2xl font-bold">
+                          {productCost?.last_purchase_cost
+                            ? formatCurrency(productCost.last_purchase_cost)
+                            : 'N/A'}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Most recent GRN price
+                        </p>
+                      </div>
 
-                    <div className="p-4 border rounded-lg">
-                      <p className="text-sm text-muted-foreground">Gross Margin</p>
-                      <p className="text-2xl font-bold text-green-600">
-                        {product?.mrp && product?.cost_price && product.cost_price > 0
-                          ? `${(((product.mrp - product.cost_price) / product.mrp) * 100).toFixed(1)}%`
-                          : 'N/A'}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        (MRP - Cost) / MRP
-                      </p>
+                      <div className="p-4 border rounded-lg">
+                        <p className="text-sm text-muted-foreground">Gross Margin</p>
+                        <p className="text-2xl font-bold text-green-600">
+                          {(() => {
+                            const avgCost = productCost?.average_cost || product?.cost_price || 0;
+                            const mrp = product?.mrp || 0;
+                            if (mrp > 0 && avgCost > 0) {
+                              return `${(((mrp - avgCost) / mrp) * 100).toFixed(1)}%`;
+                            }
+                            return 'N/A';
+                          })()}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          (MRP - Cost) / MRP
+                        </p>
+                      </div>
                     </div>
-                  </div>
+                  )}
+
+                  {/* Inventory Position */}
+                  {productCost && (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="p-4 border rounded-lg">
+                        <p className="text-sm text-muted-foreground">Quantity on Hand</p>
+                        <p className="text-xl font-semibold">{productCost.quantity_on_hand} units</p>
+                      </div>
+                      <div className="p-4 border rounded-lg">
+                        <p className="text-sm text-muted-foreground">Total Inventory Value</p>
+                        <p className="text-xl font-semibold">{formatCurrency(productCost.total_value)}</p>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="bg-amber-50 dark:bg-amber-950 p-4 rounded-lg">
                     <div className="flex items-start gap-3">
@@ -964,16 +1007,56 @@ export default function ProductDetailPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex flex-col items-center justify-center py-8 text-center">
-                    <History className="h-12 w-12 text-muted-foreground mb-4" />
-                    <h3 className="font-medium">Cost History</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Cost history will be populated when GRNs are processed
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Each GRN acceptance updates the weighted average cost
-                    </p>
-                  </div>
+                  {isLoadingHistory ? (
+                    <div className="space-y-4">
+                      {[1, 2, 3].map((i) => (
+                        <Skeleton key={i} className="h-16 w-full" />
+                      ))}
+                    </div>
+                  ) : costHistory?.entries && costHistory.entries.length > 0 ? (
+                    <div className="space-y-3">
+                      {costHistory.entries.map((entry, index) => (
+                        <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                          <div>
+                            <p className="font-medium">
+                              +{entry.quantity} units @ {formatCurrency(entry.unit_cost)}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              {entry.grn_number || 'GRN'} • {new Date(entry.date).toLocaleDateString('en-IN', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric',
+                              })}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-medium">Avg: {formatCurrency(entry.running_average)}</p>
+                            {entry.old_avg !== undefined && entry.old_avg > 0 && (
+                              <p className="text-xs text-muted-foreground">
+                                from {formatCurrency(entry.old_avg)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {costHistory.total_entries > 20 && (
+                        <p className="text-sm text-muted-foreground text-center mt-4">
+                          Showing latest 20 of {costHistory.total_entries} entries
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-8 text-center">
+                      <History className="h-12 w-12 text-muted-foreground mb-4" />
+                      <h3 className="font-medium">No Cost History</h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Cost history will be populated when GRNs are processed
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Each GRN acceptance updates the weighted average cost
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -1029,16 +1112,27 @@ export default function ProductDetailPage() {
                 <CardContent>
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
-                      <Badge>Weighted Average Cost</Badge>
+                      <Badge>{productCost?.valuation_method || 'WEIGHTED_AVG'}</Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
                       Ind AS 2 compliant method for fungible goods and spare parts
                     </p>
+                    {productCost?.last_calculated_at && (
+                      <p className="text-xs text-muted-foreground">
+                        Last updated: {new Date(productCost.last_calculated_at).toLocaleDateString('en-IN', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
 
-              {/* Quick Stats */}
+              {/* Cost Variance */}
               <Card>
                 <CardHeader>
                   <CardTitle>Cost Variance</CardTitle>
@@ -1046,12 +1140,28 @@ export default function ProductDetailPage() {
                 <CardContent className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Standard Cost</span>
-                    <span>Not Set</span>
+                    <span>
+                      {productCost?.standard_cost
+                        ? formatCurrency(productCost.standard_cost)
+                        : 'Not Set'}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Variance</span>
-                    <span>-</span>
+                    <span className={productCost?.cost_variance && productCost.cost_variance > 0 ? 'text-red-600' : productCost?.cost_variance && productCost.cost_variance < 0 ? 'text-green-600' : ''}>
+                      {productCost?.cost_variance
+                        ? `${formatCurrency(Math.abs(productCost.cost_variance))} ${productCost.cost_variance > 0 ? 'over' : 'under'}`
+                        : '-'}
+                    </span>
                   </div>
+                  {productCost?.cost_variance_percentage !== null && productCost?.cost_variance_percentage !== undefined && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Variance %</span>
+                      <span className={productCost.cost_variance_percentage > 0 ? 'text-red-600' : 'text-green-600'}>
+                        {productCost.cost_variance_percentage > 0 ? '+' : ''}{productCost.cost_variance_percentage.toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
                   <Separator className="my-3" />
                   <p className="text-xs text-muted-foreground">
                     Set a standard cost to track variance for budgeting

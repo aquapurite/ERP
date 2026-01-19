@@ -97,6 +97,13 @@ export default function ProductChannelPricingPage() {
     enabled: !!productId,
   });
 
+  // Fetch product cost (COGS) from costing API
+  const { data: productCost } = useQuery({
+    queryKey: ['product-cost', productId],
+    queryFn: () => productsApi.getCost(productId),
+    enabled: !!productId,
+  });
+
   // Initialize channel pricing from product data when loaded
   useState(() => {
     if (product) {
@@ -151,7 +158,8 @@ export default function ProductChannelPricingPage() {
     }
   };
 
-  const costPrice = product?.cost_price || 0;
+  // Use COGS from ProductCost API (auto-calculated), fallback to static cost_price
+  const costPrice = productCost?.average_cost || product?.cost_price || 0;
 
   if (isLoading) {
     return (
@@ -221,9 +229,11 @@ export default function ProductChannelPricingPage() {
               <p className="text-xl font-bold">{formatCurrency(product.mrp || 0)}</p>
             </div>
             <div className="p-4 border rounded-lg bg-muted/50">
-              <p className="text-sm text-muted-foreground">Cost Price (COGS)</p>
+              <p className="text-sm text-muted-foreground">COGS (Avg Cost)</p>
               <p className="text-xl font-bold">{formatCurrency(costPrice)}</p>
-              <p className="text-xs text-muted-foreground">Auto-calculated from POs</p>
+              <p className="text-xs text-muted-foreground">
+                {productCost?.average_cost ? 'Weighted avg from GRNs' : 'Static cost price'}
+              </p>
             </div>
             <div className="p-4 border rounded-lg">
               <p className="text-sm text-muted-foreground">D2C Selling Price</p>

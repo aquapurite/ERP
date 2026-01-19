@@ -219,6 +219,75 @@ export const productsApi = {
   deleteDocument: async (productId: string, docId: string) => {
     await apiClient.delete(`/products/${productId}/documents/${docId}`);
   },
+  // Product Costing (COGS) API
+  getCost: async (productId: string, params?: { variant_id?: string; warehouse_id?: string }) => {
+    const { data } = await apiClient.get<{
+      id: string;
+      product_id: string;
+      variant_id?: string;
+      warehouse_id?: string;
+      valuation_method: string;
+      average_cost: number;
+      last_purchase_cost?: number;
+      standard_cost?: number;
+      quantity_on_hand: number;
+      total_value: number;
+      last_grn_id?: string;
+      last_calculated_at?: string;
+      cost_variance?: number;
+      cost_variance_percentage?: number;
+      created_at: string;
+      updated_at: string;
+    }>(`/products/${productId}/cost`, { params });
+    return data;
+  },
+  getCostHistory: async (productId: string, params?: { variant_id?: string; warehouse_id?: string; limit?: number }) => {
+    const { data } = await apiClient.get<{
+      product_id: string;
+      product_name?: string;
+      sku?: string;
+      current_average_cost: number;
+      quantity_on_hand: number;
+      entries: Array<{
+        date: string;
+        quantity: number;
+        unit_cost: number;
+        grn_id?: string;
+        grn_number?: string;
+        running_average: number;
+        old_qty?: number;
+        old_avg?: number;
+      }>;
+      total_entries: number;
+    }>(`/products/${productId}/cost-history`, { params });
+    return data;
+  },
+  calculateWeightedAverage: async (productId: string, data: { new_quantity: number; new_unit_cost: number; variant_id?: string; warehouse_id?: string }) => {
+    const { data: result } = await apiClient.post<{
+      product_id: string;
+      old_quantity: number;
+      old_average_cost: number;
+      old_total_value: number;
+      new_quantity: number;
+      new_unit_cost: number;
+      new_purchase_value: number;
+      resulting_quantity: number;
+      resulting_average_cost: number;
+      resulting_total_value: number;
+    }>(`/products/${productId}/calculate-cost`, data);
+    return result;
+  },
+  setStandardCost: async (productId: string, standardCost: number, params?: { variant_id?: string; warehouse_id?: string }) => {
+    const { data } = await apiClient.put<{
+      message: string;
+      product_id: string;
+      standard_cost: number;
+      average_cost: number;
+      variance?: number;
+      variance_percentage?: number;
+    }>(`/products/${productId}/standard-cost`, null, { params: { ...params, standard_cost: standardCost } });
+    return data;
+  },
 };
 
 // Categories API
