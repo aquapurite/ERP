@@ -29,6 +29,8 @@ from app.schemas.order import (
 )
 from app.schemas.customer import CustomerBrief
 from app.services.order_service import OrderService
+from app.services.allocation_service import AllocationService
+from app.schemas.serviceability import OrderAllocationRequest
 
 
 router = APIRouter(tags=["Orders"])
@@ -316,12 +318,19 @@ async def approve_order(
     current_user: CurrentUser,
 ):
     """
-    Approve/confirm an order.
+    Approve/confirm an order and trigger warehouse allocation.
+
+    Flow:
+    1. Validate order is in NEW status
+    2. Update status to CONFIRMED
+    3. Run AllocationService to select warehouse and transporter
+    4. Update order with allocation (warehouse_id, status=ALLOCATED)
+
     Requires: orders:approve permission
     """
     service = OrderService(db)
 
-    order = await service.get_order_by_id(order_id)
+    order = await service.get_order_by_id(order_id, include_all=True)
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -334,12 +343,79 @@ async def approve_order(
             detail="Only new orders can be approved"
         )
 
+    # Step 1: Update status to CONFIRMED
     order = await service.update_order_status(
         order_id,
         OrderStatus.CONFIRMED,
         changed_by=current_user.id,
         notes="Order approved",
     )
+
+    # Step 2: Trigger warehouse allocation
+    try:
+        allocation_service = AllocationService(db)
+
+        # Get pincode from shipping address
+        pincode = order.shipping_address.get("pincode") if order.shipping_address else None
+
+        if pincode:
+            # Build allocation request
+            allocation_request = OrderAllocationRequest(
+                order_id=order.id,
+                customer_pincode=pincode,
+                items=[
+                    {
+                        "product_id": str(item.product_id),
+                        "quantity": item.quantity,
+                    }
+                    for item in order.items
+                ],
+                payment_mode="COD" if order.payment_method == PaymentMethod.COD.value else "PREPAID",
+                channel_code="D2C",  # Default to D2C for website orders
+                order_value=float(order.total_amount),
+            )
+
+            # Run allocation
+            allocation_decision = await allocation_service.allocate_order(allocation_request)
+
+            if allocation_decision.is_allocated:
+                # Update order with warehouse
+                order.warehouse_id = allocation_decision.warehouse_id
+                order.status = OrderStatus.ALLOCATED
+                order.allocated_at = datetime.utcnow()
+
+                # Add status history
+                from app.models.order import OrderStatusHistory
+                status_history = OrderStatusHistory(
+                    order_id=order.id,
+                    from_status=OrderStatus.CONFIRMED,
+                    to_status=OrderStatus.ALLOCATED,
+                    changed_by=current_user.id,
+                    notes=f"Allocated to warehouse: {allocation_decision.warehouse_code}. "
+                          f"Transporter: {allocation_decision.recommended_transporter_code or 'TBD'}",
+                )
+                db.add(status_history)
+                await db.commit()
+
+                # Refresh order to get latest state
+                order = await service.get_order_by_id(order_id, include_all=True)
+            else:
+                # Allocation failed - log but don't fail the order approval
+                from app.models.order import OrderStatusHistory
+                status_history = OrderStatusHistory(
+                    order_id=order.id,
+                    from_status=OrderStatus.CONFIRMED,
+                    to_status=OrderStatus.CONFIRMED,
+                    changed_by=current_user.id,
+                    notes=f"Allocation pending: {allocation_decision.failure_reason or 'No warehouse available'}",
+                )
+                db.add(status_history)
+                await db.commit()
+
+    except Exception as e:
+        # Log allocation error but don't fail the order approval
+        import logging
+        logging.error(f"Allocation failed for order {order_id}: {str(e)}")
 
     return _build_order_detail_response(order)
 
@@ -558,6 +634,66 @@ async def create_d2c_order(
         )
 
         order = await service.create_order(order_create)
+
+        # Auto-confirm and allocate COD orders
+        if payment_method == PaymentMethod.COD:
+            try:
+                # Update status to CONFIRMED
+                from app.models.order import OrderStatusHistory
+                order.status = OrderStatus.CONFIRMED
+                order.confirmed_at = datetime.utcnow()
+
+                status_history = OrderStatusHistory(
+                    order_id=order.id,
+                    from_status=OrderStatus.NEW,
+                    to_status=OrderStatus.CONFIRMED,
+                    changed_by=None,  # System auto-confirm
+                    notes="COD order auto-confirmed",
+                )
+                db.add(status_history)
+                await db.commit()
+
+                # Trigger warehouse allocation
+                allocation_service = AllocationService(db)
+                allocation_request = OrderAllocationRequest(
+                    order_id=order.id,
+                    customer_pincode=data.shipping_address.pincode,
+                    items=[
+                        {
+                            "product_id": str(item.product_id),
+                            "quantity": item.quantity,
+                        }
+                        for item in data.items
+                    ],
+                    payment_mode="COD",
+                    channel_code="D2C",
+                    order_value=float(data.total_amount),
+                )
+
+                allocation_decision = await allocation_service.allocate_order(allocation_request)
+
+                if allocation_decision.is_allocated:
+                    order.warehouse_id = allocation_decision.warehouse_id
+                    order.status = OrderStatus.ALLOCATED
+                    order.allocated_at = datetime.utcnow()
+
+                    status_history = OrderStatusHistory(
+                        order_id=order.id,
+                        from_status=OrderStatus.CONFIRMED,
+                        to_status=OrderStatus.ALLOCATED,
+                        changed_by=None,
+                        notes=f"Auto-allocated to warehouse: {allocation_decision.warehouse_code}",
+                    )
+                    db.add(status_history)
+                    await db.commit()
+
+            except Exception as alloc_error:
+                # Log but don't fail order creation
+                import logging
+                logging.warning(f"Auto-allocation failed for D2C order {order.id}: {str(alloc_error)}")
+
+        # Refresh order to get latest status
+        await db.refresh(order)
 
         return D2COrderResponse(
             id=order.id,
