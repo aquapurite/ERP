@@ -42,3 +42,19 @@ HAVING COUNT(*) > 1;
 SELECT id, name, code, is_active, sort_order
 FROM modules
 ORDER BY sort_order, name;
+
+-- ==================== STEP 6: STRUCTURAL FIX - Add unique constraint ====================
+-- This prevents future duplicates (case-insensitive)
+
+-- Create a unique index on lowercase code
+CREATE UNIQUE INDEX IF NOT EXISTS idx_modules_code_lower_unique
+ON modules (LOWER(code));
+
+-- ==================== STEP 7: Verify constraint exists ====================
+SELECT indexname, indexdef
+FROM pg_indexes
+WHERE tablename = 'modules' AND indexname LIKE '%code%';
+
+-- ==================== DONE ====================
+-- Now the database will reject any INSERT/UPDATE that creates duplicate codes
+-- Example: If 'products' exists, trying to insert 'PRODUCTS' will fail
