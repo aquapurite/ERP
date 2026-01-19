@@ -488,7 +488,7 @@ async def create_d2c_order(
             "cod": PaymentMethod.COD,
             "upi": PaymentMethod.UPI,
             "card": PaymentMethod.CARD,
-            "netbanking": PaymentMethod.NETBANKING,
+            "netbanking": PaymentMethod.NET_BANKING,
         }
         payment_method = payment_method_map.get(data.payment_method.lower(), PaymentMethod.COD)
 

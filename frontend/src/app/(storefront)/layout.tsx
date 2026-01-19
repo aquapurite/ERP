@@ -1,6 +1,7 @@
 import { Metadata } from 'next';
 import StorefrontHeader from '@/components/storefront/layout/header';
 import StorefrontFooter from '@/components/storefront/layout/footer';
+import { ServiceabilityProvider } from '@/components/storefront/serviceability-provider';
 
 export const metadata: Metadata = {
   title: {
@@ -25,16 +26,18 @@ export default function StorefrontLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Demo Site Banner */}
-      <div className="bg-gray-900 text-white text-center py-2 px-4">
-        <p className="text-lg font-bold tracking-wide">
-          This is a Demo Site for www.aquapurite.com
-        </p>
+    <ServiceabilityProvider>
+      <div className="min-h-screen flex flex-col">
+        {/* Demo Site Banner */}
+        <div className="bg-gray-900 text-white text-center py-2 px-4">
+          <p className="text-lg font-bold tracking-wide">
+            This is a Demo Site for www.aquapurite.com
+          </p>
+        </div>
+        <StorefrontHeader />
+        <main className="flex-1">{children}</main>
+        <StorefrontFooter />
       </div>
-      <StorefrontHeader />
-      <main className="flex-1">{children}</main>
-      <StorefrontFooter />
-    </div>
+    </ServiceabilityProvider>
   );
 }

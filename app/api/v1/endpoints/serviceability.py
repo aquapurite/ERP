@@ -703,3 +703,158 @@ async def get_cache_status(
         "serviceability_ttl_seconds": settings.SERVICEABILITY_CACHE_TTL,
         "product_ttl_seconds": settings.PRODUCT_CACHE_TTL,
     }
+
+
+# ==================== Edge Sync Export ====================
+
+@router.get(
+    "/export/edge",
+    summary="Export serviceability data for edge caching",
+    description="""
+    Export all active serviceability data in a format optimized for edge/CDN caching.
+    This endpoint is designed for background sync jobs to populate edge stores
+    (Vercel Edge Config, Cloudflare KV, static JSON files).
+
+    **Usage:**
+    - Call this from a cron job every 6-24 hours
+    - Push the result to your edge store
+    - Frontend reads from edge instead of hitting this API
+
+    **Response format optimized for:**
+    - Direct localStorage storage (single JSON object)
+    - Static file generation (per-pincode or master index)
+    - Edge KV stores (key-value pairs)
+    """,
+    include_in_schema=True,  # Show in docs for transparency
+)
+async def export_serviceability_for_edge(
+    db: AsyncSession = Depends(get_db),
+    format: str = Query("index", description="Output format: 'index' (all in one), 'flat' (array)"),
+):
+    """
+    Export serviceability data for edge caching.
+
+    No authentication required - data is public (serviceable pincodes).
+    Rate limited in production.
+    """
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    from app.models.serviceability import WarehouseServiceability
+    from datetime import datetime, timezone
+
+    # Get all active warehouses that can fulfill orders
+    from sqlalchemy import and_
+    from app.models.warehouse import Warehouse
+
+    stmt = (
+        select(WarehouseServiceability)
+        .join(Warehouse, WarehouseServiceability.warehouse_id == Warehouse.id)
+        .where(
+            and_(
+                WarehouseServiceability.is_serviceable == True,
+                WarehouseServiceability.is_active == True,
+                Warehouse.is_active == True,
+                Warehouse.can_fulfill_orders == True,
+            )
+        )
+        .order_by(WarehouseServiceability.pincode, WarehouseServiceability.priority)
+    )
+    result = await db.execute(stmt)
+    records = result.scalars().all()
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    # IMPORTANT: Aggregate multiple warehouses per pincode
+    # For customer-facing serviceability:
+    # - serviceable: true if ANY warehouse serves it
+    # - estimated_days: MIN (fastest delivery)
+    # - shipping_cost: MIN (cheapest option shown, actual may vary)
+    # - cod_available: true if ANY warehouse supports COD
+    # - prepaid_available: true if ANY warehouse supports prepaid
+    # - warehouse_count: number of warehouses (for hopping capability)
+
+    from collections import defaultdict
+
+    pincode_data = defaultdict(lambda: {
+        "warehouses": [],
+        "min_days": float('inf'),
+        "min_cost": float('inf'),
+        "cod": False,
+        "prepaid": False,
+        "zone": None,
+        "city": None,
+        "state": None,
+    })
+
+    for r in records:
+        p = pincode_data[r.pincode]
+        p["warehouses"].append(str(r.warehouse_id))
+
+        # Track minimums (best options for customer)
+        if r.estimated_days and r.estimated_days < p["min_days"]:
+            p["min_days"] = r.estimated_days
+        if r.shipping_cost is not None and float(r.shipping_cost) < p["min_cost"]:
+            p["min_cost"] = float(r.shipping_cost)
+
+        # COD/Prepaid: true if ANY warehouse supports it
+        if r.cod_available:
+            p["cod"] = True
+        if r.prepaid_available:
+            p["prepaid"] = True
+
+        # Take first warehouse's zone/city/state (highest priority)
+        if p["zone"] is None:
+            p["zone"] = r.zone
+            p["city"] = r.city
+            p["state"] = r.state
+
+    if format == "flat":
+        # Array format - good for iteration
+        return {
+            "version": now,
+            "total": len(pincode_data),
+            "warehouse_records": len(records),
+            "data": [
+                {
+                    "pincode": pincode,
+                    "serviceable": True,
+                    "cod": data["cod"],
+                    "prepaid": data["prepaid"],
+                    "days": data["min_days"] if data["min_days"] != float('inf') else None,
+                    "cost": data["min_cost"] if data["min_cost"] != float('inf') else 0,
+                    "zone": data["zone"],
+                    "city": data["city"],
+                    "state": data["state"],
+                    "warehouse_count": len(data["warehouses"]),
+                }
+                for pincode, data in pincode_data.items()
+            ]
+        }
+    else:
+        # Index format - optimized for key lookup (pincode -> data)
+        # This is the recommended format for localStorage/Edge Config
+        pincodes = {}
+        zones = {"LOCAL": [], "METRO": [], "REGIONAL": [], "NATIONAL": []}
+
+        for pincode, data in pincode_data.items():
+            pincodes[pincode] = {
+                "s": True,  # serviceable (shortened for size)
+                "c": data["cod"],  # cod available (from ANY warehouse)
+                "p": data["prepaid"],  # prepaid available (from ANY warehouse)
+                "d": data["min_days"] if data["min_days"] != float('inf') else 3,  # fastest delivery
+                "$": data["min_cost"] if data["min_cost"] != float('inf') else 0,  # cheapest cost
+                "z": data["zone"][0] if data["zone"] else "N",  # zone (first letter: L/M/R/N)
+                "w": len(data["warehouses"]),  # warehouse count (for hopping indicator)
+                "city": data["city"],
+                "state": data["state"],
+            }
+            if data["zone"] and data["zone"] in zones:
+                zones[data["zone"]].append(pincode)
+
+        return {
+            "v": now,  # version
+            "n": len(pincodes),  # unique pincode count
+            "r": len(records),  # total warehouse-pincode records
+            "p": pincodes,  # pincode data (aggregated)
+            "z": {k: len(v) for k, v in zones.items()},  # zone counts
+        }

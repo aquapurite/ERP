@@ -73,6 +73,8 @@ class WarehouseServiceability(Base):
             "warehouse_id", "pincode",
             name="uq_warehouse_serviceability"
         ),
+        Index("ix_warehouse_serviceability_pincode", "pincode"),
+        Index("ix_warehouse_serviceability_pincode_active", "pincode", "is_serviceable", "is_active"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

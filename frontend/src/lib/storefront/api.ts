@@ -211,23 +211,53 @@ export const inventoryApi = {
     message?: string;
     cod_available?: boolean;
     shipping_cost?: number;
+    zone?: string;
+    city?: string;
+    state?: string;
   }> => {
-    try {
-      const { data } = await storefrontClient.get(`${API_PATH}/serviceability/check/${pincode}`);
+    // Use edge-based serviceability for instant response (<10ms)
+    // Falls back to API only when edge data unavailable
+    const { checkServiceability, checkServiceabilityWithFallback } = await import('./serviceability-store');
+
+    // First try instant lookup from edge/localStorage
+    const edgeResult = checkServiceability(pincode);
+
+    if (edgeResult.serviceable) {
       return {
-        serviceable: data.is_serviceable,
-        estimate_days: data.estimated_delivery_days,
-        message: data.message,
-        cod_available: data.cod_available,
-        shipping_cost: data.minimum_shipping_cost,
-      };
-    } catch {
-      // Return not serviceable if API fails
-      return {
-        serviceable: false,
-        message: 'Unable to check delivery. Please try again.',
+        serviceable: true,
+        estimate_days: edgeResult.estimated_days || undefined,
+        message: `Delivery available in ${edgeResult.estimated_days || 3-5} days`,
+        cod_available: edgeResult.cod_available,
+        shipping_cost: edgeResult.shipping_cost,
+        zone: edgeResult.zone || undefined,
+        city: edgeResult.city || undefined,
+        state: edgeResult.state || undefined,
       };
     }
+
+    // For non-cached pincodes, try API fallback
+    try {
+      const apiResult = await checkServiceabilityWithFallback(pincode);
+      if (apiResult.serviceable) {
+        return {
+          serviceable: true,
+          estimate_days: apiResult.estimated_days || undefined,
+          message: `Delivery available in ${apiResult.estimated_days || 3-5} days`,
+          cod_available: apiResult.cod_available,
+          shipping_cost: apiResult.shipping_cost,
+          zone: apiResult.zone || undefined,
+          city: apiResult.city || undefined,
+          state: apiResult.state || undefined,
+        };
+      }
+    } catch {
+      // Fallback failed, continue with not serviceable
+    }
+
+    return {
+      serviceable: false,
+      message: 'Delivery not available for this pincode',
+    };
   },
 };
 
