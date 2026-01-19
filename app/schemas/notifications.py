@@ -30,8 +30,8 @@ class NotificationResponse(BaseModel):
 
     id: UUID
     user_id: UUID
-    notification_type: NotificationType
-    priority: str
+    notification_type: Optional[str] = None
+    priority: Optional[str] = "MEDIUM"
     title: str
     message: str
     action_url: Optional[str] = None
@@ -39,10 +39,10 @@ class NotificationResponse(BaseModel):
     entity_type: Optional[str] = None
     entity_id: Optional[UUID] = None
     extra_data: Optional[Dict[str, Any]] = None
-    is_read: bool
+    is_read: Optional[bool] = False
     read_at: Optional[datetime] = None
     channels: Optional[List[str]] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
     expires_at: Optional[datetime] = None
 
 
@@ -154,20 +154,20 @@ class AnnouncementResponse(BaseModel):
     id: UUID
     title: str
     message: str
-    announcement_type: str
+    announcement_type: Optional[str] = "INFO"
     action_url: Optional[str] = None
     action_label: Optional[str] = None
     target_roles: Optional[List[str]] = None
     target_departments: Optional[List[str]] = None
-    start_date: datetime
+    start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
-    is_dismissible: bool
-    show_on_dashboard: bool
-    is_active: bool
+    is_dismissible: Optional[bool] = True
+    show_on_dashboard: Optional[bool] = True
+    is_active: Optional[bool] = True
     created_by_id: Optional[UUID] = None
     created_by_name: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     is_dismissed: bool = False  # For current user
 
 
