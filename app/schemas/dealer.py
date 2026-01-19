@@ -15,6 +15,8 @@ from app.models.dealer import (
 
 class DealerBase(BaseModel):
     """Base schema for Dealer."""
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str = Field(..., min_length=2, max_length=200)
     legal_name: str = Field(..., min_length=2, max_length=200)
     display_name: Optional[str] = None
@@ -22,7 +24,7 @@ class DealerBase(BaseModel):
     tier: DealerTier = DealerTier.STANDARD
 
     # GST & Tax
-    gstin: str = Field(..., min_length=15, max_length=15)
+    gstin: str = Field(..., min_length=15, max_length=15, alias="gst_number")
     pan: str = Field(..., min_length=10, max_length=10)
     tan: Optional[str] = Field(None, min_length=10, max_length=10)
     gst_registration_type: str = Field("REGULAR", max_length=30)

@@ -15,6 +15,8 @@ from app.models.billing import (
 
 class InvoiceItemBase(BaseModel):
     """Base schema for InvoiceItem."""
+    model_config = ConfigDict(populate_by_name=True)
+
     product_id: Optional[UUID] = None
     variant_id: Optional[UUID] = None
     sku: str = Field(..., min_length=1, max_length=50)
@@ -27,7 +29,7 @@ class InvoiceItemBase(BaseModel):
     unit_price: Decimal = Field(..., gt=0)
     mrp: Optional[Decimal] = Field(None, gt=0)
     discount_percentage: Decimal = Field(Decimal("0"), ge=0, le=100)
-    gst_rate: Decimal = Field(..., ge=0, le=28)
+    gst_rate: Decimal = Field(..., ge=0, le=28, alias="tax_rate")
     cess_rate: Optional[Decimal] = Field(None, ge=0, le=100, description="GST Compensation Cess rate")
     serial_numbers: Optional[List[str]] = None
     warranty_months: Optional[int] = Field(None, ge=0)

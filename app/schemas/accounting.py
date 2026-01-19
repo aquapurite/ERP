@@ -113,11 +113,11 @@ class FinancialPeriodBase(BaseModel):
     """Base schema for FinancialPeriod."""
     model_config = ConfigDict(populate_by_name=True)
 
-    period_name: str = Field(..., min_length=1, max_length=50, alias="yearName")
-    period_code: Optional[str] = Field(None, max_length=20)
+    period_name: str = Field(..., min_length=1, max_length=50, alias="name")
+    period_code: Optional[str] = Field(None, max_length=20, alias="code")
     period_type: str = Field("YEAR", max_length=20, description="YEAR, QUARTER, MONTH")
-    start_date: date = Field(..., alias="startDate")
-    end_date: date = Field(..., alias="endDate")
+    start_date: date = Field(...)
+    end_date: date = Field(...)
     financial_year: Optional[str] = Field(None, max_length=10)
     is_year_end: bool = False
     is_adjustment_period: bool = False
@@ -177,13 +177,16 @@ PeriodListResponse = FinancialPeriodListResponse
 
 class CostCenterBase(BaseModel):
     """Base schema for CostCenter."""
+    model_config = ConfigDict(populate_by_name=True)
+
     code: str = Field(..., min_length=2, max_length=20)
     name: str = Field(..., min_length=2, max_length=200)
+    cost_center_type: str = Field(..., description="DEPARTMENT, LOCATION, PROJECT, etc.")
     description: Optional[str] = None
     parent_id: Optional[UUID] = None
     department: Optional[str] = None
     manager_id: Optional[UUID] = None
-    budget_amount: Optional[Decimal] = Field(None, ge=0)
+    budget_amount: Optional[Decimal] = Field(None, ge=0, alias="annual_budget")
     is_active: bool = True
 
 
@@ -217,10 +220,12 @@ class CostCenterResponse(CostCenterBase):
 
 class JournalEntryLineBase(BaseModel):
     """Base schema for JournalEntryLine."""
+    model_config = ConfigDict(populate_by_name=True)
+
     account_id: UUID
-    description: Optional[str] = None
-    debit_amount: Decimal = Field(Decimal("0"), ge=0)
-    credit_amount: Decimal = Field(Decimal("0"), ge=0)
+    description: Optional[str] = Field(None, alias="narration")
+    debit_amount: Decimal = Field(Decimal("0"), ge=0, alias="debit")
+    credit_amount: Decimal = Field(Decimal("0"), ge=0, alias="credit")
     cost_center_id: Optional[UUID] = None
     project_id: Optional[UUID] = None
 

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, EmailStr, computed_field
+from pydantic import BaseModel, Field, EmailStr, computed_field, ConfigDict
 from typing import Optional, List
 from datetime import datetime, date
 import uuid
@@ -74,6 +74,8 @@ class AddressResponse(BaseModel):
 
 class CustomerBase(BaseModel):
     """Base customer schema."""
+    model_config = ConfigDict(populate_by_name=True)
+
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: Optional[str] = Field(None, max_length=100)
     email: Optional[EmailStr] = None
@@ -82,7 +84,7 @@ class CustomerBase(BaseModel):
     customer_type: CustomerType = CustomerType.INDIVIDUAL
     source: CustomerSource = CustomerSource.WEBSITE
     company_name: Optional[str] = Field(None, max_length=200)
-    gst_number: Optional[str] = Field(None, max_length=20)
+    gst_number: Optional[str] = Field(None, max_length=20, alias="gstin")
     date_of_birth: Optional[date] = None
     anniversary_date: Optional[date] = None
     region_id: Optional[uuid.UUID] = None
@@ -96,6 +98,8 @@ class CustomerCreate(CustomerBase):
 
 class CustomerUpdate(BaseModel):
     """Customer update schema."""
+    model_config = ConfigDict(populate_by_name=True)
+
     first_name: Optional[str] = Field(None, max_length=100)
     last_name: Optional[str] = Field(None, max_length=100)
     email: Optional[EmailStr] = None
@@ -104,7 +108,7 @@ class CustomerUpdate(BaseModel):
     customer_type: Optional[CustomerType] = None
     source: Optional[CustomerSource] = None
     company_name: Optional[str] = None
-    gst_number: Optional[str] = None
+    gst_number: Optional[str] = Field(None, alias="gstin")
     date_of_birth: Optional[date] = None
     anniversary_date: Optional[date] = None
     region_id: Optional[uuid.UUID] = None
