@@ -194,47 +194,60 @@ async def update_role(
     Update a role.
     Requires: access_control:update permission
     """
-    rbac_service = RBACService(db)
-    audit_service = AuditService(db)
+    try:
+        rbac_service = RBACService(db)
+        audit_service = AuditService(db)
 
-    role = await rbac_service.get_role_by_id(role_id)
-    if not role:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Role not found"
+        role = await rbac_service.get_role_by_id(role_id)
+        if not role:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Role not found"
+            )
+
+        # Check if user can modify this role
+        if not permissions.can_manage_role(role):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot modify a role at or above your own level"
+            )
+
+        old_data = {
+            "name": role.name,
+            "description": role.description,
+            "level": role.level,  # Already a string (VARCHAR)
+            "department": role.department,
+            "is_active": role.is_active,
+        }
+
+        updated_role = await rbac_service.update_role(role_id, data)
+
+        # Audit log
+        new_data = {k: v for k, v in data.model_dump(exclude_unset=True).items()}
+        # level is already a string, no need to convert
+
+        await audit_service.log_role_updated(
+            role_id=role_id,
+            old_data=old_data,
+            new_data=new_data,
+            user_id=current_user.id,
+            ip_address=request.client.host if request.client else None,
         )
+        await db.commit()
 
-    # Check if user can modify this role
-    if not permissions.can_manage_role(role):
+        # Get fresh role with permission count for response
+        roles_list, _ = await rbac_service.get_roles(skip=0, limit=1000, include_inactive=True)
+        updated_role_with_count = next((r for r in roles_list if r.id == role_id), updated_role)
+
+        return RoleResponse.model_validate(updated_role_with_count)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating role {role_id}: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot modify a role at or above your own level"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating role: {str(e)}"
         )
-
-    old_data = {
-        "name": role.name,
-        "description": role.description,
-        "level": role.level,  # Already a string (VARCHAR)
-        "department": role.department,
-        "is_active": role.is_active,
-    }
-
-    updated_role = await rbac_service.update_role(role_id, data)
-
-    # Audit log
-    new_data = {k: v for k, v in data.model_dump(exclude_unset=True).items()}
-    # level is already a string, no need to convert
-
-    await audit_service.log_role_updated(
-        role_id=role_id,
-        old_data=old_data,
-        new_data=new_data,
-        user_id=current_user.id,
-        ip_address=request.client.host if request.client else None,
-    )
-    await db.commit()
-
-    return RoleResponse.model_validate(updated_role)
 
 
 @router.delete(
