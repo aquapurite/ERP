@@ -140,6 +140,9 @@ class RBACService:
         if not role:
             return None
 
+        # Fields that cannot be NULL in database
+        non_nullable_fields = {"name", "level", "is_active"}
+
         # Prevent updating system roles' critical fields
         if role.is_system:
             # Only allow updating description and is_active for system roles
@@ -149,6 +152,9 @@ class RBACService:
                 role.is_active = data.is_active
         else:
             for field, value in data.model_dump(exclude_unset=True).items():
+                # Skip None values for non-nullable fields to avoid constraint violations
+                if value is None and field in non_nullable_fields:
+                    continue
                 setattr(role, field, value)
 
         await self.db.commit()

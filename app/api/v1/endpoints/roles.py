@@ -215,17 +215,16 @@ async def update_role(
         old_data = {
             "name": role.name,
             "description": role.description,
-            "level": role.level,  # Already a string (VARCHAR)
+            "level": role.level,
             "department": role.department,
             "is_active": role.is_active,
         }
 
+        # Update the role (this commits internally)
         updated_role = await rbac_service.update_role(role_id, data)
 
-        # Audit log
+        # Audit log - create in same transaction
         new_data = {k: v for k, v in data.model_dump(exclude_unset=True).items()}
-        # level is already a string, no need to convert
-
         await audit_service.log_role_updated(
             role_id=role_id,
             old_data=old_data,
@@ -235,11 +234,29 @@ async def update_role(
         )
         await db.commit()
 
-        # Get fresh role with permission count for response
-        roles_list, _ = await rbac_service.get_roles(skip=0, limit=1000, include_inactive=True)
-        updated_role_with_count = next((r for r in roles_list if r.id == role_id), updated_role)
+        # Get permission count separately
+        from sqlalchemy import select, func
+        from app.models.permission import RolePermission
+        count_result = await db.execute(
+            select(func.count(RolePermission.permission_id))
+            .where(RolePermission.role_id == role_id)
+        )
+        permission_count = count_result.scalar() or 0
 
-        return RoleResponse.model_validate(updated_role_with_count)
+        # Build response manually to avoid serialization issues
+        return RoleResponse(
+            id=updated_role.id,
+            name=updated_role.name,
+            code=updated_role.code,
+            description=updated_role.description,
+            level=updated_role.level,
+            department=updated_role.department,
+            is_system=updated_role.is_system,
+            is_active=updated_role.is_active,
+            permission_count=permission_count,
+            created_at=updated_role.created_at,
+            updated_at=updated_role.updated_at,
+        )
     except HTTPException:
         raise
     except Exception as e:
