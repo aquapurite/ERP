@@ -45,12 +45,20 @@ class RoleUpdate(BaseModel):
     department: Optional[str] = Field(None, max_length=50)
     is_active: Optional[bool] = None
 
+    @field_validator('name', 'department', mode='before')
+    @classmethod
+    def empty_string_to_none(cls, v):
+        """Convert empty strings to None for optional fields."""
+        if v == "":
+            return None
+        return v
+
     @field_validator('level', mode='before')
     @classmethod
     def normalize_level_to_uppercase(cls, v):
         """Convert level to UPPERCASE before validation. Accepts case-insensitive input."""
-        if v is None:
-            return v
+        if v is None or v == "":
+            return None  # Treat empty string as None (no update)
         if isinstance(v, str):
             upper_v = v.upper()
             if upper_v in VALID_ROLE_LEVELS:
