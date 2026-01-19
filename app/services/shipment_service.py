@@ -587,3 +587,92 @@ class ShipmentService:
         await self.db.commit()
         await self.db.refresh(shipment)
         return shipment
+
+    # ==================== AUTO-CREATE FROM ORDER ====================
+
+    async def create_shipment_from_order(
+        self,
+        order: Order,
+        transporter_id: Optional[uuid.UUID] = None,
+        created_by: Optional[uuid.UUID] = None
+    ) -> Shipment:
+        """
+        Auto-create shipment directly from order (for allocated orders).
+        This method bypasses the normal picking/packing workflow for testing/demo purposes.
+        """
+        # Generate shipment number
+        shipment_number = await self.generate_shipment_number()
+
+        # Get shipping address from order
+        ship_addr = order.shipping_address or {}
+        ship_to_name = ship_addr.get('contact_name', ship_addr.get('name', ''))
+        ship_to_phone = ship_addr.get('contact_phone', ship_addr.get('phone', ''))
+        ship_to_email = ship_addr.get('email', '')
+        ship_to_pincode = ship_addr.get('pincode', '')
+        ship_to_city = ship_addr.get('city', '')
+        ship_to_state = ship_addr.get('state', '')
+
+        # Calculate payment mode
+        payment_mode_str = "PREPAID"
+        cod_amount = None
+        if hasattr(order, 'payment_method'):
+            if order.payment_method == "COD" or str(order.payment_method) == "COD":
+                payment_mode_str = "COD"
+                cod_amount = float(order.total_amount)
+
+        # Calculate weight from order items if order has items
+        total_weight = 0.0
+        if hasattr(order, 'items') and order.items:
+            for item in order.items:
+                if hasattr(item, 'product') and item.product:
+                    product_weight = getattr(item.product, 'chargeable_weight_kg', 0) or 0
+                    total_weight += product_weight * item.quantity
+
+        # Default weight if no products
+        if total_weight <= 0:
+            total_weight = 1.0  # Default 1 kg
+
+        # Generate AWB number (internal format until transporter assigns real one)
+        awb_prefix = "AQ"
+        today = datetime.utcnow().strftime("%Y%m%d")
+        import random
+        awb_number = f"{awb_prefix}{today}{random.randint(100000, 999999)}"
+
+        shipment = Shipment(
+            shipment_number=shipment_number,
+            order_id=order.id,
+            warehouse_id=order.warehouse_id,
+            transporter_id=transporter_id,
+            awb_number=awb_number,
+            status=ShipmentStatus.CREATED.value if hasattr(ShipmentStatus.CREATED, 'value') else "CREATED",
+            payment_mode=payment_mode_str,
+            cod_amount=cod_amount,
+            packaging_type="BOX",
+            no_of_boxes=1,
+            weight_kg=total_weight,
+            chargeable_weight_kg=total_weight,
+            ship_to_name=ship_to_name,
+            ship_to_phone=ship_to_phone,
+            ship_to_email=ship_to_email,
+            ship_to_address=ship_addr,
+            ship_to_pincode=ship_to_pincode,
+            ship_to_city=ship_to_city,
+            ship_to_state=ship_to_state,
+            created_by=created_by,
+        )
+
+        self.db.add(shipment)
+
+        # Add initial tracking entry
+        tracking = ShipmentTracking(
+            shipment_id=shipment.id,
+            status=ShipmentStatus.CREATED.value if hasattr(ShipmentStatus.CREATED, 'value') else "CREATED",
+            remarks="Shipment auto-created from order allocation",
+            source="SYSTEM",
+        )
+        self.db.add(tracking)
+
+        await self.db.commit()
+        await self.db.refresh(shipment)
+
+        return shipment

@@ -87,135 +87,141 @@ class AllocationService:
         pincode = request.customer_pincode
         channel_code = request.channel_code or "D2C"
 
-        # 1. Get order if exists
-        order = await self._get_order(order_id)
-        order_items = request.items or []
-        product_ids = [item.get("product_id") for item in order_items if item.get("product_id")]
+        try:
+            # 1. Get order if exists
+            order = await self._get_order(order_id)
+            order_items = request.items or []
+            product_ids = [item.get("product_id") for item in order_items if item.get("product_id")]
 
-        # Build quantities dict: {product_id: quantity}
-        quantities: Dict[str, int] = {}
-        for item in order_items:
-            pid = item.get("product_id")
-            qty = item.get("quantity", 1)
-            if pid:
-                quantities[pid] = quantities.get(pid, 0) + qty
+            # Build quantities dict: {product_id: quantity}
+            quantities: Dict[str, int] = {}
+            for item in order_items:
+                pid = item.get("product_id")
+                qty = item.get("quantity", 1)
+                if pid:
+                    quantities[pid] = quantities.get(pid, 0) + qty
 
-        if order:
-            # Get product IDs and quantities from order items
-            order_items_query = select(OrderItem).where(OrderItem.order_id == order_id)
-            items_result = await self.db.execute(order_items_query)
-            order_items_db = items_result.scalars().all()
-            product_ids = [str(item.product_id) for item in order_items_db]
-            # Update quantities from database
-            quantities = {}
-            for item in order_items_db:
-                pid = str(item.product_id)
-                quantities[pid] = quantities.get(pid, 0) + item.quantity
+            if order:
+                # Get product IDs and quantities from order items
+                order_items_query = select(OrderItem).where(OrderItem.order_id == order_id)
+                items_result = await self.db.execute(order_items_query)
+                order_items_db = items_result.scalars().all()
+                product_ids = [str(item.product_id) for item in order_items_db]
+                # Update quantities from database
+                quantities = {}
+                for item in order_items_db:
+                    pid = str(item.product_id)
+                    quantities[pid] = quantities.get(pid, 0) + item.quantity
 
-        # 2. Get applicable allocation rules
-        rules = await self._get_allocation_rules(channel_code, request.payment_mode, request.order_value)
+            # 2. Get applicable allocation rules
+            rules = await self._get_allocation_rules(channel_code, request.payment_mode, request.order_value)
 
-        if not rules:
-            # Use default rule (NEAREST)
-            rules = [AllocationRule(
-                name="Default",
-                channel_code=ChannelCode.ALL,
-                allocation_type=AllocationType.NEAREST,
-                priority=999
-            )]
+            if not rules:
+                # Use default rule (NEAREST) - use string values for VARCHAR columns
+                rules = [AllocationRule(
+                    name="Default",
+                    channel_code=ChannelCode.ALL.value if hasattr(ChannelCode.ALL, 'value') else "ALL",
+                    allocation_type=AllocationType.NEAREST.value if hasattr(AllocationType.NEAREST, 'value') else "NEAREST",
+                    priority=999
+                )]
 
-        # 3. Find serviceable warehouses
-        serviceable_warehouses = await self._get_serviceable_warehouses(pincode)
+            # 3. Find serviceable warehouses
+            serviceable_warehouses = await self._get_serviceable_warehouses(pincode)
 
-        if not serviceable_warehouses:
-            return await self._create_failed_allocation(
-                order_id,
+            if not serviceable_warehouses:
+                return await self._create_failed_allocation(
+                    order_id,
+                    pincode,
+                    None,
+                    "Location not serviceable - no warehouse covers this pincode"
+                )
+
+            # 4. Apply allocation rules
+            selected_warehouse = None
+            applied_rule = None
+            decision_factors = {}
+
+            for rule in rules:
+                selected_warehouse, decision_factors = await self._apply_rule(
+                    rule,
+                    serviceable_warehouses,
+                    product_ids,
+                    pincode,
+                    request.payment_mode,
+                    quantities
+                )
+
+                if selected_warehouse:
+                    applied_rule = rule
+                    break
+
+            if not selected_warehouse:
+                # No warehouse found with available stock
+                return await self._create_failed_allocation(
+                    order_id,
+                    pincode,
+                    rules[0].id if rules else None,
+                    "No warehouse has sufficient inventory",
+                    [self._ws_to_candidate(ws) for ws in serviceable_warehouses[:5]]
+                )
+
+            # 5. Find best transporter using pricing engine
+            transporter, shipping_info = await self._select_transporter(
+                selected_warehouse,
                 pincode,
-                None,
-                "Location not serviceable - no warehouse covers this pincode"
+                payment_mode=request.payment_mode,
+                weight_kg=request.weight_kg if hasattr(request, 'weight_kg') and request.weight_kg else 1.0,
+                order_value=float(request.order_value) if request.order_value else 0,
+                dimensions=request.dimensions if hasattr(request, 'dimensions') else None,
+                allocation_strategy=request.allocation_strategy if hasattr(request, 'allocation_strategy') else "BALANCED"
             )
 
-        # 4. Apply allocation rules
-        selected_warehouse = None
-        applied_rule = None
-        decision_factors = {}
-
-        for rule in rules:
-            selected_warehouse, decision_factors = await self._apply_rule(
-                rule,
-                serviceable_warehouses,
-                product_ids,
-                pincode,
-                request.payment_mode,
-                quantities
+            # 6. Log allocation
+            await self._log_allocation(
+                order_id=order_id,
+                rule_id=applied_rule.id if applied_rule and hasattr(applied_rule, 'id') else None,
+                warehouse_id=selected_warehouse.warehouse_id,
+                customer_pincode=pincode,
+                is_successful=True,
+                decision_factors=decision_factors,
+                candidates=[self._ws_to_candidate(ws) for ws in serviceable_warehouses[:5]]
             )
 
-            if selected_warehouse:
-                applied_rule = rule
-                break
+            # 7. Update order if exists
+            if order:
+                await self._update_order_warehouse(order, selected_warehouse.warehouse_id)
 
-        if not selected_warehouse:
-            # No warehouse found with available stock
-            return await self._create_failed_allocation(
-                order_id,
-                pincode,
-                rules[0].id if rules else None,
-                "No warehouse has sufficient inventory",
-                [self._ws_to_candidate(ws) for ws in serviceable_warehouses[:5]]
+            return AllocationDecision(
+                order_id=order_id,
+                is_allocated=True,
+                warehouse_id=selected_warehouse.warehouse_id,
+                warehouse_code=selected_warehouse.warehouse.code,
+                warehouse_name=selected_warehouse.warehouse.name,
+                is_split=False,
+                rule_applied=applied_rule.name if applied_rule else "Default",
+                allocation_type=applied_rule.allocation_type if applied_rule and hasattr(applied_rule.allocation_type, 'value') else "NEAREST",
+                decision_factors=decision_factors,
+                recommended_transporter_id=transporter.id if transporter else None,
+                recommended_transporter_code=transporter.code if transporter else shipping_info.get("carrier_code") if shipping_info else None,
+                recommended_transporter_name=transporter.name if transporter else shipping_info.get("carrier_name") if shipping_info else None,
+                estimated_delivery_days=shipping_info.get("estimated_days") if shipping_info else selected_warehouse.estimated_days,
+                estimated_delivery_days_min=shipping_info.get("estimated_days_min") if shipping_info else None,
+                estimated_shipping_cost=shipping_info.get("rate") if shipping_info else selected_warehouse.shipping_cost,
+                # Pricing engine details
+                cost_breakdown=shipping_info.get("cost_breakdown") if shipping_info else None,
+                rate_card_id=shipping_info.get("rate_card_id") if shipping_info else None,
+                rate_card_code=shipping_info.get("rate_card_code") if shipping_info else None,
+                allocation_score=shipping_info.get("allocation_score") if shipping_info else None,
+                segment=shipping_info.get("segment") if shipping_info else None,
+                zone=shipping_info.get("zone") if shipping_info else None,
+                allocation_strategy=shipping_info.get("strategy") if shipping_info else None,
+                alternative_carriers=shipping_info.get("alternatives") if shipping_info else None,
             )
-
-        # 5. Find best transporter using pricing engine
-        transporter, shipping_info = await self._select_transporter(
-            selected_warehouse,
-            pincode,
-            payment_mode=request.payment_mode,
-            weight_kg=request.weight_kg if hasattr(request, 'weight_kg') and request.weight_kg else 1.0,
-            order_value=float(request.order_value) if request.order_value else 0,
-            dimensions=request.dimensions if hasattr(request, 'dimensions') else None,
-            allocation_strategy=request.allocation_strategy if hasattr(request, 'allocation_strategy') else "BALANCED"
-        )
-
-        # 6. Log allocation
-        await self._log_allocation(
-            order_id=order_id,
-            rule_id=applied_rule.id if applied_rule and hasattr(applied_rule, 'id') else None,
-            warehouse_id=selected_warehouse.warehouse_id,
-            customer_pincode=pincode,
-            is_successful=True,
-            decision_factors=decision_factors,
-            candidates=[self._ws_to_candidate(ws) for ws in serviceable_warehouses[:5]]
-        )
-
-        # 7. Update order if exists
-        if order:
-            await self._update_order_warehouse(order, selected_warehouse.warehouse_id)
-
-        return AllocationDecision(
-            order_id=order_id,
-            is_allocated=True,
-            warehouse_id=selected_warehouse.warehouse_id,
-            warehouse_code=selected_warehouse.warehouse.code,
-            warehouse_name=selected_warehouse.warehouse.name,
-            is_split=False,
-            rule_applied=applied_rule.name if applied_rule else "Default",
-            allocation_type=applied_rule.allocation_type if applied_rule and hasattr(applied_rule.allocation_type, 'value') else "NEAREST",
-            decision_factors=decision_factors,
-            recommended_transporter_id=transporter.id if transporter else None,
-            recommended_transporter_code=transporter.code if transporter else shipping_info.get("carrier_code") if shipping_info else None,
-            recommended_transporter_name=transporter.name if transporter else shipping_info.get("carrier_name") if shipping_info else None,
-            estimated_delivery_days=shipping_info.get("estimated_days") if shipping_info else selected_warehouse.estimated_days,
-            estimated_delivery_days_min=shipping_info.get("estimated_days_min") if shipping_info else None,
-            estimated_shipping_cost=shipping_info.get("rate") if shipping_info else selected_warehouse.shipping_cost,
-            # Pricing engine details
-            cost_breakdown=shipping_info.get("cost_breakdown") if shipping_info else None,
-            rate_card_id=shipping_info.get("rate_card_id") if shipping_info else None,
-            rate_card_code=shipping_info.get("rate_card_code") if shipping_info else None,
-            allocation_score=shipping_info.get("allocation_score") if shipping_info else None,
-            segment=shipping_info.get("segment") if shipping_info else None,
-            zone=shipping_info.get("zone") if shipping_info else None,
-            allocation_strategy=shipping_info.get("strategy") if shipping_info else None,
-            alternative_carriers=shipping_info.get("alternatives") if shipping_info else None,
-        )
+        except Exception as e:
+            # Rollback transaction on any error to clean the session state
+            await self.db.rollback()
+            # Re-raise to let caller handle
+            raise
 
     async def _get_order(self, order_id: uuid.UUID) -> Optional[Order]:
         """Get order by ID."""
@@ -230,6 +236,8 @@ class AllocationService:
         order_value: Optional[Decimal] = None
     ) -> List[AllocationRule]:
         """Get applicable allocation rules sorted by priority."""
+        # Use string values for comparison (database columns are VARCHAR)
+        channel_all = ChannelCode.ALL.value if hasattr(ChannelCode.ALL, 'value') else "ALL"
         query = (
             select(AllocationRule)
             .where(
@@ -237,7 +245,7 @@ class AllocationService:
                     AllocationRule.is_active == True,
                     or_(
                         AllocationRule.channel_code == channel_code,
-                        AllocationRule.channel_code == ChannelCode.ALL
+                        AllocationRule.channel_code == channel_all
                     )
                 )
             )
@@ -823,8 +831,13 @@ class AllocationService:
         order.warehouse_id = warehouse_id
         order.allocated_at = datetime.utcnow()
         # Update status to ALLOCATED for orders in NEW or CONFIRMED status
-        if order.status in [OrderStatus.NEW, OrderStatus.CONFIRMED]:
-            order.status = OrderStatus.ALLOCATED.value
+        # Use string values for comparison (database column is VARCHAR)
+        new_status = OrderStatus.NEW.value if hasattr(OrderStatus.NEW, 'value') else "NEW"
+        confirmed_status = OrderStatus.CONFIRMED.value if hasattr(OrderStatus.CONFIRMED, 'value') else "CONFIRMED"
+        allocated_status = OrderStatus.ALLOCATED.value if hasattr(OrderStatus.ALLOCATED, 'value') else "ALLOCATED"
+
+        if order.status in [new_status, confirmed_status]:
+            order.status = allocated_status
             # Also mark as confirmed if it wasn't
             if not order.confirmed_at:
                 order.confirmed_at = datetime.utcnow()

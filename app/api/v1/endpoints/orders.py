@@ -638,15 +638,19 @@ async def create_d2c_order(
         # Auto-confirm and allocate COD orders
         if payment_method == PaymentMethod.COD:
             try:
-                # Update status to CONFIRMED
+                # Update status to CONFIRMED - use string values for VARCHAR columns
                 from app.models.order import OrderStatusHistory
-                order.status = OrderStatus.CONFIRMED
+                new_status = OrderStatus.NEW.value if hasattr(OrderStatus.NEW, 'value') else "NEW"
+                confirmed_status = OrderStatus.CONFIRMED.value if hasattr(OrderStatus.CONFIRMED, 'value') else "CONFIRMED"
+                allocated_status = OrderStatus.ALLOCATED.value if hasattr(OrderStatus.ALLOCATED, 'value') else "ALLOCATED"
+
+                order.status = confirmed_status
                 order.confirmed_at = datetime.utcnow()
 
                 status_history = OrderStatusHistory(
                     order_id=order.id,
-                    from_status=OrderStatus.NEW,
-                    to_status=OrderStatus.CONFIRMED,
+                    from_status=new_status,
+                    to_status=confirmed_status,
                     changed_by=None,  # System auto-confirm
                     notes="COD order auto-confirmed",
                 )
@@ -674,23 +678,40 @@ async def create_d2c_order(
 
                 if allocation_decision.is_allocated:
                     order.warehouse_id = allocation_decision.warehouse_id
-                    order.status = OrderStatus.ALLOCATED
+                    order.status = allocated_status
                     order.allocated_at = datetime.utcnow()
 
                     status_history = OrderStatusHistory(
                         order_id=order.id,
-                        from_status=OrderStatus.CONFIRMED,
-                        to_status=OrderStatus.ALLOCATED,
+                        from_status=confirmed_status,
+                        to_status=allocated_status,
                         changed_by=None,
                         notes=f"Auto-allocated to warehouse: {allocation_decision.warehouse_code}",
                     )
                     db.add(status_history)
                     await db.commit()
 
+                    # Auto-create shipment for allocated order
+                    try:
+                        from app.services.shipment_service import ShipmentService
+                        shipment_service = ShipmentService(db)
+                        await db.refresh(order)  # Refresh to get latest state
+                        shipment = await shipment_service.create_shipment_from_order(
+                            order=order,
+                            transporter_id=allocation_decision.recommended_transporter_id,
+                        )
+                        import logging
+                        logging.info(f"Auto-created shipment {shipment.shipment_number} for order {order.order_number}")
+                    except Exception as ship_error:
+                        import logging
+                        logging.warning(f"Auto-shipment creation failed for order {order.id}: {str(ship_error)}")
+                        # Don't fail order if shipment creation fails
+
             except Exception as alloc_error:
-                # Log but don't fail order creation
+                # Log but don't fail order creation - rollback to clean state
                 import logging
                 logging.warning(f"Auto-allocation failed for D2C order {order.id}: {str(alloc_error)}")
+                await db.rollback()
 
         # Refresh order to get latest status
         await db.refresh(order)
