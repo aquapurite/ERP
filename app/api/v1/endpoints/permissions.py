@@ -1,14 +1,31 @@
-from typing import Optional
+from typing import Optional, List
 import uuid
 
 from fastapi import APIRouter, Query, Depends
+from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser, Permissions, require_permissions
 from app.schemas.permission import PermissionListResponse, PermissionResponse, PermissionsByModule
 from app.services.rbac_service import RBACService
+from app.models.module import Module
 
 
 router = APIRouter(tags=["Permissions"])
+
+
+@router.get("/modules", response_model=List[str])
+async def get_modules(db: DB):
+    """
+    Get list of all module codes.
+    Used for filtering permissions by module.
+    """
+    result = await db.execute(
+        select(Module.code)
+        .where(Module.is_active == True)
+        .order_by(Module.sort_order, Module.name)
+    )
+    modules = result.scalars().all()
+    return list(modules)
 
 
 @router.get(
