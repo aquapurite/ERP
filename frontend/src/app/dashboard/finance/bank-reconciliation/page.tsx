@@ -232,6 +232,45 @@ export default function BankReconciliationPage() {
   const unreconciledStatements = statementLines?.filter(s => !s.is_reconciled) || [];
   const unreconciledGL = glEntries?.filter(g => !g.is_reconciled) || [];
 
+  const handleImportStatement = () => {
+    // Create file input and trigger click
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv,.xlsx,.xls';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        toast.info(`Bank statement import from file "${file.name}" is not yet implemented. Please upload statements manually.`);
+      }
+    };
+    input.click();
+  };
+
+  const handleExportReport = () => {
+    if (!selectedAccount) {
+      toast.error('Please select a bank account first');
+      return;
+    }
+    const exportData = {
+      account: selectedAccountDetails,
+      period: { start: periodStart, end: periodEnd },
+      summary: summary,
+      statement_lines: statementLines,
+      gl_entries: glEntries,
+      exported_at: new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Bank_Reconciliation_${selectedAccountDetails?.account_name || 'Report'}_${periodStart}_${periodEnd}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('Reconciliation report exported');
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -239,11 +278,11 @@ export default function BankReconciliationPage() {
         description="Match bank statements with book entries"
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => toast.info('Import Statement feature coming soon')}>
+            <Button variant="outline" onClick={handleImportStatement}>
               <Upload className="mr-2 h-4 w-4" />
               Import Statement
             </Button>
-            <Button variant="outline" onClick={() => toast.info('Export Report feature coming soon')}>
+            <Button variant="outline" onClick={handleExportReport}>
               <Download className="mr-2 h-4 w-4" />
               Export Report
             </Button>

@@ -50,6 +50,14 @@ const parsePeriod = (period: string): { month: number; year: number } => {
   return { month, year };
 };
 
+// Get current period dynamically
+const getCurrentPeriod = (): string => {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const year = now.getFullYear();
+  return `${month}${year}`;
+};
+
 const matchStatusColors: Record<string, string> = {
   MATCHED: 'bg-green-100 text-green-800',
   MISMATCHED: 'bg-red-100 text-red-800',
@@ -94,7 +102,7 @@ export default function GSTR2APage() {
     }
   }, [periods, selectedPeriod]);
 
-  const { month, year } = parsePeriod(selectedPeriod || '012026');
+  const { month, year } = parsePeriod(selectedPeriod || getCurrentPeriod());
 
   const { data: gstr2aData, isLoading } = useQuery({
     queryKey: ['gstr2a-report', month, year],

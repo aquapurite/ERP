@@ -66,6 +66,24 @@ const getCurrentFiscalYear = (): string => {
 const CURRENT_FY = getCurrentFiscalYear();
 const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'];
 
+// Generate last N fiscal years dynamically
+const getRecentFiscalYears = (count: number = 5): string[] => {
+  const years: string[] = [];
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+  // Start from current FY
+  let startYear = currentMonth < 3 ? currentYear - 1 : currentYear;
+
+  for (let i = 0; i < count; i++) {
+    const fy = `${startYear - i}-${String(startYear - i + 1).slice(-2)}`;
+    years.push(fy);
+  }
+  return years;
+};
+
+const FISCAL_YEARS = getRecentFiscalYears(5);
+
 interface TDSDeduction {
   id: string;
   deductee_name: string;
@@ -364,9 +382,9 @@ export default function TDSManagementPage() {
                     <SelectValue placeholder="Financial Year" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="2024-25">FY 2024-25</SelectItem>
-                    <SelectItem value="2023-24">FY 2023-24</SelectItem>
-                    <SelectItem value="2022-23">FY 2022-23</SelectItem>
+                    {FISCAL_YEARS.map(fy => (
+                      <SelectItem key={fy} value={fy}>FY {fy}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <Select value={selectedQuarter || 'all'} onValueChange={(v) => setSelectedQuarter(v === 'all' ? '' : v)}>

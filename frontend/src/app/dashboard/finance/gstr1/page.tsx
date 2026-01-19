@@ -103,6 +103,14 @@ const parsePeriod = (period: string): { month: number; year: number } => {
   return { month, year };
 };
 
+// Get current period dynamically
+const getCurrentPeriod = (): string => {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const year = now.getFullYear();
+  return `${month}${year}`;
+};
+
 export default function GSTR1Page() {
   const queryClient = useQueryClient();
   const [selectedPeriod, setSelectedPeriod] = useState<string>('');
@@ -141,18 +149,22 @@ export default function GSTR1Page() {
     }
   }, [periods, selectedPeriod]);
 
-  const { month, year } = parsePeriod(selectedPeriod || '012026');
+  const { month, year } = parsePeriod(selectedPeriod || getCurrentPeriod());
 
   const { data: gstr1Data, isLoading: summaryLoading } = useQuery({
     queryKey: ['gstr1-report', month, year],
     queryFn: () => gstReportsApi.getGSTR1(month, year),
   });
 
+  // Calculate filing status based on due date
+  const dueDate = new Date(year, month, 11); // GSTR-1 due on 11th of next month
+  const isOverdue = new Date() > dueDate;
+
   // Derive summary from API data
   const summary = gstr1Data ? {
     return_period: gstr1Data.return_period,
-    filing_status: 'NOT_FILED' as const,
-    due_date: new Date(year, month, 11).toISOString().split('T')[0],
+    filing_status: (gstr1Data.filing_status as 'NOT_FILED' | 'FILED' | 'OVERDUE') || (isOverdue ? 'OVERDUE' : 'NOT_FILED'),
+    due_date: dueDate.toISOString().split('T')[0],
     total_invoices: (gstr1Data.b2b?.length || 0) + (gstr1Data.b2cl?.length || 0),
     total_taxable_value: gstr1Data.b2b?.reduce((sum: number, inv: B2BInvoiceAPI) => sum + inv.taxable_value, 0) || 0,
     total_igst: gstr1Data.b2b?.reduce((sum: number, inv: B2BInvoiceAPI) => sum + inv.igst, 0) || 0,

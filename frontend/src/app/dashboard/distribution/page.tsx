@@ -149,13 +149,23 @@ export default function DistributionPage() {
 
         <TabsContent value="pricing">
           <div className="flex items-center justify-center h-32 border rounded-lg bg-muted/50">
-            <p className="text-muted-foreground">Pricing tiers coming soon...</p>
+            <Link href="/dashboard/distribution/pricing-tiers">
+              <Button variant="outline">
+                <DollarSign className="mr-2 h-4 w-4" />
+                Go to Pricing Tiers Management
+              </Button>
+            </Link>
           </div>
         </TabsContent>
 
         <TabsContent value="franchisees">
           <div className="flex items-center justify-center h-32 border rounded-lg bg-muted/50">
-            <p className="text-muted-foreground">Franchisees coming soon...</p>
+            <Link href="/dashboard/distribution/franchisees">
+              <Button variant="outline">
+                <Eye className="mr-2 h-4 w-4" />
+                Go to Franchisees Management
+              </Button>
+            </Link>
           </div>
         </TabsContent>
       </Tabs>

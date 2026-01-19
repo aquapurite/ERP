@@ -92,6 +92,14 @@ const parsePeriod = (period: string): { month: number; year: number } => {
   return { month, year };
 };
 
+// Get current period dynamically
+const getCurrentPeriod = (): string => {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const year = now.getFullYear();
+  return `${month}${year}`;
+};
+
 const statusColors: Record<string, string> = {
   NOT_FILED: 'bg-yellow-100 text-yellow-800',
   FILED: 'bg-green-100 text-green-800',
@@ -137,7 +145,7 @@ export default function GSTR3BPage() {
     }
   }, [periods, selectedPeriod]);
 
-  const { month, year } = parsePeriod(selectedPeriod || '012026');
+  const { month, year } = parsePeriod(selectedPeriod || getCurrentPeriod());
 
   const { data: gstr3bData, isLoading } = useQuery({
     queryKey: ['gstr3b-report', month, year],

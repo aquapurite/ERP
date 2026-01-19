@@ -53,6 +53,14 @@ const parsePeriod = (period: string): { month: number; year: number } => {
   return { month, year };
 };
 
+// Get current period dynamically
+const getCurrentPeriod = (): string => {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const year = now.getFullYear();
+  return `${month}${year}`;
+};
+
 export default function HSNSummaryPage() {
   const [selectedPeriod, setSelectedPeriod] = useState<string>('');
   const [activeTab, setActiveTab] = useState('outward');
@@ -90,7 +98,7 @@ export default function HSNSummaryPage() {
     }
   }, [periods, selectedPeriod]);
 
-  const { month, year } = parsePeriod(selectedPeriod || '012026');
+  const { month, year } = parsePeriod(selectedPeriod || getCurrentPeriod());
 
   // Fetch HSN summary data from real API
   const { data: hsnData, isLoading } = useQuery({

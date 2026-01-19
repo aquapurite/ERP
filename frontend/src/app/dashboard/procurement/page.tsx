@@ -214,7 +214,12 @@ export default function ProcurementPage() {
 
         <TabsContent value="grn">
           <div className="flex items-center justify-center h-32 border rounded-lg bg-muted/50">
-            <p className="text-muted-foreground">GRN list coming soon...</p>
+            <Link href="/dashboard/procurement/grn">
+              <Button variant="outline">
+                <FileText className="mr-2 h-4 w-4" />
+                Go to GRN Management
+              </Button>
+            </Link>
           </div>
         </TabsContent>
       </Tabs>

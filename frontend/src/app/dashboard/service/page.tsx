@@ -106,18 +106,22 @@ const columns: ColumnDef<ServiceRequest>[] = [
           <DropdownMenuLabel>Actions</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
-            <Link href={`/service/requests/${row.original.id}`}>
+            <Link href={`/dashboard/service/requests/${row.original.id}`}>
               <Eye className="mr-2 h-4 w-4" />
               View Details
             </Link>
           </DropdownMenuItem>
-          <DropdownMenuItem>
-            <UserPlus className="mr-2 h-4 w-4" />
-            Assign Technician
+          <DropdownMenuItem asChild>
+            <Link href={`/dashboard/service/requests/${row.original.id}?action=assign`}>
+              <UserPlus className="mr-2 h-4 w-4" />
+              Assign Technician
+            </Link>
           </DropdownMenuItem>
-          <DropdownMenuItem>
-            <Calendar className="mr-2 h-4 w-4" />
-            Schedule Visit
+          <DropdownMenuItem asChild>
+            <Link href={`/dashboard/service/requests/${row.original.id}?action=schedule`}>
+              <Calendar className="mr-2 h-4 w-4" />
+              Schedule Visit
+            </Link>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
