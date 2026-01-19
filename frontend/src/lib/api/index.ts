@@ -93,8 +93,8 @@ export const rolesApi = {
 // Permissions API
 export const permissionsApi = {
   list: async (params?: { module?: string }) => {
-    const { data } = await apiClient.get<Permission[]>('/permissions', { params });
-    return data;
+    const { data } = await apiClient.get<{ items: Permission[]; total: number }>('/permissions', { params });
+    return data.items;  // Backend returns {items: [...], total: N}, extract items
   },
   getModules: async () => {
     const { data } = await apiClient.get<string[]>('/permissions/modules');
