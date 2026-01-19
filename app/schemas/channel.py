@@ -141,9 +141,19 @@ class ChannelPricingBase(BaseModel):
     effective_to: Optional[datetime] = None
 
 
-class ChannelPricingCreate(ChannelPricingBase):
-    """Schema for creating ChannelPricing."""
-    pass
+class ChannelPricingCreate(BaseModel):
+    """Schema for creating ChannelPricing. channel_id comes from URL path."""
+    product_id: UUID
+    variant_id: Optional[UUID] = None
+    mrp: Decimal = Field(..., gt=0)
+    selling_price: Decimal = Field(..., gt=0)
+    transfer_price: Optional[Decimal] = Field(None, gt=0)
+    discount_percentage: Optional[Decimal] = Field(None, ge=0, le=100)
+    max_discount_percentage: Optional[Decimal] = Field(None, ge=0, le=100)
+    is_active: bool = True
+    is_listed: bool = True
+    effective_from: Optional[datetime] = None
+    effective_to: Optional[datetime] = None
 
 
 class ChannelPricingUpdate(BaseModel):
@@ -179,9 +189,8 @@ class ChannelPricingListResponse(BaseModel):
     """Response for listing channel pricing."""
     items: List[ChannelPricingResponse]
     total: int
-    page: int = 1
-    size: int = 50
-    pages: int = 1
+    skip: int = 0
+    limit: int = 50
 
 
 # ==================== ChannelInventory Schemas ====================
@@ -198,9 +207,15 @@ class ChannelInventoryBase(BaseModel):
     is_active: bool = True
 
 
-class ChannelInventoryCreate(ChannelInventoryBase):
-    """Schema for creating ChannelInventory."""
-    pass
+class ChannelInventoryCreate(BaseModel):
+    """Schema for creating ChannelInventory. channel_id comes from URL path."""
+    warehouse_id: UUID
+    product_id: UUID
+    variant_id: Optional[UUID] = None
+    allocated_quantity: int = Field(0, ge=0)
+    buffer_quantity: int = Field(0, ge=0)
+    reserved_quantity: int = Field(0, ge=0)
+    is_active: bool = True
 
 
 class ChannelInventoryUpdate(BaseModel):
@@ -224,8 +239,7 @@ class ChannelInventoryResponse(ChannelInventoryBase):
 
 
 class ChannelInventorySyncRequest(BaseModel):
-    """Request to sync inventory to marketplace."""
-    channel_id: UUID
+    """Request to sync inventory to marketplace. channel_id comes from URL path."""
     product_ids: Optional[List[UUID]] = None  # If None, sync all
 
 
@@ -245,8 +259,17 @@ class ChannelOrderBase(BaseModel):
     channel_status: Optional[str] = None
 
 
-class ChannelOrderCreate(ChannelOrderBase):
-    """Schema for creating ChannelOrder."""
+class ChannelOrderCreate(BaseModel):
+    """Schema for creating ChannelOrder. channel_id comes from URL path."""
+    order_id: UUID
+    channel_order_id: str
+    channel_order_item_id: Optional[str] = None
+    channel_selling_price: Decimal
+    channel_shipping_fee: Decimal = Decimal("0")
+    channel_commission: Decimal = Decimal("0")
+    channel_tcs: Decimal = Decimal("0")
+    net_receivable: Decimal
+    channel_status: Optional[str] = None
     raw_order_data: Optional[dict] = None
 
 
@@ -269,8 +292,8 @@ class ChannelOrderListResponse(BaseModel):
     items: List[ChannelOrderResponse]
     total: int
     total_value: Decimal = Decimal("0")
-    page: int = 1
-    size: int = 50
+    skip: int = 0
+    limit: int = 50
     pages: int = 1
 
 
@@ -286,23 +309,20 @@ class ChannelInventoryListResponse(BaseModel):
     """Response for listing channel inventory."""
     items: List[ChannelInventoryResponse]
     total: int
-    page: int = 1
-    size: int = 50
-    pages: int = 1
+    skip: int = 0
+    limit: int = 50
 
 
 # ==================== Sync Schemas ====================
 
 class InventorySyncRequest(BaseModel):
-    """Request to sync inventory to channel."""
-    channel_id: UUID
+    """Request to sync inventory to channel. channel_id comes from URL path."""
     product_ids: Optional[List[UUID]] = None
     sync_all: bool = False
 
 
 class PriceSyncRequest(BaseModel):
-    """Request to sync prices to channel."""
-    channel_id: UUID
+    """Request to sync prices to channel. channel_id comes from URL path."""
     product_ids: Optional[List[UUID]] = None
     sync_all: bool = False
 
