@@ -158,7 +158,7 @@ const orderApi = {
       return channels.map((c) => ({
         id: c.id,
         name: c.name,
-        code: c.channel_code,
+        code: c.code,
       }));
     } catch (error) {
       console.error('Error fetching channels:', error);

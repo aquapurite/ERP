@@ -551,8 +551,170 @@ export const channelsApi = {
   },
   dropdown: async () => {
     // Return channels for dropdown selection
-    const { data } = await apiClient.get<{ items: Array<{ id: string; channel_code: string; name: string; channel_type: string }> }>('/channels/dropdown');
-    return data.items;
+    const { data } = await apiClient.get<Array<{ id: string; code: string; name: string; type: string }>>('/channels/dropdown');
+    return data;
+  },
+  activate: async (id: string) => {
+    const { data } = await apiClient.post(`/channels/${id}/activate`);
+    return data;
+  },
+  deactivate: async (id: string) => {
+    const { data } = await apiClient.post(`/channels/${id}/deactivate`);
+    return data;
+  },
+
+  // Channel Pricing
+  pricing: {
+    list: async (channelId: string, params?: { skip?: number; limit?: number; product_id?: string; is_active?: boolean }) => {
+      const { data } = await apiClient.get(`/channels/${channelId}/pricing`, { params });
+      return data;
+    },
+    create: async (channelId: string, pricing: {
+      product_id: string;
+      variant_id?: string;
+      mrp: number;
+      selling_price: number;
+      transfer_price?: number;
+      discount_percentage?: number;
+      max_discount_percentage?: number;
+      is_active?: boolean;
+      is_listed?: boolean;
+      effective_from?: string;
+      effective_to?: string;
+    }) => {
+      const { data } = await apiClient.post(`/channels/${channelId}/pricing`, pricing);
+      return data;
+    },
+    update: async (channelId: string, pricingId: string, pricing: {
+      mrp?: number;
+      selling_price?: number;
+      transfer_price?: number;
+      discount_percentage?: number;
+      max_discount_percentage?: number;
+      is_active?: boolean;
+      is_listed?: boolean;
+      effective_from?: string;
+      effective_to?: string;
+    }) => {
+      const { data } = await apiClient.put(`/channels/${channelId}/pricing/${pricingId}`, pricing);
+      return data;
+    },
+    delete: async (channelId: string, pricingId: string) => {
+      await apiClient.delete(`/channels/${channelId}/pricing/${pricingId}`);
+    },
+    sync: async (channelId: string, productIds?: string[]) => {
+      const { data } = await apiClient.post(`/channels/${channelId}/pricing/sync`, { product_ids: productIds });
+      return data;
+    },
+  },
+
+  // Channel Inventory
+  inventory: {
+    list: async (channelId: string, params?: { skip?: number; limit?: number; product_id?: string; warehouse_id?: string }) => {
+      const { data } = await apiClient.get(`/channels/${channelId}/inventory`, { params });
+      return data;
+    },
+    listAll: async (params?: { page?: number; size?: number; channel_id?: string; sync_status?: string; product_id?: string }) => {
+      const { data } = await apiClient.get('/channels/inventory', { params });
+      return data;
+    },
+    stats: async (channelId?: string) => {
+      const { data } = await apiClient.get('/channels/inventory/stats', { params: channelId ? { channel_id: channelId } : undefined });
+      return data;
+    },
+    create: async (channelId: string, inventory: {
+      product_id: string;
+      warehouse_id: string;
+      variant_id?: string;
+      allocated_quantity: number;
+      buffer_quantity?: number;
+    }) => {
+      const { data } = await apiClient.post(`/channels/${channelId}/inventory`, inventory);
+      return data;
+    },
+    update: async (channelId: string, inventoryId: string, inventory: {
+      allocated_quantity?: number;
+      buffer_quantity?: number;
+      reserved_quantity?: number;
+      is_active?: boolean;
+    }) => {
+      const { data } = await apiClient.put(`/channels/${channelId}/inventory/${inventoryId}`, inventory);
+      return data;
+    },
+    delete: async (channelId: string, inventoryId: string) => {
+      await apiClient.delete(`/channels/${channelId}/inventory/${inventoryId}`);
+    },
+    sync: async (channelId: string, productIds?: string[]) => {
+      const { data } = await apiClient.post(`/channels/${channelId}/inventory/sync`, { product_ids: productIds });
+      return data;
+    },
+    syncSingle: async (inventoryId: string) => {
+      const { data } = await apiClient.post(`/channels/inventory/${inventoryId}/sync`);
+      return data;
+    },
+    syncAll: async (channelId?: string) => {
+      const { data } = await apiClient.post('/channels/inventory/sync-all', undefined, { params: channelId ? { channel_id: channelId } : undefined });
+      return data;
+    },
+    updateBuffer: async (inventoryId: string, bufferStock: number) => {
+      const { data } = await apiClient.put(`/channels/inventory/${inventoryId}/buffer`, undefined, { params: { buffer_stock: bufferStock } });
+      return data;
+    },
+  },
+
+  // Channel Orders
+  orders: {
+    list: async (channelId: string, params?: { skip?: number; limit?: number; status?: string; start_date?: string; end_date?: string; search?: string }) => {
+      const { data } = await apiClient.get(`/channels/${channelId}/orders`, { params });
+      return data;
+    },
+    create: async (channelId: string, order: {
+      order_id: string;
+      channel_order_id: string;
+      channel_order_item_id?: string;
+      channel_selling_price: number;
+      channel_shipping_fee?: number;
+      channel_commission?: number;
+      channel_tcs?: number;
+      net_receivable: number;
+      channel_status?: string;
+      raw_order_data?: Record<string, unknown>;
+    }) => {
+      const { data } = await apiClient.post(`/channels/${channelId}/orders`, order);
+      return data;
+    },
+    update: async (channelId: string, orderId: string, order: {
+      channel_status?: string;
+      settlement_id?: string;
+      settlement_date?: string;
+      is_settled?: boolean;
+    }) => {
+      const { data } = await apiClient.put(`/channels/${channelId}/orders/${orderId}`, order);
+      return data;
+    },
+    delete: async (channelId: string, orderId: string) => {
+      await apiClient.delete(`/channels/${channelId}/orders/${orderId}`);
+    },
+    sync: async (channelId: string, params?: { start_date?: string; end_date?: string }) => {
+      const { data } = await apiClient.post(`/channels/${channelId}/orders/sync`, undefined, { params });
+      return data;
+    },
+    convert: async (channelId: string, orderId: string) => {
+      const { data } = await apiClient.post(`/channels/${channelId}/orders/${orderId}/convert`);
+      return data;
+    },
+  },
+
+  // Reports
+  reports: {
+    summary: async (startDate: string, endDate: string) => {
+      const { data } = await apiClient.get('/channels/reports/summary', { params: { start_date: startDate, end_date: endDate } });
+      return data;
+    },
+    inventoryStatus: async (channelId?: string) => {
+      const { data } = await apiClient.get('/channels/reports/inventory-status', { params: channelId ? { channel_id: channelId } : undefined });
+      return data;
+    },
   },
 };
 

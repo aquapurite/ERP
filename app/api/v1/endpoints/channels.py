@@ -1,7 +1,7 @@
 """API endpoints for Multi-Channel Commerce (D2C, Marketplaces, etc.)."""
 from typing import Optional, List
 from uuid import UUID
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from math import ceil
 
@@ -115,7 +115,7 @@ async def list_sales_channels(
     if search:
         filters.append(or_(
             SalesChannel.name.ilike(f"%{search}%"),
-            SalesChannel.channel_code.ilike(f"%{search}%"),
+            SalesChannel.code.ilike(f"%{search}%"),
         ))
 
     if filters:
@@ -158,7 +158,7 @@ async def get_channels_dropdown(
     return [
         {
             "id": str(c.id),
-            "code": c.channel_code,
+            "code": c.code,
             "name": c.name,
             "type": c.channel_type,
         }
@@ -176,18 +176,18 @@ async def get_channel_summary(
     current_user: User = Depends(get_current_user),
 ):
     """Get sales summary by channel."""
-    # Orders by channel
+    # Orders by channel - use channel_selling_price and created_at (actual model fields)
     orders_query = select(
         SalesChannel.name,
         SalesChannel.channel_type,
         func.count(ChannelOrder.id).label("order_count"),
-        func.coalesce(func.sum(ChannelOrder.order_value), 0).label("order_value"),
+        func.coalesce(func.sum(ChannelOrder.channel_selling_price), 0).label("order_value"),
     ).join(
         ChannelOrder, ChannelOrder.channel_id == SalesChannel.id
     ).where(
         and_(
-            ChannelOrder.channel_order_date >= start_date,
-            ChannelOrder.channel_order_date <= end_date,
+            func.date(ChannelOrder.created_at) >= start_date,
+            func.date(ChannelOrder.created_at) <= end_date,
         )
     ).group_by(SalesChannel.id, SalesChannel.name, SalesChannel.channel_type)
 
@@ -205,11 +205,11 @@ async def get_channel_summary(
     # Totals
     total_query = select(
         func.count(ChannelOrder.id).label("total_orders"),
-        func.coalesce(func.sum(ChannelOrder.order_value), 0).label("total_value"),
+        func.coalesce(func.sum(ChannelOrder.channel_selling_price), 0).label("total_value"),
     ).where(
         and_(
-            ChannelOrder.channel_order_date >= start_date,
-            ChannelOrder.channel_order_date <= end_date,
+            func.date(ChannelOrder.created_at) >= start_date,
+            func.date(ChannelOrder.created_at) <= end_date,
         )
     )
     total_result = await db.execute(total_query)
@@ -249,12 +249,20 @@ async def get_channel_inventory_status(
     current_user: User = Depends(get_current_user),
 ):
     """Get inventory sync status across channels."""
+    # Calculate available_quantity in SQL: allocated - buffer - reserved
+    available_expr = func.greatest(
+        0,
+        func.coalesce(ChannelInventory.allocated_quantity, 0) -
+        func.coalesce(ChannelInventory.buffer_quantity, 0) -
+        func.coalesce(ChannelInventory.reserved_quantity, 0)
+    )
+
     query = select(
         SalesChannel.id,
         SalesChannel.name,
         func.count(ChannelInventory.id).label("products_allocated"),
         func.coalesce(func.sum(ChannelInventory.allocated_quantity), 0).label("total_allocated"),
-        func.coalesce(func.sum(ChannelInventory.available_quantity), 0).label("total_available"),
+        func.coalesce(func.sum(available_expr), 0).label("total_available"),
     ).outerjoin(
         ChannelInventory, ChannelInventory.channel_id == SalesChannel.id
     ).group_by(SalesChannel.id, SalesChannel.name)
@@ -316,8 +324,14 @@ async def list_all_channel_inventory(
         elif sync_status == "PENDING":
             conditions.append(ChannelInventory.last_synced_at.is_(None))
         elif sync_status == "OUT_OF_SYNC":
-            # Items where marketplace_quantity differs from available
-            conditions.append(ChannelInventory.marketplace_quantity != ChannelInventory.available_quantity)
+            # Items where marketplace_quantity differs from calculated available
+            # available = allocated - buffer - reserved
+            available_calc = (
+                func.coalesce(ChannelInventory.allocated_quantity, 0) -
+                func.coalesce(ChannelInventory.buffer_quantity, 0) -
+                func.coalesce(ChannelInventory.reserved_quantity, 0)
+            )
+            conditions.append(ChannelInventory.marketplace_quantity != available_calc)
         elif sync_status == "FAILED":
             conditions.append(ChannelInventory.is_active == False)
 
@@ -346,7 +360,7 @@ async def list_all_channel_inventory(
             status = "FAILED"
         elif inv.last_synced_at is None:
             status = "PENDING"
-        elif inv.marketplace_quantity != inv.available_quantity:
+        elif inv.marketplace_quantity != (inv.allocated_quantity - inv.buffer_quantity - inv.reserved_quantity):
             status = "OUT_OF_SYNC"
         else:
             status = "SYNCED"
@@ -399,12 +413,19 @@ async def get_channel_inventory_stats(
     total_result = await db.execute(total_query)
     total_products = total_result.scalar() or 0
 
+    # Calculate available in SQL for comparisons
+    available_calc = (
+        func.coalesce(ChannelInventory.allocated_quantity, 0) -
+        func.coalesce(ChannelInventory.buffer_quantity, 0) -
+        func.coalesce(ChannelInventory.reserved_quantity, 0)
+    )
+
     # Synced count (has last_synced_at and is_active)
     synced_query = select(func.count(ChannelInventory.id)).where(
         and_(
             ChannelInventory.last_synced_at.isnot(None),
             ChannelInventory.is_active == True,
-            ChannelInventory.marketplace_quantity == ChannelInventory.available_quantity,
+            ChannelInventory.marketplace_quantity == available_calc,
             *conditions
         )
     )
@@ -416,7 +437,7 @@ async def get_channel_inventory_stats(
         and_(
             ChannelInventory.last_synced_at.isnot(None),
             ChannelInventory.is_active == True,
-            ChannelInventory.marketplace_quantity != ChannelInventory.available_quantity,
+            ChannelInventory.marketplace_quantity != available_calc,
             *conditions
         )
     )
@@ -460,8 +481,9 @@ async def sync_single_inventory(
 
     # In a real implementation, this would call the marketplace API
     # For now, we simulate sync by updating marketplace_quantity to match available
-    inventory.marketplace_quantity = inventory.available_quantity
-    inventory.last_synced_at = datetime.utcnow()
+    available = max(0, (inventory.allocated_quantity or 0) - (inventory.buffer_quantity or 0) - (inventory.reserved_quantity or 0))
+    inventory.marketplace_quantity = available
+    inventory.last_synced_at = datetime.now(timezone.utc)
     inventory.is_active = True
 
     await db.commit()
@@ -496,8 +518,9 @@ async def sync_all_inventory(
     for item in items:
         try:
             # In real implementation, call marketplace API here
-            item.marketplace_quantity = item.available_quantity
-            item.last_synced_at = datetime.utcnow()
+            available = max(0, (item.allocated_quantity or 0) - (item.buffer_quantity or 0) - (item.reserved_quantity or 0))
+            item.marketplace_quantity = available
+            item.last_synced_at = datetime.now(timezone.utc)
             synced_count += 1
         except Exception:
             failed_count += 1
@@ -529,8 +552,7 @@ async def update_inventory_buffer(
         raise HTTPException(status_code=404, detail="Channel inventory not found")
 
     inventory.buffer_quantity = buffer_stock
-    # Recalculate available quantity
-    inventory.available_quantity = max(0, (inventory.allocated_quantity or 0) - buffer_stock - (inventory.reserved_quantity or 0))
+    # available_quantity is a computed property, it will recalculate automatically
 
     await db.commit()
     await db.refresh(inventory)
@@ -848,12 +870,8 @@ async def sync_channel_pricing(
     pricing_list = result.scalars().all()
 
     # TODO: Integrate with actual marketplace APIs
-    # For now, mark as synced
-    synced_count = 0
-    for pricing in pricing_list:
-        pricing.last_synced_at = datetime.utcnow()
-        pricing.sync_status = "SYNCED"
-        synced_count += 1
+    # For now, count items that would be synced
+    synced_count = len(pricing_list)
 
     await db.commit()
 
@@ -861,7 +879,7 @@ async def sync_channel_pricing(
         "channel_id": str(channel_id),
         "channel_name": channel.name,
         "synced_count": synced_count,
-        "sync_time": datetime.utcnow().isoformat(),
+        "sync_time": datetime.now(timezone.utc).isoformat(),
         "status": "SUCCESS",
     }
 
@@ -1040,8 +1058,9 @@ async def sync_channel_inventory(
     # TODO: Integrate with actual marketplace APIs
     synced_count = 0
     for inv in inventory_list:
-        inv.last_synced_at = datetime.utcnow()
-        inv.sync_status = "SYNCED"
+        available = max(0, (inv.allocated_quantity or 0) - (inv.buffer_quantity or 0) - (inv.reserved_quantity or 0))
+        inv.marketplace_quantity = available
+        inv.last_synced_at = datetime.now(timezone.utc)
         synced_count += 1
 
     await db.commit()
@@ -1050,7 +1069,7 @@ async def sync_channel_inventory(
         "channel_id": str(channel_id),
         "channel_name": channel.name,
         "synced_count": synced_count,
-        "sync_time": datetime.utcnow().isoformat(),
+        "sync_time": datetime.now(timezone.utc).isoformat(),
         "status": "SUCCESS",
     }
 
@@ -1074,7 +1093,8 @@ async def get_channel_orders(
     count_query = select(func.count(ChannelOrder.id)).where(
         ChannelOrder.channel_id == channel_id
     )
-    value_query = select(func.coalesce(func.sum(ChannelOrder.order_value), 0)).where(
+    # Use channel_selling_price instead of non-existent order_value
+    value_query = select(func.coalesce(func.sum(ChannelOrder.channel_selling_price), 0)).where(
         ChannelOrder.channel_id == channel_id
     )
 
@@ -1082,14 +1102,13 @@ async def get_channel_orders(
     if status:
         filters.append(ChannelOrder.channel_status == status)
     if start_date:
-        filters.append(ChannelOrder.channel_order_date >= start_date)
+        # Use created_at instead of non-existent channel_order_date
+        filters.append(func.date(ChannelOrder.created_at) >= start_date)
     if end_date:
-        filters.append(ChannelOrder.channel_order_date <= end_date)
+        filters.append(func.date(ChannelOrder.created_at) <= end_date)
     if search:
-        filters.append(or_(
-            ChannelOrder.channel_order_id.ilike(f"%{search}%"),
-            ChannelOrder.customer_name.ilike(f"%{search}%"),
-        ))
+        # Search only by channel_order_id (customer_name doesn't exist in model)
+        filters.append(ChannelOrder.channel_order_id.ilike(f"%{search}%"))
 
     if filters:
         query = query.where(and_(*filters))
@@ -1102,7 +1121,8 @@ async def get_channel_orders(
     total_value_result = await db.execute(value_query)
     total_value = total_value_result.scalar() or Decimal("0")
 
-    query = query.order_by(ChannelOrder.channel_order_date.desc()).offset(skip).limit(limit)
+    # Order by created_at instead of non-existent channel_order_date
+    query = query.order_by(ChannelOrder.created_at.desc()).offset(skip).limit(limit)
     result = await db.execute(query)
     orders = result.scalars().all()
 
@@ -1149,7 +1169,6 @@ async def create_channel_order(
 
     order = ChannelOrder(
         channel_id=channel_id,
-        channel_name=channel.name,
         **order_in.model_dump(),
     )
 
@@ -1213,10 +1232,10 @@ async def delete_channel_order(
     if not order:
         raise HTTPException(status_code=404, detail="Channel order not found")
 
-    if order.internal_order_id:
+    if order.order_id:
         raise HTTPException(
             status_code=400,
-            detail="Cannot delete order that has been converted to internal order"
+            detail="Cannot delete order that has been linked to internal order"
         )
 
     await db.delete(order)
@@ -1245,10 +1264,10 @@ async def convert_channel_order_to_internal(
     if not channel_order:
         raise HTTPException(status_code=404, detail="Channel order not found")
 
-    if channel_order.internal_order_id:
+    if channel_order.order_id:
         raise HTTPException(
             status_code=400,
-            detail="Order already converted to internal order"
+            detail="Order already linked to internal order"
         )
 
     # TODO: Create internal Order from ChannelOrder
@@ -1298,7 +1317,7 @@ async def sync_channel_orders(
         orders_created=0,
         orders_updated=0,
         orders_failed=0,
-        sync_time=datetime.utcnow(),
+        sync_time=datetime.now(timezone.utc),
         status="SUCCESS",
         message="Integration with channel API pending implementation",
     )

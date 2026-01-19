@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Pencil, Trash2, DollarSign, TrendingUp, AlertCircle, Loader2 } from 'lucide-react';
+import { MoreHorizontal, Plus, Pencil, Trash2, DollarSign, TrendingUp, AlertCircle, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -34,70 +34,52 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader } from '@/components/common';
-import apiClient from '@/lib/api/client';
+import { channelsApi, productsApi } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 
 interface ChannelPricing {
   id: string;
   channel_id: string;
-  channel_name: string;
   product_id: string;
-  product_name: string;
-  product_sku: string;
-  base_price: number;
+  variant_id?: string;
+  mrp: number;
   selling_price: number;
-  commission_rate: number;
-  commission_amount: number;
-  net_realization: number;
-  margin_percent: number;
+  transfer_price?: number;
+  discount_percentage?: number;
+  max_discount_percentage?: number;
   is_active: boolean;
+  is_listed: boolean;
+  effective_from?: string;
+  effective_to?: string;
+  created_at: string;
+  updated_at: string;
+  // Computed/joined fields
+  margin_percentage?: number;
 }
 
-interface PricingStats {
-  total_products_mapped: number;
-  avg_margin_percent: number;
-  products_below_threshold: number;
-  total_channels: number;
+interface Channel {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
 }
 
-const pricingApi = {
-  list: async (params?: { page?: number; size?: number; channel_id?: string; product_id?: string }) => {
-    try {
-      const { data } = await apiClient.get('/channels/pricing', { params });
-      return data;
-    } catch {
-      return { items: [], total: 0, pages: 0 };
-    }
-  },
-  getStats: async (): Promise<PricingStats> => {
-    try {
-      const { data } = await apiClient.get('/channels/pricing/stats');
-      return data;
-    } catch {
-      return { total_products_mapped: 0, avg_margin_percent: 0, products_below_threshold: 0, total_channels: 0 };
-    }
-  },
-  create: async (pricing: Partial<ChannelPricing>) => {
-    const { data } = await apiClient.post('/channels/pricing', pricing);
-    return data;
-  },
-  update: async (id: string, pricing: Partial<ChannelPricing>) => {
-    const { data } = await apiClient.put(`/channels/pricing/${id}`, pricing);
-    return data;
-  },
-  bulkUpdate: async (items: { id: string; selling_price: number }[]) => {
-    const { data } = await apiClient.post('/channels/pricing/bulk-update', { items });
-    return data;
-  },
-};
+interface Product {
+  id: string;
+  name: string;
+  sku: string;
+  mrp: number;
+}
 
 // Separate component for action cell to avoid hooks in render function
 function PricingActionsCell({
   pricing,
+  channelId,
   onEdit,
   onDelete,
 }: {
   pricing: ChannelPricing;
+  channelId: string;
   onEdit: (pricing: ChannelPricing) => void;
   onDelete: (pricing: ChannelPricing) => void;
 }) {
@@ -124,36 +106,144 @@ function PricingActionsCell({
   );
 }
 
-// Column definitions factory function
-function getColumns(
-  onEdit: (pricing: ChannelPricing) => void,
-  onDelete: (pricing: ChannelPricing) => void
-): ColumnDef<ChannelPricing>[] {
-  return [
+export default function ChannelPricingPage() {
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+  const [selectedChannelId, setSelectedChannelId] = useState<string>('');
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedPricing, setSelectedPricing] = useState<ChannelPricing | null>(null);
+  const [formData, setFormData] = useState({
+    product_id: '',
+    mrp: 0,
+    selling_price: 0,
+    transfer_price: 0,
+    discount_percentage: 0,
+    is_active: true,
+    is_listed: true,
+  });
+
+  const queryClient = useQueryClient();
+
+  // Fetch channels for dropdown
+  const { data: channels = [] } = useQuery({
+    queryKey: ['channels-dropdown'],
+    queryFn: () => channelsApi.dropdown(),
+  });
+
+  // Fetch products for dropdown
+  const { data: productsData } = useQuery({
+    queryKey: ['products-dropdown'],
+    queryFn: () => productsApi.list({ size: 100 }),
+  });
+  const products: Product[] = productsData?.items || [];
+
+  // Fetch pricing for selected channel
+  const { data: pricingData, isLoading } = useQuery({
+    queryKey: ['channel-pricing', selectedChannelId, page, pageSize],
+    queryFn: () => channelsApi.pricing.list(selectedChannelId, {
+      skip: page * pageSize,
+      limit: pageSize,
+    }),
+    enabled: !!selectedChannelId,
+  });
+
+  // Get product map for displaying names
+  const productMap = useMemo(() => {
+    const map = new Map<string, Product>();
+    products.forEach(p => map.set(p.id, p));
+    return map;
+  }, [products]);
+
+  // Get channel map
+  const channelMap = useMemo(() => {
+    const map = new Map<string, Channel>();
+    channels.forEach((c: Channel) => map.set(c.id, c));
+    return map;
+  }, [channels]);
+
+  // Calculate stats from pricing data
+  const stats = useMemo(() => {
+    const items = pricingData?.items || [];
+    const totalProducts = items.length;
+    const avgMargin = totalProducts > 0
+      ? items.reduce((sum: number, p: ChannelPricing) => {
+          const margin = p.mrp > 0 ? ((p.mrp - p.selling_price) / p.mrp) * 100 : 0;
+          return sum + margin;
+        }, 0) / totalProducts
+      : 0;
+    const belowThreshold = items.filter((p: ChannelPricing) => {
+      const margin = p.mrp > 0 ? ((p.mrp - p.selling_price) / p.mrp) * 100 : 0;
+      return margin < 10;
+    }).length;
+
+    return {
+      total_products_mapped: pricingData?.total || 0,
+      avg_margin_percent: avgMargin,
+      products_below_threshold: belowThreshold,
+      total_channels: channels.length,
+    };
+  }, [pricingData, channels]);
+
+  // Handlers
+  const handleEdit = (pricing: ChannelPricing) => {
+    setSelectedPricing(pricing);
+    setFormData({
+      product_id: pricing.product_id,
+      mrp: pricing.mrp,
+      selling_price: pricing.selling_price,
+      transfer_price: pricing.transfer_price || 0,
+      discount_percentage: pricing.discount_percentage || 0,
+      is_active: pricing.is_active,
+      is_listed: pricing.is_listed,
+    });
+    setIsDialogOpen(true);
+  };
+
+  const handleDelete = (pricing: ChannelPricing) => {
+    const product = productMap.get(pricing.product_id);
+    if (confirm(`Remove pricing for ${product?.name || 'this product'}?`)) {
+      deleteMutation.mutate({ channelId: selectedChannelId, pricingId: pricing.id });
+    }
+  };
+
+  const handleAddNew = () => {
+    if (!selectedChannelId) {
+      toast.error('Please select a channel first');
+      return;
+    }
+    setSelectedPricing(null);
+    setFormData({
+      product_id: '',
+      mrp: 0,
+      selling_price: 0,
+      transfer_price: 0,
+      discount_percentage: 0,
+      is_active: true,
+      is_listed: true,
+    });
+    setIsDialogOpen(true);
+  };
+
+  // Column definitions
+  const columns: ColumnDef<ChannelPricing>[] = useMemo(() => [
     {
-      accessorKey: 'product_name',
+      accessorKey: 'product_id',
       header: 'Product',
-      cell: ({ row }) => (
-        <div>
-          <div className="font-medium">{row.original.product_name}</div>
-          <div className="text-sm text-muted-foreground">{row.original.product_sku}</div>
-        </div>
-      ),
+      cell: ({ row }) => {
+        const product = productMap.get(row.original.product_id);
+        return (
+          <div>
+            <div className="font-medium">{product?.name || 'Unknown Product'}</div>
+            <div className="text-sm text-muted-foreground">{product?.sku || '-'}</div>
+          </div>
+        );
+      },
     },
     {
-      accessorKey: 'channel_name',
-      header: 'Channel',
+      accessorKey: 'mrp',
+      header: 'MRP',
       cell: ({ row }) => (
-        <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-          {row.original.channel_name}
-        </span>
-      ),
-    },
-    {
-      accessorKey: 'base_price',
-      header: 'Base Price',
-      cell: ({ row }) => (
-        <span className="font-mono text-sm">{formatCurrency(row.original.base_price)}</span>
+        <span className="font-mono text-sm">{formatCurrency(row.original.mrp)}</span>
       ),
     },
     {
@@ -164,151 +254,128 @@ function getColumns(
       ),
     },
     {
-      accessorKey: 'commission_rate',
-      header: 'Commission',
-      cell: ({ row }) => (
-        <div className="text-sm">
-          <div>{row.original.commission_rate}%</div>
-          <div className="text-muted-foreground">{formatCurrency(row.original.commission_amount)}</div>
-        </div>
-      ),
+      id: 'discount',
+      header: 'Discount',
+      cell: ({ row }) => {
+        const discount = row.original.mrp > 0
+          ? ((row.original.mrp - row.original.selling_price) / row.original.mrp) * 100
+          : 0;
+        return (
+          <span className="text-orange-600 font-medium">
+            {discount.toFixed(1)}%
+          </span>
+        );
+      },
     },
     {
-      accessorKey: 'net_realization',
-      header: 'Net Realization',
-      cell: ({ row }) => (
-        <span className="font-mono text-sm text-green-600">{formatCurrency(row.original.net_realization)}</span>
-      ),
-    },
-    {
-      accessorKey: 'margin_percent',
+      id: 'margin',
       header: 'Margin %',
       cell: ({ row }) => {
-        const margin = row.original.margin_percent;
+        const margin = row.original.mrp > 0
+          ? ((row.original.mrp - row.original.selling_price) / row.original.mrp) * 100
+          : 0;
         const color = margin >= 20 ? 'text-green-600' : margin >= 10 ? 'text-yellow-600' : 'text-red-600';
         return <span className={`font-medium ${color}`}>{margin.toFixed(1)}%</span>;
       },
     },
     {
-      id: 'actions',
+      accessorKey: 'is_active',
+      header: 'Status',
       cell: ({ row }) => (
-        <PricingActionsCell pricing={row.original} onEdit={onEdit} onDelete={onDelete} />
+        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+          row.original.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+        }`}>
+          {row.original.is_active ? 'Active' : 'Inactive'}
+        </span>
       ),
     },
-  ];
-}
-
-export default function ChannelPricingPage() {
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(10);
-  const [channelFilter, setChannelFilter] = useState<string>('all');
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [selectedPricing, setSelectedPricing] = useState<ChannelPricing | null>(null);
-  const [formData, setFormData] = useState({
-    channel_id: '',
-    product_id: '',
-    selling_price: 0,
-    commission_rate: 0,
-  });
-
-  const queryClient = useQueryClient();
-
-  // Handlers for edit and delete
-  const handleEdit = (pricing: ChannelPricing) => {
-    setSelectedPricing(pricing);
-    setFormData({
-      channel_id: pricing.channel_id,
-      product_id: pricing.product_id,
-      selling_price: pricing.selling_price,
-      commission_rate: pricing.commission_rate,
-    });
-    setIsDialogOpen(true);
-  };
-
-  const handleDelete = (pricing: ChannelPricing) => {
-    if (confirm(`Remove pricing for ${pricing.product_name} on ${pricing.channel_name}?`)) {
-      deleteMutation.mutate(pricing.id);
-    }
-  };
-
-  const handleAddNew = () => {
-    setSelectedPricing(null);
-    setFormData({
-      channel_id: '',
-      product_id: '',
-      selling_price: 0,
-      commission_rate: 0,
-    });
-    setIsDialogOpen(true);
-  };
-
-  // Memoize columns with handlers
-  const columns = useMemo(() => getColumns(handleEdit, handleDelete), []);
+    {
+      id: 'actions',
+      cell: ({ row }) => (
+        <PricingActionsCell
+          pricing={row.original}
+          channelId={selectedChannelId}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+        />
+      ),
+    },
+  ], [productMap, selectedChannelId]);
 
   // Mutations
   const createMutation = useMutation({
-    mutationFn: (data: Partial<ChannelPricing>) => pricingApi.create(data),
+    mutationFn: (data: Parameters<typeof channelsApi.pricing.create>[1]) =>
+      channelsApi.pricing.create(selectedChannelId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['channel-pricing'] });
-      queryClient.invalidateQueries({ queryKey: ['channel-pricing-stats'] });
       toast.success('Pricing rule created successfully');
       setIsDialogOpen(false);
     },
-    onError: () => {
-      toast.error('Failed to create pricing rule');
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to create pricing rule');
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: { id: string; pricing: Partial<ChannelPricing> }) =>
-      pricingApi.update(data.id, data.pricing),
+    mutationFn: (data: { pricingId: string; pricing: Parameters<typeof channelsApi.pricing.update>[2] }) =>
+      channelsApi.pricing.update(selectedChannelId, data.pricingId, data.pricing),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['channel-pricing'] });
-      queryClient.invalidateQueries({ queryKey: ['channel-pricing-stats'] });
       toast.success('Pricing updated successfully');
       setIsDialogOpen(false);
     },
-    onError: () => {
-      toast.error('Failed to update pricing');
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to update pricing');
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/channels/pricing/${id}`),
+    mutationFn: (data: { channelId: string; pricingId: string }) =>
+      channelsApi.pricing.delete(data.channelId, data.pricingId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['channel-pricing'] });
-      queryClient.invalidateQueries({ queryKey: ['channel-pricing-stats'] });
       toast.success('Pricing rule removed');
     },
-    onError: () => {
-      toast.error('Failed to remove pricing rule');
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to remove pricing rule');
+    },
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: () => channelsApi.pricing.sync(selectedChannelId),
+    onSuccess: (result) => {
+      toast.success(`Synced ${result.synced_count} pricing rules to channel`);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to sync pricing');
     },
   });
 
   const handleSubmit = () => {
     if (selectedPricing) {
       updateMutation.mutate({
-        id: selectedPricing.id,
-        pricing: formData,
+        pricingId: selectedPricing.id,
+        pricing: {
+          mrp: formData.mrp,
+          selling_price: formData.selling_price,
+          transfer_price: formData.transfer_price || undefined,
+          discount_percentage: formData.discount_percentage || undefined,
+          is_active: formData.is_active,
+          is_listed: formData.is_listed,
+        },
       });
     } else {
-      createMutation.mutate(formData);
+      createMutation.mutate({
+        product_id: formData.product_id,
+        mrp: formData.mrp,
+        selling_price: formData.selling_price,
+        transfer_price: formData.transfer_price || undefined,
+        discount_percentage: formData.discount_percentage || undefined,
+        is_active: formData.is_active,
+        is_listed: formData.is_listed,
+      });
     }
   };
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['channel-pricing', page, pageSize, channelFilter],
-    queryFn: () => pricingApi.list({
-      page: page + 1,
-      size: pageSize,
-      channel_id: channelFilter !== 'all' ? channelFilter : undefined
-    }),
-  });
-
-  const { data: stats } = useQuery({
-    queryKey: ['channel-pricing-stats'],
-    queryFn: pricingApi.getStats,
-  });
 
   return (
     <div className="space-y-6">
@@ -316,10 +383,26 @@ export default function ChannelPricingPage() {
         title="Channel Pricing"
         description="Manage product prices across different sales channels"
         actions={
-          <Button onClick={handleAddNew}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Pricing Rule
-          </Button>
+          <div className="flex gap-2">
+            {selectedChannelId && (
+              <Button
+                variant="outline"
+                onClick={() => syncMutation.mutate()}
+                disabled={syncMutation.isPending}
+              >
+                {syncMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Sync to Channel
+              </Button>
+            )}
+            <Button onClick={handleAddNew} disabled={!selectedChannelId}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Pricing Rule
+            </Button>
+          </div>
         }
       />
 
@@ -331,8 +414,8 @@ export default function ChannelPricingPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.total_products_mapped || 0}</div>
-            <p className="text-xs text-muted-foreground">Across {stats?.total_channels || 0} channels</p>
+            <div className="text-2xl font-bold">{stats.total_products_mapped}</div>
+            <p className="text-xs text-muted-foreground">In selected channel</p>
           </CardContent>
         </Card>
         <Card>
@@ -342,9 +425,9 @@ export default function ChannelPricingPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {(stats?.avg_margin_percent || 0).toFixed(1)}%
+              {stats.avg_margin_percent.toFixed(1)}%
             </div>
-            <p className="text-xs text-muted-foreground">Average across all products</p>
+            <p className="text-xs text-muted-foreground">Average across products</p>
           </CardContent>
         </Card>
         <Card>
@@ -353,50 +436,61 @@ export default function ChannelPricingPage() {
             <AlertCircle className="h-4 w-4 text-orange-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-600">{stats?.products_below_threshold || 0}</div>
+            <div className="text-2xl font-bold text-orange-600">{stats.products_below_threshold}</div>
             <p className="text-xs text-muted-foreground">Products with margin &lt; 10%</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Channels</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Channels</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.total_channels || 0}</div>
-            <p className="text-xs text-muted-foreground">With pricing configured</p>
+            <div className="text-2xl font-bold">{stats.total_channels}</div>
+            <p className="text-xs text-muted-foreground">Available channels</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Filters */}
+      {/* Channel Selector */}
       <div className="flex gap-4">
-        <Select value={channelFilter} onValueChange={setChannelFilter}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="Filter by channel" />
+        <Select value={selectedChannelId} onValueChange={setSelectedChannelId}>
+          <SelectTrigger className="w-[300px]">
+            <SelectValue placeholder="Select a channel to manage pricing" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Channels</SelectItem>
-            <SelectItem value="d2c">D2C</SelectItem>
-            <SelectItem value="amazon">Amazon</SelectItem>
-            <SelectItem value="flipkart">Flipkart</SelectItem>
+            {channels.map((channel: Channel) => (
+              <SelectItem key={channel.id} value={channel.id}>
+                {channel.name} ({channel.code})
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
 
-      <DataTable
-        columns={columns}
-        data={data?.items ?? []}
-        searchKey="product_name"
-        searchPlaceholder="Search products..."
-        isLoading={isLoading}
-        manualPagination
-        pageCount={data?.pages ?? 0}
-        pageIndex={page}
-        pageSize={pageSize}
-        onPageChange={setPage}
-        onPageSizeChange={setPageSize}
-      />
+      {!selectedChannelId ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <DollarSign className="h-12 w-12 text-muted-foreground mb-4" />
+            <p className="text-lg font-medium">Select a Channel</p>
+            <p className="text-sm text-muted-foreground">Choose a sales channel above to view and manage its pricing</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <DataTable
+          columns={columns}
+          data={pricingData?.items ?? []}
+          searchKey="product_id"
+          searchPlaceholder="Search products..."
+          isLoading={isLoading}
+          manualPagination
+          pageCount={Math.ceil((pricingData?.total || 0) / pageSize)}
+          pageIndex={page}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
+      )}
 
       {/* Add/Edit Pricing Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -407,47 +501,51 @@ export default function ChannelPricingPage() {
             </DialogTitle>
             <DialogDescription>
               {selectedPricing
-                ? `Update pricing for ${selectedPricing.product_name} on ${selectedPricing.channel_name}`
-                : 'Set product pricing for a specific sales channel.'}
+                ? `Update pricing for ${productMap.get(selectedPricing.product_id)?.name || 'this product'}`
+                : `Set product pricing for ${channelMap.get(selectedChannelId)?.name || 'this channel'}`}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             {!selectedPricing && (
-              <>
-                <div className="space-y-2">
-                  <Label>Channel</Label>
-                  <Select
-                    value={formData.channel_id}
-                    onValueChange={(value) => setFormData({ ...formData, channel_id: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select channel" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="d2c">D2C Website</SelectItem>
-                      <SelectItem value="amazon">Amazon India</SelectItem>
-                      <SelectItem value="flipkart">Flipkart</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Product</Label>
-                  <Select
-                    value={formData.product_id}
-                    onValueChange={(value) => setFormData({ ...formData, product_id: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select product" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="prod1">Product 1</SelectItem>
-                      <SelectItem value="prod2">Product 2</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
+              <div className="space-y-2">
+                <Label>Product</Label>
+                <Select
+                  value={formData.product_id}
+                  onValueChange={(value) => {
+                    const product = productMap.get(value);
+                    setFormData({
+                      ...formData,
+                      product_id: value,
+                      mrp: product?.mrp || 0,
+                      selling_price: product?.mrp || 0,
+                    });
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select product" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {products.map((product) => (
+                      <SelectItem key={product.id} value={product.id}>
+                        {product.name} ({product.sku})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
             <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>MRP</Label>
+                <Input
+                  type="number"
+                  placeholder="0.00"
+                  value={formData.mrp || ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, mrp: parseFloat(e.target.value) || 0 })
+                  }
+                />
+              </div>
               <div className="space-y-2">
                 <Label>Selling Price</Label>
                 <Input
@@ -459,18 +557,45 @@ export default function ChannelPricingPage() {
                   }
                 />
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Commission %</Label>
+                <Label>Transfer Price (B2B)</Label>
+                <Input
+                  type="number"
+                  placeholder="0.00"
+                  value={formData.transfer_price || ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, transfer_price: parseFloat(e.target.value) || 0 })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Discount %</Label>
                 <Input
                   type="number"
                   placeholder="0"
-                  value={formData.commission_rate || ''}
+                  value={formData.discount_percentage || ''}
                   onChange={(e) =>
-                    setFormData({ ...formData, commission_rate: parseFloat(e.target.value) || 0 })
+                    setFormData({ ...formData, discount_percentage: parseFloat(e.target.value) || 0 })
                   }
                 />
               </div>
             </div>
+            {formData.mrp > 0 && formData.selling_price > 0 && (
+              <div className="p-3 bg-muted rounded-lg">
+                <div className="flex justify-between text-sm">
+                  <span>Calculated Margin:</span>
+                  <span className={`font-medium ${
+                    ((formData.mrp - formData.selling_price) / formData.mrp) * 100 >= 10
+                      ? 'text-green-600'
+                      : 'text-red-600'
+                  }`}>
+                    {(((formData.mrp - formData.selling_price) / formData.mrp) * 100).toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
@@ -478,7 +603,7 @@ export default function ChannelPricingPage() {
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={createMutation.isPending || updateMutation.isPending}
+              disabled={createMutation.isPending || updateMutation.isPending || (!selectedPricing && !formData.product_id)}
             >
               {(createMutation.isPending || updateMutation.isPending) && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
