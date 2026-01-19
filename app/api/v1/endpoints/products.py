@@ -166,6 +166,64 @@ async def get_top_selling_products(
     return {"items": products}
 
 
+# ==================== PRODUCT COST ENDPOINTS (Static Routes First) ====================
+
+@router.get(
+    "/costs/summary",
+    response_model=ProductCostSummary,
+    dependencies=[Depends(require_permissions("products:read"))]
+)
+async def get_inventory_valuation_summary(
+    db: DB,
+    current_user: CurrentUser,
+    warehouse_id: Optional[uuid.UUID] = Query(None, description="Filter by warehouse"),
+):
+    """
+    Get inventory valuation summary.
+
+    Shows total inventory value, average stock value per product,
+    and counts by valuation method.
+
+    Requires: products:read permission
+    """
+    costing_service = CostingService(db)
+    summary = await costing_service.get_inventory_valuation_summary(warehouse_id=warehouse_id)
+
+    return ProductCostSummary(
+        total_products=summary["total_products"],
+        total_inventory_value=summary["total_inventory_value"],
+        average_stock_value_per_product=summary["average_stock_value_per_product"],
+        products_with_cost=summary["products_with_cost"],
+        products_without_cost=summary["products_without_cost"],
+        weighted_avg_count=summary["weighted_avg_count"],
+        fifo_count=summary["fifo_count"],
+        specific_id_count=summary["specific_id_count"],
+    )
+
+
+@router.post(
+    "/costs/initialize",
+    dependencies=[Depends(require_permissions("products:update"))]
+)
+async def initialize_product_costs(
+    db: DB,
+    current_user: CurrentUser,
+):
+    """
+    Initialize ProductCost records for all products without one.
+
+    Uses product's static cost_price as initial average_cost.
+    Run this once after migration to populate initial cost records.
+
+    Requires: products:update permission
+    """
+    costing_service = CostingService(db)
+    result = await costing_service.initialize_costs_from_products()
+    return result
+
+
+# ==================== PRODUCT DETAIL ENDPOINTS ====================
+
 @router.get("/{product_id}", response_model=ProductDetailResponse)
 async def get_product(
     product_id: uuid.UUID,
@@ -784,57 +842,3 @@ async def set_standard_cost(
         "variance": float(product_cost.cost_variance) if product_cost.cost_variance else None,
         "variance_percentage": product_cost.cost_variance_percentage,
     }
-
-
-@router.get(
-    "/costs/summary",
-    response_model=ProductCostSummary,
-    dependencies=[Depends(require_permissions("products:read"))]
-)
-async def get_inventory_valuation_summary(
-    db: DB,
-    current_user: CurrentUser,
-    warehouse_id: Optional[uuid.UUID] = Query(None, description="Filter by warehouse"),
-):
-    """
-    Get inventory valuation summary.
-
-    Shows total inventory value, average stock value per product,
-    and counts by valuation method.
-
-    Requires: products:read permission
-    """
-    costing_service = CostingService(db)
-    summary = await costing_service.get_inventory_valuation_summary(warehouse_id=warehouse_id)
-
-    return ProductCostSummary(
-        total_products=summary["total_products"],
-        total_inventory_value=summary["total_inventory_value"],
-        average_stock_value_per_product=summary["average_stock_value_per_product"],
-        products_with_cost=summary["products_with_cost"],
-        products_without_cost=summary["products_without_cost"],
-        weighted_avg_count=summary["weighted_avg_count"],
-        fifo_count=summary["fifo_count"],
-        specific_id_count=summary["specific_id_count"],
-    )
-
-
-@router.post(
-    "/costs/initialize",
-    dependencies=[Depends(require_permissions("products:update"))]
-)
-async def initialize_product_costs(
-    db: DB,
-    current_user: CurrentUser,
-):
-    """
-    Initialize ProductCost records for all products without one.
-
-    Uses product's static cost_price as initial average_cost.
-    Run this once after migration to populate initial cost records.
-
-    Requires: products:update permission
-    """
-    costing_service = CostingService(db)
-    result = await costing_service.initialize_costs_from_products()
-    return result
