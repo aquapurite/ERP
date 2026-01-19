@@ -24,7 +24,9 @@ from app.core.security import get_password_hash
 
 
 # ==================== MODULE DEFINITIONS ====================
+# IMPORTANT: All module codes referenced in PERMISSIONS must exist here
 MODULES = [
+    # Core Modules
     {"name": "Dashboard", "code": "dashboard", "description": "Main dashboard and analytics overview", "icon": "dashboard", "sort_order": 1},
     {"name": "Products", "code": "products", "description": "Product catalog management", "icon": "inventory", "sort_order": 2},
     {"name": "Orders", "code": "orders", "description": "Order management and processing", "icon": "shopping_cart", "sort_order": 3},
@@ -42,6 +44,15 @@ MODULES = [
     {"name": "Notifications", "code": "notifications", "description": "System notifications", "icon": "notifications", "sort_order": 15},
     {"name": "Settings", "code": "settings", "description": "System configuration", "icon": "settings", "sort_order": 16},
     {"name": "Access Control", "code": "access_control", "description": "User roles and permissions", "icon": "security", "sort_order": 17},
+    # Finance Sub-Modules (referenced in PERMISSIONS)
+    {"name": "Chart of Accounts", "code": "accounts", "description": "Ledger accounts management", "icon": "account_tree", "sort_order": 20},
+    {"name": "Journal Entries", "code": "journals", "description": "Journal entry management", "icon": "receipt_long", "sort_order": 21},
+    {"name": "Fixed Assets", "code": "assets", "description": "Asset register and depreciation", "icon": "business", "sort_order": 22},
+    {"name": "Bank Reconciliation", "code": "bank_recon", "description": "Bank statement reconciliation", "icon": "account_balance_wallet", "sort_order": 23},
+    {"name": "Cost Centers", "code": "cost_centers", "description": "Cost center management", "icon": "pie_chart", "sort_order": 24},
+    {"name": "Financial Periods", "code": "periods", "description": "Accounting period management", "icon": "date_range", "sort_order": 25},
+    {"name": "GST", "code": "gst", "description": "GST returns and compliance", "icon": "receipt", "sort_order": 26},
+    {"name": "TDS", "code": "tds", "description": "TDS deduction and filing", "icon": "description", "sort_order": 27},
 ]
 
 # ==================== PERMISSION DEFINITIONS ====================
@@ -591,13 +602,26 @@ async def seed_permissions(session, module_map: dict) -> dict:
     print("\nSeeding permissions...")
     permission_map = {}
 
+    # STRUCTURAL CHECK: Validate all modules exist before creating any permissions
+    missing_modules = set()
+    for module_code, action, name, description in PERMISSIONS:
+        if module_code not in module_map:
+            missing_modules.add(module_code)
+
+    if missing_modules:
+        raise ValueError(
+            f"STRUCTURAL ERROR: The following modules are referenced in PERMISSIONS "
+            f"but not defined in MODULES: {sorted(missing_modules)}. "
+            f"Add them to MODULES list in seed_rbac.py"
+        )
+
     for module_code, action, name, description in PERMISSIONS:
         code = f"{module_code}:{action}"
         module = module_map.get(module_code)
 
         if not module:
-            print(f"  Warning: Module '{module_code}' not found for permission '{code}'")
-            continue
+            # This should never happen due to check above, but just in case
+            raise ValueError(f"Module '{module_code}' not found for permission '{code}'")
 
         # Check if exists
         stmt = select(Permission).where(Permission.code == code)
