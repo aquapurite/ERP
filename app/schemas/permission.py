@@ -20,9 +20,9 @@ class PermissionResponse(BaseModel):
     name: str
     code: str
     description: Optional[str] = None
-    action: str
+    action: Optional[str] = None
     is_active: bool
-    module: ModuleBasicInfo
+    module: Optional[ModuleBasicInfo] = None
     created_at: datetime
     updated_at: datetime
 
@@ -41,7 +41,7 @@ class PermissionGroupItem(BaseModel):
     id: uuid.UUID
     name: str
     code: str
-    action: str
+    action: Optional[str] = None
     description: Optional[str] = None
 
 
