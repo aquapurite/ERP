@@ -45,13 +45,26 @@ export interface Role {
 
 export type RoleLevel = 'SUPER_ADMIN' | 'DIRECTOR' | 'HEAD' | 'MANAGER' | 'EXECUTIVE';
 
+export interface PermissionModule {
+  id: string;
+  name: string;
+  code: string;
+}
+
 export interface Permission {
   id: string;
   code: string;
   name: string;
-  module: string;
-  action: string;
+  module: string | PermissionModule | null;  // Backend returns object, some code expects string
+  action?: string;
   description?: string;
+}
+
+// Helper to get module code from permission (handles both string and object)
+export function getPermissionModuleCode(permission: Permission): string {
+  if (!permission.module) return 'general';
+  if (typeof permission.module === 'string') return permission.module;
+  return permission.module.code || 'general';
 }
 
 export interface UserPermissions {

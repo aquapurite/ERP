@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/table';
 import { PageHeader } from '@/components/common';
 import { permissionsApi } from '@/lib/api';
-import { Permission } from '@/types';
+import { Permission, getPermissionModuleCode } from '@/types';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const moduleColors: Record<string, string> = {
@@ -60,11 +60,11 @@ export default function PermissionsPage() {
 
   // Group permissions by module
   const groupedPermissions = (permissions ?? []).reduce((acc, permission) => {
-    const module = permission.module || 'general';
-    if (!acc[module]) {
-      acc[module] = [];
+    const moduleCode = getPermissionModuleCode(permission);
+    if (!acc[moduleCode]) {
+      acc[moduleCode] = [];
     }
-    acc[module].push(permission);
+    acc[moduleCode].push(permission);
     return acc;
   }, {} as Record<string, Permission[]>);
 

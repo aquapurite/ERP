@@ -128,14 +128,18 @@ export const permissionsApi = {
       return grouped;
     } catch {
       // Fallback: fetch all permissions and group by module on client
-      const { data } = await apiClient.get<Permission[]>('/permissions');
+      const response = await apiClient.get<{ items: Permission[]; total: number } | Permission[]>('/permissions');
+      const permissions = Array.isArray(response.data) ? response.data : response.data.items;
       const grouped: Record<string, Permission[]> = {};
-      data.forEach((permission) => {
-        const module = permission.module || 'general';
-        if (!grouped[module]) {
-          grouped[module] = [];
+      permissions.forEach((permission) => {
+        // Handle module as string or object
+        const moduleCode = typeof permission.module === 'string'
+          ? permission.module
+          : (permission.module?.code || 'general');
+        if (!grouped[moduleCode]) {
+          grouped[moduleCode] = [];
         }
-        grouped[module].push(permission);
+        grouped[moduleCode].push(permission);
       });
       return grouped;
     }
