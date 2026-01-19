@@ -16,7 +16,7 @@ from app.models.accounting import (
 
 class ChartOfAccountBase(BaseModel):
     """Base schema for ChartOfAccount."""
-    account_code: str = Field(..., min_length=1, max_length=20)
+    account_code: str = Field(..., min_length=1, max_length=20, alias="code")
     account_name: str = Field(..., min_length=1, max_length=200, alias="name")
     account_type: AccountType = Field(..., alias="type")
     account_sub_type: Optional[AccountSubType] = Field(None, alias="subType")

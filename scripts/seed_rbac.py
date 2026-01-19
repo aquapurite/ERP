@@ -118,13 +118,57 @@ PERMISSIONS = [
     ("procurement", "approve", "Approve Purchase Orders", "Approve POs"),
     ("procurement", "receive", "Receive Goods", "Mark goods as received"),
 
-    # Finance (6 permissions)
+    # Finance - General (6 permissions)
     ("finance", "view", "View Finance", "View financial data"),
     ("finance", "create", "Create Transactions", "Record transactions"),
     ("finance", "update", "Update Transactions", "Modify transactions"),
     ("finance", "approve", "Approve Payments", "Approve payments"),
     ("finance", "reconcile", "Reconcile Accounts", "Perform reconciliation"),
     ("finance", "export", "Export Financial Data", "Export reports"),
+
+    # Finance - Chart of Accounts (4 permissions)
+    ("accounts", "view", "View Chart of Accounts", "View ledger accounts"),
+    ("accounts", "create", "Create Accounts", "Create new ledger accounts"),
+    ("accounts", "update", "Update Accounts", "Modify ledger accounts"),
+    ("accounts", "delete", "Delete Accounts", "Delete ledger accounts"),
+
+    # Finance - Journal Entries (4 permissions)
+    ("journals", "view", "View Journal Entries", "View journal entries"),
+    ("journals", "create", "Create Journal Entries", "Create journal entries"),
+    ("journals", "approve", "Approve Journal Entries", "Approve/post journal entries"),
+    ("journals", "reverse", "Reverse Journal Entries", "Reverse posted entries"),
+
+    # Finance - Fixed Assets (4 permissions)
+    ("assets", "view", "View Fixed Assets", "View asset register"),
+    ("assets", "create", "Create Fixed Assets", "Add new assets"),
+    ("assets", "update", "Update Fixed Assets", "Modify asset details"),
+    ("assets", "depreciate", "Run Depreciation", "Calculate depreciation"),
+
+    # Finance - Bank Reconciliation (3 permissions)
+    ("bank_recon", "view", "View Bank Reconciliation", "View bank statements"),
+    ("bank_recon", "reconcile", "Perform Reconciliation", "Match bank transactions"),
+    ("bank_recon", "import", "Import Bank Statements", "Import bank files"),
+
+    # Finance - Cost Centers (3 permissions)
+    ("cost_centers", "view", "View Cost Centers", "View cost centers"),
+    ("cost_centers", "create", "Create Cost Centers", "Create cost centers"),
+    ("cost_centers", "update", "Update Cost Centers", "Modify cost centers"),
+
+    # Finance - Financial Periods (3 permissions)
+    ("periods", "view", "View Financial Periods", "View accounting periods"),
+    ("periods", "create", "Create Periods", "Create new periods"),
+    ("periods", "close", "Close Periods", "Close accounting periods"),
+
+    # Finance - GST Returns (4 permissions)
+    ("gst", "view", "View GST Returns", "View GSTR-1/2A/3B"),
+    ("gst", "generate", "Generate GST Returns", "Generate GST reports"),
+    ("gst", "file", "File GST Returns", "Submit GST returns"),
+    ("gst", "export", "Export GST Data", "Export GST files"),
+
+    # Finance - TDS (3 permissions)
+    ("tds", "view", "View TDS", "View TDS reports"),
+    ("tds", "create", "Create TDS Entries", "Record TDS deductions"),
+    ("tds", "file", "File TDS Returns", "Submit TDS returns"),
 
     # HR (5 permissions)
     ("hr", "view", "View HR Data", "View employee data"),
@@ -254,7 +298,25 @@ ROLES = [
             "crm:view", "crm:export",
             "vendors:view", "vendors:create", "vendors:update",
             "procurement:view", "procurement:receive",
+            # General Finance
             "finance:view", "finance:create", "finance:update", "finance:reconcile", "finance:export",
+            # Chart of Accounts - Full Access
+            "accounts:view", "accounts:create", "accounts:update", "accounts:delete",
+            # Journal Entries - Full Access
+            "journals:view", "journals:create", "journals:approve", "journals:reverse",
+            # Fixed Assets - Full Access
+            "assets:view", "assets:create", "assets:update", "assets:depreciate",
+            # Bank Reconciliation - Full Access
+            "bank_recon:view", "bank_recon:reconcile", "bank_recon:import",
+            # Cost Centers - Full Access
+            "cost_centers:view", "cost_centers:create", "cost_centers:update",
+            # Financial Periods - Full Access
+            "periods:view", "periods:create", "periods:close",
+            # GST - Full Access
+            "gst:view", "gst:generate", "gst:file", "gst:export",
+            # TDS - Full Access
+            "tds:view", "tds:create", "tds:file",
+            # Reports
             "reports:view", "reports:export",
             "notifications:view",
         ],
@@ -276,7 +338,25 @@ ROLES = [
             "vendors:view", "vendors:create", "vendors:update", "vendors:approve",
             "logistics:view", "logistics:track",
             "procurement:view", "procurement:create", "procurement:update", "procurement:approve", "procurement:receive",
+            # General Finance - Full Access including Approve
             "finance:view", "finance:create", "finance:update", "finance:approve", "finance:reconcile", "finance:export",
+            # Chart of Accounts - Full Access
+            "accounts:view", "accounts:create", "accounts:update", "accounts:delete",
+            # Journal Entries - Full Access
+            "journals:view", "journals:create", "journals:approve", "journals:reverse",
+            # Fixed Assets - Full Access
+            "assets:view", "assets:create", "assets:update", "assets:depreciate",
+            # Bank Reconciliation - Full Access
+            "bank_recon:view", "bank_recon:reconcile", "bank_recon:import",
+            # Cost Centers - Full Access
+            "cost_centers:view", "cost_centers:create", "cost_centers:update",
+            # Financial Periods - Full Access
+            "periods:view", "periods:create", "periods:close",
+            # GST - Full Access
+            "gst:view", "gst:generate", "gst:file", "gst:export",
+            # TDS - Full Access
+            "tds:view", "tds:create", "tds:file",
+            # Other
             "hr:view",
             "marketing:view",
             "reports:view", "reports:export", "reports:schedule",
@@ -418,7 +498,19 @@ ROLES = [
         "permissions": [
             "dashboard:view",
             "orders:view",
+            # General Finance
             "finance:view", "finance:create", "finance:update",
+            # Chart of Accounts - View and Create only
+            "accounts:view", "accounts:create",
+            # Journal Entries - View and Create only (no approval)
+            "journals:view", "journals:create",
+            # Bank Reconciliation - View only
+            "bank_recon:view",
+            # GST - View and Generate only
+            "gst:view", "gst:generate",
+            # TDS - View and Create only
+            "tds:view", "tds:create",
+            # Other
             "vendors:view",
             "procurement:view",
             "notifications:view",
