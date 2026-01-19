@@ -41,7 +41,7 @@ async def list_permissions(
                     "id": p.module.id,
                     "name": p.module.name,
                     "code": p.module.code,
-                },
+                } if p.module else None,
                 created_at=p.created_at,
                 updated_at=p.updated_at,
             )
