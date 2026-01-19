@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import { FileText, Download, Plus, Loader2 } from 'lucide-react';
@@ -18,7 +18,7 @@ import {
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader } from '@/components/common';
 import { formatCurrency } from '@/lib/utils';
-import { gstReportsApi } from '@/lib/api';
+import { gstReportsApi, periodsApi } from '@/lib/api';
 
 interface HSNItem {
   id: string;
@@ -53,12 +53,43 @@ const parsePeriod = (period: string): { month: number; year: number } => {
 };
 
 export default function HSNSummaryPage() {
-  const now = new Date();
-  const defaultPeriod = `${String(now.getMonth() + 1).padStart(2, '0')}${now.getFullYear()}`;
-  const [selectedPeriod, setSelectedPeriod] = useState(defaultPeriod);
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('');
   const [activeTab, setActiveTab] = useState('outward');
 
-  const { month, year } = parsePeriod(selectedPeriod);
+  // Fetch active financial periods from the database
+  const { data: periodsData, isLoading: periodsLoading } = useQuery({
+    queryKey: ['financial-periods'],
+    queryFn: () => periodsApi.list({ size: 100 }),
+  });
+
+  // Transform periods for the dropdown
+  const periods = useMemo(() => {
+    if (!periodsData?.items) return [];
+
+    return periodsData.items
+      .filter((p: any) => p.period_type === 'MONTHLY' && (p.status === 'OPEN' || p.status === 'CLOSED'))
+      .sort((a: any, b: any) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime())
+      .map((p: any) => {
+        const startDate = new Date(p.start_date);
+        const monthNum = String(startDate.getMonth() + 1).padStart(2, '0');
+        const yearNum = startDate.getFullYear();
+        return {
+          value: `${monthNum}${yearNum}`,
+          label: p.period_name,
+          isCurrent: p.is_current,
+        };
+      });
+  }, [periodsData]);
+
+  // Set default period to current period or first available period
+  useEffect(() => {
+    if (periods.length > 0 && !selectedPeriod) {
+      const currentPeriod = periods.find((p: any) => p.isCurrent);
+      setSelectedPeriod(currentPeriod?.value || periods[0]?.value || '');
+    }
+  }, [periods, selectedPeriod]);
+
+  const { month, year } = parsePeriod(selectedPeriod || '012026');
 
   // Fetch HSN summary data from real API
   const { data: hsnData, isLoading } = useQuery({
@@ -136,12 +167,6 @@ export default function HSNSummaryPage() {
     },
   ];
 
-  const periods = [
-    { value: '012024', label: 'January 2024' },
-    { value: '122023', label: 'December 2023' },
-    { value: '112023', label: 'November 2023' },
-  ];
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -156,14 +181,30 @@ export default function HSNSummaryPage() {
       />
 
       {/* Period Selector */}
-      <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-        <SelectTrigger className="w-48">
-          <SelectValue placeholder="Select period" />
+      <Select value={selectedPeriod} onValueChange={setSelectedPeriod} disabled={periodsLoading}>
+        <SelectTrigger className="w-56">
+          {periodsLoading ? (
+            <span className="flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading periods...
+            </span>
+          ) : (
+            <SelectValue placeholder="Select period" />
+          )}
         </SelectTrigger>
         <SelectContent>
-          {periods.map((p) => (
-            <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-          ))}
+          {periods.length === 0 ? (
+            <div className="p-2 text-sm text-muted-foreground text-center">
+              No active periods found.<br />
+              Please configure Financial Periods.
+            </div>
+          ) : (
+            periods.map((p: any) => (
+              <SelectItem key={p.value} value={p.value}>
+                {p.label} {p.isCurrent && '(Current)'}
+              </SelectItem>
+            ))
+          )}
         </SelectContent>
       </Select>
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { FileText, Download, Upload, CheckCircle, AlertTriangle, Calendar, IndianRupee, Calculator, CreditCard, RefreshCw, Eye, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -35,7 +35,7 @@ import {
 } from '@/components/ui/dialog';
 import { PageHeader } from '@/components/common';
 import { formatCurrency } from '@/lib/utils';
-import { gstReportsApi } from '@/lib/api';
+import { gstReportsApi, periodsApi } from '@/lib/api';
 
 interface GSTR3BSummary {
   return_period: string;
@@ -100,13 +100,44 @@ const statusColors: Record<string, string> = {
 
 export default function GSTR3BPage() {
   const queryClient = useQueryClient();
-  const now = new Date();
-  const defaultPeriod = `${String(now.getMonth() + 1).padStart(2, '0')}${now.getFullYear()}`;
-  const [selectedPeriod, setSelectedPeriod] = useState(defaultPeriod);
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('');
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('summary');
 
-  const { month, year } = parsePeriod(selectedPeriod);
+  // Fetch active financial periods from the database
+  const { data: periodsData, isLoading: periodsLoading } = useQuery({
+    queryKey: ['financial-periods'],
+    queryFn: () => periodsApi.list({ size: 100 }),
+  });
+
+  // Transform periods for the dropdown
+  const periods = useMemo(() => {
+    if (!periodsData?.items) return [];
+
+    return periodsData.items
+      .filter((p: any) => p.period_type === 'MONTHLY' && (p.status === 'OPEN' || p.status === 'CLOSED'))
+      .sort((a: any, b: any) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime())
+      .map((p: any) => {
+        const startDate = new Date(p.start_date);
+        const monthNum = String(startDate.getMonth() + 1).padStart(2, '0');
+        const yearNum = startDate.getFullYear();
+        return {
+          value: `${monthNum}${yearNum}`,
+          label: p.period_name,
+          isCurrent: p.is_current,
+        };
+      });
+  }, [periodsData]);
+
+  // Set default period to current period or first available period
+  useEffect(() => {
+    if (periods.length > 0 && !selectedPeriod) {
+      const currentPeriod = periods.find((p: any) => p.isCurrent);
+      setSelectedPeriod(currentPeriod?.value || periods[0]?.value || '');
+    }
+  }, [periods, selectedPeriod]);
+
+  const { month, year } = parsePeriod(selectedPeriod || '012026');
 
   const { data: gstr3bData, isLoading } = useQuery({
     queryKey: ['gstr3b-report', month, year],
@@ -178,13 +209,6 @@ export default function GSTR3BPage() {
     },
   });
 
-  const periods = [
-    { value: '012024', label: 'January 2024' },
-    { value: '122023', label: 'December 2023' },
-    { value: '112023', label: 'November 2023' },
-    { value: '102023', label: 'October 2023' },
-  ];
-
   const totalTaxPayable = (summary?.tax_payable_igst ?? 0) + (summary?.tax_payable_cgst ?? 0) +
     (summary?.tax_payable_sgst ?? 0) + (summary?.tax_payable_cess ?? 0);
   const totalITCUtilized = (summary?.itc_utilized_igst ?? 0) + (summary?.itc_utilized_cgst ?? 0) +
@@ -217,14 +241,30 @@ export default function GSTR3BPage() {
 
       {/* Period Selector & Status */}
       <div className="flex items-center justify-between">
-        <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="Select period" />
+        <Select value={selectedPeriod} onValueChange={setSelectedPeriod} disabled={periodsLoading}>
+          <SelectTrigger className="w-56">
+            {periodsLoading ? (
+              <span className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading periods...
+              </span>
+            ) : (
+              <SelectValue placeholder="Select period" />
+            )}
           </SelectTrigger>
           <SelectContent>
-            {periods.map((p) => (
-              <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-            ))}
+            {periods.length === 0 ? (
+              <div className="p-2 text-sm text-muted-foreground text-center">
+                No active periods found.<br />
+                Please configure Financial Periods.
+              </div>
+            ) : (
+              periods.map((p: any) => (
+                <SelectItem key={p.value} value={p.value}>
+                  {p.label} {p.isCurrent && '(Current)'}
+                </SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
 
