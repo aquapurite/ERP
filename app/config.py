@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     SUPABASE_STORAGE_BUCKET: str = "uploads"  # Default bucket name
 
     # Channel Inventory Settings
-    CHANNEL_INVENTORY_ENABLED: bool = True  # Enable channel-specific inventory management
+    CHANNEL_INVENTORY_ENABLED: bool = False  # TEMPORARILY DISABLED for debugging allocation issues
     D2C_CHANNEL_CODE: str = "D2C"  # Code for D2C channel (used by storefront)
     D2C_FALLBACK_STRATEGY: str = "AUTO_REPLENISH"  # Options: NO_FALLBACK, SHARED_POOL, AUTO_REPLENISH
     MARKETPLACE_FALLBACK_STRATEGY: str = "NO_FALLBACK"  # Marketplaces should not fallback to prevent SLA violations
