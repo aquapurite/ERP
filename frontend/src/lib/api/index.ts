@@ -1541,6 +1541,17 @@ export const periodsApi = {
     const { data } = await apiClient.post(`/accounting/periods/${id}/lock`);
     return data;
   },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/accounting/periods/${id}`);
+    return data;
+  },
+  update: async (id: string, period: { status?: string }) => {
+    const { data } = await apiClient.put(`/accounting/periods/${id}`, period);
+    return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/accounting/periods/${id}`);
+  },
 };
 
 // Cost Centers API
@@ -1572,6 +1583,9 @@ export const costCentersApi = {
   }>) => {
     const { data } = await apiClient.put(`/accounting/cost-centers/${id}`, costCenter);
     return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/accounting/cost-centers/${id}`);
   },
 };
 
@@ -1659,9 +1673,28 @@ export const taxConfigApi = {
     const { data } = await apiClient.get('/accounting/tax-configs');
     return data;
   },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/accounting/tax-configs/${id}`);
+    return data;
+  },
   create: async (config: { name: string; rate: number; type: string; hsn_code?: string }) => {
     const { data } = await apiClient.post('/accounting/tax-configs', config);
     return data;
+  },
+  update: async (id: string, config: Partial<{
+    description?: string;
+    gst_rate?: number;
+    cgst_rate?: number;
+    sgst_rate?: number;
+    igst_rate?: number;
+    cess_rate?: number;
+    is_active?: boolean;
+  }>) => {
+    const { data } = await apiClient.put(`/accounting/tax-configs/${id}`, config);
+    return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/accounting/tax-configs/${id}`);
   },
 };
 

@@ -23,7 +23,7 @@ from app.schemas.accounting import (
     ChartOfAccountCreate, ChartOfAccountUpdate, ChartOfAccountResponse,
     ChartOfAccountTree, AccountListResponse,
     # Financial Period
-    FinancialPeriodCreate, FinancialPeriodResponse, PeriodListResponse,
+    FinancialPeriodCreate, FinancialPeriodUpdate, FinancialPeriodResponse, PeriodListResponse,
     # Cost Center
     CostCenterCreate, CostCenterUpdate, CostCenterResponse,
     # Journal Entry
@@ -39,7 +39,7 @@ from app.schemas.accounting import (
     TrialBalanceResponse, TrialBalanceItem,
     BalanceSheetResponse, ProfitLossResponse,
     # Tax
-    TaxConfigurationCreate, TaxConfigurationResponse,
+    TaxConfigurationCreate, TaxConfigurationUpdate, TaxConfigurationResponse,
 )
 from app.models.accounting import ApprovalLevel
 from app.api.deps import DB, CurrentUser, get_current_user, require_permissions
@@ -521,6 +521,105 @@ async def lock_financial_period(
     return period
 
 
+@router.get("/periods/{period_id}", response_model=FinancialPeriodResponse)
+async def get_financial_period(
+    period_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get financial period by ID."""
+    result = await db.execute(
+        select(FinancialPeriod).where(FinancialPeriod.id == period_id)
+    )
+    period = result.scalar_one_or_none()
+
+    if not period:
+        raise HTTPException(status_code=404, detail="Period not found")
+
+    return period
+
+
+@router.put("/periods/{period_id}", response_model=FinancialPeriodResponse)
+async def update_financial_period(
+    period_id: UUID,
+    period_in: FinancialPeriodUpdate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Update financial period.
+
+    Note: Only status can be updated. Use close/reopen/lock endpoints for status changes.
+    """
+    result = await db.execute(
+        select(FinancialPeriod).where(FinancialPeriod.id == period_id)
+    )
+    period = result.scalar_one_or_none()
+
+    if not period:
+        raise HTTPException(status_code=404, detail="Period not found")
+
+    if period.status == PeriodStatus.LOCKED:
+        raise HTTPException(status_code=400, detail="Cannot update a locked period")
+
+    update_data = period_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if field == "status" and value:
+            setattr(period, field, value.value if hasattr(value, 'value') else value)
+        else:
+            setattr(period, field, value)
+
+    await db.commit()
+    await db.refresh(period)
+
+    return period
+
+
+@router.delete("/periods/{period_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_financial_period(
+    period_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a financial period.
+
+    Restrictions:
+    - Locked periods cannot be deleted
+    - Periods with journal entries cannot be deleted
+    """
+    result = await db.execute(
+        select(FinancialPeriod).where(FinancialPeriod.id == period_id)
+    )
+    period = result.scalar_one_or_none()
+
+    if not period:
+        raise HTTPException(status_code=404, detail="Period not found")
+
+    # Check if period is locked
+    if period.status == PeriodStatus.LOCKED:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete a locked period"
+        )
+
+    # Check if period has journal entries
+    journal_entries = await db.execute(
+        select(func.count(JournalEntry.id)).where(
+            JournalEntry.period_id == period_id
+        )
+    )
+    entry_count = journal_entries.scalar() or 0
+    if entry_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete period with {entry_count} journal entries"
+        )
+
+    await db.delete(period)
+    await db.commit()
+
+    return None
+
+
 # ==================== Fiscal Years ====================
 
 @router.get("/fiscal-years")
@@ -709,6 +808,104 @@ async def list_cost_centers(
     cost_centers = result.scalars().all()
 
     return [CostCenterResponse.model_validate(cc) for cc in cost_centers]
+
+
+@router.get("/cost-centers/{cost_center_id}", response_model=CostCenterResponse)
+async def get_cost_center(
+    cost_center_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get cost center by ID."""
+    result = await db.execute(
+        select(CostCenter).where(CostCenter.id == cost_center_id)
+    )
+    cost_center = result.scalar_one_or_none()
+
+    if not cost_center:
+        raise HTTPException(status_code=404, detail="Cost center not found")
+
+    return cost_center
+
+
+@router.put("/cost-centers/{cost_center_id}", response_model=CostCenterResponse)
+async def update_cost_center(
+    cost_center_id: UUID,
+    cc_in: CostCenterUpdate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Update cost center details."""
+    result = await db.execute(
+        select(CostCenter).where(CostCenter.id == cost_center_id)
+    )
+    cost_center = result.scalar_one_or_none()
+
+    if not cost_center:
+        raise HTTPException(status_code=404, detail="Cost center not found")
+
+    update_data = cc_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(cost_center, field, value)
+
+    cost_center.updated_by = current_user.id
+
+    await db.commit()
+    await db.refresh(cost_center)
+
+    return cost_center
+
+
+@router.delete("/cost-centers/{cost_center_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_cost_center(
+    cost_center_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a cost center.
+
+    Restrictions:
+    - Cost centers with journal entries cannot be deleted
+    - Cost centers with child cost centers cannot be deleted
+    """
+    result = await db.execute(
+        select(CostCenter).where(CostCenter.id == cost_center_id)
+    )
+    cost_center = result.scalar_one_or_none()
+
+    if not cost_center:
+        raise HTTPException(status_code=404, detail="Cost center not found")
+
+    # Check if cost center has journal entries
+    journal_entries = await db.execute(
+        select(func.count(JournalEntryLine.id)).where(
+            JournalEntryLine.cost_center_id == cost_center_id
+        )
+    )
+    entry_count = journal_entries.scalar() or 0
+    if entry_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete cost center with {entry_count} journal entries"
+        )
+
+    # Check if cost center has children
+    children = await db.execute(
+        select(func.count(CostCenter.id)).where(
+            CostCenter.parent_id == cost_center_id
+        )
+    )
+    child_count = children.scalar() or 0
+    if child_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete cost center with {child_count} child cost centers"
+        )
+
+    await db.delete(cost_center)
+    await db.commit()
+
+    return None
 
 
 # ==================== Journal Entries ====================
@@ -1899,3 +2096,74 @@ async def create_tax_configuration(
     await db.refresh(config)
 
     return config
+
+
+@router.get("/tax-configs/{tax_config_id}", response_model=TaxConfigurationResponse)
+async def get_tax_configuration(
+    tax_config_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get tax configuration by ID."""
+    result = await db.execute(
+        select(TaxConfiguration).where(TaxConfiguration.id == tax_config_id)
+    )
+    config = result.scalar_one_or_none()
+
+    if not config:
+        raise HTTPException(status_code=404, detail="Tax configuration not found")
+
+    return config
+
+
+@router.put("/tax-configs/{tax_config_id}", response_model=TaxConfigurationResponse)
+async def update_tax_configuration(
+    tax_config_id: UUID,
+    config_in: TaxConfigurationUpdate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Update tax configuration details."""
+    result = await db.execute(
+        select(TaxConfiguration).where(TaxConfiguration.id == tax_config_id)
+    )
+    config = result.scalar_one_or_none()
+
+    if not config:
+        raise HTTPException(status_code=404, detail="Tax configuration not found")
+
+    update_data = config_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(config, field, value)
+
+    config.updated_by = current_user.id
+
+    await db.commit()
+    await db.refresh(config)
+
+    return config
+
+
+@router.delete("/tax-configs/{tax_config_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_tax_configuration(
+    tax_config_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a tax configuration.
+
+    Note: Tax configurations that are in use by products or invoices
+    should be deactivated instead of deleted.
+    """
+    result = await db.execute(
+        select(TaxConfiguration).where(TaxConfiguration.id == tax_config_id)
+    )
+    config = result.scalar_one_or_none()
+
+    if not config:
+        raise HTTPException(status_code=404, detail="Tax configuration not found")
+
+    await db.delete(config)
+    await db.commit()
+
+    return None

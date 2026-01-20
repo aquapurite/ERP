@@ -186,7 +186,7 @@ class CostCenterBase(BaseModel):
     parent_id: Optional[UUID] = None
     department: Optional[str] = None
     manager_id: Optional[UUID] = None
-    budget_amount: Optional[Decimal] = Field(None, ge=0, alias="annual_budget")
+    annual_budget: Optional[Decimal] = Field(None, ge=0)
     is_active: bool = True
 
 
@@ -202,7 +202,7 @@ class CostCenterUpdate(BaseModel):
     parent_id: Optional[UUID] = None
     department: Optional[str] = None
     manager_id: Optional[UUID] = None
-    budget_amount: Optional[Decimal] = None
+    annual_budget: Optional[Decimal] = None
     is_active: Optional[bool] = None
 
 
@@ -211,7 +211,7 @@ class CostCenterResponse(CostCenterBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    actual_amount: Decimal
+    current_spend: Decimal = Decimal("0")
     created_at: datetime
     updated_at: datetime
 

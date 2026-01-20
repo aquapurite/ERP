@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Pencil, Building2, Loader2, TrendingUp, Wallet } from 'lucide-react';
+import { MoreHorizontal, Plus, Pencil, Trash2, Building2, Loader2, TrendingUp, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -113,6 +113,15 @@ export default function CostCentersPage() {
     onError: (error: Error) => toast.error(error.message || 'Failed to update cost center'),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => costCentersApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cost-centers'] });
+      toast.success('Cost center deleted successfully');
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to delete cost center'),
+  });
+
   const resetForm = () => {
     setFormData({
       id: '',
@@ -141,6 +150,16 @@ export default function CostCentersPage() {
     });
     setIsEditMode(true);
     setIsDialogOpen(true);
+  };
+
+  const handleDelete = (costCenter: CostCenter) => {
+    if (costCenter.current_spend > 0) {
+      toast.error('Cannot delete cost center with expenses. Deactivate it instead.');
+      return;
+    }
+    if (confirm(`Are you sure you want to delete cost center "${costCenter.name}"?`)) {
+      deleteMutation.mutate(costCenter.id);
+    }
   };
 
   const handleSubmit = () => {
@@ -268,6 +287,13 @@ export default function CostCentersPage() {
             <DropdownMenuItem onClick={() => handleEdit(row.original)}>
               <Pencil className="mr-2 h-4 w-4" />
               Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => handleDelete(row.original)}
+              className="text-red-600"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
