@@ -77,7 +77,7 @@ async def create_payment_order(
             detail="Order not found"
         )
 
-    if order.payment_status == "paid":
+    if order.payment_status == "PAID":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Order is already paid"

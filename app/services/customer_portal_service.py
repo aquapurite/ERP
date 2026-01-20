@@ -175,7 +175,7 @@ class CustomerPortalService:
                     "total_amount": float(order.total_amount or 0),
                     "items_count": len(order.items) if order.items else 0,
                     "payment_status": getattr(order, 'payment_status', 'PENDING'),
-                    "delivery_date": order.delivery_date.isoformat() if hasattr(order, 'delivery_date') and order.delivery_date else None,
+                    "delivery_date": order.delivered_at.isoformat() if order.delivered_at else None,
                 }
                 for order in orders
             ],

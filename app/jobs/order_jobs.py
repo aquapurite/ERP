@@ -60,7 +60,7 @@ async def check_pending_payments():
                         payment_status,
                         created_at
                     FROM orders
-                    WHERE payment_status = 'pending'
+                    WHERE payment_status = 'PENDING'
                     AND razorpay_order_id IS NOT NULL
                     AND created_at < :cutoff_time
                     ORDER BY created_at ASC

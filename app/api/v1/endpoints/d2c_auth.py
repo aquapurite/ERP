@@ -660,8 +660,8 @@ async def get_order_detail(
             }
             for item in (order.items or [])
         ],
-        "tracking_number": order.tracking_number if hasattr(order, 'tracking_number') else None,
-        "courier_name": order.courier_name if hasattr(order, 'courier_name') else None,
+        "tracking_number": order.awb_code,  # AWB code is the tracking number
+        "courier_name": order.courier_name,
     }
 
 
