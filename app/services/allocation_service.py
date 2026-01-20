@@ -193,6 +193,11 @@ class AllocationService:
                 allocation_strategy=request.allocation_strategy if hasattr(request, 'allocation_strategy') else "BALANCED"
             )
 
+            # Extract transporter info BEFORE any commits to avoid lazy loading
+            transporter_id = transporter.id if transporter else None
+            transporter_code = transporter.code if transporter else (shipping_info.get("carrier_code") if shipping_info else None)
+            transporter_name = transporter.name if transporter else (shipping_info.get("carrier_name") if shipping_info else None)
+
             # 6. Log allocation
             await self._log_allocation(
                 order_id=order_id,
@@ -218,9 +223,9 @@ class AllocationService:
                 rule_applied=applied_rule.name if applied_rule else "Default",
                 allocation_type=applied_rule.allocation_type if applied_rule and hasattr(applied_rule.allocation_type, 'value') else "NEAREST",
                 decision_factors=decision_factors,
-                recommended_transporter_id=transporter.id if transporter else None,
-                recommended_transporter_code=transporter.code if transporter else shipping_info.get("carrier_code") if shipping_info else None,
-                recommended_transporter_name=transporter.name if transporter else shipping_info.get("carrier_name") if shipping_info else None,
+                recommended_transporter_id=transporter_id,
+                recommended_transporter_code=transporter_code,
+                recommended_transporter_name=transporter_name,
                 estimated_delivery_days=shipping_info.get("estimated_days") if shipping_info else ws_estimated_days,
                 estimated_delivery_days_min=shipping_info.get("estimated_days_min") if shipping_info else None,
                 estimated_shipping_cost=shipping_info.get("rate") if shipping_info else ws_shipping_cost,
