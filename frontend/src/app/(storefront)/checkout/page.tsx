@@ -399,6 +399,7 @@ export default function CheckoutPage() {
           },
           handler: async function (response: any) {
             try {
+              console.log('Payment response received:', response);
               // Step 4: Verify payment with backend
               const verification = await paymentsApi.verifyPayment({
                 razorpay_order_id: response.razorpay_order_id,
@@ -406,20 +407,26 @@ export default function CheckoutPage() {
                 razorpay_signature: response.razorpay_signature,
                 order_id: order.id,
               });
+              console.log('Verification response:', verification);
 
               if (verification.verified) {
-                // Payment verified - mark cart as converted
-                await markAsConverted(order.id);
+                // Payment verified - mark cart as converted (non-blocking)
+                markAsConverted(order.id).catch((err) => {
+                  console.warn('Failed to mark cart as converted:', err);
+                });
                 clearCart();
-                router.push(`/order-success?order=${order.order_number}`);
+                // Use window.location for more reliable redirect
+                window.location.href = `/order-success?order=${order.order_number}`;
               } else {
-                toast.error('Payment verification failed. Please contact support.');
+                console.error('Verification failed:', verification.message);
+                toast.error(verification.message || 'Payment verification failed. Please contact support.');
                 isProcessingRef.current = false;
                 setLoading(false);
               }
-            } catch (error) {
+            } catch (error: any) {
               console.error('Payment verification error:', error);
-              toast.error('Payment verification failed. Please contact support.');
+              const errorMsg = error?.response?.data?.detail || error?.message || 'Payment verification failed';
+              toast.error(errorMsg + '. Please contact support.');
               isProcessingRef.current = false;
               setLoading(false);
             }
