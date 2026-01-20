@@ -9,7 +9,7 @@ Background jobs for managing order-related tasks:
 
 import logging
 from typing import List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -128,14 +128,16 @@ async def check_pending_payments():
                                 text("""
                                     UPDATE orders
                                     SET
-                                        payment_status = 'expired',
-                                        order_status = 'cancelled',
+                                        payment_status = 'FAILED',
+                                        status = 'CANCELLED',
                                         updated_at = :updated_at,
-                                        cancellation_reason = 'Payment not received within 24 hours'
+                                        cancelled_at = :updated_at,
+                                        internal_notes = COALESCE(internal_notes, '') ||
+                                            E'\n[Auto-Cancelled] Payment not received within 24 hours'
                                     WHERE id = :order_id
                                 """),
                                 {
-                                    "updated_at": datetime.now(),
+                                    "updated_at": datetime.now(timezone.utc),
                                     "order_id": order.id
                                 }
                             )
@@ -384,11 +386,11 @@ async def update_order_tracking():
                     SELECT
                         id,
                         order_number,
-                        tracking_number,
-                        logistics_partner
+                        awb_code,
+                        courier_name
                     FROM orders
-                    WHERE order_status IN ('shipped', 'in_transit')
-                    AND tracking_number IS NOT NULL
+                    WHERE status IN ('SHIPPED', 'IN_TRANSIT')
+                    AND awb_code IS NOT NULL
                     LIMIT 50
                 """)
             )
@@ -398,8 +400,8 @@ async def update_order_tracking():
                 try:
                     # Call logistics partner API to get tracking update
                     tracking_info = await fetch_tracking_update(
-                        order.logistics_partner,
-                        order.tracking_number
+                        order.courier_name,
+                        order.awb_code
                     )
 
                     if tracking_info:
@@ -407,21 +409,21 @@ async def update_order_tracking():
                             text("""
                                 UPDATE orders
                                 SET
-                                    tracking_status = :status,
+                                    tracking_status = :tracking_status,
                                     last_tracking_update = :update_time,
-                                    order_status = CASE
-                                        WHEN :status = 'delivered' THEN 'delivered'
-                                        ELSE order_status
+                                    status = CASE
+                                        WHEN LOWER(:tracking_status) = 'delivered' THEN 'DELIVERED'
+                                        ELSE status
                                     END,
                                     delivered_at = CASE
-                                        WHEN :status = 'delivered' THEN :update_time
+                                        WHEN LOWER(:tracking_status) = 'delivered' THEN :update_time
                                         ELSE delivered_at
                                     END
                                 WHERE id = :order_id
                             """),
                             {
-                                "status": tracking_info["status"],
-                                "update_time": datetime.now(),
+                                "tracking_status": tracking_info["status"],
+                                "update_time": datetime.now(timezone.utc),
                                 "order_id": order.id
                             }
                         )

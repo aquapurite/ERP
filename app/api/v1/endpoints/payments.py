@@ -159,21 +159,24 @@ async def verify_payment(
 
     if verification.verified:
         # Update order with payment details
+        # Note: Column is "status" not "order_status", values are uppercase
         await db.execute(
             text("""
                 UPDATE orders
                 SET
-                    payment_status = 'paid',
+                    payment_status = 'PAID',
                     razorpay_payment_id = :payment_id,
-                    order_status = 'confirmed',
+                    status = 'CONFIRMED',
+                    amount_paid = total_amount,
                     paid_at = :paid_at,
+                    confirmed_at = :paid_at,
                     updated_at = :updated_at
                 WHERE id = :order_id
             """),
             {
                 "payment_id": data.razorpay_payment_id,
-                "paid_at": datetime.now(),
-                "updated_at": datetime.now(),
+                "paid_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
                 "order_id": data.order_id
             }
         )
@@ -244,22 +247,23 @@ async def initiate_refund(
         )
 
         # Update order with refund details
+        # Note: Using internal_notes to track refund since dedicated columns don't exist
         await db.execute(
             text("""
                 UPDATE orders
                 SET
-                    refund_status = 'processing',
-                    refund_id = :refund_id,
-                    refund_amount = :refund_amount,
-                    refund_initiated_at = :initiated_at,
+                    internal_notes = COALESCE(internal_notes, '') ||
+                        E'\n[Refund Initiated] Refund ID: ' || :refund_id ||
+                        ', Amount: ₹' || :refund_amount::text ||
+                        ', Time: ' || :initiated_at::text,
                     updated_at = :updated_at
                 WHERE id = :order_id
             """),
             {
                 "refund_id": refund.refund_id,
                 "refund_amount": refund.amount / 100,  # Convert paise to INR
-                "initiated_at": datetime.now(),
-                "updated_at": datetime.now(),
+                "initiated_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
                 "order_id": data.order_id
             }
         )
