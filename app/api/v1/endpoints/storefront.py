@@ -33,7 +33,12 @@ from app.schemas.storefront import (
     SearchBrandSuggestion,
     SearchSuggestionsResponse,
 )
+from app.schemas.serviceability import (
+    ServiceabilityCheckRequest,
+    ServiceabilityCheckResponse,
+)
 from app.services.cache_service import get_cache
+from app.services.serviceability_service import ServiceabilityService
 
 router = APIRouter()
 
@@ -740,3 +745,53 @@ async def get_search_suggestions(
         brands=brand_suggestions,
         query=q,
     )
+
+
+# ==================== Serviceability Endpoint ====================
+
+@router.get("/serviceability/{pincode}", response_model=ServiceabilityCheckResponse)
+async def check_serviceability(
+    pincode: str,
+    db: DB,
+    response: Response,
+):
+    """
+    Check if a pincode is serviceable for delivery.
+    No authentication required. Cached for 30 minutes.
+
+    Returns serviceability status, COD availability, estimated delivery days,
+    and available warehouse/transporter options.
+    """
+    start_time = time.time()
+    cache = get_cache()
+
+    # Validate pincode format (6 digits for India)
+    if not pincode or len(pincode) != 6 or not pincode.isdigit():
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid pincode format. Must be 6 digits."
+        )
+
+    # Try to get from cache
+    cache_key = f"serviceability:d2c:{pincode}"
+    cached_result = await cache.get(cache_key)
+    if cached_result:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+        return ServiceabilityCheckResponse(**cached_result)
+
+    # Check serviceability
+    service = ServiceabilityService(db)
+    request = ServiceabilityCheckRequest(
+        pincode=pincode,
+        channel_code="D2C"
+    )
+
+    result = await service.check_serviceability(request)
+
+    # Cache the result (30 minutes)
+    await cache.set(cache_key, result.model_dump(), ttl=1800)
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result
