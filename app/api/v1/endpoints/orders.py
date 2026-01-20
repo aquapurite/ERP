@@ -691,6 +691,9 @@ async def create_d2c_order(
 
                 logger.info(f"D2C COD order {order_id}: Allocation result - is_allocated={allocation_decision.is_allocated}, warehouse={allocation_decision.warehouse_code if allocation_decision.is_allocated else 'N/A'}, failure_reason={allocation_decision.failure_reason if not allocation_decision.is_allocated else 'N/A'}")
 
+                # DEBUG: Store failure reason for response
+                allocation_failure_reason = allocation_decision.failure_reason if not allocation_decision.is_allocated else None
+
                 if allocation_decision.is_allocated:
                     # Refresh order after allocation service commits
                     await db.refresh(order)
@@ -744,15 +747,21 @@ async def create_d2c_order(
                 logging.error(f"Auto-allocation failed for D2C order {order_id}: {str(alloc_error)}")
                 logging.error(f"Allocation exception traceback: {traceback.format_exc()}")
                 await db.rollback()
+                # Store exception for debug response
+                allocation_failure_reason = f"EXCEPTION: {str(alloc_error)}"
 
         # Refresh order to get latest status
         await db.refresh(order)
+
+        # Get allocation failure reason if it was set
+        failure_reason = allocation_failure_reason if 'allocation_failure_reason' in dir() else None
 
         return D2COrderResponse(
             id=order.id,
             order_number=order.order_number,
             total_amount=order.total_amount,
             status=order.status,
+            allocation_failure_reason=failure_reason,
         )
 
     except ValueError as e:

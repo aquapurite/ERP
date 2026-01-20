@@ -288,3 +288,5 @@ class D2COrderResponse(BaseModel):
     order_number: str = Field(..., description="Order number")
     total_amount: Decimal = Field(..., description="Total amount")
     status: str = Field(..., description="Order status")
+    # Debug field - remove after troubleshooting
+    allocation_failure_reason: Optional[str] = Field(None, description="DEBUG: Reason allocation failed")
