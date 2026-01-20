@@ -658,6 +658,9 @@ async def create_d2c_order(
                 db.add(status_history)
                 await db.commit()
 
+                # Refresh order after commit to prevent lazy loading errors
+                await db.refresh(order)
+
                 # Trigger warehouse allocation
                 allocation_service = AllocationService(db)
                 allocation_request = OrderAllocationRequest(
