@@ -9,7 +9,7 @@ class CreatePaymentOrderRequest(BaseModel):
     order_id: uuid.UUID = Field(..., description="Internal order ID")
     amount: float = Field(..., gt=0, description="Amount in INR")
     customer_name: str = Field(..., min_length=1, description="Customer name")
-    customer_email: EmailStr = Field(..., description="Customer email")
+    customer_email: Optional[str] = Field(None, description="Customer email (optional)")
     customer_phone: str = Field(..., min_length=10, description="Customer phone")
     notes: Optional[dict] = Field(None, description="Additional notes for Razorpay")
 

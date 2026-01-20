@@ -28,7 +28,7 @@ class PaymentOrderRequest(BaseModel):
     order_id: uuid.UUID
     amount: float  # In INR
     currency: str = "INR"
-    customer_email: str
+    customer_email: Optional[str] = None
     customer_phone: str
     customer_name: str
     notes: Optional[Dict[str, str]] = None
@@ -42,7 +42,7 @@ class PaymentOrderResponse(BaseModel):
     key_id: str
     order_id: uuid.UUID
     customer_name: str
-    customer_email: str
+    customer_email: Optional[str] = None
     customer_phone: str
     notes: Dict[str, str]
 
@@ -109,16 +109,19 @@ class PaymentService:
             amount_in_paise = int(request.amount * 100)
 
             # Prepare order data
+            notes = {
+                "order_id": str(request.order_id),
+                "customer_name": request.customer_name,
+                **(request.notes or {})
+            }
+            if request.customer_email:
+                notes["customer_email"] = request.customer_email
+
             order_data = {
                 "amount": amount_in_paise,
                 "currency": request.currency,
                 "receipt": str(request.order_id),
-                "notes": {
-                    "order_id": str(request.order_id),
-                    "customer_name": request.customer_name,
-                    "customer_email": request.customer_email,
-                    **(request.notes or {})
-                }
+                "notes": notes
             }
 
             # Create order with Razorpay

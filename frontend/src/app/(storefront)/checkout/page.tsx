@@ -33,7 +33,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useCartStore, useCartSummary } from '@/lib/storefront/cart-store';
-import { ordersApi, inventoryApi, couponsApi, companyApi, CouponValidationResponse, ActiveCoupon } from '@/lib/storefront/api';
+import { ordersApi, paymentsApi, inventoryApi, couponsApi, companyApi, CouponValidationResponse, ActiveCoupon } from '@/lib/storefront/api';
 import { useAuthStore, useIsAuthenticated } from '@/lib/storefront/auth-store';
 import { formatCurrency } from '@/lib/utils';
 import { D2COrderRequest, ShippingAddress, CompanyInfo } from '@/types/storefront';
@@ -337,27 +337,58 @@ export default function CheckoutPage() {
           await loadRazorpayScript();
         }
 
-        // Create order first
+        // Step 1: Create D2C order first
         const order = await ordersApi.createD2C(orderData);
 
-        // Initialize Razorpay
+        // Step 2: Create Razorpay payment order
+        const paymentOrder = await paymentsApi.createOrder({
+          order_id: order.id,
+          amount: finalTotal,
+          customer_name: formData.full_name,
+          customer_email: formData.email || undefined,
+          customer_phone: formData.phone,
+          notes: {
+            order_number: order.order_number,
+          },
+        });
+
+        // Step 3: Initialize Razorpay with razorpay_order_id
         const options = {
-          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_xxx',
-          amount: finalTotal * 100, // Amount in paise
+          key: paymentOrder.key_id || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_xxx',
+          amount: paymentOrder.amount, // Already in paise from backend
           currency: 'INR',
           name: company?.trade_name || company?.name || 'AQUAPURITE',
           description: `Order #${order.order_number}`,
-          order_id: order.id, // This should be razorpay_order_id from backend
+          order_id: paymentOrder.razorpay_order_id, // Use Razorpay order ID
           prefill: {
             name: formData.full_name,
             email: formData.email,
             contact: formData.phone,
           },
           handler: async function (response: any) {
-            // Payment successful - mark cart as converted
-            await markAsConverted(order.id);
-            clearCart();
-            router.push(`/order-success?order=${order.order_number}`);
+            try {
+              // Step 4: Verify payment with backend
+              const verification = await paymentsApi.verifyPayment({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                order_id: order.id,
+              });
+
+              if (verification.verified) {
+                // Payment verified - mark cart as converted
+                await markAsConverted(order.id);
+                clearCart();
+                router.push(`/order-success?order=${order.order_number}`);
+              } else {
+                toast.error('Payment verification failed. Please contact support.');
+                setLoading(false);
+              }
+            } catch (error) {
+              console.error('Payment verification error:', error);
+              toast.error('Payment verification failed. Please contact support.');
+              setLoading(false);
+            }
           },
           modal: {
             ondismiss: function () {

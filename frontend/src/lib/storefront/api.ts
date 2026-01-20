@@ -274,6 +274,46 @@ export const ordersApi = {
   },
 };
 
+// Payments API - Razorpay integration
+export interface CreatePaymentOrderRequest {
+  order_id: string;
+  amount: number;
+  customer_name: string;
+  customer_email?: string;
+  customer_phone: string;
+  notes?: Record<string, string>;
+}
+
+export interface PaymentOrderResponse {
+  razorpay_order_id: string;
+  amount: number;
+  currency: string;
+  key_id: string;
+  order_id: string;
+  customer_name: string;
+  customer_email?: string;
+  customer_phone: string;
+}
+
+export interface VerifyPaymentRequest {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+  order_id: string;
+}
+
+export const paymentsApi = {
+  createOrder: async (request: CreatePaymentOrderRequest): Promise<PaymentOrderResponse> => {
+    const { data } = await storefrontClient.post(`${API_PATH}/payments/create-order`, request);
+    return data;
+  },
+
+  verifyPayment: async (request: VerifyPaymentRequest): Promise<{ verified: boolean; message: string }> => {
+    const { data } = await storefrontClient.post(`${API_PATH}/payments/verify`, request);
+    return data;
+  },
+};
+
 // Search API - Uses public storefront endpoints
 export const searchApi = {
   products: async (query: string, limit = 10): Promise<StorefrontProduct[]> => {
@@ -1070,6 +1110,7 @@ export const storefrontApi = {
   brands: brandsApi,
   inventory: inventoryApi,
   orders: ordersApi,
+  payments: paymentsApi,
   search: searchApi,
   company: companyApi,
   auth: authApi,
