@@ -160,13 +160,27 @@ class AllocationService:
 
             if not selected_warehouse:
                 # No warehouse found with available stock
+                # Build candidates list before any potential commits
+                candidates_list = [self._ws_to_candidate(ws) for ws in serviceable_warehouses[:5]]
                 return await self._create_failed_allocation(
                     order_id,
                     pincode,
                     rules[0].id if rules else None,
                     "No warehouse has sufficient inventory",
-                    [self._ws_to_candidate(ws) for ws in serviceable_warehouses[:5]]
+                    candidates_list
                 )
+
+            # Extract ALL warehouse info NOW, before any operations that might commit
+            # This prevents lazy loading issues after commits expire the objects
+            warehouse_id = selected_warehouse.warehouse_id
+            warehouse_code = selected_warehouse.warehouse.code
+            warehouse_name = selected_warehouse.warehouse.name
+            ws_estimated_days = selected_warehouse.estimated_days
+            ws_shipping_cost = selected_warehouse.shipping_cost
+            origin_pincode = selected_warehouse.warehouse.pincode
+
+            # Build candidates list before any commits
+            candidates_list = [self._ws_to_candidate(ws) for ws in serviceable_warehouses[:5]]
 
             # 5. Find best transporter using pricing engine
             transporter, shipping_info = await self._select_transporter(
@@ -178,16 +192,6 @@ class AllocationService:
                 dimensions=request.dimensions if hasattr(request, 'dimensions') else None,
                 allocation_strategy=request.allocation_strategy if hasattr(request, 'allocation_strategy') else "BALANCED"
             )
-
-            # Extract warehouse info BEFORE any commits to avoid lazy loading issues
-            warehouse_id = selected_warehouse.warehouse_id
-            warehouse_code = selected_warehouse.warehouse.code
-            warehouse_name = selected_warehouse.warehouse.name
-            ws_estimated_days = selected_warehouse.estimated_days
-            ws_shipping_cost = selected_warehouse.shipping_cost
-
-            # Build candidates list before commit
-            candidates_list = [self._ws_to_candidate(ws) for ws in serviceable_warehouses[:5]]
 
             # 6. Log allocation
             await self._log_allocation(
