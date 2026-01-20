@@ -50,7 +50,12 @@ router = APIRouter()
 
 # ==================== Chart of Accounts ====================
 
-@router.post("/accounts", response_model=ChartOfAccountResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/accounts",
+    response_model=ChartOfAccountResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permissions("accounts:create"))]
+)
 async def create_account(
     account_in: ChartOfAccountCreate,
     db: DB,
@@ -86,7 +91,11 @@ async def create_account(
     return account
 
 
-@router.get("/accounts", response_model=AccountListResponse)
+@router.get(
+    "/accounts",
+    response_model=AccountListResponse,
+    dependencies=[Depends(require_permissions("accounts:view"))]
+)
 async def list_accounts(
     db: DB,
     skip: int = Query(0, ge=0),
@@ -136,7 +145,11 @@ async def list_accounts(
     )
 
 
-@router.get("/accounts/tree", response_model=List[ChartOfAccountTree])
+@router.get(
+    "/accounts/tree",
+    response_model=List[ChartOfAccountTree],
+    dependencies=[Depends(require_permissions("accounts:view"))]
+)
 async def get_accounts_tree(
     db: DB,
     account_type: Optional[AccountType] = None,
@@ -176,7 +189,10 @@ async def get_accounts_tree(
     return [build_tree(a) for a in root_accounts]
 
 
-@router.get("/accounts/dropdown")
+@router.get(
+    "/accounts/dropdown",
+    dependencies=[Depends(require_permissions("accounts:view"))]
+)
 async def get_accounts_dropdown(
     db: DB,
     account_type: Optional[AccountType] = None,
@@ -207,7 +223,11 @@ async def get_accounts_dropdown(
     ]
 
 
-@router.get("/accounts/{account_id}", response_model=ChartOfAccountResponse)
+@router.get(
+    "/accounts/{account_id}",
+    response_model=ChartOfAccountResponse,
+    dependencies=[Depends(require_permissions("accounts:view"))]
+)
 async def get_account(
     account_id: UUID,
     db: DB,
@@ -225,7 +245,11 @@ async def get_account(
     return account
 
 
-@router.put("/accounts/{account_id}", response_model=ChartOfAccountResponse)
+@router.put(
+    "/accounts/{account_id}",
+    response_model=ChartOfAccountResponse,
+    dependencies=[Depends(require_permissions("accounts:update"))]
+)
 async def update_account(
     account_id: UUID,
     account_in: ChartOfAccountUpdate,
@@ -253,7 +277,11 @@ async def update_account(
     return account
 
 
-@router.delete("/accounts/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/accounts/{account_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permissions("accounts:delete"))]
+)
 async def delete_account(
     account_id: UUID,
     db: DB,
@@ -322,7 +350,12 @@ async def delete_account(
 
 # ==================== Financial Periods ====================
 
-@router.post("/periods", response_model=FinancialPeriodResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/periods",
+    response_model=FinancialPeriodResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permissions("periods:create"))]
+)
 async def create_financial_period(
     period_in: FinancialPeriodCreate,
     db: DB,
@@ -355,7 +388,11 @@ async def create_financial_period(
     return period
 
 
-@router.get("/periods", response_model=PeriodListResponse)
+@router.get(
+    "/periods",
+    response_model=PeriodListResponse,
+    dependencies=[Depends(require_permissions("periods:view"))]
+)
 async def list_financial_periods(
     db: DB,
     skip: int = Query(0, ge=0),
@@ -386,7 +423,11 @@ async def list_financial_periods(
     )
 
 
-@router.get("/periods/current", response_model=FinancialPeriodResponse)
+@router.get(
+    "/periods/current",
+    response_model=FinancialPeriodResponse,
+    dependencies=[Depends(require_permissions("periods:view"))]
+)
 async def get_current_period(
     db: DB,
     current_user: User = Depends(get_current_user),
@@ -413,7 +454,11 @@ async def get_current_period(
     return period
 
 
-@router.post("/periods/{period_id}/close", response_model=FinancialPeriodResponse)
+@router.post(
+    "/periods/{period_id}/close",
+    response_model=FinancialPeriodResponse,
+    dependencies=[Depends(require_permissions("periods:close"))]
+)
 async def close_financial_period(
     period_id: UUID,
     db: DB,
@@ -461,7 +506,11 @@ async def close_financial_period(
     return period
 
 
-@router.post("/periods/{period_id}/reopen", response_model=FinancialPeriodResponse)
+@router.post(
+    "/periods/{period_id}/reopen",
+    response_model=FinancialPeriodResponse,
+    dependencies=[Depends(require_permissions("periods:close"))]
+)
 async def reopen_financial_period(
     period_id: UUID,
     db: DB,
@@ -492,7 +541,11 @@ async def reopen_financial_period(
     return period
 
 
-@router.post("/periods/{period_id}/lock", response_model=FinancialPeriodResponse)
+@router.post(
+    "/periods/{period_id}/lock",
+    response_model=FinancialPeriodResponse,
+    dependencies=[Depends(require_permissions("periods:close"))]
+)
 async def lock_financial_period(
     period_id: UUID,
     db: DB,
@@ -521,7 +574,11 @@ async def lock_financial_period(
     return period
 
 
-@router.get("/periods/{period_id}", response_model=FinancialPeriodResponse)
+@router.get(
+    "/periods/{period_id}",
+    response_model=FinancialPeriodResponse,
+    dependencies=[Depends(require_permissions("periods:view"))]
+)
 async def get_financial_period(
     period_id: UUID,
     db: DB,
@@ -539,7 +596,11 @@ async def get_financial_period(
     return period
 
 
-@router.put("/periods/{period_id}", response_model=FinancialPeriodResponse)
+@router.put(
+    "/periods/{period_id}",
+    response_model=FinancialPeriodResponse,
+    dependencies=[Depends(require_permissions("periods:update"))]
+)
 async def update_financial_period(
     period_id: UUID,
     period_in: FinancialPeriodUpdate,
@@ -574,7 +635,11 @@ async def update_financial_period(
     return period
 
 
-@router.delete("/periods/{period_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/periods/{period_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permissions("periods:delete"))]
+)
 async def delete_financial_period(
     period_id: UUID,
     db: DB,
@@ -622,7 +687,10 @@ async def delete_financial_period(
 
 # ==================== Fiscal Years ====================
 
-@router.get("/fiscal-years")
+@router.get(
+    "/fiscal-years",
+    dependencies=[Depends(require_permissions("periods:view"))]
+)
 async def list_fiscal_years(
     db: DB,
     current_user: User = Depends(get_current_user),
@@ -668,7 +736,11 @@ async def list_fiscal_years(
     return {"items": items, "total": len(items)}
 
 
-@router.post("/fiscal-years", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/fiscal-years",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permissions("periods:create"))]
+)
 async def create_fiscal_year(
     year_data: dict,
     db: DB,
@@ -773,7 +845,12 @@ async def create_fiscal_year(
 
 # ==================== Cost Centers ====================
 
-@router.post("/cost-centers", response_model=CostCenterResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/cost-centers",
+    response_model=CostCenterResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permissions("cost_centers:create"))]
+)
 async def create_cost_center(
     cc_in: CostCenterCreate,
     db: DB,
@@ -792,7 +869,11 @@ async def create_cost_center(
     return cost_center
 
 
-@router.get("/cost-centers", response_model=List[CostCenterResponse])
+@router.get(
+    "/cost-centers",
+    response_model=List[CostCenterResponse],
+    dependencies=[Depends(require_permissions("cost_centers:view"))]
+)
 async def list_cost_centers(
     db: DB,
     is_active: bool = True,
@@ -810,7 +891,11 @@ async def list_cost_centers(
     return [CostCenterResponse.model_validate(cc) for cc in cost_centers]
 
 
-@router.get("/cost-centers/{cost_center_id}", response_model=CostCenterResponse)
+@router.get(
+    "/cost-centers/{cost_center_id}",
+    response_model=CostCenterResponse,
+    dependencies=[Depends(require_permissions("cost_centers:view"))]
+)
 async def get_cost_center(
     cost_center_id: UUID,
     db: DB,
@@ -828,7 +913,11 @@ async def get_cost_center(
     return cost_center
 
 
-@router.put("/cost-centers/{cost_center_id}", response_model=CostCenterResponse)
+@router.put(
+    "/cost-centers/{cost_center_id}",
+    response_model=CostCenterResponse,
+    dependencies=[Depends(require_permissions("cost_centers:update"))]
+)
 async def update_cost_center(
     cost_center_id: UUID,
     cc_in: CostCenterUpdate,
@@ -856,7 +945,11 @@ async def update_cost_center(
     return cost_center
 
 
-@router.delete("/cost-centers/{cost_center_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/cost-centers/{cost_center_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permissions("cost_centers:delete"))]
+)
 async def delete_cost_center(
     cost_center_id: UUID,
     db: DB,
@@ -910,7 +1003,12 @@ async def delete_cost_center(
 
 # ==================== Journal Entries ====================
 
-@router.post("/journals", response_model=JournalEntryResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/journals",
+    response_model=JournalEntryResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permissions("journals:create"))]
+)
 async def create_journal_entry(
     journal_in: JournalEntryCreate,
     db: DB,
@@ -1062,7 +1160,11 @@ async def create_journal_entry(
     }
 
 
-@router.get("/journals", response_model=JournalListResponse)
+@router.get(
+    "/journals",
+    response_model=JournalListResponse,
+    dependencies=[Depends(require_permissions("journals:view"))]
+)
 async def list_journal_entries(
     db: DB,
     skip: int = Query(0, ge=0),
@@ -1114,7 +1216,11 @@ async def list_journal_entries(
     )
 
 
-@router.get("/journals/pending-approval", response_model=PendingApprovalResponse)
+@router.get(
+    "/journals/pending-approval",
+    response_model=PendingApprovalResponse,
+    dependencies=[Depends(require_permissions("journals:approve"))]
+)
 async def get_pending_approvals(
     db: DB,
     approval_level: Optional[str] = Query(None, description="Filter by LEVEL_1, LEVEL_2, LEVEL_3"),
@@ -1172,7 +1278,11 @@ async def get_pending_approvals(
     )
 
 
-@router.get("/journals/{journal_id}", response_model=JournalEntryResponse)
+@router.get(
+    "/journals/{journal_id}",
+    response_model=JournalEntryResponse,
+    dependencies=[Depends(require_permissions("journals:view"))]
+)
 async def get_journal_entry(
     journal_id: UUID,
     db: DB,
@@ -1212,7 +1322,11 @@ def _get_user_name(user: Optional[User]) -> Optional[str]:
     return f"{user.first_name} {user.last_name or ''}".strip()
 
 
-@router.post("/journals/{journal_id}/submit", response_model=JournalApprovalResponse)
+@router.post(
+    "/journals/{journal_id}/submit",
+    response_model=JournalApprovalResponse,
+    dependencies=[Depends(require_permissions("journals:create"))]
+)
 async def submit_journal_for_approval(
     journal_id: UUID,
     request: JournalSubmitRequest,
@@ -1275,7 +1389,11 @@ async def submit_journal_for_approval(
     )
 
 
-@router.post("/journals/{journal_id}/approve", response_model=JournalApprovalResponse)
+@router.post(
+    "/journals/{journal_id}/approve",
+    response_model=JournalApprovalResponse,
+    dependencies=[Depends(require_permissions("journals:approve"))]
+)
 async def approve_journal_entry(
     journal_id: UUID,
     request: JournalApproveRequest,
@@ -1386,7 +1504,11 @@ async def approve_journal_entry(
     )
 
 
-@router.post("/journals/{journal_id}/reject", response_model=JournalApprovalResponse)
+@router.post(
+    "/journals/{journal_id}/reject",
+    response_model=JournalApprovalResponse,
+    dependencies=[Depends(require_permissions("journals:approve"))]
+)
 async def reject_journal_entry(
     journal_id: UUID,
     request: JournalRejectRequest,
@@ -1453,7 +1575,11 @@ async def reject_journal_entry(
     )
 
 
-@router.post("/journals/{journal_id}/resubmit", response_model=JournalApprovalResponse)
+@router.post(
+    "/journals/{journal_id}/resubmit",
+    response_model=JournalApprovalResponse,
+    dependencies=[Depends(require_permissions("journals:create"))]
+)
 async def resubmit_rejected_journal(
     journal_id: UUID,
     request: JournalSubmitRequest,
@@ -1519,7 +1645,11 @@ async def resubmit_rejected_journal(
     )
 
 
-@router.post("/journals/{journal_id}/post", response_model=JournalEntryResponse)
+@router.post(
+    "/journals/{journal_id}/post",
+    response_model=JournalEntryResponse,
+    dependencies=[Depends(require_permissions("journals:approve"))]
+)
 async def post_journal_entry(
     journal_id: UUID,
     db: DB,
@@ -1585,7 +1715,11 @@ async def post_journal_entry(
     return journal
 
 
-@router.post("/journals/{journal_id}/reverse", response_model=JournalEntryResponse)
+@router.post(
+    "/journals/{journal_id}/reverse",
+    response_model=JournalEntryResponse,
+    dependencies=[Depends(require_permissions("journals:reverse"))]
+)
 async def reverse_journal_entry(
     journal_id: UUID,
     reversal_date: date,
@@ -1692,7 +1826,11 @@ async def reverse_journal_entry(
 
 # ==================== General Ledger ====================
 
-@router.get("/ledger/{account_id}", response_model=LedgerListResponse)
+@router.get(
+    "/ledger/{account_id}",
+    response_model=LedgerListResponse,
+    dependencies=[Depends(require_permissions("finance:view"))]
+)
 async def get_account_ledger(
     account_id: UUID,
     db: DB,
@@ -1762,7 +1900,11 @@ async def get_account_ledger(
 
 # ==================== Reports ====================
 
-@router.get("/reports/trial-balance", response_model=TrialBalanceResponse)
+@router.get(
+    "/reports/trial-balance",
+    response_model=TrialBalanceResponse,
+    dependencies=[Depends(require_permissions("finance:view"))]
+)
 async def get_trial_balance(
     db: DB,
     as_of_date: date = Query(default_factory=date.today),
@@ -1826,7 +1968,10 @@ async def get_trial_balance(
     )
 
 
-@router.get("/reports/balance-sheet")
+@router.get(
+    "/reports/balance-sheet",
+    dependencies=[Depends(require_permissions("finance:view"))]
+)
 async def get_balance_sheet(
     db: DB,
     as_of_date: date = Query(default_factory=date.today),
@@ -1894,7 +2039,10 @@ async def get_balance_sheet(
     }
 
 
-@router.get("/reports/profit-loss")
+@router.get(
+    "/reports/profit-loss",
+    dependencies=[Depends(require_permissions("finance:view"))]
+)
 async def get_profit_loss(
     start_date: date,
     end_date: date,
@@ -2061,7 +2209,11 @@ async def get_profit_loss(
 
 # ==================== Tax Configuration ====================
 
-@router.get("/tax-configs", response_model=List[TaxConfigurationResponse])
+@router.get(
+    "/tax-configs",
+    response_model=List[TaxConfigurationResponse],
+    dependencies=[Depends(require_permissions("tax_configs:view"))]
+)
 async def list_tax_configurations(
     db: DB,
     is_active: bool = True,
@@ -2079,7 +2231,12 @@ async def list_tax_configurations(
     return [TaxConfigurationResponse.model_validate(c) for c in configs]
 
 
-@router.post("/tax-configs", response_model=TaxConfigurationResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/tax-configs",
+    response_model=TaxConfigurationResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permissions("tax_configs:create"))]
+)
 async def create_tax_configuration(
     config_in: TaxConfigurationCreate,
     db: DB,
@@ -2098,7 +2255,11 @@ async def create_tax_configuration(
     return config
 
 
-@router.get("/tax-configs/{tax_config_id}", response_model=TaxConfigurationResponse)
+@router.get(
+    "/tax-configs/{tax_config_id}",
+    response_model=TaxConfigurationResponse,
+    dependencies=[Depends(require_permissions("tax_configs:view"))]
+)
 async def get_tax_configuration(
     tax_config_id: UUID,
     db: DB,
@@ -2116,7 +2277,11 @@ async def get_tax_configuration(
     return config
 
 
-@router.put("/tax-configs/{tax_config_id}", response_model=TaxConfigurationResponse)
+@router.put(
+    "/tax-configs/{tax_config_id}",
+    response_model=TaxConfigurationResponse,
+    dependencies=[Depends(require_permissions("tax_configs:update"))]
+)
 async def update_tax_configuration(
     tax_config_id: UUID,
     config_in: TaxConfigurationUpdate,
@@ -2144,7 +2309,11 @@ async def update_tax_configuration(
     return config
 
 
-@router.delete("/tax-configs/{tax_config_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/tax-configs/{tax_config_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permissions("tax_configs:delete"))]
+)
 async def delete_tax_configuration(
     tax_config_id: UUID,
     db: DB,

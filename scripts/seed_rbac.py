@@ -160,15 +160,24 @@ PERMISSIONS = [
     ("bank_recon", "reconcile", "Perform Reconciliation", "Match bank transactions"),
     ("bank_recon", "import", "Import Bank Statements", "Import bank files"),
 
-    # Finance - Cost Centers (3 permissions)
+    # Finance - Cost Centers (4 permissions)
     ("cost_centers", "view", "View Cost Centers", "View cost centers"),
     ("cost_centers", "create", "Create Cost Centers", "Create cost centers"),
     ("cost_centers", "update", "Update Cost Centers", "Modify cost centers"),
+    ("cost_centers", "delete", "Delete Cost Centers", "Delete cost centers"),
 
-    # Finance - Financial Periods (3 permissions)
+    # Finance - Financial Periods (4 permissions)
     ("periods", "view", "View Financial Periods", "View accounting periods"),
     ("periods", "create", "Create Periods", "Create new periods"),
+    ("periods", "update", "Update Periods", "Modify accounting periods"),
+    ("periods", "delete", "Delete Periods", "Delete accounting periods"),
     ("periods", "close", "Close Periods", "Close accounting periods"),
+
+    # Finance - Tax Configuration (4 permissions)
+    ("tax_configs", "view", "View Tax Configurations", "View tax/HSN configurations"),
+    ("tax_configs", "create", "Create Tax Configurations", "Create tax configurations"),
+    ("tax_configs", "update", "Update Tax Configurations", "Modify tax configurations"),
+    ("tax_configs", "delete", "Delete Tax Configurations", "Delete tax configurations"),
 
     # Finance - GST Returns (4 permissions)
     ("gst", "view", "View GST Returns", "View GSTR-1/2A/3B"),
