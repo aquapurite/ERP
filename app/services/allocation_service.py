@@ -305,6 +305,9 @@ class AllocationService:
         pincode: str
     ) -> List[WarehouseServiceability]:
         """Get all serviceable warehouses for a pincode."""
+        import logging
+        logger = logging.getLogger(__name__)
+
         query = (
             select(WarehouseServiceability)
             .join(Warehouse)
@@ -321,7 +324,13 @@ class AllocationService:
             .order_by(WarehouseServiceability.priority)
         )
         result = await self.db.execute(query)
-        return list(result.scalars().all())
+        warehouses = list(result.scalars().all())
+
+        logger.info(f"_get_serviceable_warehouses: pincode={pincode}, found {len(warehouses)} warehouses")
+        for ws in warehouses:
+            logger.info(f"  - warehouse_id={ws.warehouse_id}, warehouse_code={ws.warehouse.code if ws.warehouse else 'N/A'}, cod_available={ws.cod_available}, prepaid_available={ws.prepaid_available}")
+
+        return warehouses
 
     async def _apply_rule(
         self,
@@ -456,14 +465,22 @@ class AllocationService:
         if not product_ids:
             return True
 
+        import logging
+        logger = logging.getLogger(__name__)
+
         # Check if channel-specific inventory should be used
         use_channel_inventory = False
         channel_obj = None
 
+        logger.info(f"_check_stock: warehouse_id={warehouse_id}, product_ids={product_ids}, channel_code={channel_code}")
+
         if channel_code and getattr(settings, 'CHANNEL_INVENTORY_ENABLED', True):
             channel_obj = await self._get_channel_by_code(channel_code)
+            logger.info(f"_check_stock: D2C channel lookup result: {channel_obj.id if channel_obj else 'NOT FOUND'}")
             if channel_obj:
                 use_channel_inventory = True
+
+        logger.info(f"_check_stock: use_channel_inventory={use_channel_inventory}")
 
         for product_id in product_ids:
             try:
@@ -476,6 +493,7 @@ class AllocationService:
 
             if use_channel_inventory:
                 # Check channel-specific inventory
+                logger.info(f"_check_stock: Checking ChannelInventory for channel_id={channel_obj.id}, warehouse_id={warehouse_id}, product_id={pid}")
                 query = select(ChannelInventory).where(
                     and_(
                         ChannelInventory.channel_id == channel_obj.id,
@@ -486,10 +504,12 @@ class AllocationService:
                 )
                 result = await self.db.execute(query)
                 channel_inv = result.scalar_one_or_none()
+                logger.info(f"_check_stock: ChannelInventory result: {channel_inv.id if channel_inv else 'NOT FOUND'}")
 
                 if not channel_inv:
                     # No channel inventory - check fallback strategy
                     fallback = getattr(settings, 'D2C_FALLBACK_STRATEGY', 'SHARED_POOL')
+                    logger.info(f"_check_stock: No ChannelInventory, fallback strategy={fallback}")
                     if fallback == 'NO_FALLBACK':
                         return False
                     # Fall through to shared pool check
@@ -516,6 +536,7 @@ class AllocationService:
                         # Fall through to shared pool check
 
             # Legacy/fallback: check InventorySummary (shared pool)
+            logger.info(f"_check_stock: Checking InventorySummary for warehouse_id={warehouse_id}, product_id={pid}")
             query = select(InventorySummary).where(
                 and_(
                     InventorySummary.warehouse_id == warehouse_id,
@@ -526,6 +547,7 @@ class AllocationService:
             inventory = result.scalar_one_or_none()
 
             if not inventory:
+                logger.warning(f"_check_stock: NO InventorySummary found for warehouse_id={warehouse_id}, product_id={pid} - RETURNING FALSE")
                 return False
 
             # Calculate actual available = DB available - DB reserved - soft reserved
@@ -534,10 +556,13 @@ class AllocationService:
             soft_reserved = await self._get_soft_reserved(product_id)
 
             actual_available = db_available - db_reserved - soft_reserved
+            logger.info(f"_check_stock: InventorySummary found - db_available={db_available}, db_reserved={db_reserved}, soft_reserved={soft_reserved}, actual_available={actual_available}, required_qty={required_qty}")
 
             if actual_available < required_qty:
+                logger.warning(f"_check_stock: Insufficient stock - actual_available ({actual_available}) < required_qty ({required_qty}) - RETURNING FALSE")
                 return False
 
+        logger.info(f"_check_stock: All products have sufficient stock - RETURNING TRUE")
         return True
 
     async def _get_channel_soft_reserved(self, channel_id: str, product_id: str) -> int:
