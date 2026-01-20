@@ -160,8 +160,10 @@ export default function ChartOfAccountsPage() {
       toast.error('System accounts cannot be deleted');
       return;
     }
-    if (account.current_balance !== 0) {
-      toast.error('Cannot delete account with non-zero balance');
+    // Convert to number for proper comparison (API may return string or Decimal)
+    const balance = Number(account.current_balance) || 0;
+    if (balance !== 0) {
+      toast.error(`Cannot delete account with non-zero balance (₹${balance.toFixed(2)})`);
       return;
     }
     if (confirm(`Are you sure you want to delete account "${account.account_name}"?`)) {

@@ -153,8 +153,10 @@ export default function CostCentersPage() {
   };
 
   const handleDelete = (costCenter: CostCenter) => {
-    if (costCenter.current_spend > 0) {
-      toast.error('Cannot delete cost center with expenses. Deactivate it instead.');
+    // Convert to number for proper comparison (API may return string)
+    const spent = Number(costCenter.current_spend) || 0;
+    if (spent > 0) {
+      toast.error(`Cannot delete cost center with expenses (₹${spent.toFixed(2)}). Deactivate it instead.`);
       return;
     }
     if (confirm(`Are you sure you want to delete cost center "${costCenter.name}"?`)) {
