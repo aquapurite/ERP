@@ -915,6 +915,9 @@ class AllocationService:
         warehouse_id: uuid.UUID
     ):
         """Update order with allocated warehouse."""
+        # Refresh order to prevent lazy loading errors after _log_allocation commit
+        await self.db.refresh(order)
+
         order.warehouse_id = warehouse_id
         order.allocated_at = datetime.utcnow()
         # Update status to ALLOCATED for orders in NEW or CONFIRMED status
