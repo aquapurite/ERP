@@ -636,6 +636,11 @@ async def create_d2c_order(
 
         order = await service.create_order(order_create)
 
+        # Store order_id and order_number immediately to avoid lazy loading issues
+        order_id = order.id
+        order_number = order.order_number
+        order_total = order.total_amount
+
         # Auto-confirm and allocate COD orders
         if payment_method == PaymentMethod.COD:
             try:
@@ -649,7 +654,7 @@ async def create_d2c_order(
                 order.confirmed_at = datetime.utcnow()
 
                 status_history = OrderStatusHistory(
-                    order_id=order.id,
+                    order_id=order_id,  # Use stored value
                     from_status=new_status,
                     to_status=confirmed_status,
                     changed_by=None,  # System auto-confirm
@@ -664,7 +669,7 @@ async def create_d2c_order(
                 # Trigger warehouse allocation
                 allocation_service = AllocationService(db)
                 allocation_request = OrderAllocationRequest(
-                    order_id=order.id,
+                    order_id=order_id,  # Use stored value to avoid lazy loading
                     customer_pincode=data.shipping_address.pincode,
                     items=[
                         {
@@ -726,7 +731,7 @@ async def create_d2c_order(
             except Exception as alloc_error:
                 # Log but don't fail order creation - rollback to clean state
                 import logging
-                logging.warning(f"Auto-allocation failed for D2C order {order.id}: {str(alloc_error)}")
+                logging.warning(f"Auto-allocation failed for D2C order {order_id}: {str(alloc_error)}")
                 await db.rollback()
 
         # Refresh order to get latest status
