@@ -542,59 +542,49 @@ async def create_d2c_order(
     service = OrderService(db)
 
     try:
-        # Find or create customer by phone
-        customer = await service.get_customer_by_phone(data.customer.phone)
+        # Find or create customer by phone (using flat fields from frontend)
+        customer = await service.get_customer_by_phone(data.customer_phone)
 
         if not customer:
             # Parse name into first/last
-            name_parts = data.customer.name.strip().split(" ", 1)
+            name_parts = data.customer_name.strip().split(" ", 1)
             first_name = name_parts[0]
             last_name = name_parts[1] if len(name_parts) > 1 else ""
 
             customer = await service.create_customer({
                 "first_name": first_name,
                 "last_name": last_name,
-                "phone": data.customer.phone,
-                "email": data.customer.email,
+                "phone": data.customer_phone,
+                "email": data.customer_email,
                 "customer_type": "retail",
                 "is_active": True,
             })
 
-        # Map payment method
+        # Map payment method (frontend sends RAZORPAY or COD)
         payment_method_map = {
             "cod": PaymentMethod.COD,
+            "razorpay": PaymentMethod.UPI,  # Razorpay handles multiple methods
             "upi": PaymentMethod.UPI,
             "card": PaymentMethod.CARD,
             "netbanking": PaymentMethod.NET_BANKING,
         }
         payment_method = payment_method_map.get(data.payment_method.lower(), PaymentMethod.COD)
 
-        # Build shipping address dict
+        # Build shipping address dict (using field names from frontend)
         shipping_addr = {
-            "contact_name": data.shipping_address.name,
+            "contact_name": data.shipping_address.full_name,
             "contact_phone": data.shipping_address.phone,
-            "address_line1": data.shipping_address.address_line_1,
-            "address_line2": data.shipping_address.address_line_2 or "",
+            "address_line1": data.shipping_address.address_line1,
+            "address_line2": data.shipping_address.address_line2 or "",
             "city": data.shipping_address.city,
             "state": data.shipping_address.state,
             "pincode": data.shipping_address.pincode,
-            "landmark": data.shipping_address.landmark or "",
+            "landmark": "",  # Not sent by frontend
             "country": data.shipping_address.country,
         }
 
+        # No separate billing address from frontend - use shipping address
         billing_addr = None
-        if data.billing_address:
-            billing_addr = {
-                "contact_name": data.billing_address.name,
-                "contact_phone": data.billing_address.phone,
-                "address_line1": data.billing_address.address_line_1,
-                "address_line2": data.billing_address.address_line_2 or "",
-                "city": data.billing_address.city,
-                "state": data.billing_address.state,
-                "pincode": data.billing_address.pincode,
-                "landmark": data.billing_address.landmark or "",
-                "country": data.billing_address.country,
-            }
 
         # Create order using service
         from app.schemas.order import OrderItemCreate, AddressInput
