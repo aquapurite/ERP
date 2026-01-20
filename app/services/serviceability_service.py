@@ -98,11 +98,16 @@ class ServiceabilityService:
             stock_available = None
             available_qty = None
 
+            import logging
+            logger = logging.getLogger(__name__)
+
             if request.product_ids:
+                logger.info(f"Serviceability: Checking stock for warehouse {wh.id} ({wh.code}), products: {request.product_ids}")
                 stock_available, available_qty = await self._check_stock_availability(
                     wh.id,
                     request.product_ids
                 )
+                logger.info(f"Serviceability: Stock check result - available={stock_available}, qty={available_qty}")
 
             candidate = WarehouseCandidate(
                 warehouse_id=wh.id,
@@ -173,6 +178,11 @@ class ServiceabilityService:
         product_ids: List[uuid.UUID]
     ) -> tuple:
         """Check if products are available in warehouse."""
+        import logging
+        logger = logging.getLogger(__name__)
+
+        logger.info(f"_check_stock_availability: warehouse_id={warehouse_id}, product_ids={product_ids}")
+
         # Check inventory summary
         query = select(InventorySummary).where(
             and_(
@@ -183,12 +193,18 @@ class ServiceabilityService:
         result = await self.db.execute(query)
         summaries = result.scalars().all()
 
+        logger.info(f"_check_stock_availability: Found {len(summaries)} inventory records")
+        for s in summaries:
+            logger.info(f"  - product_id={s.product_id}, available_quantity={s.available_quantity}")
+
         if not summaries:
+            logger.warning(f"_check_stock_availability: NO inventory found for warehouse_id={warehouse_id}, product_ids={product_ids}")
             return False, 0
 
         total_available = sum(s.available_quantity for s in summaries)
         all_available = all(s.available_quantity > 0 for s in summaries)
 
+        logger.info(f"_check_stock_availability: total_available={total_available}, all_available={all_available}")
         return all_available, total_available
 
     async def _find_transporters(
