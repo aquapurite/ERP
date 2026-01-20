@@ -683,7 +683,13 @@ async def create_d2c_order(
                     order_value=float(data.total_amount),
                 )
 
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"D2C COD order {order_id}: Starting allocation for pincode {data.shipping_address.pincode}")
+
                 allocation_decision = await allocation_service.allocate_order(allocation_request)
+
+                logger.info(f"D2C COD order {order_id}: Allocation result - is_allocated={allocation_decision.is_allocated}, warehouse={allocation_decision.warehouse_code if allocation_decision.is_allocated else 'N/A'}, failure_reason={allocation_decision.failure_reason if not allocation_decision.is_allocated else 'N/A'}")
 
                 if allocation_decision.is_allocated:
                     # Refresh order after allocation service commits
@@ -734,7 +740,9 @@ async def create_d2c_order(
             except Exception as alloc_error:
                 # Log but don't fail order creation - rollback to clean state
                 import logging
-                logging.warning(f"Auto-allocation failed for D2C order {order_id}: {str(alloc_error)}")
+                import traceback
+                logging.error(f"Auto-allocation failed for D2C order {order_id}: {str(alloc_error)}")
+                logging.error(f"Allocation exception traceback: {traceback.format_exc()}")
                 await db.rollback()
 
         # Refresh order to get latest status
