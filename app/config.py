@@ -100,6 +100,14 @@ class Settings(BaseSettings):
     MARKETPLACE_SYNC_INTERVAL_MINUTES: int = 30  # How often to sync to marketplaces
     MARKETPLACE_SYNC_BATCH_SIZE: int = 100  # Number of items to sync per batch
 
+    # Google Maps / Places API (for address autocomplete)
+    GOOGLE_MAPS_API_KEY: str = ""  # Google Maps API key with Places API enabled
+    GOOGLE_PLACES_COUNTRY_RESTRICTION: str = "in"  # Restrict to India
+
+    # DigiPin Settings (India's Digital Address System)
+    DIGIPIN_API_URL: str = "https://digipin.gov.in/api"  # DigiPin API base URL
+    DIGIPIN_API_KEY: str = ""  # DigiPin API key (if required)
+
     @field_validator('CORS_ORIGINS', mode='before')
     @classmethod
     def parse_cors_origins(cls, v):

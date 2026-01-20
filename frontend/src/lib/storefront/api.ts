@@ -1104,6 +1104,122 @@ export const abandonedCartApi = {
   },
 };
 
+// Address Lookup API (Google Places + DigiPin)
+export interface AddressSuggestion {
+  place_id: string;
+  description: string;
+  main_text: string;
+  secondary_text: string;
+}
+
+export interface AddressDetails {
+  place_id?: string;
+  formatted_address: string;
+  address_line1: string;
+  address_line2?: string;
+  city: string;
+  state: string;
+  pincode: string;
+  country: string;
+  latitude?: number;
+  longitude?: number;
+  digipin?: string;
+}
+
+export interface DigiPinInfo {
+  digipin: string;
+  latitude: number;
+  longitude: number;
+  address?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+}
+
+export interface PincodeInfo {
+  pincode: string;
+  city?: string;
+  state?: string;
+  areas?: string[];
+}
+
+export const addressApi = {
+  // Get address suggestions as user types
+  autocomplete: async (query: string, sessionToken?: string): Promise<AddressSuggestion[]> => {
+    if (query.length < 3) return [];
+    const params = new URLSearchParams({ query });
+    if (sessionToken) params.append('session_token', sessionToken);
+
+    try {
+      const { data } = await storefrontClient.get(`${API_PATH}/address/autocomplete?${params.toString()}`);
+      return data.suggestions || [];
+    } catch {
+      return [];
+    }
+  },
+
+  // Get full address details from place ID
+  getPlaceDetails: async (placeId: string, sessionToken?: string): Promise<AddressDetails | null> => {
+    const params = new URLSearchParams();
+    if (sessionToken) params.append('session_token', sessionToken);
+
+    try {
+      const { data } = await storefrontClient.get(
+        `${API_PATH}/address/place/${placeId}${params.toString() ? '?' + params.toString() : ''}`
+      );
+      return data;
+    } catch {
+      return null;
+    }
+  },
+
+  // Get address from DigiPin code
+  lookupDigiPin: async (digipin: string): Promise<DigiPinInfo | null> => {
+    try {
+      const { data } = await storefrontClient.get(`${API_PATH}/address/digipin/${digipin}`);
+      return data;
+    } catch {
+      return null;
+    }
+  },
+
+  // Get address from coordinates (for "Use my location")
+  reverseGeocode: async (latitude: number, longitude: number): Promise<AddressDetails | null> => {
+    try {
+      const { data } = await storefrontClient.get(
+        `${API_PATH}/address/reverse-geocode?latitude=${latitude}&longitude=${longitude}`
+      );
+      return data;
+    } catch {
+      return null;
+    }
+  },
+
+  // Get city/state from pincode
+  lookupPincode: async (pincode: string): Promise<PincodeInfo | null> => {
+    if (!/^\d{6}$/.test(pincode)) return null;
+    try {
+      const { data } = await storefrontClient.get(`${API_PATH}/address/pincode/${pincode}`);
+      return data;
+    } catch {
+      return null;
+    }
+  },
+
+  // Generate DigiPin from coordinates
+  encodeDigiPin: async (latitude: number, longitude: number): Promise<DigiPinInfo | null> => {
+    try {
+      const { data } = await storefrontClient.post(`${API_PATH}/address/encode-digipin`, {
+        latitude,
+        longitude,
+      });
+      return data;
+    } catch {
+      return null;
+    }
+  },
+};
+
 export const storefrontApi = {
   products: productsApi,
   categories: categoriesApi,
@@ -1119,6 +1235,7 @@ export const storefrontApi = {
   returns: returnsApi,
   orderTracking: orderTrackingApi,
   abandonedCart: abandonedCartApi,
+  address: addressApi,
 };
 
 export default storefrontApi;

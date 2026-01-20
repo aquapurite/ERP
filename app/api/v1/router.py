@@ -9,6 +9,8 @@ from app.api.v1.endpoints import (
     access_control,
     # File Uploads
     uploads,
+    # Address Lookup (Google Places + DigiPin)
+    address,
     # HR & Payroll
     hr,
     # Fixed Assets
@@ -387,6 +389,13 @@ api_router.include_router(
     storefront.router,
     prefix="/storefront",
     tags=["Storefront (Public)"]
+)
+
+# ==================== Address Lookup (Google Places + DigiPin) ====================
+api_router.include_router(
+    address.router,
+    prefix="/address",
+    tags=["Address Lookup"]
 )
 
 # ==================== Customer Self-Service Portal ====================

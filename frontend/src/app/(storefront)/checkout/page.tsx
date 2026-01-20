@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -33,11 +33,12 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useCartStore, useCartSummary } from '@/lib/storefront/cart-store';
-import { ordersApi, paymentsApi, inventoryApi, couponsApi, companyApi, CouponValidationResponse, ActiveCoupon } from '@/lib/storefront/api';
+import { ordersApi, paymentsApi, inventoryApi, couponsApi, companyApi, addressApi, CouponValidationResponse, ActiveCoupon } from '@/lib/storefront/api';
 import { useAuthStore, useIsAuthenticated } from '@/lib/storefront/auth-store';
 import { formatCurrency } from '@/lib/utils';
 import { D2COrderRequest, ShippingAddress, CompanyInfo } from '@/types/storefront';
 import AddressSelector from '@/components/storefront/checkout/address-selector';
+import AddressAutocomplete from '@/components/storefront/checkout/address-autocomplete';
 
 // Serviceability check result type
 interface ServiceabilityResult {
@@ -68,6 +69,7 @@ export default function CheckoutPage() {
 
   const [step, setStep] = useState<'shipping' | 'payment' | 'review'>('shipping');
   const [loading, setLoading] = useState(false);
+  const isProcessingRef = useRef(false); // Prevent double submission
   const [paymentMethod, setPaymentMethod] = useState<'RAZORPAY' | 'COD'>('RAZORPAY');
   const [useNewAddress, setUseNewAddress] = useState(false);
   const [addressFromSelector, setAddressFromSelector] = useState<ShippingAddress | null>(null);
@@ -148,6 +150,31 @@ export default function CheckoutPage() {
       checkPincodeServiceability(pincode);
     }
   }, [formData.pincode, checkPincodeServiceability]);
+
+  // Auto-fill city/state from pincode
+  useEffect(() => {
+    const pincode = formData.pincode;
+    if (pincode.length === 6 && /^\d{6}$/.test(pincode)) {
+      // Only auto-fill if city or state is empty
+      if (!formData.city || !formData.state) {
+        const fetchPincodeInfo = async () => {
+          try {
+            const info = await addressApi.lookupPincode(pincode);
+            if (info) {
+              setFormData((prev) => ({
+                ...prev,
+                city: prev.city || info.city || '',
+                state: prev.state || info.state || '',
+              }));
+            }
+          } catch {
+            // Silently fail - user can still enter manually
+          }
+        };
+        fetchPincodeInfo();
+      }
+    }
+  }, [formData.pincode, formData.city, formData.state]);
 
   // Fetch available coupons on mount
   useEffect(() => {
@@ -306,6 +333,11 @@ export default function CheckoutPage() {
   };
 
   const handlePlaceOrder = async () => {
+    // Prevent double submission
+    if (isProcessingRef.current || loading) {
+      return;
+    }
+    isProcessingRef.current = true;
     setLoading(true);
 
     try {
@@ -382,16 +414,19 @@ export default function CheckoutPage() {
                 router.push(`/order-success?order=${order.order_number}`);
               } else {
                 toast.error('Payment verification failed. Please contact support.');
+                isProcessingRef.current = false;
                 setLoading(false);
               }
             } catch (error) {
               console.error('Payment verification error:', error);
               toast.error('Payment verification failed. Please contact support.');
+              isProcessingRef.current = false;
               setLoading(false);
             }
           },
           modal: {
             ondismiss: function () {
+              isProcessingRef.current = false;
               setLoading(false);
               toast.error('Payment cancelled');
             },
@@ -411,6 +446,7 @@ export default function CheckoutPage() {
     } catch (error: any) {
       console.error('Order error:', error);
       toast.error(error.message || 'Failed to place order. Please try again.');
+      isProcessingRef.current = false;
       setLoading(false);
     }
   };
@@ -628,6 +664,30 @@ export default function CheckoutPage() {
                       <p className="text-red-500 text-xs mt-1">{errors.email}</p>
                     )}
                   </div>
+
+                  {/* Address Autocomplete with Google Places & DigiPin */}
+                  <Separator className="my-4" />
+                  <AddressAutocomplete
+                    onAddressSelect={(address) => {
+                      // Keep name and phone, update address fields
+                      setFormData((prev) => ({
+                        ...prev,
+                        address_line1: address.address_line1,
+                        address_line2: address.address_line2 || '',
+                        city: address.city,
+                        state: address.state,
+                        pincode: address.pincode,
+                        country: address.country || 'India',
+                      }));
+                      setErrors({});
+                      // Trigger pincode serviceability check
+                      if (address.pincode && address.pincode.length === 6) {
+                        setLastCheckedPincode('');
+                      }
+                    }}
+                    placeholder="Search address, landmark, or enter DigiPin..."
+                  />
+                  <Separator className="my-4" />
 
                   <div>
                     <Label htmlFor="address_line1">Address Line 1 *</Label>
