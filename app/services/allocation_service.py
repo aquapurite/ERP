@@ -198,10 +198,15 @@ class AllocationService:
             transporter_code = transporter.code if transporter else (shipping_info.get("carrier_code") if shipping_info else None)
             transporter_name = transporter.name if transporter else (shipping_info.get("carrier_name") if shipping_info else None)
 
+            # Extract rule info BEFORE any commits to avoid lazy loading
+            rule_id = applied_rule.id if applied_rule and hasattr(applied_rule, 'id') else None
+            rule_name = applied_rule.name if applied_rule else "Default"
+            rule_allocation_type = applied_rule.allocation_type if applied_rule and hasattr(applied_rule.allocation_type, 'value') else "NEAREST"
+
             # 6. Log allocation
             await self._log_allocation(
                 order_id=order_id,
-                rule_id=applied_rule.id if applied_rule and hasattr(applied_rule, 'id') else None,
+                rule_id=rule_id,
                 warehouse_id=warehouse_id,
                 customer_pincode=pincode,
                 is_successful=True,
@@ -220,8 +225,8 @@ class AllocationService:
                 warehouse_code=warehouse_code,
                 warehouse_name=warehouse_name,
                 is_split=False,
-                rule_applied=applied_rule.name if applied_rule else "Default",
-                allocation_type=applied_rule.allocation_type if applied_rule and hasattr(applied_rule.allocation_type, 'value') else "NEAREST",
+                rule_applied=rule_name,
+                allocation_type=rule_allocation_type,
                 decision_factors=decision_factors,
                 recommended_transporter_id=transporter_id,
                 recommended_transporter_code=transporter_code,
