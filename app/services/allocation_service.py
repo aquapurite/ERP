@@ -179,27 +179,37 @@ class AllocationService:
                 allocation_strategy=request.allocation_strategy if hasattr(request, 'allocation_strategy') else "BALANCED"
             )
 
+            # Extract warehouse info BEFORE any commits to avoid lazy loading issues
+            warehouse_id = selected_warehouse.warehouse_id
+            warehouse_code = selected_warehouse.warehouse.code
+            warehouse_name = selected_warehouse.warehouse.name
+            ws_estimated_days = selected_warehouse.estimated_days
+            ws_shipping_cost = selected_warehouse.shipping_cost
+
+            # Build candidates list before commit
+            candidates_list = [self._ws_to_candidate(ws) for ws in serviceable_warehouses[:5]]
+
             # 6. Log allocation
             await self._log_allocation(
                 order_id=order_id,
                 rule_id=applied_rule.id if applied_rule and hasattr(applied_rule, 'id') else None,
-                warehouse_id=selected_warehouse.warehouse_id,
+                warehouse_id=warehouse_id,
                 customer_pincode=pincode,
                 is_successful=True,
                 decision_factors=decision_factors,
-                candidates=[self._ws_to_candidate(ws) for ws in serviceable_warehouses[:5]]
+                candidates=candidates_list
             )
 
             # 7. Update order if exists
             if order:
-                await self._update_order_warehouse(order, selected_warehouse.warehouse_id)
+                await self._update_order_warehouse(order, warehouse_id)
 
             return AllocationDecision(
                 order_id=order_id,
                 is_allocated=True,
-                warehouse_id=selected_warehouse.warehouse_id,
-                warehouse_code=selected_warehouse.warehouse.code,
-                warehouse_name=selected_warehouse.warehouse.name,
+                warehouse_id=warehouse_id,
+                warehouse_code=warehouse_code,
+                warehouse_name=warehouse_name,
                 is_split=False,
                 rule_applied=applied_rule.name if applied_rule else "Default",
                 allocation_type=applied_rule.allocation_type if applied_rule and hasattr(applied_rule.allocation_type, 'value') else "NEAREST",
@@ -207,9 +217,9 @@ class AllocationService:
                 recommended_transporter_id=transporter.id if transporter else None,
                 recommended_transporter_code=transporter.code if transporter else shipping_info.get("carrier_code") if shipping_info else None,
                 recommended_transporter_name=transporter.name if transporter else shipping_info.get("carrier_name") if shipping_info else None,
-                estimated_delivery_days=shipping_info.get("estimated_days") if shipping_info else selected_warehouse.estimated_days,
+                estimated_delivery_days=shipping_info.get("estimated_days") if shipping_info else ws_estimated_days,
                 estimated_delivery_days_min=shipping_info.get("estimated_days_min") if shipping_info else None,
-                estimated_shipping_cost=shipping_info.get("rate") if shipping_info else selected_warehouse.shipping_cost,
+                estimated_shipping_cost=shipping_info.get("rate") if shipping_info else ws_shipping_cost,
                 # Pricing engine details
                 cost_breakdown=shipping_info.get("cost_breakdown") if shipping_info else None,
                 rate_card_id=shipping_info.get("rate_card_id") if shipping_info else None,
