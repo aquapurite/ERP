@@ -34,7 +34,7 @@ async def _generate_employee_code(db) -> str:
 @router.get(
     "",
     response_model=TechnicianListResponse,
-    dependencies=[Depends(require_permissions("technicians:view"))]
+    dependencies=[Depends(require_permissions("service:view"))]
 )
 async def list_technicians(
     db: DB,
@@ -49,7 +49,7 @@ async def list_technicians(
 ):
     """
     Get paginated list of technicians.
-    Requires: technicians:view permission
+    Requires: service:view permission
     """
     query = select(Technician)
 
@@ -135,7 +135,7 @@ async def get_technicians_dropdown(
 @router.get(
     "/{technician_id}",
     response_model=TechnicianDetail,
-    dependencies=[Depends(require_permissions("technicians:view"))]
+    dependencies=[Depends(require_permissions("service:view"))]
 )
 async def get_technician(
     technician_id: uuid.UUID,
@@ -159,7 +159,7 @@ async def get_technician(
     "",
     response_model=TechnicianDetail,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permissions("technicians:create"))]
+    dependencies=[Depends(require_permissions("service:create"))]
 )
 async def create_technician(
     data: TechnicianCreate,
@@ -168,7 +168,7 @@ async def create_technician(
 ):
     """
     Create a new technician.
-    Requires: technicians:create permission
+    Requires: service:create permission
     """
     # Check for duplicate phone
     existing_query = select(Technician).where(Technician.phone == data.phone)
@@ -196,7 +196,7 @@ async def create_technician(
 @router.put(
     "/{technician_id}",
     response_model=TechnicianDetail,
-    dependencies=[Depends(require_permissions("technicians:update"))]
+    dependencies=[Depends(require_permissions("service:update"))]
 )
 async def update_technician(
     technician_id: uuid.UUID,
@@ -206,7 +206,7 @@ async def update_technician(
 ):
     """
     Update a technician.
-    Requires: technicians:update permission
+    Requires: service:update permission
     """
     query = select(Technician).where(Technician.id == technician_id)
     result = await db.execute(query)
@@ -231,7 +231,7 @@ async def update_technician(
 @router.put(
     "/{technician_id}/location",
     response_model=TechnicianBrief,
-    dependencies=[Depends(require_permissions("technicians:update"))]
+    dependencies=[Depends(require_permissions("service:update"))]
 )
 async def update_technician_location(
     technician_id: uuid.UUID,
@@ -261,7 +261,7 @@ async def update_technician_location(
 @router.put(
     "/{technician_id}/availability",
     response_model=TechnicianBrief,
-    dependencies=[Depends(require_permissions("technicians:update"))]
+    dependencies=[Depends(require_permissions("service:update"))]
 )
 async def toggle_availability(
     technician_id: uuid.UUID,
@@ -288,7 +288,7 @@ async def toggle_availability(
 @router.delete(
     "/{technician_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permissions("technicians:delete"))]
+    dependencies=[Depends(require_permissions("service:delete"))]
 )
 async def deactivate_technician(
     technician_id: uuid.UUID,
@@ -297,7 +297,7 @@ async def deactivate_technician(
 ):
     """
     Deactivate a technician.
-    Requires: technicians:delete permission
+    Requires: service:delete permission
     """
     query = select(Technician).where(Technician.id == technician_id)
     result = await db.execute(query)

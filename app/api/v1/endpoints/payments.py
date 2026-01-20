@@ -208,7 +208,7 @@ async def get_payment_status(
 @router.post(
     "/refund",
     response_model=RefundResponse,
-    dependencies=[Depends(require_permissions("payments:refund"))],
+    dependencies=[Depends(require_permissions("finance:update"))],
     summary="Initiate a refund",
     description="Initiate a full or partial refund for a payment."
 )
@@ -220,7 +220,7 @@ async def initiate_refund(
     """
     Initiate a refund for a payment.
 
-    Requires: payments:refund permission
+    Requires: finance:update permission
 
     - Full refund if amount is not specified
     - Partial refund if amount is provided
@@ -276,7 +276,7 @@ async def initiate_refund(
 
 @router.get(
     "/order/{order_id}/payments",
-    dependencies=[Depends(require_permissions("payments:view"))],
+    dependencies=[Depends(require_permissions("finance:view"))],
     summary="Get all payments for an order",
     description="Fetch all payment attempts for a specific order."
 )
@@ -287,7 +287,7 @@ async def get_order_payments(
     """
     Get all payment attempts for an order.
 
-    Requires: payments:view permission
+    Requires: finance:view permission
     """
     from sqlalchemy import text
 

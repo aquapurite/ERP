@@ -56,7 +56,7 @@ def generate_shipment_number() -> str:
 @router.get(
     "",
     response_model=ShipmentListResponse,
-    dependencies=[Depends(require_permissions("shipping:view"))]
+    dependencies=[Depends(require_permissions("logistics:view"))]
 )
 async def list_shipments(
     db: DB,
@@ -132,7 +132,7 @@ async def list_shipments(
 @router.get(
     "/{shipment_id}",
     response_model=ShipmentDetailResponse,
-    dependencies=[Depends(require_permissions("shipping:view"))]
+    dependencies=[Depends(require_permissions("logistics:view"))]
 )
 async def get_shipment(
     shipment_id: uuid.UUID,
@@ -168,7 +168,7 @@ async def get_shipment(
     "",
     response_model=ShipmentResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permissions("shipping:create"))]
+    dependencies=[Depends(require_permissions("logistics:create"))]
 )
 async def create_shipment(
     data: ShipmentCreate,
@@ -267,7 +267,7 @@ async def create_shipment(
 @router.put(
     "/{shipment_id}",
     response_model=ShipmentResponse,
-    dependencies=[Depends(require_permissions("shipping:update"))]
+    dependencies=[Depends(require_permissions("logistics:update"))]
 )
 async def update_shipment(
     shipment_id: uuid.UUID,
@@ -320,7 +320,7 @@ async def update_shipment(
 @router.post(
     "/{shipment_id}/pack",
     response_model=ShipmentPackResponse,
-    dependencies=[Depends(require_permissions("shipping:update"))]
+    dependencies=[Depends(require_permissions("logistics:update"))]
 )
 async def pack_shipment(
     shipment_id: uuid.UUID,
@@ -393,7 +393,7 @@ async def pack_shipment(
 @router.post(
     "/{shipment_id}/generate-awb",
     response_model=ShipmentResponse,
-    dependencies=[Depends(require_permissions("shipping:update"))]
+    dependencies=[Depends(require_permissions("logistics:update"))]
 )
 async def generate_awb(
     shipment_id: uuid.UUID,
@@ -459,7 +459,7 @@ async def generate_awb(
 @router.post(
     "/{shipment_id}/track",
     response_model=ShipmentTrackingResponse,
-    dependencies=[Depends(require_permissions("shipping:update"))]
+    dependencies=[Depends(require_permissions("logistics:update"))]
 )
 async def update_tracking(
     shipment_id: uuid.UUID,
@@ -510,7 +510,7 @@ async def update_tracking(
 @router.post(
     "/{shipment_id}/deliver",
     response_model=ShipmentDeliveryMarkResponse,
-    dependencies=[Depends(require_permissions("shipping:update"))]
+    dependencies=[Depends(require_permissions("logistics:update"))]
 )
 async def mark_delivered(
     shipment_id: uuid.UUID,
@@ -673,7 +673,7 @@ async def mark_delivered(
 @router.post(
     "/{shipment_id}/rto",
     response_model=ShipmentRTOResponse,
-    dependencies=[Depends(require_permissions("shipping:update"))]
+    dependencies=[Depends(require_permissions("logistics:update"))]
 )
 async def initiate_rto(
     shipment_id: uuid.UUID,
@@ -729,7 +729,7 @@ async def initiate_rto(
 @router.post(
     "/{shipment_id}/cancel",
     response_model=ShipmentResponse,
-    dependencies=[Depends(require_permissions("shipping:delete"))]
+    dependencies=[Depends(require_permissions("logistics:delete"))]
 )
 async def cancel_shipment(
     shipment_id: uuid.UUID,
@@ -842,7 +842,7 @@ async def track_shipment_public(
 @router.get(
     "/{shipment_id}/label",
     response_model=ShipmentLabelResponse,
-    dependencies=[Depends(require_permissions("shipping:view"))]
+    dependencies=[Depends(require_permissions("logistics:view"))]
 )
 async def get_shipping_label(
     shipment_id: uuid.UUID,
@@ -991,7 +991,7 @@ async def download_shipping_label(
 @router.get(
     "/{shipment_id}/invoice",
     response_model=ShipmentInvoiceResponse,
-    dependencies=[Depends(require_permissions("shipping:view"))]
+    dependencies=[Depends(require_permissions("logistics:view"))]
 )
 async def get_shipment_invoice(
     shipment_id: uuid.UUID,
@@ -1224,7 +1224,7 @@ async def download_shipment_invoice(
 
 @router.get(
     "/sla/dashboard",
-    dependencies=[Depends(require_permissions("shipping:view"))]
+    dependencies=[Depends(require_permissions("logistics:view"))]
 )
 async def get_sla_dashboard(
     db: DB,
@@ -1353,7 +1353,7 @@ async def get_sla_dashboard(
 
 @router.get(
     "/sla/at-risk",
-    dependencies=[Depends(require_permissions("shipping:view"))]
+    dependencies=[Depends(require_permissions("logistics:view"))]
 )
 async def get_at_risk_shipments(
     db: DB,
@@ -1433,7 +1433,7 @@ async def get_at_risk_shipments(
 
 @router.post(
     "/{shipment_id}/pod/upload",
-    dependencies=[Depends(require_permissions("shipping:update"))]
+    dependencies=[Depends(require_permissions("logistics:update"))]
 )
 async def upload_pod(
     shipment_id: uuid.UUID,
@@ -1479,7 +1479,7 @@ from pathlib import Path
 
 @router.post(
     "/{shipment_id}/pod/upload-file",
-    dependencies=[Depends(require_permissions("shipping:update"))]
+    dependencies=[Depends(require_permissions("logistics:update"))]
 )
 async def upload_pod_file(
     shipment_id: uuid.UUID,

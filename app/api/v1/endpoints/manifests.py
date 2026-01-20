@@ -53,7 +53,7 @@ def generate_manifest_number() -> str:
 @router.get(
     "",
     response_model=ManifestListResponse,
-    dependencies=[Depends(require_permissions("shipping:view"))]
+    dependencies=[Depends(require_permissions("logistics:view"))]
 )
 async def list_manifests(
     db: DB,
@@ -124,7 +124,7 @@ async def list_manifests(
 @router.get(
     "/{manifest_id}",
     response_model=ManifestDetailResponse,
-    dependencies=[Depends(require_permissions("shipping:view"))]
+    dependencies=[Depends(require_permissions("logistics:view"))]
 )
 async def get_manifest(
     manifest_id: uuid.UUID,
@@ -158,7 +158,7 @@ async def get_manifest(
     "",
     response_model=ManifestResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permissions("shipping:create"))]
+    dependencies=[Depends(require_permissions("logistics:create"))]
 )
 async def create_manifest(
     data: ManifestCreate,
@@ -216,7 +216,7 @@ async def create_manifest(
 @router.put(
     "/{manifest_id}",
     response_model=ManifestResponse,
-    dependencies=[Depends(require_permissions("shipping:update"))]
+    dependencies=[Depends(require_permissions("logistics:update"))]
 )
 async def update_manifest(
     manifest_id: uuid.UUID,
@@ -256,7 +256,7 @@ async def update_manifest(
 @router.post(
     "/{manifest_id}/add-shipments",
     response_model=ManifestDetailResponse,
-    dependencies=[Depends(require_permissions("shipping:update"))]
+    dependencies=[Depends(require_permissions("logistics:update"))]
 )
 async def add_shipments_to_manifest(
     manifest_id: uuid.UUID,
@@ -357,7 +357,7 @@ async def add_shipments_to_manifest(
 @router.post(
     "/{manifest_id}/remove-shipments",
     response_model=ManifestDetailResponse,
-    dependencies=[Depends(require_permissions("shipping:update"))]
+    dependencies=[Depends(require_permissions("logistics:update"))]
 )
 async def remove_shipments_from_manifest(
     manifest_id: uuid.UUID,
@@ -435,7 +435,7 @@ async def remove_shipments_from_manifest(
 @router.post(
     "/{manifest_id}/scan",
     response_model=ManifestScanResponse,
-    dependencies=[Depends(require_permissions("shipping:update"))]
+    dependencies=[Depends(require_permissions("logistics:update"))]
 )
 async def scan_shipment_for_handover(
     manifest_id: uuid.UUID,
@@ -539,7 +539,7 @@ async def scan_shipment_for_handover(
 @router.post(
     "/{manifest_id}/confirm",
     response_model=ManifestConfirmResponse,
-    dependencies=[Depends(require_permissions("shipping:update"))]
+    dependencies=[Depends(require_permissions("logistics:update"))]
 )
 async def confirm_manifest(
     manifest_id: uuid.UUID,
@@ -600,7 +600,7 @@ async def confirm_manifest(
 @router.post(
     "/{manifest_id}/handover",
     response_model=ManifestHandoverResponse,
-    dependencies=[Depends(require_permissions("shipping:update"))]
+    dependencies=[Depends(require_permissions("logistics:update"))]
 )
 async def complete_handover(
     manifest_id: uuid.UUID,
@@ -692,7 +692,7 @@ async def complete_handover(
 @router.post(
     "/{manifest_id}/cancel",
     response_model=ManifestResponse,
-    dependencies=[Depends(require_permissions("shipping:delete"))]
+    dependencies=[Depends(require_permissions("logistics:delete"))]
 )
 async def cancel_manifest(
     manifest_id: uuid.UUID,
@@ -749,7 +749,7 @@ async def cancel_manifest(
 @router.get(
     "/{manifest_id}/print",
     response_model=ManifestPrintResponse,
-    dependencies=[Depends(require_permissions("shipping:view"))]
+    dependencies=[Depends(require_permissions("logistics:view"))]
 )
 async def get_manifest_print_data(
     manifest_id: uuid.UUID,

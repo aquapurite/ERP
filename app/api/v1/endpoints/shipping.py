@@ -222,7 +222,7 @@ async def check_serviceability(data: ServiceabilityRequest):
     response_model=PushToShiprocketResponse,
     summary="Push order to Shiprocket",
     description="Create order in Shiprocket for fulfillment.",
-    dependencies=[Depends(require_permissions("orders:manage"))]
+    dependencies=[Depends(require_permissions("orders:update"))]
 )
 async def push_order_to_shiprocket_endpoint(
     data: PushToShiprocketRequest,
@@ -235,7 +235,7 @@ async def push_order_to_shiprocket_endpoint(
     This creates the order in Shiprocket. Optionally auto-assigns
     the best courier and generates AWB.
 
-    Requires: orders:manage permission
+    Requires: orders:update permission
     """
     # Get order from database
     try:
@@ -355,7 +355,7 @@ async def push_order_to_shiprocket_endpoint(
     "/generate-awb",
     summary="Generate AWB for shipment",
     description="Generate AWB (airway bill) for an existing Shiprocket shipment.",
-    dependencies=[Depends(require_permissions("orders:manage"))]
+    dependencies=[Depends(require_permissions("orders:update"))]
 )
 async def generate_awb(data: GenerateAWBRequest, db: DB, current_user: CurrentUser):
     """
@@ -364,7 +364,7 @@ async def generate_awb(data: GenerateAWBRequest, db: DB, current_user: CurrentUs
     The shipment must already exist in Shiprocket.
     Optionally specify a courier ID, otherwise auto-assigns best courier.
 
-    Requires: orders:manage permission
+    Requires: orders:update permission
     """
     try:
         service = ShiprocketService()
@@ -392,7 +392,7 @@ async def generate_awb(data: GenerateAWBRequest, db: DB, current_user: CurrentUs
     "/request-pickup/{shipment_id}",
     summary="Request pickup for shipment",
     description="Request courier pickup for a shipment with AWB.",
-    dependencies=[Depends(require_permissions("orders:manage"))]
+    dependencies=[Depends(require_permissions("orders:update"))]
 )
 async def request_pickup(shipment_id: int, current_user: CurrentUser):
     """
@@ -400,7 +400,7 @@ async def request_pickup(shipment_id: int, current_user: CurrentUser):
 
     Call this after AWB is generated to schedule pickup.
 
-    Requires: orders:manage permission
+    Requires: orders:update permission
     """
     try:
         service = ShiprocketService()
@@ -638,7 +638,7 @@ async def shiprocket_webhook(
     "/sync-tracking",
     summary="Sync tracking for all shipped orders",
     description="Fetch latest tracking for all orders with AWB but not delivered.",
-    dependencies=[Depends(require_permissions("orders:manage"))]
+    dependencies=[Depends(require_permissions("orders:update"))]
 )
 async def sync_all_tracking(db: DB, current_user: CurrentUser):
     """
@@ -647,7 +647,7 @@ async def sync_all_tracking(db: DB, current_user: CurrentUser):
     This fetches the latest tracking info from Shiprocket
     for all orders that have an AWB but are not yet delivered.
 
-    Requires: orders:manage permission
+    Requires: orders:update permission
     """
     # Get orders with AWB that are not delivered
     query = (

@@ -49,7 +49,7 @@ def generate_picklist_number() -> str:
 @router.get(
     "",
     response_model=PicklistListResponse,
-    dependencies=[Depends(require_permissions("picking:view"))]
+    dependencies=[Depends(require_permissions("orders:view"))]
 )
 async def list_picklists(
     db: DB,
@@ -109,7 +109,7 @@ async def list_picklists(
 @router.get(
     "/{picklist_id}",
     response_model=PicklistDetailResponse,
-    dependencies=[Depends(require_permissions("picking:view"))]
+    dependencies=[Depends(require_permissions("orders:view"))]
 )
 async def get_picklist(
     picklist_id: uuid.UUID,
@@ -140,7 +140,7 @@ async def get_picklist(
     "/generate",
     response_model=PicklistDetailResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permissions("picking:create"))]
+    dependencies=[Depends(require_permissions("orders:create"))]
 )
 async def generate_picklist(
     data: PicklistGenerateRequest,
@@ -262,7 +262,7 @@ async def generate_picklist(
 @router.put(
     "/{picklist_id}/assign",
     response_model=PicklistResponse,
-    dependencies=[Depends(require_permissions("picking:update"))]
+    dependencies=[Depends(require_permissions("orders:update"))]
 )
 async def assign_picklist(
     picklist_id: uuid.UUID,
@@ -300,7 +300,7 @@ async def assign_picklist(
 @router.post(
     "/{picklist_id}/start",
     response_model=PicklistResponse,
-    dependencies=[Depends(require_permissions("picking:update"))]
+    dependencies=[Depends(require_permissions("orders:update"))]
 )
 async def start_picking(
     picklist_id: uuid.UUID,
@@ -339,7 +339,7 @@ async def start_picking(
 @router.post(
     "/{picklist_id}/scan",
     response_model=PickScanResponse,
-    dependencies=[Depends(require_permissions("picking:update"))]
+    dependencies=[Depends(require_permissions("orders:update"))]
 )
 async def scan_pick_item(
     picklist_id: uuid.UUID,
@@ -427,7 +427,7 @@ async def scan_pick_item(
 @router.post(
     "/{picklist_id}/confirm",
     response_model=PickScanResponse,
-    dependencies=[Depends(require_permissions("picking:update"))]
+    dependencies=[Depends(require_permissions("orders:update"))]
 )
 async def confirm_pick_item(
     picklist_id: uuid.UUID,
@@ -498,7 +498,7 @@ async def confirm_pick_item(
 @router.post(
     "/{picklist_id}/short",
     response_model=PickScanResponse,
-    dependencies=[Depends(require_permissions("picking:update"))]
+    dependencies=[Depends(require_permissions("orders:update"))]
 )
 async def mark_item_short(
     picklist_id: uuid.UUID,
@@ -554,7 +554,7 @@ async def mark_item_short(
 @router.post(
     "/{picklist_id}/complete",
     response_model=PickCompleteResponse,
-    dependencies=[Depends(require_permissions("picking:update"))]
+    dependencies=[Depends(require_permissions("orders:update"))]
 )
 async def complete_picklist(
     picklist_id: uuid.UUID,
@@ -620,7 +620,7 @@ async def complete_picklist(
 @router.post(
     "/{picklist_id}/cancel",
     response_model=PicklistResponse,
-    dependencies=[Depends(require_permissions("picking:delete"))]
+    dependencies=[Depends(require_permissions("orders:delete"))]
 )
 async def cancel_picklist(
     picklist_id: uuid.UUID,

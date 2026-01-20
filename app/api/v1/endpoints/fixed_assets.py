@@ -96,7 +96,7 @@ def calculate_depreciation(
 
 # ==================== Asset Categories ====================
 
-@router.get("/categories", response_model=AssetCategoryListResponse, dependencies=[Depends(require_permissions("fa:view"))])
+@router.get("/categories", response_model=AssetCategoryListResponse, dependencies=[Depends(require_permissions("assets:view"))])
 async def list_asset_categories(
     db: DB,
     current_user: CurrentUser,
@@ -152,7 +152,7 @@ async def list_asset_categories(
     return AssetCategoryListResponse(items=items, total=total, page=page, size=size, pages=pages)
 
 
-@router.post("/categories", response_model=AssetCategoryResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permissions("fa:create"))])
+@router.post("/categories", response_model=AssetCategoryResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permissions("assets:create"))])
 async def create_asset_category(
     category_in: AssetCategoryCreate,
     db: DB,
@@ -204,7 +204,7 @@ async def create_asset_category(
     )
 
 
-@router.put("/categories/{category_id}", response_model=AssetCategoryResponse, dependencies=[Depends(require_permissions("fa:update"))])
+@router.put("/categories/{category_id}", response_model=AssetCategoryResponse, dependencies=[Depends(require_permissions("assets:update"))])
 async def update_asset_category(
     category_id: UUID,
     category_in: AssetCategoryUpdate,
@@ -257,7 +257,7 @@ async def update_asset_category(
 
 # ==================== Assets ====================
 
-@router.get("/assets", response_model=AssetListResponse, dependencies=[Depends(require_permissions("fa:view"))])
+@router.get("/assets", response_model=AssetListResponse, dependencies=[Depends(require_permissions("assets:view"))])
 async def list_assets(
     db: DB,
     current_user: CurrentUser,
@@ -327,7 +327,7 @@ async def list_assets(
     return AssetListResponse(items=items, total=total, page=page, size=size, pages=pages)
 
 
-@router.post("/assets", response_model=AssetDetailResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permissions("fa:create"))])
+@router.post("/assets", response_model=AssetDetailResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permissions("assets:create"))])
 async def create_asset(
     asset_in: AssetCreate,
     db: DB,
@@ -437,7 +437,7 @@ async def create_asset(
     )
 
 
-@router.get("/assets/{asset_id}", response_model=AssetDetailResponse, dependencies=[Depends(require_permissions("fa:view"))])
+@router.get("/assets/{asset_id}", response_model=AssetDetailResponse, dependencies=[Depends(require_permissions("assets:view"))])
 async def get_asset(
     asset_id: UUID,
     db: DB,
@@ -507,7 +507,7 @@ async def get_asset(
     )
 
 
-@router.put("/assets/{asset_id}", response_model=AssetDetailResponse, dependencies=[Depends(require_permissions("fa:update"))])
+@router.put("/assets/{asset_id}", response_model=AssetDetailResponse, dependencies=[Depends(require_permissions("assets:update"))])
 async def update_asset(
     asset_id: UUID,
     asset_in: AssetUpdate,
@@ -585,7 +585,7 @@ async def update_asset(
     )
 
 
-@router.post("/assets/{asset_id}/dispose", response_model=AssetDetailResponse, dependencies=[Depends(require_permissions("fa:update"))])
+@router.post("/assets/{asset_id}/dispose", response_model=AssetDetailResponse, dependencies=[Depends(require_permissions("assets:update"))])
 async def dispose_asset(
     asset_id: UUID,
     dispose_in: AssetDisposeRequest,
@@ -676,7 +676,7 @@ async def dispose_asset(
 
 # ==================== Depreciation ====================
 
-@router.post("/depreciation/run", response_model=List[DepreciationEntryResponse], dependencies=[Depends(require_permissions("fa:update"))])
+@router.post("/depreciation/run", response_model=List[DepreciationEntryResponse], dependencies=[Depends(require_permissions("assets:update"))])
 async def run_depreciation(
     run_in: DepreciationRunRequest,
     db: DB,
@@ -768,7 +768,7 @@ async def run_depreciation(
     return entries
 
 
-@router.get("/depreciation", response_model=DepreciationListResponse, dependencies=[Depends(require_permissions("fa:view"))])
+@router.get("/depreciation", response_model=DepreciationListResponse, dependencies=[Depends(require_permissions("assets:view"))])
 async def list_depreciation_entries(
     db: DB,
     current_user: CurrentUser,
@@ -828,7 +828,7 @@ async def list_depreciation_entries(
 
 # ==================== Asset Transfers ====================
 
-@router.get("/transfers", response_model=AssetTransferListResponse, dependencies=[Depends(require_permissions("fa:view"))])
+@router.get("/transfers", response_model=AssetTransferListResponse, dependencies=[Depends(require_permissions("assets:view"))])
 async def list_asset_transfers(
     db: DB,
     current_user: CurrentUser,
@@ -881,7 +881,7 @@ async def list_asset_transfers(
     return AssetTransferListResponse(items=items, total=total, page=page, size=size, pages=pages)
 
 
-@router.post("/transfers", response_model=AssetTransferResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permissions("fa:create"))])
+@router.post("/transfers", response_model=AssetTransferResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permissions("assets:create"))])
 async def create_asset_transfer(
     transfer_in: AssetTransferCreate,
     db: DB,
@@ -945,7 +945,7 @@ async def create_asset_transfer(
     )
 
 
-@router.put("/transfers/{transfer_id}/approve", response_model=AssetTransferResponse, dependencies=[Depends(require_permissions("fa:update"))])
+@router.put("/transfers/{transfer_id}/approve", response_model=AssetTransferResponse, dependencies=[Depends(require_permissions("assets:update"))])
 async def approve_transfer(
     transfer_id: UUID,
     db: DB,
@@ -995,7 +995,7 @@ async def approve_transfer(
     )
 
 
-@router.put("/transfers/{transfer_id}/complete", response_model=AssetTransferResponse, dependencies=[Depends(require_permissions("fa:update"))])
+@router.put("/transfers/{transfer_id}/complete", response_model=AssetTransferResponse, dependencies=[Depends(require_permissions("assets:update"))])
 async def complete_transfer(
     transfer_id: UUID,
     db: DB,
@@ -1055,7 +1055,7 @@ async def complete_transfer(
 
 # ==================== Asset Maintenance ====================
 
-@router.get("/maintenance", response_model=AssetMaintenanceListResponse, dependencies=[Depends(require_permissions("fa:view"))])
+@router.get("/maintenance", response_model=AssetMaintenanceListResponse, dependencies=[Depends(require_permissions("assets:view"))])
 async def list_asset_maintenance(
     db: DB,
     current_user: CurrentUser,
@@ -1113,7 +1113,7 @@ async def list_asset_maintenance(
     return AssetMaintenanceListResponse(items=items, total=total, page=page, size=size, pages=pages)
 
 
-@router.post("/maintenance", response_model=AssetMaintenanceResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permissions("fa:create"))])
+@router.post("/maintenance", response_model=AssetMaintenanceResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permissions("assets:create"))])
 async def create_asset_maintenance(
     maintenance_in: AssetMaintenanceCreate,
     db: DB,
@@ -1167,7 +1167,7 @@ async def create_asset_maintenance(
     )
 
 
-@router.put("/maintenance/{maintenance_id}", response_model=AssetMaintenanceResponse, dependencies=[Depends(require_permissions("fa:update"))])
+@router.put("/maintenance/{maintenance_id}", response_model=AssetMaintenanceResponse, dependencies=[Depends(require_permissions("assets:update"))])
 async def update_asset_maintenance(
     maintenance_id: UUID,
     maintenance_in: AssetMaintenanceUpdate,
@@ -1220,7 +1220,7 @@ async def update_asset_maintenance(
 
 # ==================== Dashboard ====================
 
-@router.get("/dashboard", response_model=FixedAssetsDashboard, dependencies=[Depends(require_permissions("fa:view"))])
+@router.get("/dashboard", response_model=FixedAssetsDashboard, dependencies=[Depends(require_permissions("assets:view"))])
 async def get_fixed_assets_dashboard(
     db: DB,
     current_user: CurrentUser,

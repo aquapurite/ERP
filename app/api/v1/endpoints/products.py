@@ -171,7 +171,7 @@ async def get_top_selling_products(
 @router.get(
     "/costs/summary",
     response_model=ProductCostSummary,
-    dependencies=[Depends(require_permissions("products:read"))]
+    dependencies=[Depends(require_permissions("products:view"))]
 )
 async def get_inventory_valuation_summary(
     db: DB,
@@ -184,7 +184,7 @@ async def get_inventory_valuation_summary(
     Shows total inventory value, average stock value per product,
     and counts by valuation method.
 
-    Requires: products:read permission
+    Requires: products:view permission
     """
     costing_service = CostingService(db)
     summary = await costing_service.get_inventory_valuation_summary(warehouse_id=warehouse_id)
@@ -681,7 +681,7 @@ def _build_product_detail_response(p) -> ProductDetailResponse:
 @router.get(
     "/{product_id}/cost",
     response_model=ProductCostResponse,
-    dependencies=[Depends(require_permissions("products:read"))]
+    dependencies=[Depends(require_permissions("products:view"))]
 )
 async def get_product_cost(
     product_id: uuid.UUID,
@@ -696,7 +696,7 @@ async def get_product_cost(
     The cost is auto-calculated using Weighted Average Cost method
     from GRN receipts (Purchase Orders).
 
-    Requires: products:read permission
+    Requires: products:view permission
     """
     costing_service = CostingService(db)
 
@@ -736,7 +736,7 @@ async def get_product_cost(
 
 @router.get(
     "/{product_id}/cost-history",
-    dependencies=[Depends(require_permissions("products:read"))]
+    dependencies=[Depends(require_permissions("products:view"))]
 )
 async def get_product_cost_history(
     product_id: uuid.UUID,
@@ -752,7 +752,7 @@ async def get_product_cost_history(
     Shows all cost movements from GRN acceptances,
     including running average after each receipt.
 
-    Requires: products:read permission
+    Requires: products:view permission
     """
     costing_service = CostingService(db)
 

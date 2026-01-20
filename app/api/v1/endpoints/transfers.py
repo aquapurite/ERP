@@ -213,7 +213,7 @@ async def submit_transfer(
 @router.post(
     "/{transfer_id}/approve",
     response_model=StockTransferResponse,
-    dependencies=[Depends(require_permissions("inventory:approve"))]
+    dependencies=[Depends(require_permissions("inventory:update"))]
 )
 async def approve_transfer(
     transfer_id: uuid.UUID,
@@ -223,7 +223,7 @@ async def approve_transfer(
 ):
     """
     Approve a transfer request.
-    Requires: inventory:approve permission
+    Requires: inventory:update permission
     """
     service = TransferService(db)
 
@@ -245,7 +245,7 @@ async def approve_transfer(
 @router.post(
     "/{transfer_id}/reject",
     response_model=StockTransferResponse,
-    dependencies=[Depends(require_permissions("inventory:approve"))]
+    dependencies=[Depends(require_permissions("inventory:update"))]
 )
 async def reject_transfer(
     transfer_id: uuid.UUID,
@@ -255,7 +255,7 @@ async def reject_transfer(
 ):
     """
     Reject a transfer request.
-    Requires: inventory:approve permission
+    Requires: inventory:update permission
     """
     service = TransferService(db)
 

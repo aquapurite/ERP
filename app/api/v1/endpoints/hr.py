@@ -702,7 +702,7 @@ async def update_employee(
 
 # ==================== Salary Structure Endpoints ====================
 
-@router.get("/employees/{employee_id}/salary", response_model=SalaryStructureResponse, dependencies=[Depends(require_permissions("payroll:view"))])
+@router.get("/employees/{employee_id}/salary", response_model=SalaryStructureResponse, dependencies=[Depends(require_permissions("hr:view"))])
 async def get_employee_salary(
     employee_id: UUID,
     db: DB,
@@ -725,7 +725,7 @@ async def get_employee_salary(
     return salary
 
 
-@router.put("/employees/{employee_id}/salary", response_model=SalaryStructureResponse, dependencies=[Depends(require_permissions("payroll:process"))])
+@router.put("/employees/{employee_id}/salary", response_model=SalaryStructureResponse, dependencies=[Depends(require_permissions("hr:update"))])
 async def update_employee_salary(
     employee_id: UUID,
     salary_in: SalaryStructureCreate,
@@ -939,7 +939,7 @@ async def check_out(
     return await _format_attendance_response(attendance, db)
 
 
-@router.get("/attendance", response_model=AttendanceListResponse, dependencies=[Depends(require_permissions("attendance:view"))])
+@router.get("/attendance", response_model=AttendanceListResponse, dependencies=[Depends(require_permissions("hr:view"))])
 async def list_attendance(
     db: DB,
     current_user: CurrentUser,
@@ -1171,7 +1171,7 @@ async def list_leave_requests(
     return LeaveRequestListResponse(items=items, total=total, page=page, size=size, pages=pages)
 
 
-@router.put("/leave-requests/{request_id}/approve", dependencies=[Depends(require_permissions("leave:approve"))])
+@router.put("/leave-requests/{request_id}/approve", dependencies=[Depends(require_permissions("hr:update"))])
 async def approve_leave_request(
     request_id: UUID,
     action_in: LeaveApproveRequest,
@@ -1280,7 +1280,7 @@ async def _format_leave_response(leave_req: LeaveRequest, db: AsyncSession) -> L
 
 # ==================== Payroll Endpoints ====================
 
-@router.get("/payroll", response_model=PayrollListResponse, dependencies=[Depends(require_permissions("payroll:view"))])
+@router.get("/payroll", response_model=PayrollListResponse, dependencies=[Depends(require_permissions("hr:view"))])
 async def list_payrolls(
     db: DB,
     current_user: CurrentUser,
@@ -1348,7 +1348,7 @@ async def list_payrolls(
     return PayrollListResponse(items=items, total=total, page=page, size=size, pages=pages)
 
 
-@router.post("/payroll/process", response_model=PayrollResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permissions("payroll:process"))])
+@router.post("/payroll/process", response_model=PayrollResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permissions("hr:update"))])
 async def process_payroll(
     payroll_in: PayrollProcessRequest,
     db: DB,
@@ -1515,7 +1515,7 @@ async def process_payroll(
     )
 
 
-@router.put("/payroll/{payroll_id}/approve", response_model=PayrollResponse, dependencies=[Depends(require_permissions("payroll:approve"))])
+@router.put("/payroll/{payroll_id}/approve", response_model=PayrollResponse, dependencies=[Depends(require_permissions("hr:update"))])
 async def approve_payroll(
     payroll_id: UUID,
     db: DB,
@@ -1746,7 +1746,7 @@ async def get_hr_dashboard(
 
 # ==================== Reports Endpoints ====================
 
-@router.get("/reports/pf-ecr", response_model=List[PFReportResponse], dependencies=[Depends(require_permissions("hr:reports"))])
+@router.get("/reports/pf-ecr", response_model=List[PFReportResponse], dependencies=[Depends(require_permissions("hr:view"))])
 async def get_pf_ecr_report(
     db: DB,
     current_user: CurrentUser,
@@ -1811,7 +1811,7 @@ async def get_pf_ecr_report(
     return pf_data
 
 
-@router.get("/reports/esic", response_model=List[ESICReportResponse], dependencies=[Depends(require_permissions("hr:reports"))])
+@router.get("/reports/esic", response_model=List[ESICReportResponse], dependencies=[Depends(require_permissions("hr:view"))])
 async def get_esic_report(
     db: DB,
     current_user: CurrentUser,
@@ -1866,7 +1866,7 @@ async def get_esic_report(
     return esic_data
 
 
-@router.get("/reports/salary-register", dependencies=[Depends(require_permissions("hr:reports"))])
+@router.get("/reports/salary-register", dependencies=[Depends(require_permissions("hr:view"))])
 async def get_salary_register(
     db: DB,
     current_user: CurrentUser,

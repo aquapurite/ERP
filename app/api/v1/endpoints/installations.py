@@ -61,7 +61,7 @@ def generate_warranty_card_number() -> str:
 @router.get(
     "",
     response_model=InstallationListResponse,
-    dependencies=[Depends(require_permissions("installation:view"))]
+    dependencies=[Depends(require_permissions("service:view"))]
 )
 async def list_installations(
     db: DB,
@@ -136,7 +136,7 @@ async def list_installations(
 @router.get(
     "/dashboard",
     response_model=InstallationDashboardResponse,
-    dependencies=[Depends(require_permissions("installation:view"))]
+    dependencies=[Depends(require_permissions("service:view"))]
 )
 async def get_installation_dashboard(db: DB):
     """Get installation dashboard statistics."""
@@ -236,7 +236,7 @@ async def get_installation_dashboard(db: DB):
 @router.get(
     "/{installation_id}",
     response_model=InstallationDetailResponse,
-    dependencies=[Depends(require_permissions("installation:view"))]
+    dependencies=[Depends(require_permissions("service:view"))]
 )
 async def get_installation(
     installation_id: uuid.UUID,
@@ -281,7 +281,7 @@ async def get_installation(
     "",
     response_model=InstallationResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permissions("installation:create"))]
+    dependencies=[Depends(require_permissions("service:create"))]
 )
 async def create_installation(
     data: InstallationCreate,
@@ -329,7 +329,7 @@ async def create_installation(
 @router.put(
     "/{installation_id}",
     response_model=InstallationResponse,
-    dependencies=[Depends(require_permissions("installation:update"))]
+    dependencies=[Depends(require_permissions("service:update"))]
 )
 async def update_installation(
     installation_id: uuid.UUID,
@@ -360,7 +360,7 @@ async def update_installation(
 @router.post(
     "/{installation_id}/schedule",
     response_model=InstallationResponse,
-    dependencies=[Depends(require_permissions("installation:update"))]
+    dependencies=[Depends(require_permissions("service:update"))]
 )
 async def schedule_installation(
     installation_id: uuid.UUID,
@@ -414,7 +414,7 @@ async def schedule_installation(
 @router.post(
     "/{installation_id}/assign",
     response_model=InstallationResponse,
-    dependencies=[Depends(require_permissions("installation:update"))]
+    dependencies=[Depends(require_permissions("service:update"))]
 )
 async def assign_technician(
     installation_id: uuid.UUID,
@@ -454,7 +454,7 @@ async def assign_technician(
 @router.post(
     "/{installation_id}/start",
     response_model=InstallationResponse,
-    dependencies=[Depends(require_permissions("installation:update"))]
+    dependencies=[Depends(require_permissions("service:update"))]
 )
 async def start_installation(
     installation_id: uuid.UUID,
@@ -487,7 +487,7 @@ async def start_installation(
 @router.post(
     "/{installation_id}/complete",
     response_model=InstallationResponse,
-    dependencies=[Depends(require_permissions("installation:update"))]
+    dependencies=[Depends(require_permissions("service:update"))]
 )
 async def complete_installation(
     installation_id: uuid.UUID,
@@ -542,7 +542,7 @@ async def complete_installation(
 @router.post(
     "/{installation_id}/cancel",
     response_model=InstallationResponse,
-    dependencies=[Depends(require_permissions("installation:update"))]
+    dependencies=[Depends(require_permissions("service:update"))]
 )
 async def cancel_installation(
     installation_id: uuid.UUID,
@@ -574,7 +574,7 @@ async def cancel_installation(
 
 @router.get(
     "/{installation_id}/warranty",
-    dependencies=[Depends(require_permissions("installation:view"))]
+    dependencies=[Depends(require_permissions("service:view"))]
 )
 async def get_warranty_status(
     installation_id: uuid.UUID,
@@ -604,7 +604,7 @@ async def get_warranty_status(
 
 @router.post(
     "/{installation_id}/extend-warranty",
-    dependencies=[Depends(require_permissions("installation:update"))]
+    dependencies=[Depends(require_permissions("service:update"))]
 )
 async def extend_warranty(
     installation_id: uuid.UUID,
@@ -644,7 +644,7 @@ async def extend_warranty(
 @router.get(
     "/lookup/serial/{serial_number}",
     response_model=InstallationDetailResponse,
-    dependencies=[Depends(require_permissions("installation:view"))]
+    dependencies=[Depends(require_permissions("service:view"))]
 )
 async def lookup_by_serial(
     serial_number: str,
@@ -676,7 +676,7 @@ async def lookup_by_serial(
 
 @router.get(
     "/lookup/warranty/{warranty_card}",
-    dependencies=[Depends(require_permissions("installation:view"))]
+    dependencies=[Depends(require_permissions("service:view"))]
 )
 async def lookup_by_warranty_card(
     warranty_card: str,

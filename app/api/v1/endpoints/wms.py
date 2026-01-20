@@ -52,7 +52,7 @@ router = APIRouter()
 @router.get(
     "/zones",
     response_model=ZoneListResponse,
-    dependencies=[Depends(require_permissions("wms:view"))]
+    dependencies=[Depends(require_permissions("inventory:view"))]
 )
 async def list_zones(
     db: DB,
@@ -107,7 +107,7 @@ async def list_zones(
 @router.get(
     "/zones/dropdown",
     response_model=list[ZoneBrief],
-    dependencies=[Depends(require_permissions("wms:view"))]
+    dependencies=[Depends(require_permissions("inventory:view"))]
 )
 async def get_zones_dropdown(
     db: DB,
@@ -138,7 +138,7 @@ async def get_zones_dropdown(
 @router.get(
     "/zones/{zone_id}",
     response_model=ZoneResponse,
-    dependencies=[Depends(require_permissions("wms:view"))]
+    dependencies=[Depends(require_permissions("inventory:view"))]
 )
 async def get_zone(
     zone_id: uuid.UUID,
@@ -162,7 +162,7 @@ async def get_zone(
     "/zones",
     response_model=ZoneResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permissions("wms:create"))]
+    dependencies=[Depends(require_permissions("inventory:create"))]
 )
 async def create_zone(
     data: ZoneCreate,
@@ -208,7 +208,7 @@ async def create_zone(
 @router.put(
     "/zones/{zone_id}",
     response_model=ZoneResponse,
-    dependencies=[Depends(require_permissions("wms:update"))]
+    dependencies=[Depends(require_permissions("inventory:update"))]
 )
 async def update_zone(
     zone_id: uuid.UUID,
@@ -240,7 +240,7 @@ async def update_zone(
 @router.delete(
     "/zones/{zone_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permissions("wms:delete"))]
+    dependencies=[Depends(require_permissions("inventory:delete"))]
 )
 async def deactivate_zone(
     zone_id: uuid.UUID,
@@ -267,7 +267,7 @@ async def deactivate_zone(
 @router.get(
     "/bins/stats",
     response_model=BinStatsResponse,
-    dependencies=[Depends(require_permissions("wms:view"))]
+    dependencies=[Depends(require_permissions("inventory:view"))]
 )
 async def get_bin_stats(db: DB):
     """Get warehouse bin statistics."""
@@ -310,7 +310,7 @@ async def get_bin_stats(db: DB):
 @router.get(
     "/bins",
     response_model=BinListResponse,
-    dependencies=[Depends(require_permissions("wms:view"))]
+    dependencies=[Depends(require_permissions("inventory:view"))]
 )
 async def list_bins(
     db: DB,
@@ -386,7 +386,7 @@ async def list_bins(
 @router.get(
     "/bins/dropdown",
     response_model=list[BinBrief],
-    dependencies=[Depends(require_permissions("wms:view"))]
+    dependencies=[Depends(require_permissions("inventory:view"))]
 )
 async def get_bins_dropdown(
     db: DB,
@@ -425,7 +425,7 @@ async def get_bins_dropdown(
 @router.get(
     "/bins/{bin_id}",
     response_model=BinResponse,
-    dependencies=[Depends(require_permissions("wms:view"))]
+    dependencies=[Depends(require_permissions("inventory:view"))]
 )
 async def get_bin(
     bin_id: uuid.UUID,
@@ -450,7 +450,7 @@ async def get_bin(
     "/bins",
     response_model=BinResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permissions("wms:create"))]
+    dependencies=[Depends(require_permissions("inventory:create"))]
 )
 async def create_bin(
     data: BinCreate,
@@ -498,7 +498,7 @@ async def create_bin(
     "/bins/bulk",
     response_model=list[BinBrief],
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permissions("wms:create"))]
+    dependencies=[Depends(require_permissions("inventory:create"))]
 )
 async def create_bins_bulk(
     data: BinBulkCreate,
@@ -570,7 +570,7 @@ async def create_bins_bulk(
 @router.put(
     "/bins/{bin_id}",
     response_model=BinResponse,
-    dependencies=[Depends(require_permissions("wms:update"))]
+    dependencies=[Depends(require_permissions("inventory:update"))]
 )
 async def update_bin(
     bin_id: uuid.UUID,
@@ -602,7 +602,7 @@ async def update_bin(
 @router.delete(
     "/bins/{bin_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permissions("wms:delete"))]
+    dependencies=[Depends(require_permissions("inventory:delete"))]
 )
 async def deactivate_bin(
     bin_id: uuid.UUID,
@@ -636,7 +636,7 @@ async def deactivate_bin(
 @router.post(
     "/bins/enquiry",
     response_model=BinEnquiryResponse,
-    dependencies=[Depends(require_permissions("wms:view"))]
+    dependencies=[Depends(require_permissions("inventory:view"))]
 )
 async def bin_enquiry(
     data: BinEnquiryRequest,
@@ -701,7 +701,7 @@ async def bin_enquiry(
 @router.get(
     "/putaway-rules/stats",
     response_model=PutAwayRuleStatsResponse,
-    dependencies=[Depends(require_permissions("wms:view"))]
+    dependencies=[Depends(require_permissions("inventory:view"))]
 )
 async def get_putaway_rule_stats(db: DB):
     """Get putaway rule statistics."""
@@ -730,7 +730,7 @@ async def get_putaway_rule_stats(db: DB):
 @router.get(
     "/putaway-rules",
     response_model=PutAwayRuleListResponse,
-    dependencies=[Depends(require_permissions("wms:view"))]
+    dependencies=[Depends(require_permissions("inventory:view"))]
 )
 async def list_putaway_rules(
     db: DB,
@@ -773,7 +773,7 @@ async def list_putaway_rules(
     "/putaway-rules",
     response_model=PutAwayRuleResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permissions("wms:create"))]
+    dependencies=[Depends(require_permissions("inventory:create"))]
 )
 async def create_putaway_rule(
     data: PutAwayRuleCreate,
@@ -793,7 +793,7 @@ async def create_putaway_rule(
 @router.put(
     "/putaway-rules/{rule_id}",
     response_model=PutAwayRuleResponse,
-    dependencies=[Depends(require_permissions("wms:update"))]
+    dependencies=[Depends(require_permissions("inventory:update"))]
 )
 async def update_putaway_rule(
     rule_id: uuid.UUID,
@@ -825,7 +825,7 @@ async def update_putaway_rule(
 @router.delete(
     "/putaway-rules/{rule_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permissions("wms:delete"))]
+    dependencies=[Depends(require_permissions("inventory:delete"))]
 )
 async def delete_putaway_rule(
     rule_id: uuid.UUID,
@@ -852,7 +852,7 @@ async def delete_putaway_rule(
 @router.post(
     "/putaway/suggest",
     response_model=PutAwaySuggestResponse,
-    dependencies=[Depends(require_permissions("wms:view"))]
+    dependencies=[Depends(require_permissions("inventory:view"))]
 )
 async def suggest_putaway(
     data: PutAwaySuggestRequest,
@@ -953,7 +953,7 @@ async def suggest_putaway(
 @router.post(
     "/putaway/execute",
     response_model=PutAwayExecuteResponse,
-    dependencies=[Depends(require_permissions("wms:create"))]
+    dependencies=[Depends(require_permissions("inventory:create"))]
 )
 async def execute_putaway(
     data: PutAwayExecuteRequest,
@@ -1025,7 +1025,7 @@ async def execute_putaway(
 @router.post(
     "/inventory/move",
     response_model=InventoryMoveResponse,
-    dependencies=[Depends(require_permissions("wms:update"))]
+    dependencies=[Depends(require_permissions("inventory:update"))]
 )
 async def move_inventory(
     data: InventoryMoveRequest,
