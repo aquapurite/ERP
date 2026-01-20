@@ -38,7 +38,9 @@ from app.models.transporter import Transporter, TransporterServiceability
 from app.models.warehouse import Warehouse
 from app.models.inventory import InventorySummary, StockItem, StockItemStatus
 from app.models.order import Order, OrderItem, OrderStatus
+from app.models.channel import ChannelInventory, SalesChannel
 from app.services.cache_service import get_cache
+from app.config import settings
 from app.schemas.serviceability import (
     OrderAllocationRequest,
     AllocationDecision,
@@ -148,7 +150,8 @@ class AllocationService:
                     product_ids,
                     pincode,
                     request.payment_mode,
-                    quantities
+                    quantities,
+                    channel_code=channel_code  # Pass channel for channel-specific inventory check
                 )
 
                 if selected_warehouse:
@@ -303,7 +306,8 @@ class AllocationService:
         product_ids: List[str],
         customer_pincode: str,
         payment_mode: Optional[str] = None,
-        quantities: Optional[Dict[str, int]] = None
+        quantities: Optional[Dict[str, int]] = None,
+        channel_code: Optional[str] = None
     ) -> Tuple[Optional[WarehouseServiceability], Dict]:
         """
         Apply allocation rule and return selected warehouse.
@@ -315,11 +319,13 @@ class AllocationService:
             customer_pincode: Customer's delivery pincode
             payment_mode: PREPAID or COD
             quantities: Dict of {product_id: quantity_needed}
+            channel_code: Channel code for channel-specific inventory check
         """
         decision_factors = {
             "rule_name": rule.name,
             "allocation_type": rule.allocation_type if hasattr(rule.allocation_type, 'value') else str(rule.allocation_type),
-            "candidates_count": len(serviceable_warehouses)
+            "candidates_count": len(serviceable_warehouses),
+            "channel_code": channel_code or "SHARED",
         }
 
         # Filter by payment mode
@@ -337,8 +343,8 @@ class AllocationService:
         if rule.allocation_type == AllocationType.FIXED and rule.fixed_warehouse_id:
             for ws in candidates:
                 if ws.warehouse_id == rule.fixed_warehouse_id:
-                    # Check stock with quantities
-                    has_stock = await self._check_stock(ws.warehouse_id, product_ids, quantities)
+                    # Check stock with quantities and channel
+                    has_stock = await self._check_stock(ws.warehouse_id, product_ids, quantities, channel_code)
                     if has_stock:
                         decision_factors["selected_by"] = "FIXED_WAREHOUSE"
                         return ws, decision_factors
@@ -358,7 +364,7 @@ class AllocationService:
                     # Use priority (lower = better, so invert for scoring)
                     score += (1000 - ws.priority)
                 elif factor == "INVENTORY":
-                    has_stock = await self._check_stock(ws.warehouse_id, product_ids, quantities)
+                    has_stock = await self._check_stock(ws.warehouse_id, product_ids, quantities, channel_code)
                     if has_stock:
                         score += 500
                 elif factor == "COST":
@@ -377,7 +383,7 @@ class AllocationService:
 
         # Select best candidate with stock
         for ws, score in scored_candidates:
-            has_stock = await self._check_stock(ws.warehouse_id, product_ids, quantities)
+            has_stock = await self._check_stock(ws.warehouse_id, product_ids, quantities, channel_code)
             if has_stock or not product_ids:  # If no products specified, any warehouse works
                 decision_factors["selected_by"] = priority_factors[0] if priority_factors else "PRIORITY"
                 decision_factors["score"] = score
@@ -386,25 +392,54 @@ class AllocationService:
         decision_factors["failure"] = "No candidate has sufficient inventory"
         return None, decision_factors
 
+    async def _get_channel_by_code(self, channel_code: str) -> Optional[SalesChannel]:
+        """Get sales channel by code."""
+        result = await self.db.execute(
+            select(SalesChannel).where(
+                and_(
+                    or_(
+                        SalesChannel.code == channel_code,
+                        SalesChannel.channel_type == channel_code,
+                    ),
+                    SalesChannel.status == "ACTIVE",
+                )
+            ).order_by(SalesChannel.created_at)
+        )
+        return result.scalars().first()
+
     async def _check_stock(
         self,
         warehouse_id: uuid.UUID,
         product_ids: List[str],
-        quantities: Optional[Dict[str, int]] = None
+        quantities: Optional[Dict[str, int]] = None,
+        channel_code: Optional[str] = None
     ) -> bool:
         """
         Check if warehouse has stock for all products.
+
+        Now channel-aware: if channel_code is provided and CHANNEL_INVENTORY_ENABLED,
+        checks ChannelInventory for that channel instead of InventorySummary.
 
         Args:
             warehouse_id: Warehouse to check
             product_ids: List of product IDs to check
             quantities: Optional dict of {product_id: quantity_needed}
+            channel_code: Optional channel code for channel-specific inventory check
 
         Returns:
             True if warehouse has sufficient stock for all products
         """
         if not product_ids:
             return True
+
+        # Check if channel-specific inventory should be used
+        use_channel_inventory = False
+        channel_obj = None
+
+        if channel_code and getattr(settings, 'CHANNEL_INVENTORY_ENABLED', True):
+            channel_obj = await self._get_channel_by_code(channel_code)
+            if channel_obj:
+                use_channel_inventory = True
 
         for product_id in product_ids:
             try:
@@ -415,6 +450,48 @@ class AllocationService:
             # Get required quantity (default 1 if not specified)
             required_qty = quantities.get(product_id, 1) if quantities else 1
 
+            if use_channel_inventory:
+                # Check channel-specific inventory
+                query = select(ChannelInventory).where(
+                    and_(
+                        ChannelInventory.channel_id == channel_obj.id,
+                        ChannelInventory.warehouse_id == warehouse_id,
+                        ChannelInventory.product_id == pid,
+                        ChannelInventory.is_active == True,
+                    )
+                )
+                result = await self.db.execute(query)
+                channel_inv = result.scalar_one_or_none()
+
+                if not channel_inv:
+                    # No channel inventory - check fallback strategy
+                    fallback = getattr(settings, 'D2C_FALLBACK_STRATEGY', 'SHARED_POOL')
+                    if fallback == 'NO_FALLBACK':
+                        return False
+                    # Fall through to shared pool check
+                else:
+                    # Channel inventory exists - check availability
+                    # Available = allocated - buffer - reserved
+                    channel_available = max(0,
+                        (channel_inv.allocated_quantity or 0) -
+                        (channel_inv.buffer_quantity or 0) -
+                        (channel_inv.reserved_quantity or 0)
+                    )
+
+                    # Get channel-specific soft reserved
+                    soft_reserved = await self._get_channel_soft_reserved(str(channel_obj.id), product_id)
+                    actual_available = channel_available - soft_reserved
+
+                    if actual_available >= required_qty:
+                        continue  # This product is available, check next
+                    else:
+                        # Check fallback strategy
+                        fallback = getattr(settings, 'D2C_FALLBACK_STRATEGY', 'SHARED_POOL')
+                        if fallback == 'NO_FALLBACK':
+                            return False
+                        # Fall through to shared pool check
+
+            # Legacy/fallback: check InventorySummary (shared pool)
             query = select(InventorySummary).where(
                 and_(
                     InventorySummary.warehouse_id == warehouse_id,
@@ -438,6 +515,16 @@ class AllocationService:
                 return False
 
         return True
+
+    async def _get_channel_soft_reserved(self, channel_id: str, product_id: str) -> int:
+        """Get channel-specific soft-reserved quantity from cache."""
+        try:
+            cache = get_cache()
+            key = f"channel:soft_reserved:{channel_id}:{product_id}"
+            value = await cache.get(key)
+            return int(value) if value else 0
+        except Exception:
+            return 0
 
     async def _get_soft_reserved(self, product_id: str) -> int:
         """Get total soft-reserved quantity from cache (checkout reservations)."""

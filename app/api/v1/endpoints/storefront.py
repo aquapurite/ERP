@@ -16,6 +16,8 @@ from app.models.product import Product, ProductImage
 from app.models.category import Category
 from app.models.brand import Brand
 from app.models.inventory import InventorySummary
+from app.models.channel import ChannelInventory, SalesChannel
+from app.services.channel_inventory_service import ChannelInventoryService
 from app.schemas.storefront import (
     StorefrontProductImage,
     StorefrontProductVariant,
@@ -136,18 +138,78 @@ async def list_products(
     result = await db.execute(query)
     products = result.scalars().all()
 
-    # Get stock information for all products in one query
+    # Get stock information for all products from D2C channel inventory
     product_ids = [p.id for p in products]
-    stock_query = (
-        select(
-            InventorySummary.product_id,
-            func.sum(InventorySummary.available_quantity).label('total_available')
-        )
-        .where(InventorySummary.product_id.in_(product_ids))
-        .group_by(InventorySummary.product_id)
+
+    # Try to get D2C channel first for channel-specific inventory
+    d2c_channel_result = await db.execute(
+        select(SalesChannel).where(
+            or_(
+                SalesChannel.code == "D2C",
+                SalesChannel.channel_type == "D2C",
+                SalesChannel.channel_type == "D2C_WEBSITE",
+            ),
+            SalesChannel.status == "ACTIVE",
+        ).order_by(SalesChannel.created_at)
     )
-    stock_result = await db.execute(stock_query)
-    stock_map = {row.product_id: row.total_available or 0 for row in stock_result.all()}
+    d2c_channel = d2c_channel_result.scalars().first()
+
+    stock_map = {}
+
+    if d2c_channel and getattr(settings, 'CHANNEL_INVENTORY_ENABLED', True):
+        # Use channel-specific inventory (new behavior)
+        # Available = allocated - buffer - reserved
+        channel_stock_query = (
+            select(
+                ChannelInventory.product_id,
+                func.sum(
+                    func.greatest(
+                        0,
+                        func.coalesce(ChannelInventory.allocated_quantity, 0) -
+                        func.coalesce(ChannelInventory.buffer_quantity, 0) -
+                        func.coalesce(ChannelInventory.reserved_quantity, 0)
+                    )
+                ).label('total_available')
+            )
+            .where(
+                ChannelInventory.channel_id == d2c_channel.id,
+                ChannelInventory.product_id.in_(product_ids),
+                ChannelInventory.is_active == True,
+            )
+            .group_by(ChannelInventory.product_id)
+        )
+        channel_result = await db.execute(channel_stock_query)
+        stock_map = {row.product_id: row.total_available or 0 for row in channel_result.all()}
+
+        # Fallback: For products NOT in channel inventory, use shared pool (InventorySummary)
+        # This enables gradual migration - products without channel allocation use shared pool
+        products_with_channel_inv = set(stock_map.keys())
+        products_without_channel_inv = [pid for pid in product_ids if pid not in products_with_channel_inv]
+
+        if products_without_channel_inv:
+            fallback_query = (
+                select(
+                    InventorySummary.product_id,
+                    func.sum(InventorySummary.available_quantity).label('total_available')
+                )
+                .where(InventorySummary.product_id.in_(products_without_channel_inv))
+                .group_by(InventorySummary.product_id)
+            )
+            fallback_result = await db.execute(fallback_query)
+            for row in fallback_result.all():
+                stock_map[row.product_id] = row.total_available or 0
+    else:
+        # Fallback to legacy behavior (shared pool)
+        stock_query = (
+            select(
+                InventorySummary.product_id,
+                func.sum(InventorySummary.available_quantity).label('total_available')
+            )
+            .where(InventorySummary.product_id.in_(product_ids))
+            .group_by(InventorySummary.product_id)
+        )
+        stock_result = await db.execute(stock_query)
+        stock_map = {row.product_id: row.total_available or 0 for row in stock_result.all()}
 
     # Transform to response
     items = []
@@ -290,13 +352,61 @@ async def get_product_by_slug(slug: str, db: DB, response: Response):
         for d in (product.documents or [])
     ]
 
-    # Get stock quantity for this product
-    stock_query = (
-        select(func.sum(InventorySummary.available_quantity).label('total_available'))
-        .where(InventorySummary.product_id == product.id)
+    # Get stock quantity for this product from D2C channel inventory
+    d2c_channel_result = await db.execute(
+        select(SalesChannel).where(
+            or_(
+                SalesChannel.code == "D2C",
+                SalesChannel.channel_type == "D2C",
+                SalesChannel.channel_type == "D2C_WEBSITE",
+            ),
+            SalesChannel.status == "ACTIVE",
+        ).order_by(SalesChannel.created_at)
     )
-    stock_result = await db.execute(stock_query)
-    stock_qty = stock_result.scalar() or 0
+    d2c_channel = d2c_channel_result.scalars().first()
+
+    stock_qty = 0
+
+    if d2c_channel and getattr(settings, 'CHANNEL_INVENTORY_ENABLED', True):
+        # Use channel-specific inventory
+        channel_stock_query = (
+            select(
+                func.sum(
+                    func.greatest(
+                        0,
+                        func.coalesce(ChannelInventory.allocated_quantity, 0) -
+                        func.coalesce(ChannelInventory.buffer_quantity, 0) -
+                        func.coalesce(ChannelInventory.reserved_quantity, 0)
+                    )
+                ).label('total_available')
+            )
+            .where(
+                ChannelInventory.channel_id == d2c_channel.id,
+                ChannelInventory.product_id == product.id,
+                ChannelInventory.is_active == True,
+            )
+        )
+        channel_result = await db.execute(channel_stock_query)
+        channel_qty = channel_result.scalar()
+
+        if channel_qty is not None and channel_qty > 0:
+            stock_qty = channel_qty
+        else:
+            # Fallback: Product not in channel inventory, use shared pool
+            fallback_query = (
+                select(func.sum(InventorySummary.available_quantity).label('total_available'))
+                .where(InventorySummary.product_id == product.id)
+            )
+            fallback_result = await db.execute(fallback_query)
+            stock_qty = fallback_result.scalar() or 0
+    else:
+        # Fallback to legacy behavior
+        stock_query = (
+            select(func.sum(InventorySummary.available_quantity).label('total_available'))
+            .where(InventorySummary.product_id == product.id)
+        )
+        stock_result = await db.execute(stock_query)
+        stock_qty = stock_result.scalar() or 0
 
     # Calculate discount percentage
     discount_pct = None

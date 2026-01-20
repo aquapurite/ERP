@@ -84,6 +84,21 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_KEY: str = ""  # Service role key (NOT anon key)
     SUPABASE_STORAGE_BUCKET: str = "uploads"  # Default bucket name
 
+    # Channel Inventory Settings
+    CHANNEL_INVENTORY_ENABLED: bool = True  # Enable channel-specific inventory management
+    D2C_CHANNEL_CODE: str = "D2C"  # Code for D2C channel (used by storefront)
+    D2C_FALLBACK_STRATEGY: str = "AUTO_REPLENISH"  # Options: NO_FALLBACK, SHARED_POOL, AUTO_REPLENISH
+    MARKETPLACE_FALLBACK_STRATEGY: str = "NO_FALLBACK"  # Marketplaces should not fallback to prevent SLA violations
+
+    # Auto-Replenish Settings
+    AUTO_REPLENISH_INTERVAL_MINUTES: int = 15  # How often to run auto-replenish job
+    AUTO_REPLENISH_DEFAULT_SAFETY_STOCK: int = 50  # Default safety stock if not configured
+    AUTO_REPLENISH_DEFAULT_REORDER_POINT: int = 10  # Default reorder point if not configured
+
+    # Marketplace Sync Settings
+    MARKETPLACE_SYNC_INTERVAL_MINUTES: int = 30  # How often to sync to marketplaces
+    MARKETPLACE_SYNC_BATCH_SIZE: int = 100  # Number of items to sync per batch
+
     @field_validator('CORS_ORIGINS', mode='before')
     @classmethod
     def parse_cors_origins(cls, v):

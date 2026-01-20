@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.models.channel import (
     SalesChannel, ChannelType, ChannelStatus,
     ChannelPricing, ChannelInventory, ChannelOrder,
+    ProductChannelSettings,
 )
 from app.models.product import Product
 from app.models.warehouse import Warehouse
@@ -28,9 +29,19 @@ from app.schemas.channel import (
     ChannelOrderCreate, ChannelOrderUpdate, ChannelOrderResponse, ChannelOrderListResponse,
     # Sync
     InventorySyncRequest, PriceSyncRequest, OrderSyncResponse,
+    # ProductChannelSettings
+    ProductChannelSettingsCreate, ProductChannelSettingsUpdate,
+    ProductChannelSettingsResponse, ProductChannelSettingsListResponse,
+    # Auto-replenish
+    AutoReplenishRequest, AutoReplenishResponse,
+    # Marketplace sync
+    MarketplaceSyncRequest, MarketplaceSyncResponse,
+    # Channel inventory summary
+    ChannelInventorySummary,
 )
 from app.api.deps import DB, CurrentUser, get_current_user, require_permissions
 from app.services.audit_service import AuditService
+from app.config import settings
 
 router = APIRouter()
 
@@ -1321,3 +1332,593 @@ async def sync_channel_orders(
         status="SUCCESS",
         message="Integration with channel API pending implementation",
     )
+
+
+# ==================== Product Channel Settings ====================
+
+@router.get("/settings/product-channel", response_model=ProductChannelSettingsListResponse)
+async def list_product_channel_settings(
+    db: DB,
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=100),
+    channel_id: Optional[UUID] = None,
+    product_id: Optional[UUID] = None,
+    warehouse_id: Optional[UUID] = None,
+    auto_replenish_enabled: Optional[bool] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """List product channel settings with optional filters."""
+    query = select(ProductChannelSettings)
+    count_query = select(func.count(ProductChannelSettings.id))
+
+    conditions = []
+    if channel_id:
+        conditions.append(ProductChannelSettings.channel_id == channel_id)
+    if product_id:
+        conditions.append(ProductChannelSettings.product_id == product_id)
+    if warehouse_id:
+        conditions.append(ProductChannelSettings.warehouse_id == warehouse_id)
+    if auto_replenish_enabled is not None:
+        conditions.append(ProductChannelSettings.auto_replenish_enabled == auto_replenish_enabled)
+
+    if conditions:
+        query = query.where(and_(*conditions))
+        count_query = count_query.where(and_(*conditions))
+
+    # Get total count
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Apply pagination
+    offset = (page - 1) * size
+    query = query.offset(offset).limit(size).order_by(ProductChannelSettings.created_at.desc())
+
+    result = await db.execute(query)
+    items = result.scalars().all()
+
+    return ProductChannelSettingsListResponse(
+        items=[ProductChannelSettingsResponse.model_validate(item) for item in items],
+        total=total,
+        page=page,
+        size=size,
+        pages=ceil(total / size) if total > 0 else 1,
+    )
+
+
+@router.post("/settings/product-channel", response_model=ProductChannelSettingsResponse, status_code=status.HTTP_201_CREATED)
+async def create_product_channel_settings(
+    settings_in: ProductChannelSettingsCreate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Create product channel settings for a product-channel-warehouse combination."""
+    # Check for existing settings
+    existing = await db.execute(
+        select(ProductChannelSettings).where(
+            and_(
+                ProductChannelSettings.product_id == settings_in.product_id,
+                ProductChannelSettings.channel_id == settings_in.channel_id,
+                ProductChannelSettings.warehouse_id == settings_in.warehouse_id,
+            )
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail="Settings already exist for this product-channel-warehouse combination"
+        )
+
+    # Verify channel exists
+    channel_result = await db.execute(
+        select(SalesChannel).where(SalesChannel.id == settings_in.channel_id)
+    )
+    if not channel_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    settings_obj = ProductChannelSettings(**settings_in.model_dump())
+    db.add(settings_obj)
+    await db.commit()
+    await db.refresh(settings_obj)
+
+    return settings_obj
+
+
+@router.get("/settings/product-channel/{settings_id}", response_model=ProductChannelSettingsResponse)
+async def get_product_channel_settings(
+    settings_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get product channel settings by ID."""
+    result = await db.execute(
+        select(ProductChannelSettings).where(ProductChannelSettings.id == settings_id)
+    )
+    settings_obj = result.scalar_one_or_none()
+
+    if not settings_obj:
+        raise HTTPException(status_code=404, detail="Product channel settings not found")
+
+    return settings_obj
+
+
+@router.put("/settings/product-channel/{settings_id}", response_model=ProductChannelSettingsResponse)
+async def update_product_channel_settings(
+    settings_id: UUID,
+    settings_in: ProductChannelSettingsUpdate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Update product channel settings."""
+    result = await db.execute(
+        select(ProductChannelSettings).where(ProductChannelSettings.id == settings_id)
+    )
+    settings_obj = result.scalar_one_or_none()
+
+    if not settings_obj:
+        raise HTTPException(status_code=404, detail="Product channel settings not found")
+
+    update_data = settings_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(settings_obj, field, value)
+
+    await db.commit()
+    await db.refresh(settings_obj)
+
+    return settings_obj
+
+
+@router.delete("/settings/product-channel/{settings_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_product_channel_settings(
+    settings_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete product channel settings."""
+    result = await db.execute(
+        select(ProductChannelSettings).where(ProductChannelSettings.id == settings_id)
+    )
+    settings_obj = result.scalar_one_or_none()
+
+    if not settings_obj:
+        raise HTTPException(status_code=404, detail="Product channel settings not found")
+
+    await db.delete(settings_obj)
+    await db.commit()
+    return None
+
+
+@router.post("/settings/product-channel/bulk", status_code=status.HTTP_201_CREATED)
+async def bulk_create_product_channel_settings(
+    items: List[ProductChannelSettingsCreate],
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Bulk create product channel settings."""
+    created = []
+    errors = []
+
+    for idx, item in enumerate(items):
+        try:
+            # Check for existing
+            existing = await db.execute(
+                select(ProductChannelSettings).where(
+                    and_(
+                        ProductChannelSettings.product_id == item.product_id,
+                        ProductChannelSettings.channel_id == item.channel_id,
+                        ProductChannelSettings.warehouse_id == item.warehouse_id,
+                    )
+                )
+            )
+            if existing.scalar_one_or_none():
+                errors.append({
+                    "index": idx,
+                    "error": "Settings already exist for this combination",
+                    "product_id": str(item.product_id),
+                    "channel_id": str(item.channel_id),
+                })
+                continue
+
+            settings_obj = ProductChannelSettings(**item.model_dump())
+            db.add(settings_obj)
+            created.append(str(settings_obj.id) if settings_obj.id else f"item_{idx}")
+
+        except Exception as e:
+            errors.append({"index": idx, "error": str(e)})
+
+    await db.commit()
+
+    return {
+        "created_count": len(created),
+        "error_count": len(errors),
+        "errors": errors,
+    }
+
+
+# ==================== Auto-Replenish Endpoints ====================
+
+@router.post("/inventory/replenish", response_model=AutoReplenishResponse)
+async def trigger_replenishment(
+    request: AutoReplenishRequest,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Manually trigger replenishment for a specific channel-product combination."""
+    from app.services.channel_inventory_service import ChannelInventoryService
+
+    service = ChannelInventoryService(db)
+
+    # Get safety_stock and reorder_point from settings if not provided
+    safety_stock = request.safety_stock
+    reorder_point = request.reorder_point
+
+    if safety_stock is None or reorder_point is None:
+        # Try to get from ProductChannelSettings
+        settings_result = await db.execute(
+            select(ProductChannelSettings).where(
+                and_(
+                    ProductChannelSettings.channel_id == request.channel_id,
+                    ProductChannelSettings.product_id == request.product_id,
+                    ProductChannelSettings.is_active == True,
+                )
+            )
+        )
+        settings_obj = settings_result.scalar_one_or_none()
+
+        if settings_obj:
+            safety_stock = safety_stock or settings_obj.safety_stock or 50
+            reorder_point = reorder_point or settings_obj.reorder_point or 10
+        else:
+            # Fall back to ChannelInventory settings
+            inv_result = await db.execute(
+                select(ChannelInventory).where(
+                    and_(
+                        ChannelInventory.channel_id == request.channel_id,
+                        ChannelInventory.product_id == request.product_id,
+                        ChannelInventory.is_active == True,
+                    )
+                )
+            )
+            inv = inv_result.scalar_one_or_none()
+
+            if inv:
+                safety_stock = safety_stock or inv.safety_stock or 50
+                reorder_point = reorder_point or inv.reorder_point or 10
+            else:
+                safety_stock = safety_stock or 50
+                reorder_point = reorder_point or 10
+
+    result = await service.check_and_replenish(
+        channel_id=request.channel_id,
+        product_id=request.product_id,
+        safety_stock=safety_stock,
+        reorder_point=reorder_point,
+    )
+
+    return AutoReplenishResponse(
+        channel_id=request.channel_id,
+        product_id=request.product_id,
+        replenished=result.get("replenished", False),
+        quantity_replenished=result.get("quantity_replenished", 0),
+        quantity_needed=result.get("quantity_needed", 0),
+        new_available=result.get("new_available", 0),
+        reason=result.get("reason"),
+        details=result.get("details", []),
+    )
+
+
+@router.post("/inventory/replenish-channel/{channel_id}")
+async def trigger_channel_replenishment(
+    channel_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Trigger replenishment for all low-stock products in a channel."""
+    from app.jobs.auto_replenish import replenish_channel
+
+    result = await replenish_channel(db, str(channel_id))
+
+    return {
+        "channel_id": str(channel_id),
+        "products_checked": result.get("products_checked", 0),
+        "replenishments": result.get("replenishments", []),
+        "errors": result.get("errors", []),
+    }
+
+
+@router.post("/inventory/run-auto-replenish-job")
+async def run_auto_replenish_job_endpoint(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Manually trigger the auto-replenish job for all channels."""
+    from app.jobs.auto_replenish import run_auto_replenish_job
+
+    result = await run_auto_replenish_job(db)
+
+    return result
+
+
+# ==================== Marketplace Sync Endpoints ====================
+
+@router.post("/inventory/marketplace-sync", response_model=MarketplaceSyncResponse)
+async def trigger_marketplace_sync(
+    request: MarketplaceSyncRequest,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Trigger marketplace sync for a specific channel."""
+    from app.jobs.marketplace_sync import sync_channel_inventory, get_marketplace_adapter
+
+    # Get channel
+    channel_result = await db.execute(
+        select(SalesChannel).where(SalesChannel.id == request.channel_id)
+    )
+    channel = channel_result.scalar_one_or_none()
+
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    # Convert product_ids to list or None
+    product_ids = [str(pid) for pid in request.product_ids] if request.product_ids else None
+
+    result = await sync_channel_inventory(db, channel, product_ids)
+
+    return MarketplaceSyncResponse(
+        channel_id=request.channel_id,
+        channel_name=channel.name,
+        synced_count=result.get("synced_count", 0),
+        failed_count=result.get("failed_count", 0),
+        skipped_count=0,
+        sync_time=datetime.now(timezone.utc),
+        status="SUCCESS" if result.get("synced_count", 0) > 0 else "NO_ITEMS",
+        errors=result.get("errors", []),
+    )
+
+
+@router.post("/inventory/run-marketplace-sync-job")
+async def run_marketplace_sync_job_endpoint(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Manually trigger the marketplace sync job for all channels."""
+    from app.jobs.marketplace_sync import run_marketplace_sync_job
+
+    result = await run_marketplace_sync_job(db)
+
+    return result
+
+
+# ==================== Channel Inventory Summary ====================
+
+@router.get("/inventory/summary-by-channel")
+async def get_inventory_summary_by_channel(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get inventory summary grouped by channel."""
+    # Calculate available in SQL
+    available_calc = func.greatest(
+        0,
+        func.coalesce(ChannelInventory.allocated_quantity, 0) -
+        func.coalesce(ChannelInventory.buffer_quantity, 0) -
+        func.coalesce(ChannelInventory.reserved_quantity, 0)
+    )
+
+    query = select(
+        SalesChannel.id,
+        SalesChannel.name,
+        SalesChannel.code,
+        SalesChannel.channel_type,
+        func.count(ChannelInventory.id).label("total_products"),
+        func.coalesce(func.sum(ChannelInventory.allocated_quantity), 0).label("total_allocated"),
+        func.coalesce(func.sum(available_calc), 0).label("total_available"),
+        func.coalesce(func.sum(ChannelInventory.reserved_quantity), 0).label("total_reserved"),
+        func.coalesce(func.sum(ChannelInventory.buffer_quantity), 0).label("total_buffer"),
+    ).outerjoin(
+        ChannelInventory,
+        and_(
+            ChannelInventory.channel_id == SalesChannel.id,
+            ChannelInventory.is_active == True,
+        )
+    ).where(
+        SalesChannel.status == ChannelStatus.ACTIVE.value
+    ).group_by(
+        SalesChannel.id, SalesChannel.name, SalesChannel.code, SalesChannel.channel_type
+    ).order_by(SalesChannel.name)
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    summaries = []
+    for row in rows:
+        # Count synced vs out-of-sync
+        synced_query = select(func.count(ChannelInventory.id)).where(
+            and_(
+                ChannelInventory.channel_id == row.id,
+                ChannelInventory.is_active == True,
+                ChannelInventory.last_synced_at.isnot(None),
+            )
+        )
+        synced_result = await db.execute(synced_query)
+        synced_count = synced_result.scalar() or 0
+
+        # Count low stock (below reorder point)
+        low_stock_query = select(func.count(ChannelInventory.id)).where(
+            and_(
+                ChannelInventory.channel_id == row.id,
+                ChannelInventory.is_active == True,
+                ChannelInventory.reorder_point > 0,
+                (
+                    func.coalesce(ChannelInventory.allocated_quantity, 0) -
+                    func.coalesce(ChannelInventory.buffer_quantity, 0) -
+                    func.coalesce(ChannelInventory.reserved_quantity, 0)
+                ) < ChannelInventory.reorder_point,
+            )
+        )
+        low_stock_result = await db.execute(low_stock_query)
+        low_stock_count = low_stock_result.scalar() or 0
+
+        summaries.append({
+            "channel_id": str(row.id),
+            "channel_name": row.name,
+            "channel_code": row.code,
+            "channel_type": row.channel_type,
+            "total_products": row.total_products,
+            "total_allocated": int(row.total_allocated),
+            "total_available": int(row.total_available),
+            "total_reserved": int(row.total_reserved),
+            "total_buffer": int(row.total_buffer),
+            "synced_products": synced_count,
+            "out_of_sync_products": row.total_products - synced_count,
+            "low_stock_products": low_stock_count,
+        })
+
+    return {
+        "channels": summaries,
+        "total_channels": len(summaries),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/{channel_id}/inventory/summary")
+async def get_channel_inventory_summary(
+    channel_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get detailed inventory summary for a specific channel."""
+    # Verify channel exists
+    channel_result = await db.execute(
+        select(SalesChannel).where(SalesChannel.id == channel_id)
+    )
+    channel = channel_result.scalar_one_or_none()
+
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    # Get aggregated stats
+    available_calc = func.greatest(
+        0,
+        func.coalesce(ChannelInventory.allocated_quantity, 0) -
+        func.coalesce(ChannelInventory.buffer_quantity, 0) -
+        func.coalesce(ChannelInventory.reserved_quantity, 0)
+    )
+
+    stats_query = select(
+        func.count(ChannelInventory.id).label("total_products"),
+        func.coalesce(func.sum(ChannelInventory.allocated_quantity), 0).label("total_allocated"),
+        func.coalesce(func.sum(available_calc), 0).label("total_available"),
+        func.coalesce(func.sum(ChannelInventory.reserved_quantity), 0).label("total_reserved"),
+        func.coalesce(func.sum(ChannelInventory.buffer_quantity), 0).label("total_buffer"),
+        func.coalesce(func.sum(ChannelInventory.marketplace_quantity), 0).label("total_marketplace"),
+    ).where(
+        and_(
+            ChannelInventory.channel_id == channel_id,
+            ChannelInventory.is_active == True,
+        )
+    )
+
+    stats_result = await db.execute(stats_query)
+    stats = stats_result.one()
+
+    # Count by sync status
+    synced_count_result = await db.execute(
+        select(func.count(ChannelInventory.id)).where(
+            and_(
+                ChannelInventory.channel_id == channel_id,
+                ChannelInventory.is_active == True,
+                ChannelInventory.last_synced_at.isnot(None),
+            )
+        )
+    )
+    synced_count = synced_count_result.scalar() or 0
+
+    # Low stock count
+    low_stock_result = await db.execute(
+        select(func.count(ChannelInventory.id)).where(
+            and_(
+                ChannelInventory.channel_id == channel_id,
+                ChannelInventory.is_active == True,
+                ChannelInventory.reorder_point > 0,
+                (
+                    func.coalesce(ChannelInventory.allocated_quantity, 0) -
+                    func.coalesce(ChannelInventory.buffer_quantity, 0) -
+                    func.coalesce(ChannelInventory.reserved_quantity, 0)
+                ) < ChannelInventory.reorder_point,
+            )
+        )
+    )
+    low_stock_count = low_stock_result.scalar() or 0
+
+    # Get top low-stock products
+    low_stock_products_query = (
+        select(
+            ChannelInventory.product_id,
+            ChannelInventory.allocated_quantity,
+            ChannelInventory.buffer_quantity,
+            ChannelInventory.reserved_quantity,
+            ChannelInventory.reorder_point,
+            ChannelInventory.safety_stock,
+            Product.name.label("product_name"),
+            Product.sku.label("product_sku"),
+        )
+        .join(Product, Product.id == ChannelInventory.product_id)
+        .where(
+            and_(
+                ChannelInventory.channel_id == channel_id,
+                ChannelInventory.is_active == True,
+                ChannelInventory.reorder_point > 0,
+                (
+                    func.coalesce(ChannelInventory.allocated_quantity, 0) -
+                    func.coalesce(ChannelInventory.buffer_quantity, 0) -
+                    func.coalesce(ChannelInventory.reserved_quantity, 0)
+                ) < ChannelInventory.reorder_point,
+            )
+        )
+        .order_by(
+            (
+                func.coalesce(ChannelInventory.allocated_quantity, 0) -
+                func.coalesce(ChannelInventory.buffer_quantity, 0) -
+                func.coalesce(ChannelInventory.reserved_quantity, 0)
+            ).asc()
+        )
+        .limit(10)
+    )
+
+    low_stock_products_result = await db.execute(low_stock_products_query)
+    low_stock_products = [
+        {
+            "product_id": str(row.product_id),
+            "product_name": row.product_name,
+            "product_sku": row.product_sku,
+            "available": max(0, (row.allocated_quantity or 0) - (row.buffer_quantity or 0) - (row.reserved_quantity or 0)),
+            "reorder_point": row.reorder_point,
+            "safety_stock": row.safety_stock,
+        }
+        for row in low_stock_products_result.all()
+    ]
+
+    return {
+        "channel_id": str(channel_id),
+        "channel_name": channel.name,
+        "channel_code": channel.code,
+        "channel_type": channel.channel_type,
+        "stats": {
+            "total_products": stats.total_products,
+            "total_allocated": int(stats.total_allocated),
+            "total_available": int(stats.total_available),
+            "total_reserved": int(stats.total_reserved),
+            "total_buffer": int(stats.total_buffer),
+            "total_marketplace": int(stats.total_marketplace),
+        },
+        "sync_status": {
+            "synced_products": synced_count,
+            "pending_sync": stats.total_products - synced_count,
+        },
+        "stock_health": {
+            "low_stock_products": low_stock_count,
+            "healthy_products": stats.total_products - low_stock_count,
+        },
+        "low_stock_items": low_stock_products,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }

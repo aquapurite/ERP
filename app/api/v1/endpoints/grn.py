@@ -20,6 +20,8 @@ from app.models.warehouse import Warehouse
 from app.models.product import Product
 from app.services.document_sequence_service import DocumentSequenceService
 from app.services.costing_service import CostingService
+from app.services.channel_inventory_service import ChannelInventoryService, allocate_grn_to_channels
+from app.models.channel import SalesChannel, ChannelInventory, ProductChannelSettings
 
 router = APIRouter()
 
@@ -55,6 +57,20 @@ class GRNCreate(BaseModel):
 class GRNQCUpdate(BaseModel):
     items: List[dict]  # [{"item_id": uuid, "qc_result": "PASSED/FAILED", "quantity_accepted": int, "quantity_rejected": int, "rejection_reason": str}]
     qc_remarks: Optional[str] = None
+
+
+class ChannelAllocationItem(BaseModel):
+    """Single channel allocation for a GRN item."""
+    channel_id: UUID
+    quantity: int
+    buffer_quantity: int = 0
+    safety_stock: Optional[int] = None
+    reorder_point: Optional[int] = None
+
+
+class GRNChannelAllocation(BaseModel):
+    """Channel allocation request for GRN items."""
+    allocations: List[ChannelAllocationItem]
 
 
 # ==================== Endpoints ====================
@@ -639,3 +655,220 @@ async def cancel_grn(
     await db.commit()
 
     return {"message": "GRN cancelled", "status": grn.status}
+
+
+# ==================== Channel Allocation Endpoints ====================
+
+@router.post("/{grn_id}/allocate-channels")
+async def allocate_grn_to_channels_endpoint(
+    grn_id: UUID,
+    allocations: List[ChannelAllocationItem],
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Allocate received GRN quantity to sales channels.
+
+    This endpoint should be called after GRN is accepted to distribute
+    the received inventory across channels (D2C, Amazon, Flipkart, etc.).
+
+    The allocation can be done:
+    1. Manually by specifying exact quantities per channel
+    2. Using default allocation rules from ProductChannelSettings (if no allocations provided)
+    """
+    # Get GRN with items
+    query = select(GoodsReceiptNote).options(
+        selectinload(GoodsReceiptNote.items)
+    ).where(GoodsReceiptNote.id == grn_id)
+
+    result = await db.execute(query)
+    grn = result.scalar_one_or_none()
+
+    if not grn:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="GRN not found"
+        )
+
+    if grn.status not in ["ACCEPTED", "PUT_AWAY_COMPLETE"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"GRN must be in ACCEPTED or PUT_AWAY_COMPLETE status. Current: {grn.status}"
+        )
+
+    service = ChannelInventoryService(db)
+    allocation_results = []
+
+    # Process each GRN item
+    for grn_item in grn.items:
+        if grn_item.quantity_accepted <= 0:
+            continue
+
+        product_id = grn_item.product_id
+        quantity_to_allocate = grn_item.quantity_accepted
+        item_allocations = []
+
+        # Calculate total requested for this item
+        total_requested = sum(a.quantity for a in allocations)
+
+        if total_requested > quantity_to_allocate:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Total allocation ({total_requested}) exceeds accepted quantity ({quantity_to_allocate}) for product {product_id}"
+            )
+
+        # Allocate to each channel
+        for alloc in allocations:
+            alloc_result = await service.allocate_to_channel(
+                channel_id=alloc.channel_id,
+                warehouse_id=grn.warehouse_id,
+                product_id=product_id,
+                quantity=alloc.quantity,
+                buffer_quantity=alloc.buffer_quantity,
+                safety_stock=alloc.safety_stock,
+                reorder_point=alloc.reorder_point,
+            )
+            item_allocations.append(alloc_result)
+
+        allocation_results.append({
+            "product_id": str(product_id),
+            "product_name": grn_item.product_name,
+            "quantity_accepted": quantity_to_allocate,
+            "allocations": item_allocations,
+            "unallocated": quantity_to_allocate - total_requested,
+        })
+
+    return {
+        "grn_id": str(grn_id),
+        "grn_number": grn.grn_number,
+        "warehouse_id": str(grn.warehouse_id),
+        "items": allocation_results,
+        "message": "Channel allocation completed",
+    }
+
+
+@router.get("/{grn_id}/channel-allocation-defaults")
+async def get_grn_channel_allocation_defaults(
+    grn_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get default channel allocation suggestions for a GRN based on ProductChannelSettings.
+
+    Returns suggested allocations per product based on:
+    1. ProductChannelSettings for each product
+    2. Active sales channels
+    3. Historical allocation patterns
+    """
+    # Get GRN with items
+    query = select(GoodsReceiptNote).options(
+        selectinload(GoodsReceiptNote.items)
+    ).where(GoodsReceiptNote.id == grn_id)
+
+    result = await db.execute(query)
+    grn = result.scalar_one_or_none()
+
+    if not grn:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="GRN not found"
+        )
+
+    # Get active channels
+    channels_result = await db.execute(
+        select(SalesChannel).where(SalesChannel.status == "ACTIVE")
+    )
+    channels = channels_result.scalars().all()
+
+    channel_map = {str(c.id): {"id": str(c.id), "code": c.code, "name": c.name, "type": c.channel_type} for c in channels}
+
+    # Build defaults for each product
+    product_defaults = []
+
+    for grn_item in grn.items:
+        if grn_item.quantity_accepted <= 0:
+            continue
+
+        product_id = grn_item.product_id
+        quantity = grn_item.quantity_accepted
+
+        # Get ProductChannelSettings for this product
+        settings_result = await db.execute(
+            select(ProductChannelSettings).where(
+                and_(
+                    ProductChannelSettings.product_id == product_id,
+                    ProductChannelSettings.warehouse_id == grn.warehouse_id,
+                    ProductChannelSettings.is_active == True,
+                )
+            )
+        )
+        settings = settings_result.scalars().all()
+
+        channel_suggestions = []
+
+        if settings:
+            # Use configured settings
+            remaining = quantity
+            for setting in settings:
+                channel_info = channel_map.get(str(setting.channel_id), {})
+
+                if setting.default_allocation_percentage:
+                    suggested_qty = int(quantity * setting.default_allocation_percentage / 100)
+                elif setting.default_allocation_qty:
+                    suggested_qty = min(setting.default_allocation_qty, remaining)
+                else:
+                    suggested_qty = 0
+
+                if suggested_qty > 0:
+                    channel_suggestions.append({
+                        "channel_id": str(setting.channel_id),
+                        "channel_code": channel_info.get("code"),
+                        "channel_name": channel_info.get("name"),
+                        "suggested_quantity": suggested_qty,
+                        "buffer_quantity": 0,
+                        "safety_stock": setting.safety_stock,
+                        "reorder_point": setting.reorder_point,
+                    })
+                    remaining -= suggested_qty
+
+            # Add shared pool suggestion for remaining
+            if remaining > 0:
+                channel_suggestions.append({
+                    "channel_id": None,
+                    "channel_code": "SHARED",
+                    "channel_name": "Shared Pool (GT/MT)",
+                    "suggested_quantity": remaining,
+                    "buffer_quantity": 0,
+                    "safety_stock": 0,
+                    "reorder_point": 0,
+                })
+        else:
+            # No settings, suggest equal split across channels or all to shared pool
+            channel_suggestions.append({
+                "channel_id": None,
+                "channel_code": "SHARED",
+                "channel_name": "Shared Pool (GT/MT)",
+                "suggested_quantity": quantity,
+                "buffer_quantity": 0,
+                "safety_stock": 0,
+                "reorder_point": 0,
+                "note": "No ProductChannelSettings found. Configure settings for automatic suggestions."
+            })
+
+        product_defaults.append({
+            "product_id": str(product_id),
+            "product_name": grn_item.product_name,
+            "sku": grn_item.sku,
+            "quantity_accepted": quantity,
+            "channel_suggestions": channel_suggestions,
+        })
+
+    return {
+        "grn_id": str(grn_id),
+        "grn_number": grn.grn_number,
+        "warehouse_id": str(grn.warehouse_id),
+        "warehouse_name": grn.warehouse.name if hasattr(grn, 'warehouse') and grn.warehouse else None,
+        "available_channels": list(channel_map.values()),
+        "products": product_defaults,
+    }

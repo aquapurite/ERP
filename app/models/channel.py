@@ -396,6 +396,26 @@ class ChannelInventory(Base):
     )
     last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Auto-replenish settings (quantity-based)
+    safety_stock: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        default=0,
+        nullable=True,
+        comment="Target level for auto-replenish"
+    )
+    reorder_point: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        default=0,
+        nullable=True,
+        comment="Trigger auto-replenish below this level"
+    )
+    auto_replenish_enabled: Mapped[Optional[bool]] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=True,
+        comment="Enable auto-replenishment for this channel-product"
+    )
+
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -516,6 +536,120 @@ class ChannelOrder(Base):
 
     def __repr__(self) -> str:
         return f"<ChannelOrder(channel_order_id='{self.channel_order_id}')>"
+
+
+class ProductChannelSettings(Base):
+    """
+    Per-product settings for each sales channel.
+    Controls allocation defaults and auto-replenishment.
+    """
+    __tablename__ = "product_channel_settings"
+    __table_args__ = (
+        UniqueConstraint(
+            "product_id", "channel_id", "warehouse_id",
+            name="uq_product_channel_warehouse_settings"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    channel_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sales_channels.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("warehouses.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Allocation defaults for GRN
+    default_allocation_percentage: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Default % of GRN to allocate to this channel"
+    )
+    default_allocation_qty: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        comment="Default fixed qty to allocate on GRN"
+    )
+
+    # Auto-replenish settings (quantity-based)
+    safety_stock: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        comment="Target level to maintain (e.g., 50 units)"
+    )
+    reorder_point: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        comment="Trigger replenishment when below this (e.g., 10 units)"
+    )
+    max_allocation: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Never exceed this allocation"
+    )
+
+    # Auto-replenish flags
+    auto_replenish_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        comment="Enable auto-replenishment from shared pool"
+    )
+    replenish_from_shared_pool: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        comment="Can borrow from unallocated FG inventory"
+    )
+
+    # Sync settings (for marketplaces)
+    sync_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    sync_buffer_percentage: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Additional buffer % when syncing to marketplace"
+    )
+
+    # Active status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+    # Relationships
+    product: Mapped["Product"] = relationship("Product")
+    channel: Mapped["SalesChannel"] = relationship("SalesChannel")
+    warehouse: Mapped["Warehouse"] = relationship("Warehouse")
+
+    def __repr__(self) -> str:
+        return f"<ProductChannelSettings(product={self.product_id}, channel={self.channel_id})>"
 
 
 class MarketplaceIntegration(Base):

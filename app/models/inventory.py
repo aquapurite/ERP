@@ -76,6 +76,15 @@ class StockItem(Base, TimestampMixin):
     order_item_id = Column(UUID(as_uuid=True))
     allocated_at = Column(DateTime)
 
+    # Channel allocation - tracks which channel this stock item is allocated to
+    allocated_channel_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("sales_channels.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="Channel this stock item is allocated to"
+    )
+
     # Location within warehouse (WMS integration)
     bin_id = Column(UUID(as_uuid=True), ForeignKey("warehouse_bins.id"), index=True)
     rack_location = Column(String(50))  # e.g., "A1-B2-C3" (legacy, use bin_id)
