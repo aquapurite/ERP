@@ -40,6 +40,7 @@ from app.models.inventory import InventorySummary, StockItem, StockItemStatus
 from app.models.order import Order, OrderItem, OrderStatus
 from app.models.channel import ChannelInventory, SalesChannel
 from app.services.cache_service import get_cache
+from app.services.channel_inventory_service import ChannelInventoryService
 from app.config import settings
 from app.schemas.serviceability import (
     OrderAllocationRequest,
@@ -214,9 +215,9 @@ class AllocationService:
                 candidates=candidates_list
             )
 
-            # 7. Update order if exists
+            # 7. Update order if exists and consume channel inventory
             if order:
-                await self._update_order_warehouse(order, warehouse_id)
+                await self._update_order_warehouse(order, warehouse_id, channel_code)
 
             return AllocationDecision(
                 order_id=order_id,
@@ -961,9 +962,20 @@ class AllocationService:
     async def _update_order_warehouse(
         self,
         order: Order,
-        warehouse_id: uuid.UUID
+        warehouse_id: uuid.UUID,
+        channel_code: Optional[str] = None
     ):
-        """Update order with allocated warehouse."""
+        """
+        Update order with allocated warehouse and consume channel inventory.
+
+        Args:
+            order: The order being allocated
+            warehouse_id: The warehouse fulfilling the order
+            channel_code: The sales channel (D2C, AMAZON, etc.) for inventory deduction
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
         # Refresh order to prevent lazy loading errors after _log_allocation commit
         await self.db.refresh(order)
 
@@ -980,7 +992,64 @@ class AllocationService:
             # Also mark as confirmed if it wasn't
             if not order.confirmed_at:
                 order.confirmed_at = datetime.utcnow()
+
+        # Consume channel inventory for D2C and marketplace orders
+        # This is critical for preventing overselling in D2C channels
+        channel_consumption_success = True
+        if channel_code and getattr(settings, 'CHANNEL_INVENTORY_ENABLED', True):
+            try:
+                # Load order items to get product_id and quantity
+                order_items_query = select(OrderItem).where(OrderItem.order_id == order.id)
+                items_result = await self.db.execute(order_items_query)
+                order_items = items_result.scalars().all()
+
+                if order_items:
+                    # Prepare items list for consumption
+                    items_to_consume = [
+                        {"product_id": str(item.product_id), "quantity": item.quantity}
+                        for item in order_items
+                    ]
+
+                    # Consume from channel inventory
+                    channel_service = ChannelInventoryService(self.db)
+                    result = await channel_service.consume_for_order(
+                        channel_code=channel_code,
+                        order_id=order.id,
+                        items=items_to_consume,
+                        warehouse_id=warehouse_id
+                    )
+
+                    if result.get("success"):
+                        logger.info(
+                            f"Channel inventory consumed for order {order.order_number}: "
+                            f"channel={channel_code}, items={result.get('consumed_items')}"
+                        )
+                    else:
+                        # Channel not found or other soft error - log but continue
+                        # This handles cases where channel inventory isn't set up for this product
+                        logger.warning(
+                            f"Channel inventory not consumed for order {order.order_number}: "
+                            f"{result.get('error')} - proceeding with allocation"
+                        )
+            except Exception as e:
+                # Log the error - channel inventory consumption failed
+                # For strict D2C mode, this could be made to fail the allocation
+                logger.error(f"Error consuming channel inventory for order {order.order_number}: {e}")
+                channel_consumption_success = False
+
+                # Check if we should fail hard on channel inventory errors
+                if getattr(settings, 'CHANNEL_INVENTORY_STRICT_MODE', False):
+                    # Rollback and re-raise to fail the allocation
+                    await self.db.rollback()
+                    raise
+
+        # Commit the transaction (order update + channel inventory consumption)
         await self.db.commit()
+
+        if not channel_consumption_success:
+            logger.warning(
+                f"Order {order.order_number} allocated but channel inventory may be inconsistent"
+            )
 
     async def _create_failed_allocation(
         self,

@@ -691,7 +691,8 @@ class ChannelInventoryService:
                     "new_allocated": channel_inv.allocated_quantity,
                 })
 
-        await self.db.commit()
+        # Note: Commit is handled by the caller for transaction atomicity
+        # This allows the order update and inventory consumption to be atomic
 
         return {
             "success": True,
