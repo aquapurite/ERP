@@ -686,12 +686,15 @@ async def create_d2c_order(
                 allocation_decision = await allocation_service.allocate_order(allocation_request)
 
                 if allocation_decision.is_allocated:
+                    # Refresh order after allocation service commits
+                    await db.refresh(order)
+
                     order.warehouse_id = allocation_decision.warehouse_id
                     order.status = allocated_status
                     order.allocated_at = datetime.utcnow()
 
                     status_history = OrderStatusHistory(
-                        order_id=order.id,
+                        order_id=order_id,  # Use stored value to avoid lazy loading
                         from_status=confirmed_status,
                         to_status=allocated_status,
                         changed_by=None,
@@ -712,7 +715,7 @@ async def create_d2c_order(
                             .options(
                                 selectinload(Order.items).selectinload(OrderItem.product)
                             )
-                            .where(Order.id == order.id)
+                            .where(Order.id == order_id)  # Use stored value
                         )
                         order_result = await db.execute(order_query)
                         order_with_items = order_result.scalar_one()
