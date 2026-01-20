@@ -1490,9 +1490,12 @@ export const accountsApi = {
     const { data } = await apiClient.post('/accounting/accounts', account);
     return data;
   },
-  update: async (id: string, account: Partial<{ name: string; description?: string; is_active?: boolean }>) => {
+  update: async (id: string, account: Partial<{ account_name?: string; description?: string; is_active?: boolean }>) => {
     const { data } = await apiClient.put(`/accounting/accounts/${id}`, account);
     return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/accounting/accounts/${id}`);
   },
 };
 

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Pencil, ChevronRight, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { MoreHorizontal, Plus, Pencil, Trash2, ChevronRight, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -40,16 +40,21 @@ import { accountsApi } from '@/lib/api';
 
 interface Account {
   id: string;
-  code: string;
-  name: string;
-  type: 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
+  account_code: string;
+  account_name: string;
+  account_type: 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
+  account_sub_type?: string;
   parent_id?: string;
-  parent?: { name: string; code: string };
   description?: string;
   is_active: boolean;
   is_group: boolean;
-  balance: number;
+  is_system: boolean;
+  allow_direct_posting: boolean;
+  opening_balance: number;
+  current_balance: number;
+  level: number;
   created_at: string;
+  updated_at: string;
 }
 
 const accountTypes = [
@@ -101,7 +106,7 @@ export default function ChartOfAccountsPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof accountsApi.update>[1] }) =>
+    mutationFn: ({ id, data }: { id: string; data: { account_name?: string; description?: string; is_active?: boolean } }) =>
       accountsApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
@@ -109,6 +114,15 @@ export default function ChartOfAccountsPage() {
       resetForm();
     },
     onError: (error: Error) => toast.error(error.message || 'Failed to update account'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => accountsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      toast.success('Account deleted successfully');
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to delete account'),
   });
 
   const resetForm = () => {
@@ -129,9 +143,9 @@ export default function ChartOfAccountsPage() {
   const handleEdit = (account: Account) => {
     setFormData({
       id: account.id,
-      code: account.code,
-      name: account.name,
-      type: account.type,
+      code: account.account_code,
+      name: account.account_name,
+      type: account.account_type,
       parent_id: account.parent_id || '',
       description: account.description || '',
       is_group: account.is_group,
@@ -139,6 +153,20 @@ export default function ChartOfAccountsPage() {
     });
     setIsEditMode(true);
     setIsDialogOpen(true);
+  };
+
+  const handleDelete = (account: Account) => {
+    if (account.is_system) {
+      toast.error('System accounts cannot be deleted');
+      return;
+    }
+    if (account.current_balance !== 0) {
+      toast.error('Cannot delete account with non-zero balance');
+      return;
+    }
+    if (confirm(`Are you sure you want to delete account "${account.account_name}"?`)) {
+      deleteMutation.mutate(account.id);
+    }
   };
 
   const handleSubmit = () => {
@@ -151,7 +179,7 @@ export default function ChartOfAccountsPage() {
       updateMutation.mutate({
         id: formData.id,
         data: {
-          name: formData.name,
+          account_name: formData.name,
           description: formData.description || undefined,
           is_active: formData.is_active,
         },
@@ -170,54 +198,57 @@ export default function ChartOfAccountsPage() {
 
   const columns: ColumnDef<Account>[] = [
     {
-      accessorKey: 'code',
+      accessorKey: 'account_code',
       header: 'Code',
       cell: ({ row }) => (
-        <span className="font-mono text-sm">{row.original.code}</span>
+        <span className="font-mono text-sm">{row.original.account_code}</span>
       ),
     },
     {
-      accessorKey: 'name',
+      accessorKey: 'account_name',
       header: 'Account Name',
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
           {row.original.is_group && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
           <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
           <span className={row.original.is_group ? 'font-medium' : ''}>
-            {row.original.name}
+            {row.original.account_name}
           </span>
         </div>
       ),
     },
     {
-      accessorKey: 'type',
+      accessorKey: 'account_type',
       header: 'Type',
       cell: ({ row }) => (
-        <span className={`px-2 py-1 rounded-full text-xs font-medium ${typeColors[row.original.type]}`}>
-          {row.original.type}
+        <span className={`px-2 py-1 rounded-full text-xs font-medium ${typeColors[row.original.account_type] || 'bg-gray-100 text-gray-800'}`}>
+          {row.original.account_type}
         </span>
       ),
     },
     {
-      accessorKey: 'parent',
+      accessorKey: 'level',
       header: 'Parent',
       cell: ({ row }) => (
         <span className="text-sm text-muted-foreground">
-          {row.original.parent?.name || '-'}
+          {row.original.parent_id ? `Level ${row.original.level}` : '-'}
         </span>
       ),
     },
     {
-      accessorKey: 'balance',
+      accessorKey: 'current_balance',
       header: 'Balance',
-      cell: ({ row }) => (
-        <span className={`font-medium ${row.original.balance < 0 ? 'text-red-600' : ''}`}>
-          ₹{Math.abs(row.original.balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-          {row.original.balance !== 0 && (
-            <span className="text-xs ml-1">{row.original.balance < 0 ? 'Cr' : 'Dr'}</span>
-          )}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const balance = row.original.current_balance || 0;
+        return (
+          <span className={`font-medium ${balance < 0 ? 'text-red-600' : ''}`}>
+            ₹{Math.abs(balance).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            {balance !== 0 && (
+              <span className="text-xs ml-1">{balance < 0 ? 'Cr' : 'Dr'}</span>
+            )}
+          </span>
+        );
+      },
     },
     {
       accessorKey: 'is_active',
@@ -242,6 +273,14 @@ export default function ChartOfAccountsPage() {
               <Pencil className="mr-2 h-4 w-4" />
               Edit
             </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => handleDelete(row.original)}
+              className="text-red-600"
+              disabled={row.original.is_system}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -249,7 +288,7 @@ export default function ChartOfAccountsPage() {
   ];
 
   // Get parent accounts (groups only) for dropdown
-  const parentAccounts = data?.items?.filter((a: Account) => a.is_group) ?? [];
+  const parentAccounts = (data?.items?.filter((a: Account) => a.is_group) ?? []) as Account[];
 
   return (
     <div className="space-y-6">
@@ -326,7 +365,7 @@ export default function ChartOfAccountsPage() {
                         .filter((acc: Account) => acc.id && acc.id.trim() !== '')
                         .map((acc: Account) => (
                           <SelectItem key={acc.id} value={acc.id}>
-                            {acc.code} - {acc.name}
+                            {acc.account_code} - {acc.account_name}
                           </SelectItem>
                         ))}
                     </SelectContent>
@@ -380,7 +419,7 @@ export default function ChartOfAccountsPage() {
       <DataTable
         columns={columns}
         data={data?.items ?? []}
-        searchKey="name"
+        searchKey="account_name"
         searchPlaceholder="Search accounts..."
         isLoading={isLoading}
         manualPagination

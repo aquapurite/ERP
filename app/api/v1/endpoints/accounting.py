@@ -253,6 +253,73 @@ async def update_account(
     return account
 
 
+@router.delete("/accounts/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_account(
+    account_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete an account from Chart of Accounts.
+
+    Restrictions:
+    - System accounts cannot be deleted
+    - Accounts with non-zero balance cannot be deleted
+    - Accounts with journal entries cannot be deleted
+    """
+    result = await db.execute(
+        select(ChartOfAccount).where(ChartOfAccount.id == account_id)
+    )
+    account = result.scalar_one_or_none()
+
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    # Check if it's a system account
+    if account.is_system:
+        raise HTTPException(
+            status_code=400,
+            detail="System accounts cannot be deleted"
+        )
+
+    # Check if account has non-zero balance
+    if account.current_balance != 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete account with non-zero balance (₹{account.current_balance})"
+        )
+
+    # Check if account has journal entries
+    journal_entries = await db.execute(
+        select(func.count(JournalEntryLine.id)).where(
+            JournalEntryLine.account_id == account_id
+        )
+    )
+    entry_count = journal_entries.scalar() or 0
+    if entry_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete account with {entry_count} journal entries"
+        )
+
+    # Check if account has children
+    children = await db.execute(
+        select(func.count(ChartOfAccount.id)).where(
+            ChartOfAccount.parent_id == account_id
+        )
+    )
+    child_count = children.scalar() or 0
+    if child_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete account with {child_count} child accounts"
+        )
+
+    await db.delete(account)
+    await db.commit()
+
+    return None
+
+
 # ==================== Financial Periods ====================
 
 @router.post("/periods", response_model=FinancialPeriodResponse, status_code=status.HTTP_201_CREATED)
