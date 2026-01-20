@@ -69,8 +69,10 @@ interface JournalLine {
 interface JournalEntry {
   id: string;
   entry_number: string;
+  entry_type: string;
   entry_date: string;
-  reference?: string;
+  source_type?: string;
+  source_number?: string;
   narration: string;
   total_debit: number;
   total_credit: number;
@@ -109,7 +111,8 @@ export default function JournalEntriesPage() {
 
   const [formData, setFormData] = useState({
     entry_date: new Date().toISOString().split('T')[0],
-    reference: '',
+    entry_type: 'MANUAL',
+    source_number: '',
     narration: '',
     lines: [emptyLine(), emptyLine()],
   });
@@ -179,7 +182,8 @@ export default function JournalEntriesPage() {
   const resetForm = () => {
     setFormData({
       entry_date: new Date().toISOString().split('T')[0],
-      reference: '',
+      entry_type: 'MANUAL',
+      source_number: '',
       narration: '',
       lines: [emptyLine(), emptyLine()],
     });
@@ -251,7 +255,8 @@ export default function JournalEntriesPage() {
 
     createMutation.mutate({
       entry_date: formData.entry_date,
-      reference: formData.reference || undefined,
+      entry_type: formData.entry_type,
+      source_number: formData.source_number || undefined,
       narration: formData.narration,
       lines: validLines.map(l => ({
         account_id: l.account_id,
@@ -381,12 +386,28 @@ export default function JournalEntriesPage() {
                         onChange={(e) => setFormData({ ...formData, entry_date: e.target.value })}
                       />
                     </div>
-                    <div className="col-span-2 space-y-2">
-                      <Label>Reference</Label>
+                    <div className="space-y-2">
+                      <Label>Entry Type</Label>
+                      <Select
+                        value={formData.entry_type}
+                        onValueChange={(value) => setFormData({ ...formData, entry_type: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="MANUAL">Manual</SelectItem>
+                          <SelectItem value="ADJUSTMENT">Adjustment</SelectItem>
+                          <SelectItem value="CLOSING">Closing</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Reference #</Label>
                       <Input
                         placeholder="Invoice #, Receipt #, etc."
-                        value={formData.reference}
-                        onChange={(e) => setFormData({ ...formData, reference: e.target.value })}
+                        value={formData.source_number}
+                        onChange={(e) => setFormData({ ...formData, source_number: e.target.value })}
                       />
                     </div>
                   </div>
@@ -550,11 +571,11 @@ export default function JournalEntriesPage() {
                 </span>
               </div>
 
-              {selectedEntry.reference && (
+              {selectedEntry.source_number && (
                 <Card>
                   <CardContent className="pt-4">
                     <div className="text-xs text-muted-foreground">Reference</div>
-                    <div className="font-mono">{selectedEntry.reference}</div>
+                    <div className="font-mono">{selectedEntry.source_number}</div>
                   </CardContent>
                 </Card>
               )}

@@ -1583,6 +1583,9 @@ export const costCentersApi = {
 };
 
 // Journal Entries API
+// Valid entry types for journal entries
+const JOURNAL_ENTRY_TYPES = ['MANUAL', 'SALES', 'PURCHASE', 'RECEIPT', 'PAYMENT', 'ADJUSTMENT', 'CLOSING'];
+
 export const journalEntriesApi = {
   list: async (params?: { page?: number; size?: number; status?: string }) => {
     const { data } = await apiClient.get('/accounting/journals', { params });
@@ -1596,18 +1599,30 @@ export const journalEntriesApi = {
     const { data } = await apiClient.get(`/accounting/journals/${id}`);
     return data;
   },
-  create: async (entry: { entry_date: string; narration: string; reference?: string; lines: { account_id: string; debit?: number; credit?: number; debit_amount?: number; credit_amount?: number; description?: string; narration?: string }[] }) => {
-    // Map debit_amount/credit_amount to debit/credit if needed
-    const mappedEntry = {
-      ...entry,
+  create: async (entry: {
+    entry_date: string;
+    narration: string;
+    entry_type?: string;
+    source_type?: string;
+    source_number?: string;
+    lines: { account_id: string; debit?: number; credit?: number; debit_amount?: number; credit_amount?: number; description?: string; narration?: string }[]
+  }) => {
+    // Backend expects: entry_type (required), entry_date, narration, lines
+    // entry_type must be one of: MANUAL, SALES, PURCHASE, RECEIPT, PAYMENT, ADJUSTMENT, CLOSING
+    const payload = {
+      entry_type: JOURNAL_ENTRY_TYPES.includes(entry.entry_type || '') ? entry.entry_type : 'MANUAL',
+      entry_date: entry.entry_date,
+      narration: entry.narration,
+      source_type: entry.source_type || undefined,
+      source_number: entry.source_number || undefined,
       lines: entry.lines.map(l => ({
         account_id: l.account_id,
-        debit: l.debit ?? l.debit_amount ?? 0,
-        credit: l.credit ?? l.credit_amount ?? 0,
-        narration: l.narration ?? l.description,
+        debit_amount: l.debit ?? l.debit_amount ?? 0,
+        credit_amount: l.credit ?? l.credit_amount ?? 0,
+        description: l.narration ?? l.description,
       })),
     };
-    const { data } = await apiClient.post('/accounting/journals', mappedEntry);
+    const { data } = await apiClient.post('/accounting/journals', payload);
     return data;
   },
   submit: async (id: string) => {
@@ -1660,7 +1675,7 @@ export const reportsApi = {
   },
 };
 
-// Tax Configuration API
+// Tax Configuration API (HSN-based GST configuration)
 export const taxConfigApi = {
   list: async () => {
     const { data } = await apiClient.get('/accounting/tax-configs');
@@ -1670,7 +1685,21 @@ export const taxConfigApi = {
     const { data } = await apiClient.get(`/accounting/tax-configs/${id}`);
     return data;
   },
-  create: async (config: { name: string; rate: number; type: string; hsn_code?: string }) => {
+  create: async (config: {
+    hsn_code: string;
+    description: string;
+    gst_rate: number;
+    cgst_rate: number;
+    sgst_rate: number;
+    igst_rate: number;
+    cess_rate?: number;
+    is_service?: boolean;
+    is_exempt?: boolean;
+    is_nil_rated?: boolean;
+    is_non_gst?: boolean;
+    reverse_charge?: boolean;
+    is_active?: boolean;
+  }) => {
     const { data } = await apiClient.post('/accounting/tax-configs', config);
     return data;
   },
