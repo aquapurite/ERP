@@ -22,7 +22,6 @@ from app.schemas.order import (
     StatusHistoryResponse,
     InvoiceResponse,
     OrderSummary,
-    D2CCustomerInfo,
     D2CAddressInfo,
     D2COrderItem,
     D2COrderCreate,
