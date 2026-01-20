@@ -36,14 +36,8 @@ export const usersApi = {
 };
 
 // Roles API
-// Level mapping: SUPER_ADMIN=0, DIRECTOR=1, HEAD=2, MANAGER=3, EXECUTIVE=4
-const roleLevelToNumber: Record<string, number> = {
-  'SUPER_ADMIN': 0,
-  'DIRECTOR': 1,
-  'HEAD': 2,
-  'MANAGER': 3,
-  'EXECUTIVE': 4,
-};
+// Valid role levels (strings expected by backend)
+const VALID_ROLE_LEVELS = ['SUPER_ADMIN', 'DIRECTOR', 'HEAD', 'MANAGER', 'EXECUTIVE'];
 
 export const rolesApi = {
   list: async (params?: { page?: number; size?: number }) => {
@@ -58,14 +52,13 @@ export const rolesApi = {
     name: string;
     code?: string;
     description?: string;
-    level?: string | number;
+    level?: string;
     permission_ids?: string[];
   }) => {
-    // Transform frontend fields to backend required fields
-    // Backend requires: name, code, level (as number 0-4)
-    const levelValue = typeof role.level === 'number'
+    // Backend expects level as string: "SUPER_ADMIN", "DIRECTOR", "HEAD", "MANAGER", "EXECUTIVE"
+    const levelValue = VALID_ROLE_LEVELS.includes(role.level || '')
       ? role.level
-      : roleLevelToNumber[role.level || 'EXECUTIVE'] ?? 4;
+      : 'EXECUTIVE';
 
     const payload = {
       name: role.name,
