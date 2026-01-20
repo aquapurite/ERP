@@ -5,9 +5,10 @@ from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends
+from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser, Permissions, require_permissions
-from app.models.order import OrderStatus, PaymentStatus, PaymentMethod, OrderSource
+from app.models.order import Order, OrderItem, OrderStatus, PaymentStatus, PaymentMethod, OrderSource
 from app.schemas.order import (
     OrderCreate,
     OrderUpdate,
@@ -694,10 +695,22 @@ async def create_d2c_order(
                     # Auto-create shipment for allocated order
                     try:
                         from app.services.shipment_service import ShipmentService
+                        from sqlalchemy.orm import selectinload
+
                         shipment_service = ShipmentService(db)
-                        await db.refresh(order)  # Refresh to get latest state
+                        # Fetch order with eager-loaded items and products for weight calculation
+                        order_query = (
+                            select(Order)
+                            .options(
+                                selectinload(Order.items).selectinload(OrderItem.product)
+                            )
+                            .where(Order.id == order.id)
+                        )
+                        order_result = await db.execute(order_query)
+                        order_with_items = order_result.scalar_one()
+
                         shipment = await shipment_service.create_shipment_from_order(
-                            order=order,
+                            order=order_with_items,
                             transporter_id=allocation_decision.recommended_transporter_id,
                         )
                         import logging
