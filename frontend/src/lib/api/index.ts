@@ -5228,25 +5228,40 @@ export const companyApi = {
 
   // Bank Accounts
   listBankAccounts: async (companyId: string): Promise<CompanyBankAccount[]> => {
+    if (!companyId) {
+      throw new Error('Company ID is required to list bank accounts');
+    }
     const { data } = await apiClient.get<CompanyBankAccount[]>(`/company/${companyId}/bank-accounts`);
     return data;
   },
 
   createBankAccount: async (companyId: string, account: CompanyBankAccountCreate): Promise<CompanyBankAccount> => {
+    if (!companyId) {
+      throw new Error('Company ID is required to create bank account');
+    }
     const { data } = await apiClient.post<CompanyBankAccount>(`/company/${companyId}/bank-accounts`, account);
     return data;
   },
 
   updateBankAccount: async (companyId: string, accountId: string, account: CompanyBankAccountUpdate): Promise<CompanyBankAccount> => {
+    if (!companyId || !accountId) {
+      throw new Error('Company ID and Account ID are required to update bank account');
+    }
     const { data } = await apiClient.put<CompanyBankAccount>(`/company/${companyId}/bank-accounts/${accountId}`, account);
     return data;
   },
 
   deleteBankAccount: async (companyId: string, accountId: string): Promise<void> => {
+    if (!companyId || !accountId) {
+      throw new Error('Company ID and Account ID are required to delete bank account');
+    }
     await apiClient.delete(`/company/${companyId}/bank-accounts/${accountId}`);
   },
 
   setPrimaryBankAccount: async (companyId: string, accountId: string): Promise<CompanyBankAccount> => {
+    if (!companyId || !accountId) {
+      throw new Error('Company ID and Account ID are required to set primary bank account');
+    }
     const { data } = await apiClient.put<CompanyBankAccount>(`/company/${companyId}/bank-accounts/${accountId}`, { is_primary: true });
     return data;
   },
