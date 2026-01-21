@@ -226,12 +226,18 @@ class OrderListResponse(BaseModel):
 class OrderSummary(BaseModel):
     """Order summary statistics."""
     total_orders: int
+    total_customers: int = 0
     pending_orders: int
     processing_orders: int
+    shipped_orders: int = 0
     delivered_orders: int
     cancelled_orders: int
+    shipments_in_transit: int = 0
     total_revenue: Decimal
     average_order_value: Decimal
+    orders_change: float = 0
+    revenue_change: float = 0
+    customers_change: float = 0
 
 
 # ==================== D2C ORDER SCHEMAS ====================
