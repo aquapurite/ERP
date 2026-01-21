@@ -515,7 +515,13 @@ export default function SettingsPage() {
 
         {/* Bank Accounts Tab */}
         <TabsContent value="bank">
-          <BankAccountsSection companyId={company?.id || ''} />
+          {company?.id ? (
+            <BankAccountsSection companyId={company.id} />
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              Loading company data...
+            </div>
+          )}
         </TabsContent>
 
         {/* Branding Tab */}
