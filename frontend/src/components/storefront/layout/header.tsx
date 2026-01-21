@@ -35,7 +35,7 @@ import {
 import { useCartStore } from '@/lib/storefront/cart-store';
 import { useAuthStore, useIsAuthenticated, useCustomer } from '@/lib/storefront/auth-store';
 import { StorefrontCategory, CompanyInfo } from '@/types/storefront';
-import { categoriesApi, companyApi, authApi } from '@/lib/storefront/api';
+import { categoriesApi, companyApi, authApi, contentApi, StorefrontMenuItem } from '@/lib/storefront/api';
 import CartDrawer from '../cart/cart-drawer';
 import SearchAutocomplete from '../search/search-autocomplete';
 
@@ -48,6 +48,7 @@ export default function StorefrontHeader() {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [categories, setCategories] = useState<StorefrontCategory[]>([]);
   const [company, setCompany] = useState<CompanyInfo | null>(null);
+  const [headerMenuItems, setHeaderMenuItems] = useState<StorefrontMenuItem[]>([]);
 
   const cartItemCount = useCartStore((state) => state.getItemCount());
   const openCart = useCartStore((state) => state.openCart);
@@ -79,12 +80,14 @@ export default function StorefrontHeader() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [categoriesData, companyData] = await Promise.all([
+        const [categoriesData, companyData, menuItems] = await Promise.all([
           categoriesApi.getTree(),
           companyApi.getInfo(),
+          contentApi.getMenuItems('header'),
         ]);
         setCategories(categoriesData);
         setCompany(companyData);
+        setHeaderMenuItems(menuItems);
       } catch (error) {
         console.error('Failed to fetch data:', error);
       }
@@ -271,36 +274,52 @@ export default function StorefrontHeader() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <Link
-              href="/products?is_bestseller=true"
-              className="text-sm font-medium hover:text-primary transition-colors"
-            >
-              Bestsellers
-            </Link>
-            <Link
-              href="/products?is_new_arrival=true"
-              className="text-sm font-medium hover:text-primary transition-colors"
-            >
-              New Arrivals
-            </Link>
-            <Link
-              href="/products"
-              className="text-sm font-medium hover:text-primary transition-colors"
-            >
-              All Products
-            </Link>
-            <Link
-              href="/about"
-              className="text-sm font-medium hover:text-primary transition-colors"
-            >
-              About Us
-            </Link>
-            <Link
-              href="/contact"
-              className="text-sm font-medium hover:text-primary transition-colors"
-            >
-              Contact
-            </Link>
+            {/* CMS Menu Items - falls back to defaults if empty */}
+            {headerMenuItems.length > 0 ? (
+              headerMenuItems.map((item) => (
+                <Link
+                  key={item.id}
+                  href={item.url}
+                  target={item.target}
+                  className="text-sm font-medium hover:text-primary transition-colors"
+                >
+                  {item.title}
+                </Link>
+              ))
+            ) : (
+              <>
+                <Link
+                  href="/products?is_bestseller=true"
+                  className="text-sm font-medium hover:text-primary transition-colors"
+                >
+                  Bestsellers
+                </Link>
+                <Link
+                  href="/products?is_new_arrival=true"
+                  className="text-sm font-medium hover:text-primary transition-colors"
+                >
+                  New Arrivals
+                </Link>
+                <Link
+                  href="/products"
+                  className="text-sm font-medium hover:text-primary transition-colors"
+                >
+                  All Products
+                </Link>
+                <Link
+                  href="/about"
+                  className="text-sm font-medium hover:text-primary transition-colors"
+                >
+                  About Us
+                </Link>
+                <Link
+                  href="/contact"
+                  className="text-sm font-medium hover:text-primary transition-colors"
+                >
+                  Contact
+                </Link>
+              </>
+            )}
           </nav>
         </div>
       </header>
@@ -399,27 +418,44 @@ export default function StorefrontHeader() {
               )}
             </div>
             <div className="border-t pt-4">
-              <Link
-                href="/about"
-                className="block py-2 text-base"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                About Us
-              </Link>
-              <Link
-                href="/contact"
-                className="block py-2 text-base"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                Contact Us
-              </Link>
-              <Link
-                href="/support"
-                className="block py-2 text-base"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                Support
-              </Link>
+              {/* CMS Menu Items for mobile */}
+              {headerMenuItems.length > 0 ? (
+                headerMenuItems.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={item.url}
+                    target={item.target}
+                    className="block py-2 text-base"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    {item.title}
+                  </Link>
+                ))
+              ) : (
+                <>
+                  <Link
+                    href="/about"
+                    className="block py-2 text-base"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    About Us
+                  </Link>
+                  <Link
+                    href="/contact"
+                    className="block py-2 text-base"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Contact Us
+                  </Link>
+                  <Link
+                    href="/support"
+                    className="block py-2 text-base"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Support
+                  </Link>
+                </>
+              )}
             </div>
           </nav>
         </SheetContent>
