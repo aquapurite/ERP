@@ -1125,17 +1125,17 @@ export const dashboardApi = {
     const serviceData = serviceRes.status === 'fulfilled' ? serviceRes.value.data : {};
 
     return {
-      total_orders: ordersData.total || 0,
+      total_orders: ordersData.total_orders || ordersData.total || 0,
       total_revenue: ordersData.total_revenue || 0,
-      pending_orders: ordersData.pending || 0,
-      total_products: productsData.total || 0,
+      pending_orders: ordersData.pending_orders || ordersData.pending || 0,
+      total_products: productsData.total_products || productsData.total || 0,
       total_customers: ordersData.total_customers || 0,
       low_stock_items: inventoryData.low_stock_count || 0,
-      pending_service_requests: serviceData.pending || 0,
-      shipments_in_transit: ordersData.in_transit || 0,
-      orders_change: ordersData.change_percent || 0,
-      revenue_change: ordersData.revenue_change_percent || 0,
-      customers_change: ordersData.customers_change_percent || 0,
+      pending_service_requests: serviceData.pending || serviceData.pending_count || 0,
+      shipments_in_transit: ordersData.shipments_in_transit || ordersData.in_transit || 0,
+      orders_change: ordersData.orders_change || ordersData.change_percent || 0,
+      revenue_change: ordersData.revenue_change || ordersData.revenue_change_percent || 0,
+      customers_change: ordersData.customers_change || ordersData.customers_change_percent || 0,
       // Include error flags so UI can show warnings
       _errors: {
         orders: ordersRes.status === 'rejected',

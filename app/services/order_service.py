@@ -574,6 +574,9 @@ class OrderService:
         region_id: Optional[uuid.UUID] = None
     ) -> dict:
         """Get order statistics."""
+        from datetime import datetime, timedelta
+        from sqlalchemy import or_
+
         base_filter = []
         if region_id:
             base_filter.append(Order.region_id == region_id)
@@ -584,18 +587,32 @@ class OrderService:
             total_stmt = total_stmt.where(and_(*base_filter))
         total_orders = (await self.db.execute(total_stmt)).scalar() or 0
 
-        # By status
+        # Unique customers
+        customers_stmt = select(func.count(func.distinct(Order.customer_id)))
+        if base_filter:
+            customers_stmt = customers_stmt.where(and_(*base_filter))
+        total_customers = (await self.db.execute(customers_stmt)).scalar() or 0
+
+        # By status (check both enum values and string values)
         status_counts = {}
-        for status in [OrderStatus.NEW, OrderStatus.CONFIRMED,
-                       OrderStatus.DELIVERED, OrderStatus.CANCELLED]:
-            stmt = select(func.count(Order.id)).where(Order.status == status)
+        for status in ["NEW", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED", "PENDING"]:
+            stmt = select(func.count(Order.id)).where(
+                or_(Order.status == status, Order.status == status.lower())
+            )
             if base_filter:
                 stmt = stmt.where(and_(*base_filter))
-            status_counts[status.value] = (await self.db.execute(stmt)).scalar() or 0
+            status_counts[status] = (await self.db.execute(stmt)).scalar() or 0
 
-        # Revenue
+        # Shipments in transit (SHIPPED status)
+        shipments_in_transit = status_counts.get("SHIPPED", 0)
+
+        # Revenue - include both 'PAID' and 'paid' (case variations)
         revenue_stmt = select(func.sum(Order.total_amount)).where(
-            Order.payment_status == PaymentStatus.PAID
+            or_(
+                Order.payment_status == "PAID",
+                Order.payment_status == "paid",
+                func.upper(Order.payment_status) == "PAID"
+            )
         )
         if base_filter:
             revenue_stmt = revenue_stmt.where(and_(*base_filter))
@@ -607,14 +624,47 @@ class OrderService:
             avg_stmt = avg_stmt.where(and_(*base_filter))
         avg_order_value = (await self.db.execute(avg_stmt)).scalar() or Decimal("0.00")
 
+        # Calculate month-over-month change
+        now = datetime.utcnow()
+        this_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        last_month_start = (this_month_start - timedelta(days=1)).replace(day=1)
+
+        # This month orders
+        this_month_stmt = select(func.count(Order.id)).where(Order.created_at >= this_month_start)
+        if base_filter:
+            this_month_stmt = this_month_stmt.where(and_(*base_filter))
+        this_month_orders = (await self.db.execute(this_month_stmt)).scalar() or 0
+
+        # Last month orders
+        last_month_stmt = select(func.count(Order.id)).where(
+            Order.created_at >= last_month_start,
+            Order.created_at < this_month_start
+        )
+        if base_filter:
+            last_month_stmt = last_month_stmt.where(and_(*base_filter))
+        last_month_orders = (await self.db.execute(last_month_stmt)).scalar() or 0
+
+        # Calculate change percentages
+        orders_change = 0
+        if last_month_orders > 0:
+            orders_change = round(((this_month_orders - last_month_orders) / last_month_orders) * 100, 1)
+        elif this_month_orders > 0:
+            orders_change = 100
+
         return {
             "total_orders": total_orders,
-            "pending_orders": status_counts.get("PENDING", 0),
-            "processing_orders": status_counts.get("PROCESSING", 0),
+            "total_customers": total_customers,
+            "pending_orders": status_counts.get("PENDING", 0) + status_counts.get("NEW", 0),
+            "processing_orders": status_counts.get("PROCESSING", 0) + status_counts.get("CONFIRMED", 0),
+            "shipped_orders": status_counts.get("SHIPPED", 0),
             "delivered_orders": status_counts.get("DELIVERED", 0),
             "cancelled_orders": status_counts.get("CANCELLED", 0),
+            "shipments_in_transit": shipments_in_transit,
             "total_revenue": float(total_revenue),
             "average_order_value": float(avg_order_value),
+            "orders_change": orders_change,
+            "revenue_change": 0,  # Would need last month revenue calculation
+            "customers_change": 0,  # Would need last month customer calculation
         }
 
     async def get_recent_activity(self, limit: int = 10) -> List[dict]:
