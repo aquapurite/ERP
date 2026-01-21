@@ -795,3 +795,317 @@ async def check_serviceability(
     response.headers["X-Cache"] = "MISS"
     response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
     return result
+
+
+# ==================== CMS Content Endpoints ====================
+
+from app.models.cms import CMSBanner, CMSUsp, CMSTestimonial, CMSAnnouncement, CMSPage
+from app.schemas.cms import (
+    StorefrontBannerResponse,
+    StorefrontUspResponse,
+    StorefrontTestimonialResponse,
+    StorefrontAnnouncementResponse,
+    StorefrontPageResponse,
+)
+
+
+@router.get("/banners", response_model=List[StorefrontBannerResponse])
+async def get_banners(db: DB, response: Response):
+    """
+    Get active hero banners for the storefront.
+    Respects scheduling (starts_at, ends_at).
+    No authentication required. Cached for 5 minutes.
+    """
+    start_time = time.time()
+    cache = get_cache()
+
+    cache_key = "cms:banners:active"
+    cached_result = await cache.get(cache_key)
+    if cached_result:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+        return [StorefrontBannerResponse(**b) for b in cached_result]
+
+    now = func.now()
+    query = (
+        select(CMSBanner)
+        .where(
+            CMSBanner.is_active == True,
+            or_(CMSBanner.starts_at.is_(None), CMSBanner.starts_at <= now),
+            or_(CMSBanner.ends_at.is_(None), CMSBanner.ends_at >= now),
+        )
+        .order_by(CMSBanner.sort_order.asc())
+    )
+
+    result = await db.execute(query)
+    banners = result.scalars().all()
+
+    result_data = [
+        StorefrontBannerResponse(
+            id=str(b.id),
+            title=b.title,
+            subtitle=b.subtitle,
+            image_url=b.image_url,
+            mobile_image_url=b.mobile_image_url,
+            cta_text=b.cta_text,
+            cta_link=b.cta_link,
+            text_position=b.text_position,
+            text_color=b.text_color,
+        )
+        for b in banners
+    ]
+
+    await cache.set(cache_key, [r.model_dump() for r in result_data], ttl=300)
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result_data
+
+
+@router.get("/usps", response_model=List[StorefrontUspResponse])
+async def get_usps(db: DB, response: Response):
+    """
+    Get active USPs/features for the storefront.
+    No authentication required. Cached for 10 minutes.
+    """
+    start_time = time.time()
+    cache = get_cache()
+
+    cache_key = "cms:usps:active"
+    cached_result = await cache.get(cache_key)
+    if cached_result:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+        return [StorefrontUspResponse(**u) for u in cached_result]
+
+    query = (
+        select(CMSUsp)
+        .where(CMSUsp.is_active == True)
+        .order_by(CMSUsp.sort_order.asc())
+    )
+
+    result = await db.execute(query)
+    usps = result.scalars().all()
+
+    result_data = [
+        StorefrontUspResponse(
+            id=str(u.id),
+            title=u.title,
+            description=u.description,
+            icon=u.icon,
+            icon_color=u.icon_color,
+            link_url=u.link_url,
+            link_text=u.link_text,
+        )
+        for u in usps
+    ]
+
+    await cache.set(cache_key, [r.model_dump() for r in result_data], ttl=600)
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result_data
+
+
+@router.get("/testimonials", response_model=List[StorefrontTestimonialResponse])
+async def get_testimonials(
+    db: DB,
+    response: Response,
+    limit: int = Query(default=10, ge=1, le=50),
+):
+    """
+    Get active testimonials for the storefront.
+    Featured testimonials appear first.
+    No authentication required. Cached for 10 minutes.
+    """
+    start_time = time.time()
+    cache = get_cache()
+
+    cache_key = f"cms:testimonials:active:{limit}"
+    cached_result = await cache.get(cache_key)
+    if cached_result:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+        return [StorefrontTestimonialResponse(**t) for t in cached_result]
+
+    query = (
+        select(CMSTestimonial)
+        .where(CMSTestimonial.is_active == True)
+        .order_by(
+            CMSTestimonial.is_featured.desc(),
+            CMSTestimonial.sort_order.asc()
+        )
+        .limit(limit)
+    )
+
+    result = await db.execute(query)
+    testimonials = result.scalars().all()
+
+    result_data = [
+        StorefrontTestimonialResponse(
+            id=str(t.id),
+            customer_name=t.customer_name,
+            customer_location=t.customer_location,
+            customer_avatar_url=t.customer_avatar_url,
+            customer_designation=t.customer_designation,
+            rating=t.rating,
+            content=t.content,
+            title=t.title,
+            product_name=t.product_name,
+        )
+        for t in testimonials
+    ]
+
+    await cache.set(cache_key, [r.model_dump() for r in result_data], ttl=600)
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result_data
+
+
+@router.get("/announcements/active", response_model=Optional[StorefrontAnnouncementResponse])
+async def get_active_announcement(db: DB, response: Response):
+    """
+    Get the current active announcement for the header bar.
+    Returns the first active, scheduled announcement.
+    No authentication required. Cached for 2 minutes.
+    """
+    start_time = time.time()
+    cache = get_cache()
+
+    cache_key = "cms:announcement:active"
+    cached_result = await cache.get(cache_key)
+    if cached_result:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+        if cached_result == "none":
+            return None
+        return StorefrontAnnouncementResponse(**cached_result)
+
+    now = func.now()
+    query = (
+        select(CMSAnnouncement)
+        .where(
+            CMSAnnouncement.is_active == True,
+            or_(CMSAnnouncement.starts_at.is_(None), CMSAnnouncement.starts_at <= now),
+            or_(CMSAnnouncement.ends_at.is_(None), CMSAnnouncement.ends_at >= now),
+        )
+        .order_by(CMSAnnouncement.sort_order.asc())
+        .limit(1)
+    )
+
+    result = await db.execute(query)
+    announcement = result.scalar_one_or_none()
+
+    if not announcement:
+        await cache.set(cache_key, "none", ttl=120)
+        response.headers["X-Cache"] = "MISS"
+        response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+        return None
+
+    result_data = StorefrontAnnouncementResponse(
+        id=str(announcement.id),
+        text=announcement.text,
+        link_url=announcement.link_url,
+        link_text=announcement.link_text,
+        announcement_type=announcement.announcement_type,
+        background_color=announcement.background_color,
+        text_color=announcement.text_color,
+        is_dismissible=announcement.is_dismissible,
+    )
+
+    await cache.set(cache_key, result_data.model_dump(), ttl=120)
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result_data
+
+
+@router.get("/pages/{slug}", response_model=StorefrontPageResponse)
+async def get_page_by_slug(slug: str, db: DB, response: Response):
+    """
+    Get a published page by slug.
+    No authentication required. Cached for 5 minutes.
+    """
+    start_time = time.time()
+    cache = get_cache()
+
+    cache_key = f"cms:page:{slug}"
+    cached_result = await cache.get(cache_key)
+    if cached_result:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+        return StorefrontPageResponse(**cached_result)
+
+    query = (
+        select(CMSPage)
+        .where(
+            CMSPage.slug == slug,
+            CMSPage.status == "PUBLISHED",
+        )
+    )
+
+    result = await db.execute(query)
+    page = result.scalar_one_or_none()
+
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+
+    result_data = StorefrontPageResponse(
+        id=str(page.id),
+        title=page.title,
+        slug=page.slug,
+        content=page.content,
+        excerpt=page.excerpt,
+        meta_title=page.meta_title,
+        meta_description=page.meta_description,
+        og_image_url=page.og_image_url,
+        template=page.template,
+        published_at=page.published_at,
+    )
+
+    await cache.set(cache_key, result_data.model_dump(), ttl=300)
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result_data
+
+
+@router.get("/footer-pages", response_model=List[dict])
+async def get_footer_pages(db: DB, response: Response):
+    """
+    Get list of published pages that should appear in the footer.
+    No authentication required. Cached for 30 minutes.
+    """
+    start_time = time.time()
+    cache = get_cache()
+
+    cache_key = "cms:pages:footer"
+    cached_result = await cache.get(cache_key)
+    if cached_result:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+        return cached_result
+
+    query = (
+        select(CMSPage)
+        .where(
+            CMSPage.status == "PUBLISHED",
+            CMSPage.show_in_footer == True,
+        )
+        .order_by(CMSPage.sort_order.asc())
+    )
+
+    result = await db.execute(query)
+    pages = result.scalars().all()
+
+    result_data = [
+        {"title": p.title, "slug": p.slug}
+        for p in pages
+    ]
+
+    await cache.set(cache_key, result_data, ttl=1800)
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result_data

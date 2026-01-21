@@ -1,53 +1,67 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { Star, Quote } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { contentApi, StorefrontTestimonial } from '@/lib/storefront/api';
 
-const testimonials = [
+// Fallback testimonials for when API fails or returns empty
+const fallbackTestimonials: StorefrontTestimonial[] = [
   {
     id: '1',
-    name: 'Rajesh Kumar',
-    location: 'Delhi',
+    customer_name: 'Rajesh Kumar',
+    customer_location: 'Delhi',
     rating: 5,
     content:
       'Excellent water purifier! The water tastes so pure and fresh. Installation was quick and the service team was very professional.',
-    avatar: '',
-    product: 'Aqua Pro 7-Stage RO',
+    product_name: 'Aqua Pro 7-Stage RO',
   },
   {
     id: '2',
-    name: 'Priya Sharma',
-    location: 'Mumbai',
+    customer_name: 'Priya Sharma',
+    customer_location: 'Mumbai',
     rating: 5,
     content:
       "Best investment for my family's health. The mineral enrichment feature makes the water taste great. Highly recommended!",
-    avatar: '',
-    product: 'Aqua Elite UV+RO',
+    product_name: 'Aqua Elite UV+RO',
   },
   {
     id: '3',
-    name: 'Amit Patel',
-    location: 'Ahmedabad',
+    customer_name: 'Amit Patel',
+    customer_location: 'Ahmedabad',
     rating: 4,
     content:
       'Great product with excellent after-sales service. The AMC plan is worth it for hassle-free maintenance.',
-    avatar: '',
-    product: 'Aqua Smart RO',
+    product_name: 'Aqua Smart RO',
   },
   {
     id: '4',
-    name: 'Sunita Verma',
-    location: 'Bangalore',
+    customer_name: 'Sunita Verma',
+    customer_location: 'Bangalore',
     rating: 5,
     content:
       'Very happy with my purchase. The smart features like filter change indicator are very useful. Delivery was on time.',
-    avatar: '',
-    product: 'Aqua Pro Max',
+    product_name: 'Aqua Pro Max',
   },
 ];
 
 export default function Testimonials() {
+  const [testimonials, setTestimonials] = useState<StorefrontTestimonial[]>(fallbackTestimonials);
+
+  useEffect(() => {
+    const fetchTestimonials = async () => {
+      try {
+        const data = await contentApi.getTestimonials();
+        if (data && data.length > 0) {
+          setTestimonials(data);
+        }
+      } catch {
+        // Keep fallback testimonials on error
+      }
+    };
+    fetchTestimonials();
+  }, []);
   return (
     <section className="py-12 md:py-16 bg-muted/50">
       <div className="container mx-auto px-4">
@@ -80,32 +94,43 @@ export default function Testimonials() {
                   ))}
                 </div>
 
+                {/* Title */}
+                {testimonial.title && (
+                  <p className="font-semibold text-sm mb-2">{testimonial.title}</p>
+                )}
+
                 {/* Content */}
                 <p className="text-sm text-muted-foreground mb-4 line-clamp-4">
-                  "{testimonial.content}"
+                  &ldquo;{testimonial.content}&rdquo;
                 </p>
 
                 {/* Product */}
-                <p className="text-xs text-primary font-medium mb-4">
-                  {testimonial.product}
-                </p>
+                {testimonial.product_name && (
+                  <p className="text-xs text-primary font-medium mb-4">
+                    {testimonial.product_name}
+                  </p>
+                )}
 
                 {/* Author */}
                 <div className="flex items-center gap-3">
                   <Avatar className="h-10 w-10">
-                    <AvatarImage src={testimonial.avatar} />
+                    <AvatarImage src={testimonial.customer_avatar_url || undefined} />
                     <AvatarFallback className="bg-primary/10 text-primary">
-                      {testimonial.name
+                      {testimonial.customer_name
                         .split(' ')
                         .map((n) => n[0])
                         .join('')}
                     </AvatarFallback>
                   </Avatar>
                   <div>
-                    <p className="font-medium text-sm">{testimonial.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {testimonial.location}
-                    </p>
+                    <p className="font-medium text-sm">{testimonial.customer_name}</p>
+                    {(testimonial.customer_designation || testimonial.customer_location) && (
+                      <p className="text-xs text-muted-foreground">
+                        {testimonial.customer_designation}
+                        {testimonial.customer_designation && testimonial.customer_location && ', '}
+                        {testimonial.customer_location}
+                      </p>
+                    )}
                   </div>
                 </div>
               </CardContent>

@@ -96,6 +96,12 @@ const moduleColors: Record<string, { bg: string; text: string; hover: string; gr
     hover: 'hover:bg-slate-50 dark:hover:bg-slate-800/30',
     gradient: 'from-slate-500 to-gray-600'
   },
+  'D2C Content': {
+    bg: 'bg-lime-100 dark:bg-lime-900/30',
+    text: 'text-lime-600 dark:text-lime-400',
+    hover: 'hover:bg-lime-50 dark:hover:bg-lime-900/20',
+    gradient: 'from-lime-500 to-green-600'
+  },
 };
 
 // Badge colors for different badge types

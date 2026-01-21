@@ -44,6 +44,7 @@ MODULES = [
     {"name": "Notifications", "code": "notifications", "description": "System notifications", "icon": "notifications", "sort_order": 15},
     {"name": "Settings", "code": "settings", "description": "System configuration", "icon": "settings", "sort_order": 16},
     {"name": "Access Control", "code": "access_control", "description": "User roles and permissions", "icon": "security", "sort_order": 17},
+    {"name": "CMS", "code": "cms", "description": "D2C storefront content management", "icon": "globe", "sort_order": 18},
     # Finance Sub-Modules (referenced in PERMISSIONS)
     {"name": "Chart of Accounts", "code": "accounts", "description": "Ledger accounts management", "icon": "account_tree", "sort_order": 20},
     {"name": "Journal Entries", "code": "journals", "description": "Journal entry management", "icon": "receipt_long", "sort_order": 21},
@@ -53,6 +54,7 @@ MODULES = [
     {"name": "Financial Periods", "code": "periods", "description": "Accounting period management", "icon": "date_range", "sort_order": 25},
     {"name": "GST", "code": "gst", "description": "GST returns and compliance", "icon": "receipt", "sort_order": 26},
     {"name": "TDS", "code": "tds", "description": "TDS deduction and filing", "icon": "description", "sort_order": 27},
+    {"name": "Tax Configuration", "code": "tax_configs", "description": "Tax/HSN configuration management", "icon": "calculate", "sort_order": 28},
 ]
 
 # ==================== PERMISSION DEFINITIONS ====================
@@ -224,6 +226,13 @@ PERMISSIONS = [
     ("access_control", "update", "Update Roles", "Modify role permissions"),
     ("access_control", "delete", "Delete Roles", "Remove roles"),
     ("access_control", "assign", "Assign Roles", "Assign roles to users"),
+
+    # CMS - D2C Storefront Content (5 permissions)
+    ("cms", "view", "View CMS Content", "View storefront content (banners, USPs, pages, etc.)"),
+    ("cms", "create", "Create CMS Content", "Create storefront content"),
+    ("cms", "update", "Update CMS Content", "Update storefront content"),
+    ("cms", "delete", "Delete CMS Content", "Delete storefront content"),
+    ("cms", "publish", "Publish CMS Content", "Publish/unpublish pages and announcements"),
 ]
 
 # ==================== ROLE DEFINITIONS ====================
@@ -265,6 +274,7 @@ ROLES = [
             "notifications:view",
             "settings:view",
             "access_control:view",
+            "cms:view",
         ],
     },
 
@@ -471,6 +481,8 @@ ROLES = [
             "crm:view", "crm:export",
             "reports:view", "reports:export",
             "notifications:view", "notifications:create", "notifications:send",
+            # CMS - Full access for D2C storefront content management
+            "cms:view", "cms:create", "cms:update", "cms:delete", "cms:publish",
         ],
     },
 

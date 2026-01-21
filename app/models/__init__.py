@@ -471,6 +471,18 @@ from app.models.product_cost import (
     ProductCost,
     ValuationMethod,
 )
+# CMS (D2C Content Management)
+from app.models.cms import (
+    CMSBanner,
+    CMSUsp,
+    CMSTestimonial,
+    CMSAnnouncement,
+    CMSPage,
+    CMSPageVersion,
+    CMSSeo,
+    CMSPageStatus,
+    CMSAnnouncementType,
+)
 
 __all__ = [
     # Access Control
@@ -855,4 +867,14 @@ __all__ = [
     # Product Cost (COGS Auto-calculation)
     "ProductCost",
     "ValuationMethod",
+    # CMS (D2C Content Management)
+    "CMSBanner",
+    "CMSUsp",
+    "CMSTestimonial",
+    "CMSAnnouncement",
+    "CMSPage",
+    "CMSPageVersion",
+    "CMSSeo",
+    "CMSPageStatus",
+    "CMSAnnouncementType",
 ]

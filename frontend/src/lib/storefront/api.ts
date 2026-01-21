@@ -1220,6 +1220,124 @@ export const addressApi = {
   },
 };
 
+// CMS Content API - Public storefront content
+export interface StorefrontBanner {
+  id: string;
+  title: string;
+  subtitle?: string;
+  image_url: string;
+  mobile_image_url?: string;
+  cta_text?: string;
+  cta_link?: string;
+  text_position: 'left' | 'center' | 'right';
+  text_color: 'white' | 'dark';
+}
+
+export interface StorefrontUsp {
+  id: string;
+  title: string;
+  description?: string;
+  icon: string;
+  icon_color?: string;
+  link_url?: string;
+  link_text?: string;
+}
+
+export interface StorefrontTestimonial {
+  id: string;
+  customer_name: string;
+  customer_location?: string;
+  customer_avatar_url?: string;
+  customer_designation?: string;
+  rating: number;
+  content: string;
+  title?: string;
+  product_name?: string;
+}
+
+export interface StorefrontAnnouncement {
+  id: string;
+  text: string;
+  link_url?: string;
+  link_text?: string;
+  announcement_type: 'INFO' | 'WARNING' | 'PROMO' | 'SUCCESS';
+  background_color?: string;
+  text_color?: string;
+  is_dismissible: boolean;
+}
+
+export interface StorefrontPage {
+  id: string;
+  title: string;
+  slug: string;
+  content?: string;
+  meta_title?: string;
+  meta_description?: string;
+  og_image_url?: string;
+}
+
+export interface FooterPage {
+  id: string;
+  title: string;
+  slug: string;
+}
+
+export const contentApi = {
+  getBanners: async (): Promise<StorefrontBanner[]> => {
+    try {
+      const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/banners`);
+      return data || [];
+    } catch {
+      return [];
+    }
+  },
+
+  getUsps: async (): Promise<StorefrontUsp[]> => {
+    try {
+      const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/usps`);
+      return data || [];
+    } catch {
+      return [];
+    }
+  },
+
+  getTestimonials: async (): Promise<StorefrontTestimonial[]> => {
+    try {
+      const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/testimonials`);
+      return data || [];
+    } catch {
+      return [];
+    }
+  },
+
+  getActiveAnnouncement: async (): Promise<StorefrontAnnouncement | null> => {
+    try {
+      const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/announcements/active`);
+      return data || null;
+    } catch {
+      return null;
+    }
+  },
+
+  getPage: async (slug: string): Promise<StorefrontPage | null> => {
+    try {
+      const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/pages/${slug}`);
+      return data || null;
+    } catch {
+      return null;
+    }
+  },
+
+  getFooterPages: async (): Promise<FooterPage[]> => {
+    try {
+      const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/footer-pages`);
+      return data || [];
+    } catch {
+      return [];
+    }
+  },
+};
+
 export const storefrontApi = {
   products: productsApi,
   categories: categoriesApi,
@@ -1236,6 +1354,7 @@ export const storefrontApi = {
   orderTracking: orderTrackingApi,
   abandonedCart: abandonedCartApi,
   address: addressApi,
+  content: contentApi,
 };
 
 export default storefrontApi;

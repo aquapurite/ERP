@@ -7,6 +7,8 @@ from app.api.v1.endpoints import (
     permissions,
     users,
     access_control,
+    # CMS (D2C Content Management)
+    cms,
     # File Uploads
     uploads,
     # Address Lookup (Google Places + DigiPin)
@@ -558,4 +560,11 @@ api_router.include_router(
     channel_reports.router,
     prefix="/channel-reports",
     tags=["Channel Reports"]
+)
+
+# ==================== CMS (D2C Content Management) ====================
+api_router.include_router(
+    cms.router,
+    prefix="/cms",
+    tags=["CMS (Content Management)"]
 )

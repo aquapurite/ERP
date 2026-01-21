@@ -68,6 +68,10 @@ import {
   UsersRound,
   GraduationCap,
   Award,
+  Globe,
+  Image,
+  MessageSquare,
+  Search,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -318,7 +322,22 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 13. ADMINISTRATION ====================
+  // ==================== 13. D2C CONTENT (CMS) ====================
+  {
+    title: 'D2C Content',
+    icon: Globe,
+    permissions: ['CMS_VIEW'],
+    children: [
+      { title: 'Hero Banners', href: '/dashboard/cms/banners', icon: Image, permissions: ['CMS_VIEW'] },
+      { title: 'USPs/Features', href: '/dashboard/cms/usps', icon: Award, permissions: ['CMS_VIEW'] },
+      { title: 'Testimonials', href: '/dashboard/cms/testimonials', icon: MessageSquare, permissions: ['CMS_VIEW'] },
+      { title: 'Announcements', href: '/dashboard/cms/announcements', icon: Bell, permissions: ['CMS_VIEW'] },
+      { title: 'Static Pages', href: '/dashboard/cms/pages', icon: FileText, permissions: ['CMS_VIEW'] },
+      { title: 'SEO Settings', href: '/dashboard/cms/seo', icon: Search, permissions: ['CMS_VIEW'] },
+    ],
+  },
+
+  // ==================== 14. ADMINISTRATION ====================
   {
     title: 'Administration',
     icon: Cog,

@@ -1,0 +1,464 @@
+"""Pydantic schemas for CMS (D2C Content Management)."""
+from datetime import datetime
+from typing import Optional, List
+from uuid import UUID
+from pydantic import BaseModel, Field, ConfigDict, field_validator
+from enum import Enum
+
+
+# ==================== Enums ====================
+
+class CMSPageStatus(str, Enum):
+    DRAFT = "DRAFT"
+    PUBLISHED = "PUBLISHED"
+    ARCHIVED = "ARCHIVED"
+
+
+class CMSAnnouncementType(str, Enum):
+    INFO = "INFO"
+    WARNING = "WARNING"
+    PROMO = "PROMO"
+    SUCCESS = "SUCCESS"
+
+
+# ==================== Banner Schemas ====================
+
+class CMSBannerBase(BaseModel):
+    """Base schema for CMS Banner."""
+    title: str = Field(..., min_length=1, max_length=200)
+    subtitle: Optional[str] = Field(None, max_length=500)
+    image_url: str = Field(..., max_length=500)
+    thumbnail_url: Optional[str] = Field(None, max_length=500)
+    mobile_image_url: Optional[str] = Field(None, max_length=500)
+    cta_text: Optional[str] = Field(None, max_length=100)
+    cta_link: Optional[str] = Field(None, max_length=500)
+    text_position: str = Field("left", pattern="^(left|center|right)$")
+    text_color: str = Field("white", pattern="^(white|dark)$")
+    sort_order: int = Field(0, ge=0)
+    is_active: bool = True
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+
+
+class CMSBannerCreate(CMSBannerBase):
+    """Schema for creating a banner."""
+    pass
+
+
+class CMSBannerUpdate(BaseModel):
+    """Schema for updating a banner."""
+    title: Optional[str] = Field(None, max_length=200)
+    subtitle: Optional[str] = Field(None, max_length=500)
+    image_url: Optional[str] = Field(None, max_length=500)
+    thumbnail_url: Optional[str] = Field(None, max_length=500)
+    mobile_image_url: Optional[str] = Field(None, max_length=500)
+    cta_text: Optional[str] = Field(None, max_length=100)
+    cta_link: Optional[str] = Field(None, max_length=500)
+    text_position: Optional[str] = Field(None, pattern="^(left|center|right)$")
+    text_color: Optional[str] = Field(None, pattern="^(white|dark)$")
+    sort_order: Optional[int] = Field(None, ge=0)
+    is_active: Optional[bool] = None
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+
+
+class CMSBannerResponse(CMSBannerBase):
+    """Response schema for banner."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    created_by: Optional[UUID] = None
+
+
+class CMSBannerBrief(BaseModel):
+    """Brief banner info for lists."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    title: str
+    image_url: str
+    thumbnail_url: Optional[str] = None
+    is_active: bool
+    sort_order: int
+
+
+# ==================== USP Schemas ====================
+
+class CMSUspBase(BaseModel):
+    """Base schema for CMS USP."""
+    title: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=300)
+    icon: str = Field(..., min_length=1, max_length=50, description="Lucide icon name")
+    icon_color: Optional[str] = Field(None, max_length=50)
+    link_url: Optional[str] = Field(None, max_length=500)
+    link_text: Optional[str] = Field(None, max_length=100)
+    sort_order: int = Field(0, ge=0)
+    is_active: bool = True
+
+
+class CMSUspCreate(CMSUspBase):
+    """Schema for creating a USP."""
+    pass
+
+
+class CMSUspUpdate(BaseModel):
+    """Schema for updating a USP."""
+    title: Optional[str] = Field(None, max_length=100)
+    description: Optional[str] = Field(None, max_length=300)
+    icon: Optional[str] = Field(None, max_length=50)
+    icon_color: Optional[str] = Field(None, max_length=50)
+    link_url: Optional[str] = Field(None, max_length=500)
+    link_text: Optional[str] = Field(None, max_length=100)
+    sort_order: Optional[int] = Field(None, ge=0)
+    is_active: Optional[bool] = None
+
+
+class CMSUspResponse(CMSUspBase):
+    """Response schema for USP."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    created_by: Optional[UUID] = None
+
+
+# ==================== Testimonial Schemas ====================
+
+class CMSTestimonialBase(BaseModel):
+    """Base schema for CMS Testimonial."""
+    customer_name: str = Field(..., min_length=1, max_length=100)
+    customer_location: Optional[str] = Field(None, max_length=100)
+    customer_avatar_url: Optional[str] = Field(None, max_length=500)
+    customer_designation: Optional[str] = Field(None, max_length=100)
+    rating: int = Field(..., ge=1, le=5)
+    content: str = Field(..., min_length=10, max_length=2000)
+    title: Optional[str] = Field(None, max_length=200)
+    product_name: Optional[str] = Field(None, max_length=200)
+    product_id: Optional[UUID] = None
+    sort_order: int = Field(0, ge=0)
+    is_featured: bool = False
+    is_active: bool = True
+
+
+class CMSTestimonialCreate(CMSTestimonialBase):
+    """Schema for creating a testimonial."""
+    pass
+
+
+class CMSTestimonialUpdate(BaseModel):
+    """Schema for updating a testimonial."""
+    customer_name: Optional[str] = Field(None, max_length=100)
+    customer_location: Optional[str] = Field(None, max_length=100)
+    customer_avatar_url: Optional[str] = Field(None, max_length=500)
+    customer_designation: Optional[str] = Field(None, max_length=100)
+    rating: Optional[int] = Field(None, ge=1, le=5)
+    content: Optional[str] = Field(None, max_length=2000)
+    title: Optional[str] = Field(None, max_length=200)
+    product_name: Optional[str] = Field(None, max_length=200)
+    product_id: Optional[UUID] = None
+    sort_order: Optional[int] = Field(None, ge=0)
+    is_featured: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+
+class CMSTestimonialResponse(CMSTestimonialBase):
+    """Response schema for testimonial."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    created_by: Optional[UUID] = None
+
+
+# ==================== Announcement Schemas ====================
+
+class CMSAnnouncementBase(BaseModel):
+    """Base schema for CMS Announcement."""
+    text: str = Field(..., min_length=1, max_length=500)
+    link_url: Optional[str] = Field(None, max_length=500)
+    link_text: Optional[str] = Field(None, max_length=100)
+    announcement_type: CMSAnnouncementType = CMSAnnouncementType.INFO
+    background_color: Optional[str] = Field(None, max_length=50)
+    text_color: Optional[str] = Field(None, max_length=50)
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    sort_order: int = Field(0, ge=0)
+    is_dismissible: bool = True
+    is_active: bool = True
+
+
+class CMSAnnouncementCreate(CMSAnnouncementBase):
+    """Schema for creating an announcement."""
+    pass
+
+
+class CMSAnnouncementUpdate(BaseModel):
+    """Schema for updating an announcement."""
+    text: Optional[str] = Field(None, max_length=500)
+    link_url: Optional[str] = Field(None, max_length=500)
+    link_text: Optional[str] = Field(None, max_length=100)
+    announcement_type: Optional[CMSAnnouncementType] = None
+    background_color: Optional[str] = Field(None, max_length=50)
+    text_color: Optional[str] = Field(None, max_length=50)
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    sort_order: Optional[int] = Field(None, ge=0)
+    is_dismissible: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+
+class CMSAnnouncementResponse(CMSAnnouncementBase):
+    """Response schema for announcement."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    created_by: Optional[UUID] = None
+
+
+# ==================== Page Schemas ====================
+
+class CMSPageBase(BaseModel):
+    """Base schema for CMS Page."""
+    title: str = Field(..., min_length=1, max_length=200)
+    slug: str = Field(..., min_length=1, max_length=200, pattern="^[a-z0-9-]+$")
+    content: Optional[str] = None
+    excerpt: Optional[str] = Field(None, max_length=500)
+    meta_title: Optional[str] = Field(None, max_length=200)
+    meta_description: Optional[str] = Field(None, max_length=500)
+    meta_keywords: Optional[str] = Field(None, max_length=500)
+    og_image_url: Optional[str] = Field(None, max_length=500)
+    canonical_url: Optional[str] = Field(None, max_length=500)
+    status: CMSPageStatus = CMSPageStatus.DRAFT
+    template: str = Field("default", pattern="^(default|full-width|landing)$")
+    show_in_footer: bool = False
+    show_in_header: bool = False
+    sort_order: int = Field(0, ge=0)
+
+
+class CMSPageCreate(CMSPageBase):
+    """Schema for creating a page."""
+    pass
+
+
+class CMSPageUpdate(BaseModel):
+    """Schema for updating a page."""
+    title: Optional[str] = Field(None, max_length=200)
+    slug: Optional[str] = Field(None, max_length=200, pattern="^[a-z0-9-]+$")
+    content: Optional[str] = None
+    excerpt: Optional[str] = Field(None, max_length=500)
+    meta_title: Optional[str] = Field(None, max_length=200)
+    meta_description: Optional[str] = Field(None, max_length=500)
+    meta_keywords: Optional[str] = Field(None, max_length=500)
+    og_image_url: Optional[str] = Field(None, max_length=500)
+    canonical_url: Optional[str] = Field(None, max_length=500)
+    status: Optional[CMSPageStatus] = None
+    template: Optional[str] = Field(None, pattern="^(default|full-width|landing)$")
+    show_in_footer: Optional[bool] = None
+    show_in_header: Optional[bool] = None
+    sort_order: Optional[int] = Field(None, ge=0)
+
+
+class CMSPageVersionResponse(BaseModel):
+    """Response schema for page version."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    page_id: UUID
+    version_number: int
+    title: str
+    content: Optional[str] = None
+    meta_title: Optional[str] = None
+    meta_description: Optional[str] = None
+    change_summary: Optional[str] = None
+    created_at: datetime
+    created_by: Optional[UUID] = None
+
+
+class CMSPageResponse(CMSPageBase):
+    """Response schema for page."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    published_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    created_by: Optional[UUID] = None
+    updated_by: Optional[UUID] = None
+    versions: List[CMSPageVersionResponse] = []
+
+
+class CMSPageBrief(BaseModel):
+    """Brief page info for lists."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    title: str
+    slug: str
+    status: str
+    published_at: Optional[datetime] = None
+    updated_at: datetime
+
+
+# ==================== SEO Schemas ====================
+
+class CMSSeoBase(BaseModel):
+    """Base schema for CMS SEO settings."""
+    url_path: str = Field(..., min_length=1, max_length=500)
+    meta_title: Optional[str] = Field(None, max_length=200)
+    meta_description: Optional[str] = Field(None, max_length=500)
+    meta_keywords: Optional[str] = Field(None, max_length=500)
+    og_title: Optional[str] = Field(None, max_length=200)
+    og_description: Optional[str] = Field(None, max_length=500)
+    og_image_url: Optional[str] = Field(None, max_length=500)
+    og_type: str = Field("website", max_length=50)
+    canonical_url: Optional[str] = Field(None, max_length=500)
+    robots_index: bool = True
+    robots_follow: bool = True
+    structured_data: Optional[dict] = None
+
+
+class CMSSeoCreate(CMSSeoBase):
+    """Schema for creating SEO settings."""
+    pass
+
+
+class CMSSeoUpdate(BaseModel):
+    """Schema for updating SEO settings."""
+    url_path: Optional[str] = Field(None, max_length=500)
+    meta_title: Optional[str] = Field(None, max_length=200)
+    meta_description: Optional[str] = Field(None, max_length=500)
+    meta_keywords: Optional[str] = Field(None, max_length=500)
+    og_title: Optional[str] = Field(None, max_length=200)
+    og_description: Optional[str] = Field(None, max_length=500)
+    og_image_url: Optional[str] = Field(None, max_length=500)
+    og_type: Optional[str] = Field(None, max_length=50)
+    canonical_url: Optional[str] = Field(None, max_length=500)
+    robots_index: Optional[bool] = None
+    robots_follow: Optional[bool] = None
+    structured_data: Optional[dict] = None
+
+
+class CMSSeoResponse(CMSSeoBase):
+    """Response schema for SEO settings."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    created_by: Optional[UUID] = None
+
+
+# ==================== List/Pagination Schemas ====================
+
+class CMSBannerListResponse(BaseModel):
+    """Response for listing banners."""
+    items: List[CMSBannerResponse]
+    total: int
+
+
+class CMSUspListResponse(BaseModel):
+    """Response for listing USPs."""
+    items: List[CMSUspResponse]
+    total: int
+
+
+class CMSTestimonialListResponse(BaseModel):
+    """Response for listing testimonials."""
+    items: List[CMSTestimonialResponse]
+    total: int
+
+
+class CMSAnnouncementListResponse(BaseModel):
+    """Response for listing announcements."""
+    items: List[CMSAnnouncementResponse]
+    total: int
+
+
+class CMSPageListResponse(BaseModel):
+    """Response for listing pages."""
+    items: List[CMSPageBrief]
+    total: int
+
+
+class CMSSeoListResponse(BaseModel):
+    """Response for listing SEO settings."""
+    items: List[CMSSeoResponse]
+    total: int
+
+
+# ==================== Reorder Schema ====================
+
+class CMSReorderRequest(BaseModel):
+    """Request to reorder items."""
+    ids: List[UUID] = Field(..., min_length=1, description="List of IDs in desired order")
+
+
+# ==================== Storefront Schemas (Public) ====================
+
+class StorefrontBannerResponse(BaseModel):
+    """Public banner response for storefront."""
+    id: str
+    title: str
+    subtitle: Optional[str] = None
+    image_url: str
+    mobile_image_url: Optional[str] = None
+    cta_text: Optional[str] = None
+    cta_link: Optional[str] = None
+    text_position: str
+    text_color: str
+
+
+class StorefrontUspResponse(BaseModel):
+    """Public USP response for storefront."""
+    id: str
+    title: str
+    description: Optional[str] = None
+    icon: str
+    icon_color: Optional[str] = None
+    link_url: Optional[str] = None
+    link_text: Optional[str] = None
+
+
+class StorefrontTestimonialResponse(BaseModel):
+    """Public testimonial response for storefront."""
+    id: str
+    customer_name: str
+    customer_location: Optional[str] = None
+    customer_avatar_url: Optional[str] = None
+    customer_designation: Optional[str] = None
+    rating: int
+    content: str
+    title: Optional[str] = None
+    product_name: Optional[str] = None
+
+
+class StorefrontAnnouncementResponse(BaseModel):
+    """Public announcement response for storefront."""
+    id: str
+    text: str
+    link_url: Optional[str] = None
+    link_text: Optional[str] = None
+    announcement_type: str
+    background_color: Optional[str] = None
+    text_color: Optional[str] = None
+    is_dismissible: bool
+
+
+class StorefrontPageResponse(BaseModel):
+    """Public page response for storefront."""
+    id: str
+    title: str
+    slug: str
+    content: Optional[str] = None
+    excerpt: Optional[str] = None
+    meta_title: Optional[str] = None
+    meta_description: Optional[str] = None
+    og_image_url: Optional[str] = None
+    template: str
+    published_at: Optional[datetime] = None

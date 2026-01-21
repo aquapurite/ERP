@@ -4,52 +4,72 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { contentApi, StorefrontBanner } from '@/lib/storefront/api';
 
-interface Banner {
-  id: string;
-  title: string;
-  subtitle: string;
-  image: string;
-  cta_text: string;
-  cta_link: string;
-}
-
-const banners: Banner[] = [
+// Fallback banners for when API fails or returns empty
+const fallbackBanners: StorefrontBanner[] = [
   {
     id: '1',
     title: 'Pure Water, Healthy Life',
     subtitle: 'Advanced 7-Stage RO Purification with Mineral Enrichment',
-    image: 'https://images.unsplash.com/photo-1559839914-17aae19cec71?q=80&w=2070',
+    image_url: 'https://images.unsplash.com/photo-1559839914-17aae19cec71?q=80&w=2070',
     cta_text: 'Shop Now',
     cta_link: '/products',
+    text_position: 'left',
+    text_color: 'white',
   },
   {
     id: '2',
     title: 'New Arrivals',
     subtitle: 'Discover our latest water purifiers with smart features',
-    image: 'https://images.unsplash.com/photo-1548839140-29a749e1cf4d?q=80&w=2076',
+    image_url: 'https://images.unsplash.com/photo-1548839140-29a749e1cf4d?q=80&w=2076',
     cta_text: 'Explore',
     cta_link: '/products?is_new_arrival=true',
+    text_position: 'left',
+    text_color: 'white',
   },
   {
     id: '3',
     title: 'Free Installation',
     subtitle: 'Get free installation on all water purifiers',
-    image: 'https://images.unsplash.com/photo-1562016600-ece13e8ba570?q=80&w=2069',
+    image_url: 'https://images.unsplash.com/photo-1562016600-ece13e8ba570?q=80&w=2069',
     cta_text: 'Learn More',
     cta_link: '/products',
+    text_position: 'left',
+    text_color: 'white',
   },
 ];
 
 export default function HeroBanner() {
+  const [banners, setBanners] = useState<StorefrontBanner[]>(fallbackBanners);
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
 
+  // Fetch banners from API
   useEffect(() => {
+    const fetchBanners = async () => {
+      try {
+        const data = await contentApi.getBanners();
+        if (data && data.length > 0) {
+          setBanners(data);
+        }
+      } catch {
+        // Keep fallback banners on error
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchBanners();
+  }, []);
+
+  // Auto-advance carousel
+  useEffect(() => {
+    if (banners.length <= 1) return;
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % banners.length);
     }, 5000);
     return () => clearInterval(timer);
-  }, []);
+  }, [banners.length]);
 
   const goToSlide = (index: number) => {
     setCurrentSlide(index);
@@ -61,6 +81,34 @@ export default function HeroBanner() {
 
   const goToNext = () => {
     setCurrentSlide((prev) => (prev + 1) % banners.length);
+  };
+
+  const getTextAlignment = (position: string) => {
+    switch (position) {
+      case 'center':
+        return 'items-center text-center';
+      case 'right':
+        return 'items-end text-right';
+      default:
+        return 'items-start text-left';
+    }
+  };
+
+  const getTextColorClass = (color: string) => {
+    return color === 'dark' ? 'text-gray-900' : 'text-white';
+  };
+
+  const getGradientClass = (position: string, color: string) => {
+    const isDark = color === 'dark';
+    const baseColor = isDark ? 'white' : 'black';
+    switch (position) {
+      case 'center':
+        return `bg-gradient-to-b from-${baseColor}/60 via-${baseColor}/40 to-${baseColor}/60`;
+      case 'right':
+        return `bg-gradient-to-l from-${baseColor}/70 via-${baseColor}/50 to-transparent`;
+      default:
+        return `bg-gradient-to-r from-${baseColor}/70 via-${baseColor}/50 to-transparent`;
+    }
   };
 
   return (
@@ -76,27 +124,39 @@ export default function HeroBanner() {
           {/* Background Image */}
           <div
             className="absolute inset-0 bg-cover bg-center"
-            style={{ backgroundImage: `url(${banner.image})` }}
+            style={{ backgroundImage: `url(${banner.image_url})` }}
           >
-            <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-transparent" />
+            <div className={`absolute inset-0 ${
+              banner.text_color === 'dark'
+                ? 'bg-gradient-to-r from-white/70 via-white/50 to-transparent'
+                : 'bg-gradient-to-r from-black/70 via-black/50 to-transparent'
+            }`} />
           </div>
 
           {/* Content */}
-          <div className="relative h-full container mx-auto px-4 flex items-center">
-            <div className="max-w-xl text-white">
+          <div className={`relative h-full container mx-auto px-4 flex ${getTextAlignment(banner.text_position)}`}>
+            <div className={`max-w-xl ${getTextColorClass(banner.text_color)} flex flex-col justify-center h-full py-12`}>
               <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-4 animate-fadeInUp">
                 {banner.title}
               </h1>
-              <p className="text-lg md:text-xl text-gray-200 mb-6 animate-fadeInUp animation-delay-200">
-                {banner.subtitle}
-              </p>
-              <Button
-                size="lg"
-                className="animate-fadeInUp animation-delay-400"
-                asChild
-              >
-                <Link href={banner.cta_link}>{banner.cta_text}</Link>
-              </Button>
+              {banner.subtitle && (
+                <p className={`text-lg md:text-xl mb-6 animate-fadeInUp animation-delay-200 ${
+                  banner.text_color === 'dark' ? 'text-gray-700' : 'text-gray-200'
+                }`}>
+                  {banner.subtitle}
+                </p>
+              )}
+              {banner.cta_text && banner.cta_link && (
+                <div>
+                  <Button
+                    size="lg"
+                    className="animate-fadeInUp animation-delay-400"
+                    asChild
+                  >
+                    <Link href={banner.cta_link}>{banner.cta_text}</Link>
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>
