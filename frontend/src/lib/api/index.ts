@@ -1479,11 +1479,29 @@ export const accountsApi = {
     const { data } = await apiClient.get(`/accounting/accounts/${id}`);
     return data;
   },
-  create: async (account: { code: string; name: string; type: string; parent_id?: string; description?: string; is_group?: boolean }) => {
+  create: async (account: {
+    code: string;
+    name: string;
+    type: string;
+    account_sub_type?: string;
+    parent_id?: string;
+    description?: string;
+    is_group?: boolean;
+    bank_name?: string;
+    bank_account_number?: string;
+    bank_ifsc?: string;
+  }) => {
     const { data } = await apiClient.post('/accounting/accounts', account);
     return data;
   },
-  update: async (id: string, account: Partial<{ account_name?: string; description?: string; is_active?: boolean }>) => {
+  update: async (id: string, account: Partial<{
+    account_name?: string;
+    description?: string;
+    is_active?: boolean;
+    bank_name?: string;
+    bank_account_number?: string;
+    bank_ifsc?: string;
+  }>) => {
     const { data } = await apiClient.put(`/accounting/accounts/${id}`, account);
     return data;
   },

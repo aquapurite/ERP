@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Pencil, Trash2, ChevronRight, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { MoreHorizontal, Plus, Pencil, Trash2, ChevronRight, FileSpreadsheet, Loader2, Landmark } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -55,6 +55,10 @@ interface Account {
   level: number;
   created_at: string;
   updated_at: string;
+  // Bank-specific fields
+  bank_name?: string;
+  bank_account_number?: string;
+  bank_ifsc?: string;
 }
 
 const accountTypes = [
@@ -64,6 +68,38 @@ const accountTypes = [
   { label: 'Revenue', value: 'REVENUE' },
   { label: 'Expense', value: 'EXPENSE' },
 ];
+
+// Sub-types mapped by account type
+const accountSubTypes: Record<string, { label: string; value: string }[]> = {
+  ASSET: [
+    { label: 'Bank', value: 'BANK' },
+    { label: 'Cash', value: 'CASH' },
+    { label: 'Accounts Receivable', value: 'ACCOUNTS_RECEIVABLE' },
+    { label: 'Inventory', value: 'INVENTORY' },
+    { label: 'Fixed Asset', value: 'FIXED_ASSET' },
+    { label: 'Current Asset', value: 'CURRENT_ASSET' },
+    { label: 'Prepaid Expense', value: 'PREPAID_EXPENSE' },
+  ],
+  LIABILITY: [
+    { label: 'Accounts Payable', value: 'ACCOUNTS_PAYABLE' },
+    { label: 'Tax Payable', value: 'TAX_PAYABLE' },
+    { label: 'Current Liability', value: 'CURRENT_LIABILITY' },
+    { label: 'Long Term Liability', value: 'LONG_TERM_LIABILITY' },
+  ],
+  EQUITY: [
+    { label: 'Retained Earnings', value: 'RETAINED_EARNINGS' },
+    { label: 'Share Capital', value: 'SHARE_CAPITAL' },
+  ],
+  REVENUE: [
+    { label: 'Operating Revenue', value: 'OPERATING_REVENUE' },
+    { label: 'Non-Operating Revenue', value: 'NON_OPERATING_REVENUE' },
+  ],
+  EXPENSE: [
+    { label: 'Operating Expense', value: 'OPERATING_EXPENSE' },
+    { label: 'Non-Operating Expense', value: 'NON_OPERATING_EXPENSE' },
+    { label: 'Cost of Goods Sold', value: 'COST_OF_GOODS_SOLD' },
+  ],
+};
 
 const typeColors: Record<string, string> = {
   ASSET: 'bg-blue-100 text-blue-800',
@@ -84,10 +120,15 @@ export default function ChartOfAccountsPage() {
     code: '',
     name: '',
     type: 'ASSET',
+    sub_type: '',
     parent_id: '',
     description: '',
     is_group: false,
     is_active: true,
+    // Bank-specific fields
+    bank_name: '',
+    bank_account_number: '',
+    bank_ifsc: '',
   });
 
   const { data, isLoading } = useQuery({
@@ -106,7 +147,7 @@ export default function ChartOfAccountsPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { account_name?: string; description?: string; is_active?: boolean } }) =>
+    mutationFn: ({ id, data }: { id: string; data: { account_name?: string; description?: string; is_active?: boolean; bank_name?: string; bank_account_number?: string; bank_ifsc?: string } }) =>
       accountsApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
@@ -131,10 +172,14 @@ export default function ChartOfAccountsPage() {
       code: '',
       name: '',
       type: 'ASSET',
+      sub_type: '',
       parent_id: '',
       description: '',
       is_group: false,
       is_active: true,
+      bank_name: '',
+      bank_account_number: '',
+      bank_ifsc: '',
     });
     setIsEditMode(false);
     setIsDialogOpen(false);
@@ -146,10 +191,14 @@ export default function ChartOfAccountsPage() {
       code: account.account_code,
       name: account.account_name,
       type: account.account_type,
+      sub_type: account.account_sub_type || '',
       parent_id: account.parent_id || '',
       description: account.description || '',
       is_group: account.is_group,
       is_active: account.is_active,
+      bank_name: account.bank_name || '',
+      bank_account_number: account.bank_account_number || '',
+      bank_ifsc: account.bank_ifsc || '',
     });
     setIsEditMode(true);
     setIsDialogOpen(true);
@@ -177,6 +226,18 @@ export default function ChartOfAccountsPage() {
       return;
     }
 
+    // Validate bank fields if sub_type is BANK
+    if (formData.sub_type === 'BANK') {
+      if (!formData.bank_name?.trim()) {
+        toast.error('Bank name is required for bank accounts');
+        return;
+      }
+      if (!formData.bank_account_number?.trim()) {
+        toast.error('Account number is required for bank accounts');
+        return;
+      }
+    }
+
     if (isEditMode) {
       updateMutation.mutate({
         id: formData.id,
@@ -184,6 +245,10 @@ export default function ChartOfAccountsPage() {
           account_name: formData.name,
           description: formData.description || undefined,
           is_active: formData.is_active,
+          // Bank fields can be updated
+          bank_name: formData.sub_type === 'BANK' ? formData.bank_name : undefined,
+          bank_account_number: formData.sub_type === 'BANK' ? formData.bank_account_number : undefined,
+          bank_ifsc: formData.sub_type === 'BANK' ? formData.bank_ifsc : undefined,
         },
       });
     } else {
@@ -191,9 +256,14 @@ export default function ChartOfAccountsPage() {
         code: formData.code.toUpperCase(),
         name: formData.name,
         type: formData.type,
+        account_sub_type: formData.sub_type || undefined,
         parent_id: formData.parent_id || undefined,
         description: formData.description || undefined,
         is_group: formData.is_group,
+        // Bank-specific fields
+        bank_name: formData.sub_type === 'BANK' ? formData.bank_name : undefined,
+        bank_account_number: formData.sub_type === 'BANK' ? formData.bank_account_number : undefined,
+        bank_ifsc: formData.sub_type === 'BANK' ? formData.bank_ifsc : undefined,
       });
     }
   };
@@ -212,10 +282,17 @@ export default function ChartOfAccountsPage() {
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
           {row.original.is_group && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-          <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
+          {row.original.account_sub_type === 'BANK' ? (
+            <Landmark className="h-4 w-4 text-blue-600" />
+          ) : (
+            <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
+          )}
           <span className={row.original.is_group ? 'font-medium' : ''}>
             {row.original.account_name}
           </span>
+          {row.original.account_sub_type === 'BANK' && row.original.bank_name && (
+            <span className="text-xs text-muted-foreground">({row.original.bank_name})</span>
+          )}
         </div>
       ),
     },
@@ -327,7 +404,7 @@ export default function ChartOfAccountsPage() {
                     <Label>Type *</Label>
                     <Select
                       value={formData.type}
-                      onValueChange={(value) => setFormData({ ...formData, type: value })}
+                      onValueChange={(value) => setFormData({ ...formData, type: value, sub_type: '' })}
                       disabled={isEditMode}
                     >
                       <SelectTrigger>
@@ -342,6 +419,26 @@ export default function ChartOfAccountsPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Sub-Type</Label>
+                  <Select
+                    value={formData.sub_type || 'none'}
+                    onValueChange={(value) => setFormData({ ...formData, sub_type: value === 'none' ? '' : value })}
+                    disabled={isEditMode}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select sub-type (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {(accountSubTypes[formData.type] || []).map((subType) => (
+                        <SelectItem key={subType.value} value={subType.value}>
+                          {subType.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Name *</Label>
@@ -373,6 +470,40 @@ export default function ChartOfAccountsPage() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Bank-specific fields - shown only when sub_type is BANK */}
+                {formData.sub_type === 'BANK' && (
+                  <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
+                    <h4 className="font-medium text-sm">Bank Account Details</h4>
+                    <div className="space-y-2">
+                      <Label>Bank Name *</Label>
+                      <Input
+                        placeholder="e.g., HDFC Bank"
+                        value={formData.bank_name}
+                        onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Account Number *</Label>
+                        <Input
+                          placeholder="e.g., 50100123456789"
+                          value={formData.bank_account_number}
+                          onChange={(e) => setFormData({ ...formData, bank_account_number: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>IFSC Code</Label>
+                        <Input
+                          placeholder="e.g., HDFC0001234"
+                          value={formData.bank_ifsc}
+                          onChange={(e) => setFormData({ ...formData, bank_ifsc: e.target.value.toUpperCase() })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <Label>Description</Label>
                   <Textarea
