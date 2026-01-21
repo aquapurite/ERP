@@ -1,7 +1,7 @@
 """Add CMS tables for D2C content management
 
 Revision ID: 20260121_cms
-Revises: 20260120_fix_abandoned_carts_missing_columns
+Revises: fix_abandoned_carts_cols
 Create Date: 2026-01-21 09:00:00.000000
 
 """
@@ -13,7 +13,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = '20260121_cms'
-down_revision: Union[str, None] = '20260120_fix_abandoned_carts_missing_columns'
+down_revision: Union[str, None] = 'fix_abandoned_carts_cols'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
