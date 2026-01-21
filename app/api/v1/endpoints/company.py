@@ -17,6 +17,7 @@ from app.models.company import (
     CompanyBranch, CompanyBankAccount
 )
 from app.models.user import User
+from app.models.accounting import ChartOfAccount, AccountType, AccountSubType
 from app.schemas.company import (
     CompanyCreate, CompanyUpdate, CompanyResponse, CompanyBrief, CompanyListResponse,
     CompanyFullResponse,
@@ -632,7 +633,11 @@ async def create_bank_account(
     db: DB,
     current_user: User = Depends(get_current_user),
 ):
-    """Add a bank account to a company."""
+    """Add a bank account to a company.
+
+    Automatically creates a corresponding entry in Chart of Accounts
+    for use in Journal Entries.
+    """
     # Verify company exists
     result = await db.execute(
         select(Company).where(Company.id == company_id)
@@ -659,9 +664,42 @@ async def create_bank_account(
         if existing_primary:
             existing_primary.is_primary = False
 
+    # Generate a unique account code for the ledger account
+    # Format: BANK-{last 4 digits of account number}
+    account_suffix = account_in.account_number[-4:] if len(account_in.account_number) >= 4 else account_in.account_number
+    base_code = f"BANK-{account_suffix}"
+
+    # Check if code exists and add suffix if needed
+    existing_code = await db.execute(
+        select(ChartOfAccount).where(ChartOfAccount.account_code == base_code)
+    )
+    if existing_code.scalar_one_or_none():
+        # Add a unique suffix
+        base_code = f"BANK-{account_suffix}-{uuid.uuid4().hex[:4].upper()}"
+
+    # Create corresponding Chart of Account entry (ledger account)
+    ledger_account = ChartOfAccount(
+        account_code=base_code,
+        account_name=f"{account_in.bank_name} - {account_in.branch_name}",
+        account_type=AccountType.ASSET,
+        account_sub_type=AccountSubType.BANK,
+        description=f"Bank Account: {account_in.account_number} | IFSC: {account_in.ifsc_code}",
+        is_group=False,
+        is_system=False,
+        is_active=True,
+        allow_direct_posting=True,
+        bank_name=account_in.bank_name,
+        bank_account_number=account_in.account_number,
+        bank_ifsc=account_in.ifsc_code,
+    )
+    db.add(ledger_account)
+    await db.flush()  # Get the ledger_account.id
+
+    # Create bank account with link to ledger account
     account = CompanyBankAccount(
         **account_in.model_dump(exclude={"company_id"}),
-        company_id=company_id
+        company_id=company_id,
+        ledger_account_id=ledger_account.id  # Link to Chart of Accounts
     )
 
     db.add(account)

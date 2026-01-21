@@ -385,6 +385,7 @@ class CompanyBankAccountResponse(CompanyBankAccountBase):
     company_id: UUID
     is_active: bool
     created_at: datetime
+    ledger_account_id: Optional[UUID] = None  # Link to Chart of Accounts for Journal Entries
 
 
 class CompanyBankAccountBrief(BaseModel):

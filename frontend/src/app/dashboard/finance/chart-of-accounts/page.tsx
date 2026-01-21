@@ -70,9 +70,9 @@ const accountTypes = [
 ];
 
 // Sub-types mapped by account type
+// Note: BANK accounts are created automatically via Settings → Bank
 const accountSubTypes: Record<string, { label: string; value: string }[]> = {
   ASSET: [
-    { label: 'Bank', value: 'BANK' },
     { label: 'Cash', value: 'CASH' },
     { label: 'Accounts Receivable', value: 'ACCOUNTS_RECEIVABLE' },
     { label: 'Inventory', value: 'INVENTORY' },
@@ -125,10 +125,6 @@ export default function ChartOfAccountsPage() {
     description: '',
     is_group: false,
     is_active: true,
-    // Bank-specific fields
-    bank_name: '',
-    bank_account_number: '',
-    bank_ifsc: '',
   });
 
   const { data, isLoading } = useQuery({
@@ -147,7 +143,7 @@ export default function ChartOfAccountsPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { account_name?: string; description?: string; is_active?: boolean; bank_name?: string; bank_account_number?: string; bank_ifsc?: string } }) =>
+    mutationFn: ({ id, data }: { id: string; data: { account_name?: string; description?: string; is_active?: boolean } }) =>
       accountsApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
@@ -177,9 +173,6 @@ export default function ChartOfAccountsPage() {
       description: '',
       is_group: false,
       is_active: true,
-      bank_name: '',
-      bank_account_number: '',
-      bank_ifsc: '',
     });
     setIsEditMode(false);
     setIsDialogOpen(false);
@@ -196,9 +189,6 @@ export default function ChartOfAccountsPage() {
       description: account.description || '',
       is_group: account.is_group,
       is_active: account.is_active,
-      bank_name: account.bank_name || '',
-      bank_account_number: account.bank_account_number || '',
-      bank_ifsc: account.bank_ifsc || '',
     });
     setIsEditMode(true);
     setIsDialogOpen(true);
@@ -226,18 +216,6 @@ export default function ChartOfAccountsPage() {
       return;
     }
 
-    // Validate bank fields if sub_type is BANK
-    if (formData.sub_type === 'BANK') {
-      if (!formData.bank_name?.trim()) {
-        toast.error('Bank name is required for bank accounts');
-        return;
-      }
-      if (!formData.bank_account_number?.trim()) {
-        toast.error('Account number is required for bank accounts');
-        return;
-      }
-    }
-
     if (isEditMode) {
       updateMutation.mutate({
         id: formData.id,
@@ -245,10 +223,6 @@ export default function ChartOfAccountsPage() {
           account_name: formData.name,
           description: formData.description || undefined,
           is_active: formData.is_active,
-          // Bank fields can be updated
-          bank_name: formData.sub_type === 'BANK' ? formData.bank_name : undefined,
-          bank_account_number: formData.sub_type === 'BANK' ? formData.bank_account_number : undefined,
-          bank_ifsc: formData.sub_type === 'BANK' ? formData.bank_ifsc : undefined,
         },
       });
     } else {
@@ -260,10 +234,6 @@ export default function ChartOfAccountsPage() {
         parent_id: formData.parent_id || undefined,
         description: formData.description || undefined,
         is_group: formData.is_group,
-        // Bank-specific fields
-        bank_name: formData.sub_type === 'BANK' ? formData.bank_name : undefined,
-        bank_account_number: formData.sub_type === 'BANK' ? formData.bank_account_number : undefined,
-        bank_ifsc: formData.sub_type === 'BANK' ? formData.bank_ifsc : undefined,
       });
     }
   };
@@ -471,38 +441,6 @@ export default function ChartOfAccountsPage() {
                   </Select>
                 </div>
 
-                {/* Bank-specific fields - shown only when sub_type is BANK */}
-                {formData.sub_type === 'BANK' && (
-                  <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
-                    <h4 className="font-medium text-sm">Bank Account Details</h4>
-                    <div className="space-y-2">
-                      <Label>Bank Name *</Label>
-                      <Input
-                        placeholder="e.g., HDFC Bank"
-                        value={formData.bank_name}
-                        onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Account Number *</Label>
-                        <Input
-                          placeholder="e.g., 50100123456789"
-                          value={formData.bank_account_number}
-                          onChange={(e) => setFormData({ ...formData, bank_account_number: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>IFSC Code</Label>
-                        <Input
-                          placeholder="e.g., HDFC0001234"
-                          value={formData.bank_ifsc}
-                          onChange={(e) => setFormData({ ...formData, bank_ifsc: e.target.value.toUpperCase() })}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 <div className="space-y-2">
                   <Label>Description</Label>

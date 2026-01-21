@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from app.models.warehouse import Warehouse
     from app.models.user import User
     from app.models.tds import TDSDeduction
+    from app.models.accounting import ChartOfAccount
 
 
 class CompanyType(str, Enum):
@@ -533,10 +534,20 @@ class CompanyBankAccount(Base):
     # For display on invoices
     show_on_invoice: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # Link to Chart of Accounts (for Journal Entries)
+    ledger_account_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("chart_of_accounts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="Linked ledger account for journal entries"
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     company: Mapped["Company"] = relationship("Company", back_populates="bank_accounts")
+    ledger_account: Mapped[Optional["ChartOfAccount"]] = relationship("ChartOfAccount", foreign_keys=[ledger_account_id])
 
     def __repr__(self) -> str:
         return f"<CompanyBankAccount(bank='{self.bank_name}', account='{self.account_number[-4:]}')>"

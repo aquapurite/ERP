@@ -1487,9 +1487,6 @@ export const accountsApi = {
     parent_id?: string;
     description?: string;
     is_group?: boolean;
-    bank_name?: string;
-    bank_account_number?: string;
-    bank_ifsc?: string;
   }) => {
     const { data } = await apiClient.post('/accounting/accounts', account);
     return data;
@@ -1498,9 +1495,6 @@ export const accountsApi = {
     account_name?: string;
     description?: string;
     is_active?: boolean;
-    bank_name?: string;
-    bank_account_number?: string;
-    bank_ifsc?: string;
   }>) => {
     const { data } = await apiClient.put(`/accounting/accounts/${id}`, account);
     return data;
