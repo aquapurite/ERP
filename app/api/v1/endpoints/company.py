@@ -664,43 +664,58 @@ async def create_bank_account(
         if existing_primary:
             existing_primary.is_primary = False
 
-    # Generate a unique account code for the ledger account
-    # Format: BANK-{last 4 digits of account number}
-    account_suffix = account_in.account_number[-4:] if len(account_in.account_number) >= 4 else account_in.account_number
-    base_code = f"BANK-{account_suffix}"
+    # Try to auto-create a ledger account in Chart of Accounts
+    ledger_account_id = None
+    try:
+        # Generate a unique account code for the ledger account
+        # Format: BANK-{last 4 digits of account number}
+        account_suffix = account_in.account_number[-4:] if len(account_in.account_number) >= 4 else account_in.account_number
+        base_code = f"BANK-{account_suffix}"
 
-    # Check if code exists and add suffix if needed
-    existing_code = await db.execute(
-        select(ChartOfAccount).where(ChartOfAccount.account_code == base_code)
-    )
-    if existing_code.scalar_one_or_none():
-        # Add a unique suffix
-        base_code = f"BANK-{account_suffix}-{uuid.uuid4().hex[:4].upper()}"
+        # Check if code exists and add suffix if needed
+        existing_code = await db.execute(
+            select(ChartOfAccount).where(ChartOfAccount.account_code == base_code)
+        )
+        if existing_code.scalar_one_or_none():
+            # Add a unique suffix
+            base_code = f"BANK-{account_suffix}-{uuid.uuid4().hex[:4].upper()}"
 
-    # Create corresponding Chart of Account entry (ledger account)
-    ledger_account = ChartOfAccount(
-        account_code=base_code,
-        account_name=f"{account_in.bank_name} - {account_in.branch_name}",
-        account_type=AccountType.ASSET,
-        account_sub_type=AccountSubType.BANK,
-        description=f"Bank Account: {account_in.account_number} | IFSC: {account_in.ifsc_code}",
-        is_group=False,
-        is_system=False,
-        is_active=True,
-        allow_direct_posting=True,
-        bank_name=account_in.bank_name,
-        bank_account_number=account_in.account_number,
-        bank_ifsc=account_in.ifsc_code,
-    )
-    db.add(ledger_account)
-    await db.flush()  # Get the ledger_account.id
+        # Create corresponding Chart of Account entry (ledger account)
+        # Use string values for enum fields (database uses VARCHAR)
+        ledger_account = ChartOfAccount(
+            account_code=base_code,
+            account_name=f"{account_in.bank_name} - {account_in.branch_name}",
+            account_type="ASSET",  # String value, not enum
+            account_sub_type="BANK",  # String value, not enum
+            description=f"Bank Account: {account_in.account_number} | IFSC: {account_in.ifsc_code}",
+            is_group=False,
+            is_system=False,
+            is_active=True,
+            allow_direct_posting=True,
+            bank_name=account_in.bank_name,
+            bank_account_number=account_in.account_number,
+            bank_ifsc=account_in.ifsc_code,
+        )
+        db.add(ledger_account)
+        await db.flush()  # Get the ledger_account.id
+        ledger_account_id = ledger_account.id
+    except Exception as e:
+        # Log error but don't fail bank account creation
+        import logging
+        logging.warning(f"Failed to create ledger account for bank: {e}")
 
-    # Create bank account with link to ledger account
+    # Create bank account (with optional link to ledger account)
+    account_data = account_in.model_dump(exclude={"company_id"})
     account = CompanyBankAccount(
-        **account_in.model_dump(exclude={"company_id"}),
+        **account_data,
         company_id=company_id,
-        ledger_account_id=ledger_account.id  # Link to Chart of Accounts
     )
+    # Only set ledger_account_id if we have it and the column exists
+    if ledger_account_id:
+        try:
+            account.ledger_account_id = ledger_account_id
+        except AttributeError:
+            pass  # Column doesn't exist yet
 
     db.add(account)
     await db.commit()

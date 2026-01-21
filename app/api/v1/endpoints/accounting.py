@@ -215,8 +215,8 @@ async def get_accounts_dropdown(
         {
             "id": str(a.id),
             "code": a.account_code,
-            "name": a.name,
-            "full_name": f"{a.account_code} - {a.name}",
+            "name": a.account_name,
+            "full_name": f"{a.account_code} - {a.account_name}",
             "type": a.account_type,
         }
         for a in accounts
