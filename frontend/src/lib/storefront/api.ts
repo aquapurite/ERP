@@ -1282,6 +1282,27 @@ export interface FooterPage {
   slug: string;
 }
 
+export interface StorefrontMenuItem {
+  id: string;
+  menu_location: 'header' | 'footer_quick' | 'footer_service';
+  title: string;
+  url: string;
+  icon?: string;
+  target: '_self' | '_blank';
+  children?: StorefrontMenuItem[];
+}
+
+export interface StorefrontFeatureBar {
+  id: string;
+  icon: string;
+  title: string;
+  subtitle?: string;
+}
+
+export interface StorefrontSettings {
+  [key: string]: string | undefined;
+}
+
 export const contentApi = {
   getBanners: async (): Promise<StorefrontBanner[]> => {
     try {
@@ -1331,6 +1352,35 @@ export const contentApi = {
   getFooterPages: async (): Promise<FooterPage[]> => {
     try {
       const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/footer-pages`);
+      return data || [];
+    } catch {
+      return [];
+    }
+  },
+
+  getSettings: async (group?: string): Promise<StorefrontSettings> => {
+    try {
+      const params = group ? `?group=${group}` : '';
+      const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/settings${params}`);
+      return data || {};
+    } catch {
+      return {};
+    }
+  },
+
+  getMenuItems: async (location?: string): Promise<StorefrontMenuItem[]> => {
+    try {
+      const params = location ? `?location=${location}` : '';
+      const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/menu-items${params}`);
+      return data || [];
+    } catch {
+      return [];
+    }
+  },
+
+  getFeatureBars: async (): Promise<StorefrontFeatureBar[]> => {
+    try {
+      const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/feature-bars`);
       return data || [];
     } catch {
       return [];

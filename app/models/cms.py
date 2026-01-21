@@ -764,3 +764,228 @@ class CMSSeo(Base):
 
     def __repr__(self) -> str:
         return f"<CMSSeo(url_path='{self.url_path}')>"
+
+
+# ==================== CMS Site Settings Model ====================
+
+class CMSSiteSetting(Base):
+    """
+    Key-value store for site-wide settings.
+    E.g., social links, contact overrides, footer text.
+    """
+    __tablename__ = "cms_site_settings"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    setting_key: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        unique=True,
+        index=True,
+        comment="Unique key e.g., 'social_facebook'"
+    )
+    setting_value: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Setting value"
+    )
+    setting_type: Mapped[str] = mapped_column(
+        String(50),
+        default="text",
+        nullable=False,
+        comment="text, textarea, url, boolean, number"
+    )
+    setting_group: Mapped[str] = mapped_column(
+        String(50),
+        default="general",
+        nullable=False,
+        comment="Group: social, contact, footer, newsletter"
+    )
+    label: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Human-readable label"
+    )
+    description: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Help text for admin"
+    )
+    sort_order: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<CMSSiteSetting(key='{self.setting_key}', group='{self.setting_group}')>"
+
+
+# ==================== CMS Menu Item Model ====================
+
+class CMSMenuItem(Base):
+    """
+    Navigation menu items for header and footer.
+    Supports hierarchical menus with parent-child relationships.
+    """
+    __tablename__ = "cms_menu_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    menu_location: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        index=True,
+        comment="header, footer_quick, footer_service"
+    )
+    title: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="Menu item text"
+    )
+    url: Mapped[str] = mapped_column(
+        String(500),
+        nullable=False,
+        comment="Link URL"
+    )
+    icon: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="Lucide icon name"
+    )
+    target: Mapped[str] = mapped_column(
+        String(20),
+        default="_self",
+        nullable=False,
+        comment="_self or _blank"
+    )
+    parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cms_menu_items.id", ondelete="CASCADE"),
+        nullable=True,
+        comment="Parent menu item for dropdowns"
+    )
+    sort_order: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False
+    )
+    show_on_mobile: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False
+    )
+    css_class: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="Custom CSS class"
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+    # Self-referential relationship for hierarchical menus
+    children: Mapped[List["CMSMenuItem"]] = relationship(
+        "CMSMenuItem",
+        back_populates="parent",
+        cascade="all, delete-orphan"
+    )
+    parent: Mapped[Optional["CMSMenuItem"]] = relationship(
+        "CMSMenuItem",
+        back_populates="children",
+        remote_side=[id]
+    )
+
+    def __repr__(self) -> str:
+        return f"<CMSMenuItem(title='{self.title}', location='{self.menu_location}')>"
+
+
+# ==================== CMS Feature Bar Model ====================
+
+class CMSFeatureBar(Base):
+    """
+    Feature bar items shown above footer.
+    E.g., Free Shipping, Secure Payment, 24/7 Support.
+    """
+    __tablename__ = "cms_feature_bars"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    icon: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        comment="Lucide icon name"
+    )
+    title: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="Feature title"
+    )
+    subtitle: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Feature description"
+    )
+    sort_order: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<CMSFeatureBar(title='{self.title}', icon='{self.icon}')>"

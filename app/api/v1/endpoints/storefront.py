@@ -799,13 +799,19 @@ async def check_serviceability(
 
 # ==================== CMS Content Endpoints ====================
 
-from app.models.cms import CMSBanner, CMSUsp, CMSTestimonial, CMSAnnouncement, CMSPage
+from app.models.cms import (
+    CMSBanner, CMSUsp, CMSTestimonial, CMSAnnouncement, CMSPage,
+    CMSSiteSetting, CMSMenuItem, CMSFeatureBar
+)
 from app.schemas.cms import (
     StorefrontBannerResponse,
     StorefrontUspResponse,
     StorefrontTestimonialResponse,
     StorefrontAnnouncementResponse,
     StorefrontPageResponse,
+    StorefrontSettingsResponse,
+    StorefrontMenuItemResponse,
+    StorefrontFeatureBarResponse,
 )
 
 
@@ -1105,6 +1111,170 @@ async def get_footer_pages(db: DB, response: Response):
     ]
 
     await cache.set(cache_key, result_data, ttl=1800)
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result_data
+
+
+@router.get("/settings", response_model=dict)
+async def get_site_settings(
+    db: DB,
+    response: Response,
+    group: Optional[str] = Query(default=None, description="Filter by setting group"),
+):
+    """
+    Get public site settings (social media links, contact info, etc.).
+    No authentication required. Cached for 30 minutes.
+    """
+    start_time = time.time()
+    cache = get_cache()
+
+    cache_key = f"cms:settings:{group or 'all'}"
+    cached_result = await cache.get(cache_key)
+    if cached_result:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+        return cached_result
+
+    query = select(CMSSiteSetting).order_by(CMSSiteSetting.sort_order.asc())
+    if group:
+        query = query.where(CMSSiteSetting.setting_group == group)
+
+    result = await db.execute(query)
+    settings = result.scalars().all()
+
+    # Return as key-value pairs
+    result_data = {s.setting_key: s.setting_value for s in settings}
+
+    await cache.set(cache_key, result_data, ttl=1800)
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result_data
+
+
+@router.get("/menu-items", response_model=List[StorefrontMenuItemResponse])
+async def get_menu_items(
+    db: DB,
+    response: Response,
+    location: Optional[str] = Query(default=None, description="Filter by location (header, footer_quick, footer_service)"),
+):
+    """
+    Get navigation menu items for header and footer.
+    No authentication required. Cached for 30 minutes.
+    """
+    start_time = time.time()
+    cache = get_cache()
+
+    cache_key = f"cms:menu:{location or 'all'}"
+    cached_result = await cache.get(cache_key)
+    if cached_result:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+        return [StorefrontMenuItemResponse(**m) for m in cached_result]
+
+    query = (
+        select(CMSMenuItem)
+        .where(
+            CMSMenuItem.is_active == True,
+            CMSMenuItem.parent_id.is_(None),  # Only top-level items
+        )
+        .order_by(CMSMenuItem.sort_order.asc())
+    )
+
+    if location:
+        query = query.where(CMSMenuItem.menu_location == location)
+
+    result = await db.execute(query)
+    menu_items = result.scalars().all()
+
+    # Get all child items
+    parent_ids = [str(m.id) for m in menu_items]
+    children_query = (
+        select(CMSMenuItem)
+        .where(
+            CMSMenuItem.is_active == True,
+            CMSMenuItem.parent_id.in_([m.id for m in menu_items]) if menu_items else False,
+        )
+        .order_by(CMSMenuItem.sort_order.asc())
+    )
+
+    children_result = await db.execute(children_query)
+    children = children_result.scalars().all()
+
+    # Group children by parent
+    children_map = {}
+    for child in children:
+        parent_id = str(child.parent_id)
+        if parent_id not in children_map:
+            children_map[parent_id] = []
+        children_map[parent_id].append(StorefrontMenuItemResponse(
+            id=str(child.id),
+            menu_location=child.menu_location,
+            title=child.title,
+            url=child.url,
+            icon=child.icon,
+            target=child.target,
+            children=[],
+        ))
+
+    result_data = [
+        StorefrontMenuItemResponse(
+            id=str(m.id),
+            menu_location=m.menu_location,
+            title=m.title,
+            url=m.url,
+            icon=m.icon,
+            target=m.target,
+            children=children_map.get(str(m.id), []),
+        )
+        for m in menu_items
+    ]
+
+    await cache.set(cache_key, [r.model_dump() for r in result_data], ttl=1800)
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result_data
+
+
+@router.get("/feature-bars", response_model=List[StorefrontFeatureBarResponse])
+async def get_feature_bars(db: DB, response: Response):
+    """
+    Get feature bar items (Free Shipping, Secure Payment, etc.) for footer.
+    No authentication required. Cached for 30 minutes.
+    """
+    start_time = time.time()
+    cache = get_cache()
+
+    cache_key = "cms:feature-bars:active"
+    cached_result = await cache.get(cache_key)
+    if cached_result:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+        return [StorefrontFeatureBarResponse(**f) for f in cached_result]
+
+    query = (
+        select(CMSFeatureBar)
+        .where(CMSFeatureBar.is_active == True)
+        .order_by(CMSFeatureBar.sort_order.asc())
+    )
+
+    result = await db.execute(query)
+    feature_bars = result.scalars().all()
+
+    result_data = [
+        StorefrontFeatureBarResponse(
+            id=str(f.id),
+            icon=f.icon,
+            title=f.title,
+            subtitle=f.subtitle,
+        )
+        for f in feature_bars
+    ]
+
+    await cache.set(cache_key, [r.model_dump() for r in result_data], ttl=1800)
 
     response.headers["X-Cache"] = "MISS"
     response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"

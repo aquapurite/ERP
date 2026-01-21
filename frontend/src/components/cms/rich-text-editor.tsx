@@ -29,7 +29,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 
 interface RichTextEditorProps {
   content?: string;
@@ -266,6 +266,12 @@ export function RichTextEditor({
   className,
   minHeight = '300px',
 }: RichTextEditorProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -298,7 +304,19 @@ export function RichTextEditor({
         style: `min-height: ${minHeight}`,
       },
     },
+    immediatelyRender: false,
   });
+
+  if (!mounted) {
+    return (
+      <div className={cn('border rounded-lg overflow-hidden bg-background', className)}>
+        <div className="border-b p-2 bg-muted/30 h-12" />
+        <div className="p-4" style={{ minHeight }}>
+          <span className="text-muted-foreground">{placeholder}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={cn('border rounded-lg overflow-hidden bg-background', className)}>

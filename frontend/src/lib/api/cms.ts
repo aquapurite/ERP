@@ -232,6 +232,81 @@ export interface CMSSeoCreate {
   structured_data?: Record<string, unknown>;
 }
 
+// Site Settings
+export interface CMSSiteSetting {
+  id: string;
+  setting_key: string;
+  setting_value?: string;
+  setting_type: 'text' | 'textarea' | 'url' | 'boolean' | 'number' | 'image';
+  setting_group: string;
+  label?: string;
+  description?: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CMSSiteSettingCreate {
+  setting_key: string;
+  setting_value?: string;
+  setting_type: 'text' | 'textarea' | 'url' | 'boolean' | 'number' | 'image';
+  setting_group: string;
+  label?: string;
+  description?: string;
+  sort_order?: number;
+}
+
+// Menu Items
+export interface CMSMenuItem {
+  id: string;
+  menu_location: 'header' | 'footer_quick' | 'footer_service';
+  title: string;
+  url: string;
+  icon?: string;
+  target: '_self' | '_blank';
+  parent_id?: string;
+  sort_order: number;
+  is_active: boolean;
+  show_on_mobile: boolean;
+  css_class?: string;
+  created_at: string;
+  updated_at: string;
+  children?: CMSMenuItem[];
+}
+
+export interface CMSMenuItemCreate {
+  menu_location: 'header' | 'footer_quick' | 'footer_service';
+  title: string;
+  url: string;
+  icon?: string;
+  target?: '_self' | '_blank';
+  parent_id?: string;
+  sort_order?: number;
+  is_active?: boolean;
+  show_on_mobile?: boolean;
+  css_class?: string;
+}
+
+// Feature Bars
+export interface CMSFeatureBar {
+  id: string;
+  icon: string;
+  title: string;
+  subtitle?: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CMSFeatureBarCreate {
+  icon: string;
+  title: string;
+  subtitle?: string;
+  sort_order?: number;
+  is_active?: boolean;
+}
+
 export interface ListResponse<T> {
   items: T[];
   total: number;
@@ -361,6 +436,69 @@ export const cmsApi = {
 
     delete: (id: string) =>
       apiClient.delete(`/cms/seo/${id}`),
+  },
+
+  // Site Settings
+  settings: {
+    list: (params?: { group?: string; skip?: number; limit?: number }) =>
+      apiClient.get<ListResponse<CMSSiteSetting>>('/cms/settings', { params }),
+
+    get: (key: string) =>
+      apiClient.get<CMSSiteSetting>(`/cms/settings/${key}`),
+
+    create: (data: CMSSiteSettingCreate) =>
+      apiClient.post<CMSSiteSetting>('/cms/settings', data),
+
+    update: (key: string, data: Partial<CMSSiteSettingCreate>) =>
+      apiClient.put<CMSSiteSetting>(`/cms/settings/${key}`, data),
+
+    bulkUpdate: (settings: Record<string, string>) =>
+      apiClient.put<CMSSiteSetting[]>('/cms/settings-bulk', { settings }),
+
+    delete: (key: string) =>
+      apiClient.delete(`/cms/settings/${key}`),
+  },
+
+  // Menu Items
+  menuItems: {
+    list: (params?: { location?: string; is_active?: boolean; skip?: number; limit?: number }) =>
+      apiClient.get<ListResponse<CMSMenuItem>>('/cms/menu-items', { params }),
+
+    get: (id: string) =>
+      apiClient.get<CMSMenuItem>(`/cms/menu-items/${id}`),
+
+    create: (data: CMSMenuItemCreate) =>
+      apiClient.post<CMSMenuItem>('/cms/menu-items', data),
+
+    update: (id: string, data: Partial<CMSMenuItemCreate>) =>
+      apiClient.put<CMSMenuItem>(`/cms/menu-items/${id}`, data),
+
+    delete: (id: string) =>
+      apiClient.delete(`/cms/menu-items/${id}`),
+
+    reorder: (ids: string[]) =>
+      apiClient.put<CMSMenuItem[]>('/cms/menu-items/reorder', { ids }),
+  },
+
+  // Feature Bars
+  featureBars: {
+    list: (params?: { is_active?: boolean; skip?: number; limit?: number }) =>
+      apiClient.get<ListResponse<CMSFeatureBar>>('/cms/feature-bars', { params }),
+
+    get: (id: string) =>
+      apiClient.get<CMSFeatureBar>(`/cms/feature-bars/${id}`),
+
+    create: (data: CMSFeatureBarCreate) =>
+      apiClient.post<CMSFeatureBar>('/cms/feature-bars', data),
+
+    update: (id: string, data: Partial<CMSFeatureBarCreate>) =>
+      apiClient.put<CMSFeatureBar>(`/cms/feature-bars/${id}`, data),
+
+    delete: (id: string) =>
+      apiClient.delete(`/cms/feature-bars/${id}`),
+
+    reorder: (ids: string[]) =>
+      apiClient.put<CMSFeatureBar[]>('/cms/feature-bars/reorder', { ids }),
   },
 };
 

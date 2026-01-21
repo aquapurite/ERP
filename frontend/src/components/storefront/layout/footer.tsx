@@ -11,30 +11,116 @@ import {
   Twitter,
   Instagram,
   Youtube,
-  CreditCard,
-  Shield,
+  Linkedin,
   Truck,
+  Shield,
   HeadphonesIcon,
+  CreditCard,
+  RotateCcw,
+  Award,
+  Zap,
+  Heart,
+  Star,
+  LucideIcon,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { CompanyInfo } from '@/types/storefront';
-import { companyApi } from '@/lib/storefront/api';
+import {
+  companyApi,
+  contentApi,
+  StorefrontMenuItem,
+  StorefrontFeatureBar,
+  StorefrontSettings,
+} from '@/lib/storefront/api';
+
+// Icon mapping for feature bars
+const iconMap: Record<string, LucideIcon> = {
+  Truck: Truck,
+  Shield: Shield,
+  ShieldCheck: Shield,
+  Headphones: HeadphonesIcon,
+  HeadphonesIcon: HeadphonesIcon,
+  CreditCard: CreditCard,
+  RotateCcw: RotateCcw,
+  Award: Award,
+  Zap: Zap,
+  Heart: Heart,
+  Star: Star,
+};
+
+const getIconComponent = (iconName: string): LucideIcon => {
+  return iconMap[iconName] || Star;
+};
 
 export default function StorefrontFooter() {
   const [company, setCompany] = useState<CompanyInfo | null>(null);
+  const [featureBars, setFeatureBars] = useState<StorefrontFeatureBar[]>([]);
+  const [quickLinks, setQuickLinks] = useState<StorefrontMenuItem[]>([]);
+  const [serviceLinks, setServiceLinks] = useState<StorefrontMenuItem[]>([]);
+  const [settings, setSettings] = useState<StorefrontSettings>({});
 
   useEffect(() => {
-    const fetchCompany = async () => {
+    const fetchData = async () => {
       try {
-        const data = await companyApi.getInfo();
-        setCompany(data);
+        const [companyData, featureBarsData, menuItemsData, settingsData] = await Promise.all([
+          companyApi.getInfo(),
+          contentApi.getFeatureBars(),
+          contentApi.getMenuItems(),
+          contentApi.getSettings(),
+        ]);
+
+        setCompany(companyData);
+        setFeatureBars(featureBarsData);
+        setSettings(settingsData);
+
+        // Filter menu items by location
+        const quick = menuItemsData.filter(m => m.menu_location === 'footer_quick');
+        const service = menuItemsData.filter(m => m.menu_location === 'footer_service');
+        setQuickLinks(quick);
+        setServiceLinks(service);
       } catch (error) {
-        console.error('Failed to fetch company info:', error);
+        console.error('Failed to fetch footer data:', error);
       }
     };
-    fetchCompany();
+    fetchData();
   }, []);
+
+  // Default feature bars if none from CMS
+  const displayFeatureBars = featureBars.length > 0 ? featureBars : [
+    { id: '1', icon: 'Truck', title: 'Free Shipping', subtitle: 'On orders above Rs.999' },
+    { id: '2', icon: 'Shield', title: 'Secure Payment', subtitle: '100% secure checkout' },
+    { id: '3', icon: 'Headphones', title: '24/7 Support', subtitle: 'Dedicated customer care' },
+    { id: '4', icon: 'RotateCcw', title: 'Easy Returns', subtitle: '7-day return policy' },
+  ];
+
+  // Default quick links if none from CMS
+  const displayQuickLinks = quickLinks.length > 0 ? quickLinks : [
+    { id: '1', menu_location: 'footer_quick', title: 'About Us', url: '/about', target: '_self', children: [] },
+    { id: '2', menu_location: 'footer_quick', title: 'Our Products', url: '/products', target: '_self', children: [] },
+    { id: '3', menu_location: 'footer_quick', title: 'Contact Us', url: '/contact', target: '_self', children: [] },
+    { id: '4', menu_location: 'footer_quick', title: 'Support', url: '/support', target: '_self', children: [] },
+    { id: '5', menu_location: 'footer_quick', title: 'Track Order', url: '/track', target: '_self', children: [] },
+  ];
+
+  // Default service links if none from CMS
+  const displayServiceLinks = serviceLinks.length > 0 ? serviceLinks : [
+    { id: '1', menu_location: 'footer_service', title: 'Shipping Policy', url: '/shipping-policy', target: '_self', children: [] },
+    { id: '2', menu_location: 'footer_service', title: 'Return & Refund', url: '/return-policy', target: '_self', children: [] },
+    { id: '3', menu_location: 'footer_service', title: 'Warranty Policy', url: '/warranty', target: '_self', children: [] },
+    { id: '4', menu_location: 'footer_service', title: 'FAQs', url: '/faq', target: '_self', children: [] },
+    { id: '5', menu_location: 'footer_service', title: 'Privacy Policy', url: '/privacy-policy', target: '_self', children: [] },
+    { id: '6', menu_location: 'footer_service', title: 'Terms & Conditions', url: '/terms', target: '_self', children: [] },
+  ];
+
+  // Get social links from settings
+  const socialLinks = {
+    facebook: settings['social_facebook'] || '',
+    twitter: settings['social_twitter'] || '',
+    instagram: settings['social_instagram'] || '',
+    youtube: settings['social_youtube'] || '',
+    linkedin: settings['social_linkedin'] || '',
+  };
 
   return (
     <footer className="bg-gray-900 text-gray-300">
@@ -42,42 +128,20 @@ export default function StorefrontFooter() {
       <div className="border-b border-gray-800">
         <div className="container mx-auto px-4 py-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <div className="flex items-center gap-3">
-              <div className="bg-primary/20 p-3 rounded-full">
-                <Truck className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <p className="font-semibold text-white">Free Shipping</p>
-                <p className="text-sm">On orders above ₹999</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="bg-primary/20 p-3 rounded-full">
-                <Shield className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <p className="font-semibold text-white">Secure Payment</p>
-                <p className="text-sm">100% secure checkout</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="bg-primary/20 p-3 rounded-full">
-                <HeadphonesIcon className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <p className="font-semibold text-white">24/7 Support</p>
-                <p className="text-sm">Dedicated customer care</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="bg-primary/20 p-3 rounded-full">
-                <CreditCard className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <p className="font-semibold text-white">Easy Returns</p>
-                <p className="text-sm">7-day return policy</p>
-              </div>
-            </div>
+            {displayFeatureBars.map((feature) => {
+              const IconComponent = getIconComponent(feature.icon);
+              return (
+                <div key={feature.id} className="flex items-center gap-3">
+                  <div className="bg-primary/20 p-3 rounded-full">
+                    <IconComponent className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-white">{feature.title}</p>
+                    {feature.subtitle && <p className="text-sm">{feature.subtitle}</p>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -102,23 +166,21 @@ export default function StorefrontFooter() {
               )}
             </Link>
             <p className="text-sm mb-6 leading-relaxed">
-              India's trusted water purifier brand. We provide advanced water
-              purification solutions for homes and offices with cutting-edge RO,
-              UV, and UF technologies.
+              {settings['footer_description'] || "India's trusted water purifier brand. We provide advanced water purification solutions for homes and offices with cutting-edge RO, UV, and UF technologies."}
             </p>
             <div className="space-y-3">
               <div className="flex items-center gap-3">
                 <Phone className="h-4 w-4 text-primary" />
-                <span>{company?.phone || '1800-123-4567'} (Toll Free)</span>
+                <span>{settings['contact_phone'] || company?.phone || '1800-123-4567'} (Toll Free)</span>
               </div>
               <div className="flex items-center gap-3">
                 <Mail className="h-4 w-4 text-primary" />
-                <span>{company?.email || 'support@aquapurite.com'}</span>
+                <span>{settings['contact_email'] || company?.email || 'support@aquapurite.com'}</span>
               </div>
               <div className="flex items-start gap-3">
                 <MapPin className="h-4 w-4 text-primary mt-1" />
                 <span>
-                  {company?.address || '123 Industrial Area, Sector 62'},
+                  {settings['contact_address'] || company?.address || '123 Industrial Area, Sector 62'},
                   <br />
                   {company ? `${company.city}, ${company.state} - ${company.pincode}` : 'Noida, Uttar Pradesh - 201301'}
                 </span>
@@ -130,31 +192,17 @@ export default function StorefrontFooter() {
           <div>
             <h3 className="text-white font-semibold mb-4">Quick Links</h3>
             <ul className="space-y-2">
-              <li>
-                <Link href="/about" className="hover:text-primary transition-colors">
-                  About Us
-                </Link>
-              </li>
-              <li>
-                <Link href="/products" className="hover:text-primary transition-colors">
-                  Our Products
-                </Link>
-              </li>
-              <li>
-                <Link href="/contact" className="hover:text-primary transition-colors">
-                  Contact Us
-                </Link>
-              </li>
-              <li>
-                <Link href="/support" className="hover:text-primary transition-colors">
-                  Support
-                </Link>
-              </li>
-              <li>
-                <Link href="/track" className="hover:text-primary transition-colors">
-                  Track Order
-                </Link>
-              </li>
+              {displayQuickLinks.map((link) => (
+                <li key={link.id}>
+                  <Link
+                    href={link.url}
+                    target={link.target}
+                    className="hover:text-primary transition-colors"
+                  >
+                    {link.title}
+                  </Link>
+                </li>
+              ))}
             </ul>
           </div>
 
@@ -162,36 +210,17 @@ export default function StorefrontFooter() {
           <div>
             <h3 className="text-white font-semibold mb-4">Customer Service</h3>
             <ul className="space-y-2">
-              <li>
-                <Link href="/shipping-policy" className="hover:text-primary transition-colors">
-                  Shipping Policy
-                </Link>
-              </li>
-              <li>
-                <Link href="/return-policy" className="hover:text-primary transition-colors">
-                  Return & Refund
-                </Link>
-              </li>
-              <li>
-                <Link href="/warranty" className="hover:text-primary transition-colors">
-                  Warranty Policy
-                </Link>
-              </li>
-              <li>
-                <Link href="/faq" className="hover:text-primary transition-colors">
-                  FAQs
-                </Link>
-              </li>
-              <li>
-                <Link href="/privacy-policy" className="hover:text-primary transition-colors">
-                  Privacy Policy
-                </Link>
-              </li>
-              <li>
-                <Link href="/terms" className="hover:text-primary transition-colors">
-                  Terms & Conditions
-                </Link>
-              </li>
+              {displayServiceLinks.map((link) => (
+                <li key={link.id}>
+                  <Link
+                    href={link.url}
+                    target={link.target}
+                    className="hover:text-primary transition-colors"
+                  >
+                    {link.title}
+                  </Link>
+                </li>
+              ))}
             </ul>
           </div>
 
@@ -199,7 +228,7 @@ export default function StorefrontFooter() {
           <div>
             <h3 className="text-white font-semibold mb-4">Stay Updated</h3>
             <p className="text-sm mb-4">
-              Subscribe to our newsletter for exclusive offers and updates.
+              {settings['newsletter_text'] || 'Subscribe to our newsletter for exclusive offers and updates.'}
             </p>
             <form className="space-y-3">
               <Input
@@ -212,30 +241,73 @@ export default function StorefrontFooter() {
             <div className="mt-6">
               <p className="text-sm mb-3">Follow Us</p>
               <div className="flex gap-3">
-                <a
-                  href="#"
-                  className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors"
-                >
-                  <Facebook className="h-5 w-5" />
-                </a>
-                <a
-                  href="#"
-                  className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors"
-                >
-                  <Twitter className="h-5 w-5" />
-                </a>
-                <a
-                  href="#"
-                  className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors"
-                >
-                  <Instagram className="h-5 w-5" />
-                </a>
-                <a
-                  href="#"
-                  className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors"
-                >
-                  <Youtube className="h-5 w-5" />
-                </a>
+                {socialLinks.facebook && (
+                  <a
+                    href={socialLinks.facebook}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors"
+                  >
+                    <Facebook className="h-5 w-5" />
+                  </a>
+                )}
+                {socialLinks.twitter && (
+                  <a
+                    href={socialLinks.twitter}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors"
+                  >
+                    <Twitter className="h-5 w-5" />
+                  </a>
+                )}
+                {socialLinks.instagram && (
+                  <a
+                    href={socialLinks.instagram}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors"
+                  >
+                    <Instagram className="h-5 w-5" />
+                  </a>
+                )}
+                {socialLinks.youtube && (
+                  <a
+                    href={socialLinks.youtube}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors"
+                  >
+                    <Youtube className="h-5 w-5" />
+                  </a>
+                )}
+                {socialLinks.linkedin && (
+                  <a
+                    href={socialLinks.linkedin}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors"
+                  >
+                    <Linkedin className="h-5 w-5" />
+                  </a>
+                )}
+                {/* Fallback if no social links configured */}
+                {!socialLinks.facebook && !socialLinks.twitter && !socialLinks.instagram && !socialLinks.youtube && (
+                  <>
+                    <a href="#" className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors">
+                      <Facebook className="h-5 w-5" />
+                    </a>
+                    <a href="#" className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors">
+                      <Twitter className="h-5 w-5" />
+                    </a>
+                    <a href="#" className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors">
+                      <Instagram className="h-5 w-5" />
+                    </a>
+                    <a href="#" className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors">
+                      <Youtube className="h-5 w-5" />
+                    </a>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -247,7 +319,7 @@ export default function StorefrontFooter() {
         <div className="container mx-auto px-4 py-6">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-sm">
-              © {new Date().getFullYear()} {company?.trade_name || company?.name || 'AQUAPURITE'}. All rights reserved.
+              {settings['footer_copyright'] || `© ${new Date().getFullYear()} ${company?.trade_name || company?.name || 'AQUAPURITE'}. All rights reserved.`}
             </p>
             <div className="flex items-center gap-4">
               <img

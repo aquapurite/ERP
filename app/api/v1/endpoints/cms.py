@@ -27,6 +27,9 @@ from app.models.cms import (
     CMSPage,
     CMSPageVersion,
     CMSSeo,
+    CMSSiteSetting,
+    CMSMenuItem,
+    CMSFeatureBar,
 )
 from app.schemas.cms import (
     # Banner schemas
@@ -60,6 +63,22 @@ from app.schemas.cms import (
     CMSSeoUpdate,
     CMSSeoResponse,
     CMSSeoListResponse,
+    # Site Settings schemas
+    CMSSiteSettingCreate,
+    CMSSiteSettingUpdate,
+    CMSSiteSettingResponse,
+    CMSSiteSettingListResponse,
+    CMSSiteSettingBulkUpdate,
+    # Menu Item schemas
+    CMSMenuItemCreate,
+    CMSMenuItemUpdate,
+    CMSMenuItemResponse,
+    CMSMenuItemListResponse,
+    # Feature Bar schemas
+    CMSFeatureBarCreate,
+    CMSFeatureBarUpdate,
+    CMSFeatureBarResponse,
+    CMSFeatureBarListResponse,
     # Common schemas
     CMSReorderRequest,
 )
@@ -987,3 +1006,379 @@ async def delete_seo_settings(
 
     await db.delete(seo)
     await db.commit()
+
+
+# ==================== Site Settings Endpoints ====================
+
+@router.get("/settings", response_model=CMSSiteSettingListResponse)
+async def list_site_settings(
+    db: DB,
+    current_user: CurrentUser,
+    group: Optional[str] = None,
+    _: bool = Depends(require_permissions(["CMS_VIEW"])),
+):
+    """List all site settings, optionally filtered by group."""
+    query = select(CMSSiteSetting).order_by(CMSSiteSetting.setting_group, CMSSiteSetting.sort_order)
+
+    if group:
+        query = query.where(CMSSiteSetting.setting_group == group)
+
+    result = await db.execute(query)
+    settings = result.scalars().all()
+
+    return CMSSiteSettingListResponse(
+        items=[CMSSiteSettingResponse.model_validate(s) for s in settings],
+        total=len(settings)
+    )
+
+
+@router.get("/settings/{setting_key}", response_model=CMSSiteSettingResponse)
+async def get_site_setting(
+    setting_key: str,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_VIEW"])),
+):
+    """Get a single site setting by key."""
+    result = await db.execute(
+        select(CMSSiteSetting).where(CMSSiteSetting.setting_key == setting_key)
+    )
+    setting = result.scalar_one_or_none()
+    if not setting:
+        raise HTTPException(status_code=404, detail="Setting not found")
+    return CMSSiteSettingResponse.model_validate(setting)
+
+
+@router.post("/settings", response_model=CMSSiteSettingResponse, status_code=201)
+async def create_site_setting(
+    data: CMSSiteSettingCreate,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_CREATE"])),
+):
+    """Create a new site setting."""
+    existing = await db.execute(
+        select(CMSSiteSetting).where(CMSSiteSetting.setting_key == data.setting_key)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Setting with this key already exists")
+
+    setting = CMSSiteSetting(**data.model_dump())
+    db.add(setting)
+    await db.commit()
+    await db.refresh(setting)
+    return CMSSiteSettingResponse.model_validate(setting)
+
+
+@router.put("/settings/{setting_key}", response_model=CMSSiteSettingResponse)
+async def update_site_setting(
+    setting_key: str,
+    data: CMSSiteSettingUpdate,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_EDIT"])),
+):
+    """Update a site setting."""
+    result = await db.execute(
+        select(CMSSiteSetting).where(CMSSiteSetting.setting_key == setting_key)
+    )
+    setting = result.scalar_one_or_none()
+    if not setting:
+        raise HTTPException(status_code=404, detail="Setting not found")
+
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(setting, key, value)
+
+    await db.commit()
+    await db.refresh(setting)
+    return CMSSiteSettingResponse.model_validate(setting)
+
+
+@router.put("/settings-bulk", response_model=CMSSiteSettingListResponse)
+async def bulk_update_site_settings(
+    data: CMSSiteSettingBulkUpdate,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_EDIT"])),
+):
+    """Bulk update site settings by key-value pairs."""
+    updated = []
+    for key, value in data.settings.items():
+        result = await db.execute(
+            select(CMSSiteSetting).where(CMSSiteSetting.setting_key == key)
+        )
+        setting = result.scalar_one_or_none()
+        if setting:
+            setting.setting_value = value
+            updated.append(setting)
+
+    await db.commit()
+
+    # Refresh all updated settings
+    for setting in updated:
+        await db.refresh(setting)
+
+    return CMSSiteSettingListResponse(
+        items=[CMSSiteSettingResponse.model_validate(s) for s in updated],
+        total=len(updated)
+    )
+
+
+@router.delete("/settings/{setting_key}", status_code=204)
+async def delete_site_setting(
+    setting_key: str,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_DELETE"])),
+):
+    """Delete a site setting."""
+    result = await db.execute(
+        select(CMSSiteSetting).where(CMSSiteSetting.setting_key == setting_key)
+    )
+    setting = result.scalar_one_or_none()
+    if not setting:
+        raise HTTPException(status_code=404, detail="Setting not found")
+
+    await db.delete(setting)
+    await db.commit()
+
+
+# ==================== Menu Item Endpoints ====================
+
+@router.get("/menu-items", response_model=CMSMenuItemListResponse)
+async def list_menu_items(
+    db: DB,
+    current_user: CurrentUser,
+    location: Optional[str] = None,
+    _: bool = Depends(require_permissions(["CMS_VIEW"])),
+):
+    """List all menu items, optionally filtered by location."""
+    query = select(CMSMenuItem).order_by(CMSMenuItem.menu_location, CMSMenuItem.sort_order)
+
+    if location:
+        query = query.where(CMSMenuItem.menu_location == location)
+
+    result = await db.execute(query)
+    items = result.scalars().all()
+
+    return CMSMenuItemListResponse(
+        items=[CMSMenuItemResponse.model_validate(i) for i in items],
+        total=len(items)
+    )
+
+
+@router.get("/menu-items/{item_id}", response_model=CMSMenuItemResponse)
+async def get_menu_item(
+    item_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_VIEW"])),
+):
+    """Get a single menu item by ID."""
+    result = await db.execute(
+        select(CMSMenuItem).where(CMSMenuItem.id == item_id)
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Menu item not found")
+    return CMSMenuItemResponse.model_validate(item)
+
+
+@router.post("/menu-items", response_model=CMSMenuItemResponse, status_code=201)
+async def create_menu_item(
+    data: CMSMenuItemCreate,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_CREATE"])),
+):
+    """Create a new menu item."""
+    item = CMSMenuItem(**data.model_dump())
+    db.add(item)
+    await db.commit()
+    await db.refresh(item)
+    return CMSMenuItemResponse.model_validate(item)
+
+
+@router.put("/menu-items/{item_id}", response_model=CMSMenuItemResponse)
+async def update_menu_item(
+    item_id: UUID,
+    data: CMSMenuItemUpdate,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_EDIT"])),
+):
+    """Update a menu item."""
+    result = await db.execute(
+        select(CMSMenuItem).where(CMSMenuItem.id == item_id)
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Menu item not found")
+
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(item, key, value)
+
+    await db.commit()
+    await db.refresh(item)
+    return CMSMenuItemResponse.model_validate(item)
+
+
+@router.delete("/menu-items/{item_id}", status_code=204)
+async def delete_menu_item(
+    item_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_DELETE"])),
+):
+    """Delete a menu item."""
+    result = await db.execute(
+        select(CMSMenuItem).where(CMSMenuItem.id == item_id)
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Menu item not found")
+
+    await db.delete(item)
+    await db.commit()
+
+
+@router.put("/menu-items/reorder", status_code=200)
+async def reorder_menu_items(
+    data: CMSReorderRequest,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_EDIT"])),
+):
+    """Reorder menu items."""
+    for idx, item_id in enumerate(data.ids):
+        result = await db.execute(
+            select(CMSMenuItem).where(CMSMenuItem.id == item_id)
+        )
+        item = result.scalar_one_or_none()
+        if item:
+            item.sort_order = idx
+
+    await db.commit()
+    return {"success": True, "message": "Menu items reordered"}
+
+
+# ==================== Feature Bar Endpoints ====================
+
+@router.get("/feature-bars", response_model=CMSFeatureBarListResponse)
+async def list_feature_bars(
+    db: DB,
+    current_user: CurrentUser,
+    is_active: Optional[bool] = None,
+    _: bool = Depends(require_permissions(["CMS_VIEW"])),
+):
+    """List all feature bar items."""
+    query = select(CMSFeatureBar).order_by(CMSFeatureBar.sort_order)
+
+    if is_active is not None:
+        query = query.where(CMSFeatureBar.is_active == is_active)
+
+    result = await db.execute(query)
+    items = result.scalars().all()
+
+    return CMSFeatureBarListResponse(
+        items=[CMSFeatureBarResponse.model_validate(i) for i in items],
+        total=len(items)
+    )
+
+
+@router.get("/feature-bars/{item_id}", response_model=CMSFeatureBarResponse)
+async def get_feature_bar(
+    item_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_VIEW"])),
+):
+    """Get a single feature bar item by ID."""
+    result = await db.execute(
+        select(CMSFeatureBar).where(CMSFeatureBar.id == item_id)
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Feature bar item not found")
+    return CMSFeatureBarResponse.model_validate(item)
+
+
+@router.post("/feature-bars", response_model=CMSFeatureBarResponse, status_code=201)
+async def create_feature_bar(
+    data: CMSFeatureBarCreate,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_CREATE"])),
+):
+    """Create a new feature bar item."""
+    item = CMSFeatureBar(**data.model_dump())
+    db.add(item)
+    await db.commit()
+    await db.refresh(item)
+    return CMSFeatureBarResponse.model_validate(item)
+
+
+@router.put("/feature-bars/{item_id}", response_model=CMSFeatureBarResponse)
+async def update_feature_bar(
+    item_id: UUID,
+    data: CMSFeatureBarUpdate,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_EDIT"])),
+):
+    """Update a feature bar item."""
+    result = await db.execute(
+        select(CMSFeatureBar).where(CMSFeatureBar.id == item_id)
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Feature bar item not found")
+
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(item, key, value)
+
+    await db.commit()
+    await db.refresh(item)
+    return CMSFeatureBarResponse.model_validate(item)
+
+
+@router.delete("/feature-bars/{item_id}", status_code=204)
+async def delete_feature_bar(
+    item_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_DELETE"])),
+):
+    """Delete a feature bar item."""
+    result = await db.execute(
+        select(CMSFeatureBar).where(CMSFeatureBar.id == item_id)
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Feature bar item not found")
+
+    await db.delete(item)
+    await db.commit()
+
+
+@router.put("/feature-bars/reorder", status_code=200)
+async def reorder_feature_bars(
+    data: CMSReorderRequest,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_EDIT"])),
+):
+    """Reorder feature bar items."""
+    for idx, item_id in enumerate(data.ids):
+        result = await db.execute(
+            select(CMSFeatureBar).where(CMSFeatureBar.id == item_id)
+        )
+        item = result.scalar_one_or_none()
+        if item:
+            item.sort_order = idx
+
+    await db.commit()
+    return {"success": True, "message": "Feature bars reordered"}

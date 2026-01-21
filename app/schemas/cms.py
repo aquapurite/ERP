@@ -462,3 +462,169 @@ class StorefrontPageResponse(BaseModel):
     og_image_url: Optional[str] = None
     template: str
     published_at: Optional[datetime] = None
+
+
+# ==================== Site Settings Schemas ====================
+
+class CMSSiteSettingBase(BaseModel):
+    """Base schema for site settings."""
+    setting_key: str = Field(..., min_length=1, max_length=100)
+    setting_value: Optional[str] = None
+    setting_type: str = Field("text", max_length=50)
+    setting_group: str = Field("general", max_length=50)
+    label: Optional[str] = Field(None, max_length=255)
+    description: Optional[str] = None
+    sort_order: int = 0
+
+
+class CMSSiteSettingCreate(CMSSiteSettingBase):
+    """Schema for creating site setting."""
+    pass
+
+
+class CMSSiteSettingUpdate(BaseModel):
+    """Schema for updating site setting."""
+    setting_value: Optional[str] = None
+    setting_type: Optional[str] = Field(None, max_length=50)
+    label: Optional[str] = Field(None, max_length=255)
+    description: Optional[str] = None
+    sort_order: Optional[int] = None
+
+
+class CMSSiteSettingResponse(CMSSiteSettingBase):
+    """Response schema for site setting."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class CMSSiteSettingListResponse(BaseModel):
+    """Response for listing site settings."""
+    items: List[CMSSiteSettingResponse]
+    total: int
+
+
+class CMSSiteSettingBulkUpdate(BaseModel):
+    """Schema for bulk updating site settings."""
+    settings: dict[str, str] = Field(..., description="Key-value pairs of settings to update")
+
+
+# ==================== Menu Item Schemas ====================
+
+class CMSMenuItemBase(BaseModel):
+    """Base schema for menu items."""
+    menu_location: str = Field(..., max_length=50)
+    title: str = Field(..., min_length=1, max_length=255)
+    url: str = Field(..., min_length=1, max_length=500)
+    icon: Optional[str] = Field(None, max_length=100)
+    target: str = Field("_self", max_length=20)
+    parent_id: Optional[UUID] = None
+    sort_order: int = 0
+    is_active: bool = True
+    show_on_mobile: bool = True
+    css_class: Optional[str] = Field(None, max_length=100)
+
+
+class CMSMenuItemCreate(CMSMenuItemBase):
+    """Schema for creating menu item."""
+    pass
+
+
+class CMSMenuItemUpdate(BaseModel):
+    """Schema for updating menu item."""
+    menu_location: Optional[str] = Field(None, max_length=50)
+    title: Optional[str] = Field(None, max_length=255)
+    url: Optional[str] = Field(None, max_length=500)
+    icon: Optional[str] = Field(None, max_length=100)
+    target: Optional[str] = Field(None, max_length=20)
+    parent_id: Optional[UUID] = None
+    sort_order: Optional[int] = None
+    is_active: Optional[bool] = None
+    show_on_mobile: Optional[bool] = None
+    css_class: Optional[str] = Field(None, max_length=100)
+
+
+class CMSMenuItemResponse(CMSMenuItemBase):
+    """Response schema for menu item."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class CMSMenuItemListResponse(BaseModel):
+    """Response for listing menu items."""
+    items: List[CMSMenuItemResponse]
+    total: int
+
+
+# ==================== Feature Bar Schemas ====================
+
+class CMSFeatureBarBase(BaseModel):
+    """Base schema for feature bar items."""
+    icon: str = Field(..., min_length=1, max_length=100)
+    title: str = Field(..., min_length=1, max_length=255)
+    subtitle: Optional[str] = Field(None, max_length=255)
+    sort_order: int = 0
+    is_active: bool = True
+
+
+class CMSFeatureBarCreate(CMSFeatureBarBase):
+    """Schema for creating feature bar item."""
+    pass
+
+
+class CMSFeatureBarUpdate(BaseModel):
+    """Schema for updating feature bar item."""
+    icon: Optional[str] = Field(None, max_length=100)
+    title: Optional[str] = Field(None, max_length=255)
+    subtitle: Optional[str] = Field(None, max_length=255)
+    sort_order: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class CMSFeatureBarResponse(CMSFeatureBarBase):
+    """Response schema for feature bar item."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class CMSFeatureBarListResponse(BaseModel):
+    """Response for listing feature bar items."""
+    items: List[CMSFeatureBarResponse]
+    total: int
+
+
+# ==================== Storefront Settings Response ====================
+
+class StorefrontSettingsResponse(BaseModel):
+    """Public settings response for storefront."""
+    social: dict[str, str] = {}
+    contact: dict[str, str] = {}
+    footer: dict[str, str] = {}
+    newsletter: dict[str, str] = {}
+
+
+class StorefrontMenuItemResponse(BaseModel):
+    """Public menu item response for storefront."""
+    id: str
+    menu_location: str
+    title: str
+    url: str
+    icon: Optional[str] = None
+    target: str = "_self"
+    children: List["StorefrontMenuItemResponse"] = []
+
+
+class StorefrontFeatureBarResponse(BaseModel):
+    """Public feature bar response for storefront."""
+    id: str
+    icon: str
+    title: str
+    subtitle: Optional[str] = None

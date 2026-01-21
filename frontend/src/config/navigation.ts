@@ -72,6 +72,8 @@ import {
   Image,
   MessageSquare,
   Search,
+  Menu,
+  Star,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -328,6 +330,9 @@ export const navigation: NavItem[] = [
     icon: Globe,
     permissions: ['CMS_VIEW'],
     children: [
+      { title: 'Site Settings', href: '/dashboard/cms/settings', icon: Settings, permissions: ['CMS_VIEW'] },
+      { title: 'Navigation', href: '/dashboard/cms/navigation', icon: Menu, permissions: ['CMS_VIEW'] },
+      { title: 'Feature Bars', href: '/dashboard/cms/feature-bars', icon: Star, permissions: ['CMS_VIEW'] },
       { title: 'Hero Banners', href: '/dashboard/cms/banners', icon: Image, permissions: ['CMS_VIEW'] },
       { title: 'USPs/Features', href: '/dashboard/cms/usps', icon: Award, permissions: ['CMS_VIEW'] },
       { title: 'Testimonials', href: '/dashboard/cms/testimonials', icon: MessageSquare, permissions: ['CMS_VIEW'] },
