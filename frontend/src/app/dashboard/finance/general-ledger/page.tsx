@@ -130,7 +130,8 @@ export default function GeneralLedgerPage() {
     enabled: !!selectedAccount,
   });
 
-  const accounts = accountsData?.items ?? [];
+  // API returns array directly, not { items: [...] }
+  const accounts = Array.isArray(accountsData) ? accountsData : [];
 
   return (
     <div className="space-y-6">

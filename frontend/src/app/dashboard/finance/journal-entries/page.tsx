@@ -339,7 +339,8 @@ export default function JournalEntriesPage() {
     },
   ];
 
-  const accounts = accountsData?.items ?? [];
+  // API returns array directly, not { items: [...] }
+  const accounts = Array.isArray(accountsData) ? accountsData : [];
   const { totalDebit, totalCredit, isBalanced } = getTotals();
 
   return (

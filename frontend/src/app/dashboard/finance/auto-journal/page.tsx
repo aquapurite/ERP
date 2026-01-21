@@ -321,7 +321,8 @@ export default function AutoJournalPage() {
   ];
 
   const invoices = invoicesData?.items || [];
-  const accounts = accountsData?.items || [];
+  // API returns array directly, not { items: [...] }
+  const accounts = Array.isArray(accountsData) ? accountsData : [];
   const pendingList = pendingJournals || [];
 
   return (
