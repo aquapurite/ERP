@@ -280,9 +280,28 @@ class JournalEntryCreate(JournalEntryBase):
 
 
 class JournalEntryUpdate(BaseModel):
-    """Schema for updating JournalEntry (only draft)."""
-    description: Optional[str] = None
-    narration: Optional[str] = None
+    """Schema for updating JournalEntry (only draft entries)."""
+    entry_date: Optional[date] = None
+    narration: Optional[str] = Field(None, min_length=2, max_length=500)
+    source_number: Optional[str] = None
+    lines: Optional[List[JournalEntryLineCreate]] = None
+
+    @field_validator("lines")
+    @classmethod
+    def validate_lines(cls, v):
+        if v is None:
+            return v
+        if len(v) < 2:
+            raise ValueError("Journal entry must have at least 2 lines")
+
+        total_debit = sum(line.debit_amount for line in v)
+        total_credit = sum(line.credit_amount for line in v)
+
+        if total_debit != total_credit:
+            raise ValueError(
+                f"Journal entry must balance. Debit: {total_debit}, Credit: {total_credit}"
+            )
+        return v
 
 
 class JournalEntryResponse(JournalEntryBase):

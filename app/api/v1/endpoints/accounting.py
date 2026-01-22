@@ -27,7 +27,7 @@ from app.schemas.accounting import (
     # Cost Center
     CostCenterCreate, CostCenterUpdate, CostCenterResponse,
     # Journal Entry
-    JournalEntryCreate, JournalEntryResponse, JournalListResponse,
+    JournalEntryCreate, JournalEntryUpdate, JournalEntryResponse, JournalListResponse,
     JournalEntryLineCreate, JournalReverseRequest,
     # Maker-Checker Approval
     JournalSubmitRequest, JournalApproveRequest, JournalRejectRequest,
@@ -1300,6 +1300,129 @@ async def get_journal_entry(
         raise HTTPException(status_code=404, detail="Journal entry not found")
 
     return journal
+
+
+@router.put(
+    "/journals/{journal_id}",
+    response_model=JournalEntryResponse,
+    dependencies=[Depends(require_permissions("journals:edit"))]
+)
+async def update_journal_entry(
+    journal_id: UUID,
+    update_data: JournalEntryUpdate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Update a draft journal entry.
+
+    Only DRAFT entries can be updated. Once submitted for approval,
+    entries cannot be modified.
+    """
+    # Fetch the journal entry
+    result = await db.execute(
+        select(JournalEntry)
+        .options(selectinload(JournalEntry.lines))
+        .where(JournalEntry.id == journal_id)
+    )
+    journal = result.scalar_one_or_none()
+
+    if not journal:
+        raise HTTPException(status_code=404, detail="Journal entry not found")
+
+    # Only DRAFT entries can be updated
+    if journal.status != JournalStatus.DRAFT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot update journal entry with status '{journal.status}'. Only DRAFT entries can be updated."
+        )
+
+    # Update basic fields if provided
+    if update_data.entry_date is not None:
+        journal.entry_date = update_data.entry_date
+    if update_data.narration is not None:
+        journal.narration = update_data.narration
+    if update_data.source_number is not None:
+        journal.source_number = update_data.source_number
+
+    # Update lines if provided
+    if update_data.lines is not None:
+        # Delete existing lines
+        for line in journal.lines:
+            await db.delete(line)
+
+        # Create new lines
+        total_debit = Decimal("0")
+        total_credit = Decimal("0")
+
+        for idx, line_data in enumerate(update_data.lines, start=1):
+            new_line = JournalEntryLine(
+                journal_entry_id=journal.id,
+                account_id=line_data.account_id,
+                debit_amount=line_data.debit_amount,
+                credit_amount=line_data.credit_amount,
+                description=line_data.description,
+                line_number=idx,
+            )
+            db.add(new_line)
+            total_debit += line_data.debit_amount
+            total_credit += line_data.credit_amount
+
+        journal.total_debit = total_debit
+        journal.total_credit = total_credit
+
+    journal.updated_at = datetime.utcnow()
+
+    await db.commit()
+    await db.refresh(journal)
+
+    return journal
+
+
+@router.delete(
+    "/journals/{journal_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permissions("journals:delete"))]
+)
+async def delete_journal_entry(
+    journal_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Delete a draft journal entry.
+
+    Only DRAFT entries can be deleted. Once submitted for approval,
+    entries cannot be deleted - they must be rejected instead.
+    """
+    # Fetch the journal entry
+    result = await db.execute(
+        select(JournalEntry)
+        .options(selectinload(JournalEntry.lines))
+        .where(JournalEntry.id == journal_id)
+    )
+    journal = result.scalar_one_or_none()
+
+    if not journal:
+        raise HTTPException(status_code=404, detail="Journal entry not found")
+
+    # Only DRAFT entries can be deleted
+    if journal.status != JournalStatus.DRAFT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete journal entry with status '{journal.status}'. Only DRAFT entries can be deleted."
+        )
+
+    # Delete journal lines first (cascade should handle this, but being explicit)
+    for line in journal.lines:
+        await db.delete(line)
+
+    # Delete the journal entry
+    await db.delete(journal)
+
+    await db.commit()
+
+    return None
 
 
 # ==================== Maker-Checker Approval Workflow ====================

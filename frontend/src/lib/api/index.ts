@@ -1661,6 +1661,18 @@ export const journalEntriesApi = {
     const { data } = await apiClient.post(`/accounting/journals/${id}/reverse`, { reversal_date, reason });
     return data;
   },
+  update: async (id: string, entry: {
+    entry_date?: string;
+    narration?: string;
+    source_number?: string;
+    lines?: { account_id: string; debit_amount: number; credit_amount: number; description?: string }[];
+  }) => {
+    const { data } = await apiClient.put(`/accounting/journals/${id}`, entry);
+    return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/accounting/journals/${id}`);
+  },
 };
 
 // General Ledger API

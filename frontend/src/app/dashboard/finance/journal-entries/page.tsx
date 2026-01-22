@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, BookOpen, Trash2, CheckCircle, XCircle, Send, FileCheck, Loader2 } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, BookOpen, Trash2, CheckCircle, XCircle, Send, FileCheck, Loader2, Copy, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -106,8 +106,12 @@ export default function JournalEntriesPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null);
+  const [entryToDelete, setEntryToDelete] = useState<JournalEntry | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     entry_date: new Date().toISOString().split('T')[0],
@@ -179,6 +183,28 @@ export default function JournalEntriesPage() {
     onError: (error: Error) => toast.error(error.message || 'Failed to post'),
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof journalEntriesApi.update>[1] }) =>
+      journalEntriesApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+      toast.success('Journal entry updated');
+      resetForm();
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to update entry'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: journalEntriesApi.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+      toast.success('Journal entry deleted');
+      setIsDeleteDialogOpen(false);
+      setEntryToDelete(null);
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to delete entry'),
+  });
+
   const resetForm = () => {
     setFormData({
       entry_date: new Date().toISOString().split('T')[0],
@@ -188,6 +214,73 @@ export default function JournalEntriesPage() {
       lines: [emptyLine(), emptyLine()],
     });
     setIsDialogOpen(false);
+    setIsEditMode(false);
+    setEditingEntryId(null);
+  };
+
+  const handleDuplicate = async (entry: JournalEntry) => {
+    try {
+      const detail = await journalEntriesApi.getById(entry.id);
+      setFormData({
+        entry_date: new Date().toISOString().split('T')[0], // New date
+        entry_type: detail.entry_type || 'MANUAL',
+        source_number: '',
+        narration: detail.narration || '',
+        lines: detail.lines?.map((line: JournalLine) => ({
+          account_id: line.account_id,
+          description: line.description || '',
+          debit_amount: line.debit_amount || 0,
+          credit_amount: line.credit_amount || 0,
+        })) || [emptyLine(), emptyLine()],
+      });
+      setIsEditMode(false);
+      setIsDialogOpen(true);
+      toast.info('Entry copied. Modify and save as new draft.');
+    } catch {
+      toast.error('Failed to load entry details');
+    }
+  };
+
+  const handleEdit = async (entry: JournalEntry) => {
+    if (entry.status !== 'DRAFT') {
+      toast.error('Only draft entries can be edited');
+      return;
+    }
+    try {
+      const detail = await journalEntriesApi.getById(entry.id);
+      setFormData({
+        entry_date: detail.entry_date?.split('T')[0] || new Date().toISOString().split('T')[0],
+        entry_type: detail.entry_type || 'MANUAL',
+        source_number: detail.source_number || '',
+        narration: detail.narration || '',
+        lines: detail.lines?.map((line: JournalLine) => ({
+          account_id: line.account_id,
+          description: line.description || '',
+          debit_amount: line.debit_amount || 0,
+          credit_amount: line.credit_amount || 0,
+        })) || [emptyLine(), emptyLine()],
+      });
+      setIsEditMode(true);
+      setEditingEntryId(entry.id);
+      setIsDialogOpen(true);
+    } catch {
+      toast.error('Failed to load entry details');
+    }
+  };
+
+  const handleDelete = (entry: JournalEntry) => {
+    if (entry.status !== 'DRAFT') {
+      toast.error('Only draft entries can be deleted');
+      return;
+    }
+    setEntryToDelete(entry);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (entryToDelete) {
+      deleteMutation.mutate(entryToDelete.id);
+    }
   };
 
   const handleViewEntry = async (entry: JournalEntry) => {
@@ -253,9 +346,8 @@ export default function JournalEntriesPage() {
       return;
     }
 
-    createMutation.mutate({
+    const entryData = {
       entry_date: formData.entry_date,
-      entry_type: formData.entry_type,
       source_number: formData.source_number || undefined,
       narration: formData.narration,
       lines: validLines.map(l => ({
@@ -264,7 +356,16 @@ export default function JournalEntriesPage() {
         debit_amount: l.debit_amount,
         credit_amount: l.credit_amount,
       })),
-    });
+    };
+
+    if (isEditMode && editingEntryId) {
+      updateMutation.mutate({ id: editingEntryId, data: entryData });
+    } else {
+      createMutation.mutate({
+        ...entryData,
+        entry_type: formData.entry_type,
+      });
+    }
   };
 
   const columns: ColumnDef<JournalEntry>[] = [
@@ -333,6 +434,26 @@ export default function JournalEntriesPage() {
               <Eye className="mr-2 h-4 w-4" />
               View Details
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleDuplicate(row.original)}>
+              <Copy className="mr-2 h-4 w-4" />
+              Duplicate
+            </DropdownMenuItem>
+            {row.original.status === 'DRAFT' && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => handleEdit(row.original)}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handleDelete(row.original)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -370,11 +491,13 @@ export default function JournalEntriesPage() {
                   New Journal Entry
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>Create Journal Entry</DialogTitle>
+                  <DialogTitle>{isEditMode ? 'Edit Journal Entry' : 'Create Journal Entry'}</DialogTitle>
                   <DialogDescription>
-                    Record a new accounting journal entry with debit and credit lines
+                    {isEditMode
+                      ? 'Modify the draft journal entry details and lines'
+                      : 'Record a new accounting journal entry with debit and credit lines'}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
@@ -431,47 +554,47 @@ export default function JournalEntriesPage() {
                       </Button>
                     </div>
 
-                    <div className="grid grid-cols-12 gap-2 text-xs font-medium text-muted-foreground px-1">
-                      <div className="col-span-4">Account</div>
-                      <div className="col-span-3">Description</div>
-                      <div className="col-span-2 text-right">Debit</div>
-                      <div className="col-span-2 text-right">Credit</div>
-                      <div className="col-span-1"></div>
+                    <div className="grid gap-2 text-xs font-medium text-muted-foreground px-1" style={{ gridTemplateColumns: '1fr 150px 100px 100px 40px' }}>
+                      <div>Account</div>
+                      <div>Description</div>
+                      <div className="text-right">Debit</div>
+                      <div className="text-right">Credit</div>
+                      <div></div>
                     </div>
 
                     {formData.lines.map((line, idx) => (
-                      <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                        <div className="col-span-4">
+                      <div key={idx} className="grid gap-2 items-center" style={{ gridTemplateColumns: '1fr 150px 100px 100px 40px' }}>
+                        <div className="min-w-0">
                           <Select
                             value={line.account_id || 'select'}
                             onValueChange={(value) => updateLine(idx, 'account_id', value === 'select' ? '' : value)}
                           >
-                            <SelectTrigger className="h-9">
-                              <SelectValue placeholder="Select account" />
+                            <SelectTrigger className="h-9 w-full">
+                              <SelectValue placeholder="Select account" className="truncate" />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent className="max-w-[400px]">
                               <SelectItem value="select" disabled>Select account</SelectItem>
                               {accounts
                                 .filter((acc: Account) => acc.id && acc.id.trim() !== '')
                                 .map((acc: Account) => (
                                   <SelectItem key={acc.id} value={acc.id}>
-                                    {acc.code} - {acc.name}
+                                    <span className="truncate">{acc.code} - {acc.name}</span>
                                   </SelectItem>
                                 ))}
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="col-span-3">
+                        <div>
                           <Input
-                            className="h-9"
-                            placeholder="Line description"
+                            className="h-9 w-full"
+                            placeholder="Line descript"
                             value={line.description || ''}
                             onChange={(e) => updateLine(idx, 'description', e.target.value)}
                           />
                         </div>
-                        <div className="col-span-2">
+                        <div>
                           <Input
-                            className="h-9 text-right"
+                            className="h-9 w-full text-right"
                             type="number"
                             min="0"
                             step="0.01"
@@ -480,9 +603,9 @@ export default function JournalEntriesPage() {
                             onChange={(e) => updateLine(idx, 'debit_amount', parseFloat(e.target.value) || 0)}
                           />
                         </div>
-                        <div className="col-span-2">
+                        <div>
                           <Input
-                            className="h-9 text-right"
+                            className="h-9 w-full text-right"
                             type="number"
                             min="0"
                             step="0.01"
@@ -491,7 +614,7 @@ export default function JournalEntriesPage() {
                             onChange={(e) => updateLine(idx, 'credit_amount', parseFloat(e.target.value) || 0)}
                           />
                         </div>
-                        <div className="col-span-1">
+                        <div className="flex justify-center">
                           <Button
                             type="button"
                             variant="ghost"
@@ -508,15 +631,16 @@ export default function JournalEntriesPage() {
 
                     <Separator />
 
-                    <div className="grid grid-cols-12 gap-2 items-center font-medium">
-                      <div className="col-span-7 text-right">Totals:</div>
-                      <div className={`col-span-2 text-right ${isBalanced ? 'text-green-600' : 'text-red-600'}`}>
+                    <div className="grid gap-2 items-center font-medium" style={{ gridTemplateColumns: '1fr 150px 100px 100px 40px' }}>
+                      <div className="text-right">Totals:</div>
+                      <div></div>
+                      <div className={`text-right ${isBalanced ? 'text-green-600' : 'text-red-600'}`}>
                         {formatCurrency(totalDebit)}
                       </div>
-                      <div className={`col-span-2 text-right ${isBalanced ? 'text-green-600' : 'text-red-600'}`}>
+                      <div className={`text-right ${isBalanced ? 'text-green-600' : 'text-red-600'}`}>
                         {formatCurrency(totalCredit)}
                       </div>
-                      <div className="col-span-1"></div>
+                      <div></div>
                     </div>
 
                     {!isBalanced && totalDebit !== totalCredit && (
@@ -528,9 +652,14 @@ export default function JournalEntriesPage() {
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={resetForm}>Cancel</Button>
-                  <Button onClick={handleSubmit} disabled={createMutation.isPending || !isBalanced}>
-                    {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Save as Draft
+                  <Button
+                    onClick={handleSubmit}
+                    disabled={createMutation.isPending || updateMutation.isPending || !isBalanced}
+                  >
+                    {(createMutation.isPending || updateMutation.isPending) && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
+                    {isEditMode ? 'Update Draft' : 'Save as Draft'}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -737,6 +866,31 @@ export default function JournalEntriesPage() {
             >
               {rejectMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Reject Entry
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Journal Entry</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete journal entry{' '}
+              <span className="font-medium">{entryToDelete?.entry_number}</span>?
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              disabled={deleteMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete Entry
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
