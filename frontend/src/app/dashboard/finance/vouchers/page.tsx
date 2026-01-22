@@ -519,7 +519,7 @@ export default function VouchersPage() {
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label>Voucher Type *</Label>
                       <Select
@@ -527,15 +527,14 @@ export default function VouchersPage() {
                         onValueChange={(value) => setFormData({ ...formData, voucher_type: value as VoucherType })}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="Select type" />
+                          <SelectValue placeholder="Select type">
+                            {VOUCHER_TYPE_LABELS[formData.voucher_type]?.label || formData.voucher_type}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
-                          {Object.entries(VOUCHER_TYPE_LABELS).map(([type, { label, description }]) => (
+                          {Object.entries(VOUCHER_TYPE_LABELS).map(([type, { label }]) => (
                             <SelectItem key={type} value={type}>
-                              <div>
-                                <div>{label}</div>
-                                <div className="text-xs text-muted-foreground">{description}</div>
-                              </div>
+                              {label}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -571,7 +570,7 @@ export default function VouchersPage() {
                   </div>
 
                   {formData.payment_mode && formData.payment_mode !== 'CASH' && (
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="space-y-2">
                         <Label>Bank Account</Label>
                         <Select
