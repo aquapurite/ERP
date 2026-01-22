@@ -1288,10 +1288,12 @@ async def get_journal_entry(
     db: DB,
     current_user: User = Depends(get_current_user),
 ):
-    """Get journal entry by ID."""
+    """Get journal entry by ID with full line details including account info."""
     result = await db.execute(
         select(JournalEntry)
-        .options(selectinload(JournalEntry.lines))
+        .options(
+            selectinload(JournalEntry.lines).selectinload(JournalEntryLine.account)
+        )
         .where(JournalEntry.id == journal_id)
     )
     journal = result.scalar_one_or_none()
@@ -1299,7 +1301,47 @@ async def get_journal_entry(
     if not journal:
         raise HTTPException(status_code=404, detail="Journal entry not found")
 
-    return journal
+    # Build response with account info for each line
+    lines_with_account = []
+    for line in journal.lines:
+        lines_with_account.append({
+            "id": line.id,
+            "line_number": line.line_number,
+            "account_id": line.account_id,
+            "account_code": line.account.account_code if line.account else None,
+            "account_name": line.account.account_name if line.account else None,
+            "description": line.description,
+            "debit_amount": line.debit_amount,
+            "credit_amount": line.credit_amount,
+            "cost_center_id": line.cost_center_id,
+            "project_id": line.project_id,
+        })
+
+    return {
+        "id": journal.id,
+        "entry_number": journal.entry_number,
+        "entry_type": journal.entry_type,
+        "entry_date": journal.entry_date,
+        "period_id": journal.period_id,
+        "narration": journal.narration,
+        "status": journal.status,
+        "total_debit": journal.total_debit,
+        "total_credit": journal.total_credit,
+        "source_type": journal.source_type,
+        "source_id": journal.source_id,
+        "source_number": journal.source_number,
+        "is_reversed": journal.is_reversed,
+        "reversed_by_id": journal.reversed_by_id,
+        "reverses_id": journal.reverses_id,
+        "created_by": journal.created_by,
+        "approved_by": journal.approved_by,
+        "approved_at": journal.approved_at,
+        "posted_at": journal.posted_at,
+        "rejection_reason": journal.rejection_reason,
+        "created_at": journal.created_at,
+        "updated_at": journal.updated_at,
+        "lines": lines_with_account,
+    }
 
 
 @router.put(
