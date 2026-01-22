@@ -191,6 +191,7 @@ class ShipmentService:
         )
 
         self.db.add(shipment)
+        await self.db.flush()  # Flush to get shipment.id assigned
 
         # Add initial tracking entry
         tracking = ShipmentTracking(
