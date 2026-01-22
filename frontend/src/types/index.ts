@@ -260,7 +260,9 @@ export interface Order {
   tax_amount: number;
   grand_total: number;
   payment_status: 'PENDING' | 'PAID' | 'PARTIALLY_PAID' | 'REFUNDED';
-  channel: string;
+  source?: string;
+  channel?: string;
+  item_count?: number;
   created_at: string;
   updated_at: string;
   customer?: Customer;
@@ -284,6 +286,7 @@ export interface OrderItem {
 export interface Customer {
   id: string;
   name: string;
+  full_name?: string;
   email?: string;
   phone: string;
   customer_type: 'INDIVIDUAL' | 'BUSINESS' | 'DEALER';

@@ -115,7 +115,7 @@ export default function OrdersPage() {
       header: 'Customer',
       cell: ({ row }) => (
         <div>
-          <div className="font-medium">{row.original.customer?.name || '-'}</div>
+          <div className="font-medium">{row.original.customer?.full_name || row.original.customer?.name || '-'}</div>
           <div className="text-sm text-muted-foreground">
             {row.original.customer?.phone || '-'}
           </div>
@@ -123,22 +123,22 @@ export default function OrdersPage() {
       ),
     },
     {
-      accessorKey: 'channel',
+      accessorKey: 'source',
       header: 'Channel',
       cell: ({ row }) => (
         <span className="inline-flex items-center rounded-full bg-muted px-2 py-1 text-xs font-medium">
-          {row.original.channel}
+          {row.original.source || row.original.channel || '-'}
         </span>
       ),
     },
     {
-      accessorKey: 'grand_total',
+      accessorKey: 'total_amount',
       header: 'Amount',
       cell: ({ row }) => (
         <div>
-          <div className="font-medium">{formatCurrency(row.original.grand_total)}</div>
+          <div className="font-medium">{formatCurrency(row.original.total_amount ?? row.original.grand_total ?? 0)}</div>
           <div className="text-xs text-muted-foreground">
-            {row.original.items?.length ?? 0} items
+            {row.original.item_count ?? row.original.items?.length ?? 0} items
           </div>
         </div>
       ),
