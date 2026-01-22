@@ -1330,7 +1330,7 @@ async def get_journal_entry(
         "source_number": journal.source_number,
         "is_reversed": journal.is_reversed,
         "reversed_by_id": journal.reversed_by_id,
-        "reverses_id": journal.reverses_id,
+        "reversal_of_id": journal.reversal_of_id,
         "created_by": journal.created_by,
         "approved_by": journal.approved_by,
         "approved_at": journal.approved_at,
