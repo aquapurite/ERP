@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from app.models.product import Product
     from app.models.user import User
     from app.models.warehouse import Warehouse
+    from app.models.shipment import Shipment
 
 
 class InvoiceType(str, Enum):
@@ -162,6 +163,22 @@ class TaxInvoice(Base):
         ForeignKey("orders.id", ondelete="SET NULL"),
         nullable=True,
         index=True
+    )
+
+    # Shipment Reference (link to shipment that triggered invoice)
+    shipment_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("shipments.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="Shipment that triggered this invoice (for goods issue)"
+    )
+
+    # Invoice Generation Trigger
+    generation_trigger: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="MANUAL, GOODS_ISSUE, ORDER_CONFIRMATION, etc."
     )
 
     # Warehouse/Branch
@@ -450,6 +467,7 @@ class TaxInvoice(Base):
         uselist=False
     )
     order: Mapped[Optional["Order"]] = relationship("Order")
+    shipment: Mapped[Optional["Shipment"]] = relationship("Shipment")
     customer: Mapped[Optional["User"]] = relationship("User", foreign_keys=[customer_id])
 
     @property

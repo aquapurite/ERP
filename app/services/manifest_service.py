@@ -1,6 +1,12 @@
-"""Service for managing manifests and transporter handover operations."""
+"""Service for managing manifests and transporter handover operations.
+
+Implements SAP S/4HANA-aligned Order-to-Invoice flow:
+- Manifest confirmation = Goods Issue (SAP VL09 equivalent)
+- Invoice auto-generates when shipment is manifested
+"""
+import logging
 from typing import List, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 from math import ceil
 import uuid
 
@@ -12,7 +18,10 @@ from app.models.manifest import Manifest, ManifestItem, ManifestStatus, Business
 from app.models.shipment import Shipment, ShipmentStatus
 from app.models.order import Order, OrderStatus
 from app.models.transporter import Transporter
+from app.models.billing import TaxInvoice
 from app.schemas.manifest import ManifestCreate, ManifestUpdate
+
+logger = logging.getLogger(__name__)
 
 
 class ManifestService:
@@ -307,9 +316,32 @@ class ManifestService:
         driver_name: Optional[str] = None,
         driver_phone: Optional[str] = None,
         confirmed_by: Optional[uuid.UUID] = None,
-        remarks: Optional[str] = None
+        remarks: Optional[str] = None,
+        auto_generate_invoices: bool = True
     ) -> Manifest:
-        """Confirm manifest for handover."""
+        """
+        Confirm manifest for handover.
+
+        This is the SAP VL09 (Post Goods Issue) equivalent:
+        - Marks shipments as MANIFESTED (goods have left warehouse)
+        - Records goods issue timestamp and reference
+        - Auto-generates invoices for each shipment (if enabled)
+
+        Args:
+            manifest_id: UUID of the manifest to confirm
+            vehicle_number: Vehicle registration number
+            driver_name: Driver's name
+            driver_phone: Driver's contact number
+            confirmed_by: User ID confirming the manifest
+            remarks: Additional remarks
+            auto_generate_invoices: Whether to auto-generate invoices (default: True)
+
+        Returns:
+            Manifest: The confirmed manifest
+
+        Raises:
+            ValueError: If manifest cannot be confirmed
+        """
         manifest = await self.get_manifest(manifest_id)
         if not manifest:
             raise ValueError("Manifest not found")
@@ -320,8 +352,10 @@ class ManifestService:
         if manifest.total_shipments == 0:
             raise ValueError("Cannot confirm empty manifest")
 
+        goods_issue_time = datetime.now(timezone.utc)
+
         manifest.status = ManifestStatus.CONFIRMED.value
-        manifest.confirmed_at = datetime.utcnow()
+        manifest.confirmed_at = goods_issue_time
         manifest.confirmed_by = confirmed_by
 
         if vehicle_number:
@@ -333,16 +367,57 @@ class ManifestService:
         if remarks:
             manifest.remarks = remarks
 
-        # Update shipments to MANIFESTED
+        # Track generated invoices
+        generated_invoices: List[TaxInvoice] = []
+
+        # Update shipments to MANIFESTED and record Goods Issue
         for item in manifest.items:
             stmt = select(Shipment).where(Shipment.id == item.shipment_id)
             result = await self.db.execute(stmt)
             shipment = result.scalar_one_or_none()
             if shipment:
+                # Update shipment status to MANIFESTED
                 shipment.status = ShipmentStatus.MANIFESTED.value
+
+                # Record Goods Issue (SAP VL09 equivalent)
+                shipment.goods_issue_at = goods_issue_time
+                shipment.goods_issue_by = confirmed_by
+                shipment.goods_issue_reference = manifest.manifest_number
+
+                # Auto-generate invoice for this shipment
+                if auto_generate_invoices and confirmed_by:
+                    try:
+                        from app.services.invoice_service import InvoiceService, InvoiceGenerationError
+                        invoice_service = InvoiceService(self.db)
+                        invoice = await invoice_service.auto_generate_invoice_on_goods_issue(
+                            shipment_id=shipment.id,
+                            manifest_number=manifest.manifest_number,
+                            generated_by=confirmed_by
+                        )
+                        generated_invoices.append(invoice)
+                        logger.info(
+                            f"Auto-generated invoice {invoice.invoice_number} for "
+                            f"shipment {shipment.shipment_number} (order: {shipment.order_id})"
+                        )
+                    except InvoiceGenerationError as e:
+                        logger.error(
+                            f"Failed to auto-generate invoice for shipment {shipment.shipment_number}: {e}"
+                        )
+                        # Continue with other shipments, don't fail the manifest confirmation
+                    except Exception as e:
+                        logger.error(
+                            f"Unexpected error generating invoice for shipment {shipment.shipment_number}: {e}"
+                        )
 
         await self.db.commit()
         await self.db.refresh(manifest)
+
+        if generated_invoices:
+            logger.info(
+                f"Manifest {manifest.manifest_number} confirmed. "
+                f"Generated {len(generated_invoices)} invoice(s)."
+            )
+
         return manifest
 
     async def complete_handover(

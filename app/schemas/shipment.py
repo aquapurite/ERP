@@ -128,6 +128,14 @@ class ShipmentResponse(BaseModel):
     cod_charge: float
     insurance_charge: float
     total_shipping_cost: float
+
+    # Goods Issue tracking (SAP VL09 equivalent)
+    goods_issue_at: Optional[datetime] = None
+    goods_issue_by: Optional[uuid.UUID] = None
+    goods_issue_reference: Optional[str] = None
+    is_goods_issued: bool = False
+
+    # Computed properties
     is_delivered: bool
     is_in_transit: bool
     is_rto: bool

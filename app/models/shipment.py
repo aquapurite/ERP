@@ -229,6 +229,24 @@ class Shipment(Base):
         nullable=True
     )
 
+    # Goods Issue tracking (SAP VL09 equivalent)
+    goods_issue_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Timestamp when goods issue was posted (manifest confirmed)"
+    )
+    goods_issue_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="User who posted the goods issue"
+    )
+    goods_issue_reference: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Reference number (manifest number)"
+    )
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -272,6 +290,10 @@ class Shipment(Base):
         "User",
         foreign_keys=[packed_by]
     )
+    goods_issue_by_user: Mapped[Optional["User"]] = relationship(
+        "User",
+        foreign_keys=[goods_issue_by]
+    )
     tracking_history: Mapped[List["ShipmentTracking"]] = relationship(
         "ShipmentTracking",
         back_populates="shipment",
@@ -309,6 +331,11 @@ class Shipment(Base):
             self.status == ShipmentStatus.DELIVERY_FAILED and
             self.delivery_attempts < self.max_delivery_attempts
         )
+
+    @property
+    def is_goods_issued(self) -> bool:
+        """Check if goods issue has been posted (SAP VL09 equivalent)."""
+        return self.goods_issue_at is not None
 
     def __repr__(self) -> str:
         return f"<Shipment(number='{self.shipment_number}', status='{self.status}')>"

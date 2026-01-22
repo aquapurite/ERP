@@ -149,6 +149,10 @@ class InvoiceResponse(InvoiceBase):
     status: str
     is_interstate: bool
 
+    # Shipment Reference (for goods issue triggered invoices)
+    shipment_id: Optional[UUID] = None
+    generation_trigger: Optional[str] = None  # MANUAL, GOODS_ISSUE, etc.
+
     # Amounts
     subtotal: Decimal
     discount_amount: Decimal
@@ -221,6 +225,7 @@ class InvoiceBrief(BaseModel):
     customer_name: str
     grand_total: Decimal
     status: str
+    generation_trigger: Optional[str] = None  # MANUAL, GOODS_ISSUE, etc.
 
 
 class InvoiceApproveRequest(BaseModel):
