@@ -295,13 +295,19 @@ class JournalEntryResponse(JournalEntryBase):
     status: str
     total_debit: Decimal
     total_credit: Decimal
-    is_auto_generated: bool
+    # Fields that match the JournalEntry model exactly
+    is_reversed: bool = False
+    reversal_of_id: Optional[UUID] = None
+    reversed_by_id: Optional[UUID] = None
     created_by: Optional[UUID] = None
+    submitted_by: Optional[UUID] = None
+    submitted_at: Optional[datetime] = None
+    approval_level: Optional[str] = None
+    approved_by: Optional[UUID] = None
+    approved_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
     posted_by: Optional[UUID] = None
     posted_at: Optional[datetime] = None
-    reversed_by: Optional[UUID] = None
-    reversed_at: Optional[datetime] = None
-    reversal_entry_id: Optional[UUID] = None
     lines: List[JournalEntryLineResponse] = []
     created_at: datetime
     updated_at: datetime
