@@ -225,9 +225,11 @@ class JournalEntryLineBase(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     account_id: UUID
-    description: Optional[str] = Field(None, alias="narration")
-    debit_amount: Decimal = Field(Decimal("0"), ge=0, alias="debit")
-    credit_amount: Decimal = Field(Decimal("0"), ge=0, alias="credit")
+    # IMPORTANT: No aliases here - frontend expects these exact field names
+    # Per CLAUDE.md Rule 3: Use exact same field names across backend/schema/frontend
+    description: Optional[str] = None
+    debit_amount: Decimal = Field(Decimal("0"), ge=0)
+    credit_amount: Decimal = Field(Decimal("0"), ge=0)
     cost_center_id: Optional[UUID] = None
 
 
