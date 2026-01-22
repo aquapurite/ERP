@@ -95,8 +95,9 @@ interface Customer360Data {
 const customer360Api = {
   search: async (query: string) => {
     try {
-      const { data } = await apiClient.get('/customers/search', { params: { q: query } });
-      return data;
+      // Backend expects /customers?search=query, not /customers/search?q=query
+      const { data } = await apiClient.get('/customers', { params: { search: query } });
+      return data.items || [];  // Backend returns { items: [...], total: ... }
     } catch {
       return [];
     }
