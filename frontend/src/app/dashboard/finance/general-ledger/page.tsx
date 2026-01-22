@@ -31,9 +31,9 @@ interface LedgerEntry {
 
 interface Account {
   id: string;
-  code: string;
-  name: string;
-  type: string;
+  account_code: string;
+  account_name: string;
+  account_type: string;
 }
 
 const ledgerApi = {
@@ -130,8 +130,8 @@ export default function GeneralLedgerPage() {
     enabled: !!selectedAccount,
   });
 
-  // API returns array directly, not { items: [...] }
-  const accounts = Array.isArray(accountsData) ? accountsData : [];
+  // API returns { items: [...], total: ... }
+  const accounts = accountsData?.items || [];
 
   return (
     <div className="space-y-6">
@@ -161,11 +161,11 @@ export default function GeneralLedgerPage() {
               </SelectTrigger>
               <SelectContent>
                 {accounts
-                  .filter((account: Account) => account.id && account.id.trim() !== '')
+                  .filter((account: Account) => account.id && String(account.id).trim() !== '')
                   .map((account: Account) => (
-                    <SelectItem key={account.id} value={account.id}>
-                      <span className="font-mono mr-2">{account.code}</span>
-                      {account.name}
+                    <SelectItem key={account.id} value={String(account.id)}>
+                      <span className="font-mono mr-2">{account.account_code}</span>
+                      {account.account_name}
                     </SelectItem>
                   ))}
               </SelectContent>
