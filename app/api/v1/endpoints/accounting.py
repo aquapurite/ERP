@@ -1314,7 +1314,7 @@ async def get_journal_entry(
             "debit_amount": line.debit_amount,
             "credit_amount": line.credit_amount,
             "cost_center_id": line.cost_center_id,
-            "project_id": line.project_id,
+            "project_id": None,  # JournalEntryLine model doesn't have project_id
         })
 
     return {
