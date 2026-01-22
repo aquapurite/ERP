@@ -552,7 +552,7 @@ async def activate_contract(
         )
 
     contract.status = "ACTIVE"
-    contract.payment_status = "paid"
+    contract.payment_status = "PAID"  # UPPERCASE per coding standards
     contract.payment_mode = payment_mode
     contract.payment_reference = payment_reference
     contract.paid_at = datetime.now(timezone.utc)

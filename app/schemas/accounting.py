@@ -122,17 +122,19 @@ class FinancialPeriodBase(BaseModel):
     is_year_end: bool = False
     is_adjustment_period: bool = False
 
+    # NOTE: Validator moved to FinancialPeriodCreate per coding standards
+    # (Rule 2: Never put validators on Base schemas - they affect GET responses)
+
+
+class FinancialPeriodCreate(FinancialPeriodBase):
+    """Schema for creating FinancialPeriod."""
+
     @field_validator("end_date")
     @classmethod
     def validate_end_date(cls, v, info):
         if "start_date" in info.data and v <= info.data["start_date"]:
             raise ValueError("end_date must be after start_date")
         return v
-
-
-class FinancialPeriodCreate(FinancialPeriodBase):
-    """Schema for creating FinancialPeriod."""
-    pass
 
 
 class FinancialPeriodUpdate(BaseModel):

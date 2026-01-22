@@ -320,7 +320,7 @@ class ServiceRequestService:
             job = job_result.scalar_one_or_none()
             if job:
                 job.completed_at = datetime.utcnow()
-                job.status = "completed"
+                job.status = "COMPLETED"  # UPPERCASE per coding standards
                 if job.started_at:
                     job.time_taken_minutes = int((job.completed_at - job.started_at).total_seconds() / 60)
 

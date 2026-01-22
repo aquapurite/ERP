@@ -693,9 +693,9 @@ async def lookup_serial(
     warranty_status = None
     if serial.warranty_end_date:
         if serial.warranty_end_date > datetime.utcnow():
-            warranty_status = "active"
+            warranty_status = "ACTIVE"  # UPPERCASE per coding standards
         else:
-            warranty_status = "expired"
+            warranty_status = "EXPIRED"  # UPPERCASE per coding standards
 
     return SerialLookupResponse(
         barcode=barcode,

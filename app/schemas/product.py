@@ -176,6 +176,19 @@ class ProductBase(BaseModel):
     meta_description: Optional[str] = Field(None, max_length=500)
     meta_keywords: Optional[str] = Field(None, max_length=255)
 
+    # NOTE: Validators moved to ProductCreate/ProductUpdate per coding standards
+    # (Rule 2: Never put validators on Base schemas - they affect GET responses)
+
+
+class ProductCreate(ProductBase):
+    """Product creation schema."""
+    status: ProductStatus = ProductStatus.DRAFT
+    images: Optional[List[ProductImageCreate]] = []
+    specifications: Optional[List[ProductSpecCreate]] = []
+    variants: Optional[List[ProductVariantCreate]] = []
+    documents: Optional[List[ProductDocumentCreate]] = []
+    extra_data: Optional[dict] = None
+
     @field_validator("selling_price")
     @classmethod
     def selling_price_less_than_mrp(cls, v, info):
@@ -192,16 +205,6 @@ class ProductBase(BaseModel):
         if v is not None:
             return v.upper()
         return v
-
-
-class ProductCreate(ProductBase):
-    """Product creation schema."""
-    status: ProductStatus = ProductStatus.DRAFT
-    images: Optional[List[ProductImageCreate]] = []
-    specifications: Optional[List[ProductSpecCreate]] = []
-    variants: Optional[List[ProductVariantCreate]] = []
-    documents: Optional[List[ProductDocumentCreate]] = []
-    extra_data: Optional[dict] = None
 
 
 class ProductUpdate(BaseModel):
@@ -255,6 +258,17 @@ class ProductUpdate(BaseModel):
     meta_keywords: Optional[str] = None
 
     extra_data: Optional[dict] = None
+
+    @field_validator("selling_price")
+    @classmethod
+    def selling_price_less_than_mrp(cls, v, info):
+        """Validate selling price is not greater than MRP."""
+        if v is None:
+            return v
+        mrp = info.data.get("mrp")
+        if mrp is not None and v > mrp:
+            raise ValueError("Selling price cannot be greater than MRP")
+        return v
 
     @field_validator("model_code")
     @classmethod

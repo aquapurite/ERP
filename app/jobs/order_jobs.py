@@ -82,7 +82,7 @@ async def check_pending_payments():
 
                         new_status = None
                         if payment_status == "captured":
-                            new_status = "paid"
+                            new_status = "PAID"  # UPPERCASE per coding standards
                         elif payment_status == "authorized":
                             # Capture the payment
                             try:
@@ -90,12 +90,12 @@ async def check_pending_payments():
                                     payment["id"],
                                     payment["amount"]
                                 )
-                                new_status = "paid"
+                                new_status = "PAID"  # UPPERCASE per coding standards
                             except Exception as e:
                                 logger.error(f"Payment capture failed: {e}")
-                                new_status = "failed"
+                                new_status = "FAILED"  # UPPERCASE per coding standards
                         elif payment_status == "failed":
-                            new_status = "failed"
+                            new_status = "FAILED"  # UPPERCASE per coding standards
 
                         if new_status:
                             await session.execute(
