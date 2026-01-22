@@ -1,5 +1,10 @@
 # CLAUDE.md - Project Instructions for Claude Code
 
+## Project Root
+```
+/Users/mantosh/Desktop/Consumer durable 2
+```
+
 ## Project Overview
 
 **Aquapurite ERP** - A full-stack Consumer Durable ERP system for water purifier manufacturing and distribution.
@@ -160,6 +165,10 @@ class CompanyCreate(CompanyBase):
 | Only running `pnpm build` | Misses runtime errors | Start local servers AND test pages |
 | Skipping local server test | Pages may fail at runtime | Always run `pnpm dev` and test in browser |
 | Not testing modified pages | Broken pages in production | curl each modified page for HTTP 200 |
+| **Missing field in Response schema** | Field silently dropped from API | Match schema fields to service return |
+| **Field name mismatch** | Frontend shows 0/null | Use EXACT same names: backend → schema → frontend |
+| **Status case mismatch (paid vs PAID)** | Logic failures, wrong counts | Always store UPPERCASE, compare with .upper() |
+| **UUID not stringified** | JSON serialization fails | Use str(uuid) or let Pydantic handle |
 
 ---
 
@@ -279,6 +288,21 @@ grep -i "package_name" requirements.txt
 |----------|---------|---------|
 | NEXT_PUBLIC_API_URL | https://aquapurite-erp-api.onrender.com | Backend API |
 
+### Supabase Production Database (Direct Access)
+```
+Host: db.aavjhutqzwusgdwrczds.supabase.co
+Port: 6543
+Database: postgres
+User: postgres
+Password: Aquapurite2026
+
+Connection String:
+postgresql://postgres:Aquapurite2026@db.aavjhutqzwusgdwrczds.supabase.co:6543/postgres
+
+For psql:
+psql "postgresql://postgres:Aquapurite2026@db.aavjhutqzwusgdwrczds.supabase.co:6543/postgres"
+```
+
 ## Debugging Lessons Learned
 
 1. **2026-01-18: Upload 500 error** - Spent 30 min guessing. Solution was in browser Network Response tab showing `'ClientOptions' object has no attribute 'storage'`. **Lesson: ALWAYS check browser Response tab FIRST.**
@@ -286,6 +310,385 @@ grep -i "package_name" requirements.txt
 2. **2026-01-17: Company logo not showing** - Root cause was `logo_url` field contained filename instead of full URL. **Lesson: Check actual data in database before assuming code bug.**
 
 3. **2026-01-17: 500 errors after URL validation** - Added validator to Base schema which broke responses for existing data. **Lesson: Validators on Base schemas affect GET responses too.**
+
+4. **2026-01-22: Dashboard Total Customers showing 0** - Backend service returned `total_customers` but Pydantic `OrderSummary` schema didn't include the field, causing it to be silently dropped. **Lesson: Always ensure response schemas include ALL fields returned by the service.**
+
+---
+
+# CODING STANDARDS & RULES
+
+> **CRITICAL: Follow these rules for EVERY code change. These prevent the recurring structural issues that cause cross-module breakages.**
+
+## Rule 1: Schema-Service-API Field Alignment
+
+### Problem This Solves
+Services return fields that get silently dropped because Pydantic response schemas don't include them.
+
+### Rule
+**Every field returned by a service MUST be defined in the response schema.**
+
+```python
+# ❌ BAD - Service returns fields not in schema
+# Service returns:
+return {
+    "total_orders": 38,
+    "total_customers": 20,  # NOT in OrderSummary schema!
+    "total_revenue": 158104.66,
+}
+
+# Schema only has:
+class OrderSummary(BaseModel):
+    total_orders: int
+    total_revenue: Decimal
+    # Missing: total_customers!  ← This field gets dropped silently
+
+# ✅ GOOD - Schema includes ALL service fields
+class OrderSummary(BaseModel):
+    total_orders: int
+    total_customers: int = 0  # Added with default
+    total_revenue: Decimal
+```
+
+### Checklist Before Adding Service Returns
+- [ ] Check if the response schema includes the field
+- [ ] Add field to schema with appropriate default value
+- [ ] Verify field name matches EXACTLY (case-sensitive)
+
+---
+
+## Rule 2: Validator Placement
+
+### Problem This Solves
+Validators on Base schemas cause 500 errors on GET requests when existing DB data doesn't match validation rules.
+
+### Rule
+**NEVER put validators on Base schemas. Only on Create/Update schemas.**
+
+```python
+# ❌ BAD - Validators on Base (affects responses)
+class InvoiceBase(BaseModel):
+    quantity: Decimal = Field(..., gt=0)  # Breaks if DB has quantity=0
+
+    @field_validator('logo_url')
+    def validate_url(cls, v):
+        # This runs on GET responses too!
+        if not v.startswith('http'):
+            raise ValueError('Invalid URL')
+        return v
+
+# ✅ GOOD - Validators only on input schemas
+class InvoiceBase(BaseModel):
+    quantity: Decimal  # No validation here
+    logo_url: Optional[str] = None  # No validation here
+
+class InvoiceCreate(InvoiceBase):
+    quantity: Decimal = Field(..., gt=0)  # Validate on create
+
+    @field_validator('logo_url')
+    def validate_url(cls, v):
+        if v and not v.startswith('http'):
+            raise ValueError('Invalid URL')
+        return v
+
+class InvoiceResponse(InvoiceBase):
+    model_config = ConfigDict(from_attributes=True)
+    # NO validators - just serialize from DB
+```
+
+---
+
+## Rule 3: Field Naming Consistency
+
+### Problem This Solves
+Frontend expects `total_orders`, backend returns `total`. Frontend expects `gst_number`, backend returns `gstin`.
+
+### Rule
+**Use EXACT same field names across backend service, schema, and frontend types.**
+
+### Standard Field Names (Use These)
+
+| Category | Standard Name | DO NOT Use |
+|----------|--------------|------------|
+| **IDs** | `customer_id`, `order_id` | `customerId`, `customer` |
+| **Counts** | `total_orders`, `total_customers` | `total`, `count`, `orders_count` |
+| **Money** | `total_amount`, `subtotal`, `tax_amount` | `grand_total` (unless invoices), `amount` |
+| **Status** | `status`, `payment_status` | `order_status`, `paymentStatus` |
+| **GST** | `gstin` | `gst_number` (use aliases if needed) |
+| **Dates** | `created_at`, `updated_at` | `createdAt`, `dateCreated` |
+
+### Frontend-Backend Alignment
+```typescript
+// Frontend types/index.ts
+export interface OrderStats {
+  total_orders: number;      // Match backend exactly
+  total_customers: number;   // Match backend exactly
+  total_revenue: number;     // Match backend exactly
+}
+
+// Backend schemas/order.py
+class OrderSummary(BaseModel):
+    total_orders: int        # Match frontend exactly
+    total_customers: int     # Match frontend exactly
+    total_revenue: Decimal   # Match frontend exactly
+```
+
+---
+
+## Rule 4: Status & Enum Value Handling
+
+### Problem This Solves
+Database has `PAID`, code checks for `paid`, validation fails silently.
+
+### Rule
+**All status values MUST be UPPERCASE in database. Use case-insensitive comparison when needed.**
+
+```python
+# ❌ BAD - Case mismatch causes silent failures
+if order.payment_status == "paid":  # DB has "PAID"
+    process_payment()  # Never executes!
+
+# ❌ BAD - Mixing enum .value with string comparison
+if order.status == PaymentStatus.PAID.value:  # DB has VARCHAR "PAID"
+    # Works but fragile
+
+# ✅ GOOD - Case-insensitive comparison
+from sqlalchemy import func, or_
+
+# In queries:
+revenue_stmt = select(func.sum(Order.total_amount)).where(
+    or_(
+        Order.payment_status == "PAID",
+        func.upper(Order.payment_status) == "PAID"
+    )
+)
+
+# In code:
+if order.payment_status.upper() == "PAID":
+    process_payment()
+```
+
+### Status Value Standards
+| Status Type | Valid Values | Storage |
+|-------------|--------------|---------|
+| Order Status | NEW, CONFIRMED, PROCESSING, SHIPPED, DELIVERED, CANCELLED | VARCHAR(50) UPPERCASE |
+| Payment Status | PENDING, PAID, PARTIALLY_PAID, REFUNDED, FAILED | VARCHAR(50) UPPERCASE |
+| Invoice Status | DRAFT, PENDING_APPROVAL, APPROVED, GENERATED, PAID, CANCELLED | VARCHAR(50) UPPERCASE |
+
+---
+
+## Rule 5: UUID vs String Handling
+
+### Problem This Solves
+Some tables use VARCHAR(36) for IDs, others use UUID. Type mismatches cause errors.
+
+### Rule
+**Know which tables use VARCHAR IDs. Always convert UUID to string for API responses.**
+
+### Tables Using VARCHAR(36) for ID
+- `franchisees` and all `franchisee_*` tables
+- `po_serials`
+- `model_code_references`
+- `serial_sequences`
+- `supplier_codes`
+
+### API Response Pattern
+```python
+# ❌ BAD - UUID object in response (may not serialize)
+return {"id": order.id}  # If UUID object, JSON serialization may fail
+
+# ✅ GOOD - Always convert to string
+return {"id": str(order.id)}
+
+# ✅ BETTER - Let Pydantic handle it with proper config
+class OrderResponse(BaseModel):
+    id: UUID  # Pydantic auto-converts to string in JSON
+
+    model_config = ConfigDict(from_attributes=True)
+```
+
+---
+
+## Rule 6: Response Schema Completeness
+
+### Problem This Solves
+Schema defines 5 fields, service returns 8 fields, frontend expects 8 fields. 3 fields silently dropped.
+
+### Rule
+**Response schemas MUST include ALL fields the service returns.**
+
+### Checklist for Adding New Service Fields
+1. [ ] Add field to service return dict/object
+2. [ ] Add field to Pydantic Response schema (with default if optional)
+3. [ ] Add field to Frontend TypeScript interface
+4. [ ] Verify field name matches across all 3 layers
+
+### Example - Adding `total_customers` to dashboard
+```python
+# Step 1: Service (order_service.py)
+return {
+    "total_orders": total_orders,
+    "total_customers": total_customers,  # NEW
+}
+
+# Step 2: Schema (schemas/order.py)
+class OrderSummary(BaseModel):
+    total_orders: int
+    total_customers: int = 0  # NEW with default
+
+# Step 3: Frontend (types/index.ts)
+export interface OrderStats {
+  total_orders: number;
+  total_customers: number;  // NEW
+}
+```
+
+---
+
+## Rule 7: Alias Usage
+
+### Problem This Solves
+`gstin` in one schema, `gst_number` in another. Frontend doesn't know which to use.
+
+### Rule
+**Minimize aliases. When aliases are necessary, document them clearly.**
+
+```python
+# ❌ BAD - Conflicting alias directions
+# In dealer.py:
+gstin: str = Field(..., alias="gst_number")  # Primary: gstin, Alias: gst_number
+
+# In customer.py:
+gst_number: str = Field(..., alias="gstin")  # Primary: gst_number, Alias: gstin
+# CONFUSING!
+
+# ✅ GOOD - One direction, documented
+class VendorBase(BaseModel):
+    """
+    Field Aliases:
+    - gstin: Primary. Also accepts 'gst_number' for backwards compatibility.
+    """
+    gstin: str = Field(..., alias="gst_number")  # Accept gst_number, store as gstin
+
+    model_config = ConfigDict(populate_by_name=True)
+```
+
+---
+
+## Rule 8: Frontend API Client Patterns
+
+### Problem This Solves
+Frontend expects `total`, backend returns `total_orders`. Silent failures.
+
+### Rule
+**Frontend API client should NOT transform field names. Use backend field names directly.**
+
+```typescript
+// ❌ BAD - Field name transformation in API client
+return {
+  total_orders: ordersData.total || ordersData.total_orders || 0,  // Guessing!
+  total_customers: ordersData.customers || ordersData.total_customers || 0,
+};
+
+// ✅ GOOD - Use backend field names directly
+return {
+  total_orders: ordersData.total_orders || 0,
+  total_customers: ordersData.total_customers || 0,
+};
+
+// If backend field changes, it should be fixed in backend, not worked around in frontend
+```
+
+---
+
+## Rule 9: Error Logging for Field Issues
+
+### Problem This Solves
+Fields silently missing, no way to debug.
+
+### Rule
+**Log warnings when expected fields are missing.**
+
+```typescript
+// Frontend API client with logging
+const ordersData = ordersRes.status === 'fulfilled' ? ordersRes.value.data : {};
+
+// Log missing expected fields
+if (!ordersData.total_customers && ordersData.total_customers !== 0) {
+  console.warn('API Response missing expected field: total_customers', ordersData);
+}
+
+return {
+  total_orders: ordersData.total_orders ?? 0,
+  total_customers: ordersData.total_customers ?? 0,
+};
+```
+
+---
+
+## Rule 10: Testing Before Deployment
+
+### Mandatory Pre-Deployment Tests
+
+For EVERY change, test these in order:
+
+```bash
+# 1. Backend Schema/Service Changes
+cd "/Users/mantosh/Desktop/Consumer durable 2"
+python3 -c "
+from app.schemas.YOUR_SCHEMA import YourResponse
+from app.services.your_service import YourService
+
+# Test schema can serialize all service fields
+service_data = {'field1': 'value1', 'field2': 'value2'}
+response = YourResponse(**service_data)
+print('Schema test passed:', response.model_dump())
+"
+
+# 2. Frontend Build
+cd frontend && pnpm build
+
+# 3. Local Server Test
+# Terminal 1:
+DATABASE_URL='postgresql+psycopg://...' python3 -m uvicorn app.main:app --port 8000
+
+# Terminal 2:
+cd frontend && NEXT_PUBLIC_API_URL=http://localhost:8000 pnpm dev
+
+# 4. Test API endpoint directly
+curl -s http://localhost:8000/api/v1/your-endpoint | python3 -m json.tool
+
+# 5. Verify frontend page loads
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/dashboard/your-page
+```
+
+---
+
+## Quick Reference: Common Mistakes to Avoid
+
+| Mistake | Impact | Prevention |
+|---------|--------|------------|
+| Validator on Base schema | 500 on all GETs | Only validate on Create/Update |
+| Missing field in Response schema | Field silently dropped | Match schema to service return |
+| Field name mismatch (total vs total_orders) | Frontend shows 0 | Use exact field names |
+| Status case mismatch (paid vs PAID) | Logic failures | Always UPPERCASE, compare upper() |
+| UUID not converted to string | Serialization error | Use str() or let Pydantic handle |
+| Alias in wrong direction | API confusion | Document aliases, minimize use |
+| Transform fields in frontend | Hidden bugs | Use backend names directly |
+
+---
+
+## Field Naming Quick Reference
+
+### Backend → Frontend Mapping
+```
+Backend Service    → Pydantic Schema    → Frontend Type
+----------------   ----------------     ----------------
+total_orders       total_orders         total_orders      ✓ SAME
+total_customers    total_customers      total_customers   ✓ SAME
+total_revenue      total_revenue        total_revenue     ✓ SAME
+
+# If any layer differs, FIX IT at the source (backend)
+```
 
 ---
 
