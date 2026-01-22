@@ -229,7 +229,6 @@ class JournalEntryLineBase(BaseModel):
     debit_amount: Decimal = Field(Decimal("0"), ge=0, alias="debit")
     credit_amount: Decimal = Field(Decimal("0"), ge=0, alias="credit")
     cost_center_id: Optional[UUID] = None
-    project_id: Optional[UUID] = None
 
 
 class JournalEntryLineCreate(JournalEntryLineBase):

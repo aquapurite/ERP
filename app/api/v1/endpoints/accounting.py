@@ -1128,7 +1128,6 @@ async def create_journal_entry(
             "debit_amount": line.debit_amount,
             "credit_amount": line.credit_amount,
             "cost_center_id": line.cost_center_id,
-            "project_id": None,
             "line_number": line.line_number,
             "account_code": line.account.account_code if line.account else None,
             "account_name": line.account.account_name if line.account else None,
@@ -1314,7 +1313,6 @@ async def get_journal_entry(
             "debit_amount": line.debit_amount,
             "credit_amount": line.credit_amount,
             "cost_center_id": line.cost_center_id,
-            "project_id": None,  # JournalEntryLine model doesn't have project_id
         })
 
     return {
