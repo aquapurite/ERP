@@ -1,4 +1,5 @@
 """Stock Adjustments API endpoints."""
+import logging
 from typing import Optional
 from uuid import UUID, uuid4
 from datetime import datetime, date, timezone
@@ -9,6 +10,8 @@ from sqlalchemy import select, func, desc, and_, or_
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, get_current_user
+
+logger = logging.getLogger(__name__)
 from app.models.user import User
 from app.models.stock_adjustment import StockAdjustment, StockAdjustmentItem, InventoryAudit
 from app.models.warehouse import Warehouse
@@ -535,6 +538,41 @@ async def approve_adjustment(
     adjustment.completed_at = datetime.now(timezone.utc)
 
     await db.commit()
+
+    # ============ ACCOUNTING INTEGRATION ============
+    # Create journal entry for inventory adjustment
+    try:
+        from app.services.auto_journal_service import AutoJournalService, AutoJournalError
+        from decimal import Decimal
+
+        auto_journal = AutoJournalService(db)
+
+        # Calculate total adjustment value
+        total_value = Decimal("0")
+        for item in adjustment.items:
+            item_value = abs(item.adjustment_quantity) * (item.unit_cost or Decimal("0"))
+            total_value += item_value
+
+        if total_value > 0:
+            # Determine if positive or negative overall adjustment
+            total_qty = sum(item.adjustment_quantity for item in adjustment.items)
+            adjustment_type = "POSITIVE" if total_qty > 0 else "NEGATIVE"
+
+            await auto_journal.generate_for_stock_adjustment(
+                adjustment_id=adjustment.id,
+                adjustment_number=adjustment.adjustment_number,
+                adjustment_type=adjustment_type,
+                total_value=total_value,
+                reason=adjustment.reason or "Stock adjustment",
+                user_id=current_user.id,
+                auto_post=True,
+            )
+            await db.commit()
+            logger.info(f"Accounting entry created for stock adjustment {adjustment.adjustment_number}")
+    except AutoJournalError as e:
+        logger.warning(f"Failed to create accounting entry for adjustment {adjustment.adjustment_number}: {e.message}")
+    except Exception as e:
+        logger.warning(f"Unexpected error creating accounting entry for adjustment: {str(e)}")
 
     return {
         "message": "Adjustment approved and inventory updated",

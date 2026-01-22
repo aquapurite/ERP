@@ -3,6 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from math import ceil
 import uuid
+import logging
 
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.orm import selectinload
@@ -15,6 +16,8 @@ from app.models.order import (
 )
 from app.models.product import Product, ProductVariant
 from app.schemas.order import OrderCreate, OrderUpdate, OrderItemCreate
+
+logger = logging.getLogger(__name__)
 
 
 class OrderService:
@@ -458,9 +461,10 @@ class OrderService:
         transaction_id: Optional[str] = None,
         gateway: Optional[str] = None,
         reference_number: Optional[str] = None,
-        notes: Optional[str] = None
+        notes: Optional[str] = None,
+        user_id: Optional[uuid.UUID] = None
     ) -> Payment:
-        """Add a payment to an order."""
+        """Add a payment to an order and create accounting entry."""
         order = await self.get_order_by_id(order_id)
         if not order:
             raise ValueError("Order not found")
@@ -469,7 +473,7 @@ class OrderService:
             order_id=order_id,
             amount=amount,
             method=method,
-            status=PaymentStatus.CAPTURED,
+            status="CAPTURED",  # Use string directly, not enum.value
             transaction_id=transaction_id,
             gateway=gateway,
             reference_number=reference_number,
@@ -481,12 +485,40 @@ class OrderService:
         # Update order payment status
         order.amount_paid += amount
         if order.amount_paid >= order.total_amount:
-            order.payment_status = PaymentStatus.PAID.value
+            order.payment_status = "PAID"  # Use string directly
         elif order.amount_paid > 0:
-            order.payment_status = PaymentStatus.PARTIALLY_PAID.value
+            order.payment_status = "PARTIALLY_PAID"  # Use string directly
 
         await self.db.commit()
         await self.db.refresh(payment)
+
+        # ============ ACCOUNTING INTEGRATION ============
+        # Create journal entry: DR Bank/Cash, CR Accounts Receivable
+        try:
+            from app.services.auto_journal_service import AutoJournalService, AutoJournalError
+            auto_journal = AutoJournalService(self.db)
+
+            # Determine payment account based on method
+            # CASH methods go to Cash account, others to Bank
+            payment_method_str = method if isinstance(method, str) else method.value
+            is_cash = payment_method_str.upper() in ["CASH", "COD"]
+
+            await auto_journal.generate_for_order_payment(
+                order_id=order_id,
+                amount=amount,
+                payment_method=payment_method_str,
+                reference_number=reference_number or transaction_id or str(payment.id),
+                user_id=user_id,
+                auto_post=True,  # Auto-post to GL immediately
+                is_cash=is_cash,
+            )
+            logger.info(f"Accounting entry created for payment on order {order.order_number}")
+        except AutoJournalError as e:
+            # Log but don't fail the payment - accounting can be reconciled later
+            logger.warning(f"Failed to create accounting entry for order {order.order_number}: {e.message}")
+        except Exception as e:
+            logger.warning(f"Unexpected error creating accounting entry for order {order.order_number}: {str(e)}")
+
         return payment
 
     async def generate_invoice(self, order_id: uuid.UUID) -> Invoice:

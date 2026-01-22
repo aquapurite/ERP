@@ -476,6 +476,8 @@ class InvoiceService:
         await self.db.flush()
 
         # 10. Post accounting entry
+        # CRITICAL: This creates the GL entries that flow to P&L
+        accounting_posted = False
         try:
             from app.services.accounting_service import AccountingService
             accounting = AccountingService(self.db)
@@ -490,8 +492,21 @@ class InvoiceService:
                 is_interstate=is_interstate,
                 product_type="purifier",
             )
+            accounting_posted = True
+            logger.info(f"Accounting entry posted for invoice {invoice.invoice_number}")
         except Exception as e:
-            logger.warning(f"Failed to post accounting entry for invoice {invoice.invoice_number}: {e}")
+            # Log as ERROR (not warning) since this affects financial reporting
+            logger.error(
+                f"ACCOUNTING FAILURE: Failed to post GL entry for invoice {invoice.invoice_number}. "
+                f"Amount: {grand_total}, Customer: {invoice.customer_name}. "
+                f"Error: {str(e)}. "
+                f"ACTION REQUIRED: Manual journal entry needed for reconciliation."
+            )
+            # Store accounting status in invoice notes for tracking
+            if invoice.internal_notes:
+                invoice.internal_notes += f"\n[ACCOUNTING ERROR] GL posting failed: {str(e)}"
+            else:
+                invoice.internal_notes = f"[ACCOUNTING ERROR] GL posting failed: {str(e)}"
 
         logger.info(
             f"Auto-generated invoice {invoice.invoice_number} for order {order.order_number} "

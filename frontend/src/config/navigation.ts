@@ -250,58 +250,60 @@ export const navigation: NavItem[] = [
   },
 
   // ==================== 10. FINANCE & ACCOUNTING ====================
+  // Organized by business flow: Receivables → Payables → Banking → Core Accounting → Reports → Tax → Assets
   {
     title: 'Finance',
     icon: DollarSign,
     permissions: ['FINANCE_VIEW', 'ACCOUNTS_VIEW', 'REPORTS_VIEW'],
     children: [
-      // Core Accounting
+      // -------- RECEIVABLES (Order-to-Cash) --------
+      // Flow: Order → Ship → Invoice → Receipt → AR
+      { title: '── Receivables ──', href: '#', permissions: ['FINANCE_VIEW'] },
+      { title: 'Sales Invoices', href: '/dashboard/billing/invoices', icon: Receipt, permissions: ['FINANCE_VIEW'] },
+      { title: 'Credit Notes', href: '/dashboard/billing/credit-notes', icon: FileOutput, permissions: ['FINANCE_VIEW'] },
+      { title: 'Payment Receipts', href: '/dashboard/billing/receipts', icon: Banknote, permissions: ['FINANCE_VIEW'] },
+
+      // -------- PAYABLES (Procure-to-Pay) --------
+      // Flow: PO → GRN → Vendor Invoice → Payment → AP
+      { title: '── Payables ──', href: '#', permissions: ['FINANCE_VIEW'] },
+      { title: 'Vendor Invoices', href: '/dashboard/procurement/vendor-invoices', icon: FileInput, permissions: ['PROCUREMENT_VIEW'] },
+      { title: 'Vendor Payments', href: '/dashboard/finance/vendor-payments', icon: CreditCard, permissions: ['FINANCE_VIEW'] },
+
+      // -------- BANKING & CASH --------
+      { title: '── Banking ──', href: '#', permissions: ['BANK_RECON_VIEW'] },
+      { title: 'Bank Reconciliation', href: '/dashboard/finance/bank-reconciliation', icon: Landmark, permissions: ['BANK_RECON_VIEW'] },
+
+      // -------- CORE ACCOUNTING (Double-Entry) --------
+      // Flow: Transaction → Journal Entry → General Ledger
+      { title: '── Accounting ──', href: '#', permissions: ['ACCOUNTS_VIEW'] },
       { title: 'Chart of Accounts', href: '/dashboard/finance/chart-of-accounts', icon: FolderTree, permissions: ['ACCOUNTS_VIEW'] },
       { title: 'Journal Entries', href: '/dashboard/finance/journal-entries', icon: FileText, permissions: ['JOURNALS_VIEW'] },
       { title: 'Auto Journal', href: '/dashboard/finance/auto-journal', icon: Cog, permissions: ['JOURNALS_VIEW'] },
-      // Accounting Vouchers
-      {
-        title: 'Vouchers',
-        icon: Receipt,
-        permissions: ['VOUCHERS_VIEW'],
-        children: [
-          { title: 'All Vouchers', href: '/dashboard/finance/vouchers', permissions: ['VOUCHERS_VIEW'] },
-          { title: 'Contra', href: '/dashboard/finance/vouchers?type=CONTRA', permissions: ['VOUCHERS_VIEW'] },
-          { title: 'Credit Note', href: '/dashboard/finance/vouchers?type=CREDIT_NOTE', permissions: ['VOUCHERS_VIEW'] },
-          { title: 'Debit Note', href: '/dashboard/finance/vouchers?type=DEBIT_NOTE', permissions: ['VOUCHERS_VIEW'] },
-          { title: 'GST Sale', href: '/dashboard/finance/vouchers?type=GST_SALE', permissions: ['VOUCHERS_VIEW'] },
-          { title: 'Journal', href: '/dashboard/finance/vouchers?type=JOURNAL', permissions: ['VOUCHERS_VIEW'] },
-          { title: 'Payment', href: '/dashboard/finance/vouchers?type=PAYMENT', permissions: ['VOUCHERS_VIEW'] },
-          { title: 'Purchase', href: '/dashboard/finance/vouchers?type=PURCHASE', permissions: ['VOUCHERS_VIEW'] },
-          { title: 'Purchase RCM', href: '/dashboard/finance/vouchers?type=PURCHASE_RCM', permissions: ['VOUCHERS_VIEW'] },
-          { title: 'RCM Payment', href: '/dashboard/finance/vouchers?type=RCM_PAYMENT', permissions: ['VOUCHERS_VIEW'] },
-          { title: 'Receipt', href: '/dashboard/finance/vouchers?type=RECEIPT', permissions: ['VOUCHERS_VIEW'] },
-          { title: 'Sales', href: '/dashboard/finance/vouchers?type=SALES', permissions: ['VOUCHERS_VIEW'] },
-        ],
-      },
       { title: 'General Ledger', href: '/dashboard/finance/general-ledger', icon: ScrollText, permissions: ['ACCOUNTS_VIEW'] },
       { title: 'Cost Centers', href: '/dashboard/finance/cost-centers', icon: Building, permissions: ['COST_CENTERS_VIEW'] },
       { title: 'Financial Periods', href: '/dashboard/finance/periods', icon: Calendar, permissions: ['PERIODS_VIEW'] },
-      // Billing & AR
-      { title: 'Invoices', href: '/dashboard/billing/invoices', icon: Receipt, permissions: ['FINANCE_VIEW'] },
-      { title: 'Credit Notes', href: '/dashboard/billing/credit-notes', icon: FileOutput, permissions: ['FINANCE_VIEW'] },
-      { title: 'Receipts', href: '/dashboard/billing/receipts', icon: Banknote, permissions: ['FINANCE_VIEW'] },
-      // Banking
-      { title: 'Bank Reconciliation', href: '/dashboard/finance/bank-reconciliation', icon: Landmark, permissions: ['BANK_RECON_VIEW'] },
-      // Assets
-      { title: 'Fixed Assets', href: '/dashboard/finance/fixed-assets', icon: Building2, permissions: ['ASSETS_VIEW'] },
-      // Tax Compliance
-      { title: 'TDS Management', href: '/dashboard/finance/tds', icon: IndianRupee, permissions: ['TDS_VIEW'] },
-      { title: 'GSTR-1', href: '/dashboard/finance/gstr1', icon: FileCheck, permissions: ['GST_VIEW'] },
-      { title: 'GSTR-2A', href: '/dashboard/finance/gstr2a', permissions: ['GST_VIEW'] },
-      { title: 'GSTR-3B', href: '/dashboard/finance/gstr3b', permissions: ['GST_VIEW'] },
-      { title: 'HSN Summary', href: '/dashboard/finance/hsn-summary', permissions: ['GST_VIEW'] },
-      // Reports
+
+      // -------- FINANCIAL REPORTS --------
+      // Flow: GL → Trial Balance → Financial Statements
+      { title: '── Reports ──', href: '#', permissions: ['REPORTS_VIEW'] },
       { title: 'Trial Balance', href: '/dashboard/reports/trial-balance', icon: BarChart3, permissions: ['REPORTS_VIEW'] },
       { title: 'Profit & Loss', href: '/dashboard/reports/profit-loss', icon: TrendingUp, permissions: ['REPORTS_VIEW'] },
       { title: 'Balance Sheet', href: '/dashboard/reports/balance-sheet', icon: Scale, permissions: ['REPORTS_VIEW'] },
       { title: 'Channel P&L', href: '/dashboard/reports/channel-pl', icon: Network, permissions: ['REPORTS_VIEW'] },
       { title: 'Channel Balance Sheet', href: '/dashboard/reports/channel-balance-sheet', icon: Landmark, permissions: ['REPORTS_VIEW'] },
+
+      // -------- TAX COMPLIANCE (GST/TDS) --------
+      { title: '── Tax Compliance ──', href: '#', permissions: ['GST_VIEW'] },
+      { title: 'GSTR-1 (Outward)', href: '/dashboard/finance/gstr1', icon: FileCheck, permissions: ['GST_VIEW'] },
+      { title: 'GSTR-2A (Inward)', href: '/dashboard/finance/gstr2a', icon: FileCheck, permissions: ['GST_VIEW'] },
+      { title: 'GSTR-3B (Summary)', href: '/dashboard/finance/gstr3b', icon: FileCheck, permissions: ['GST_VIEW'] },
+      { title: 'HSN Summary', href: '/dashboard/finance/hsn-summary', icon: ClipboardList, permissions: ['GST_VIEW'] },
+      { title: 'TDS Management', href: '/dashboard/finance/tds', icon: IndianRupee, permissions: ['TDS_VIEW'] },
+      { title: 'E-Way Bills', href: '/dashboard/billing/eway-bills', icon: Truck, permissions: ['FINANCE_VIEW'] },
+
+      // -------- ASSETS --------
+      { title: '── Assets ──', href: '#', permissions: ['ASSETS_VIEW'] },
+      { title: 'Fixed Assets', href: '/dashboard/finance/fixed-assets', icon: Building2, permissions: ['ASSETS_VIEW'] },
     ],
   },
 

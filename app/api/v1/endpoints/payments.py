@@ -527,6 +527,30 @@ async def _handle_payment_captured(db: DB, payload: dict):
                 # Don't fail the webhook for notification errors
 
     await db.commit()
+
+    # ============ ACCOUNTING INTEGRATION ============
+    # Create journal entry: DR Bank, CR Accounts Receivable
+    if order:
+        try:
+            from app.services.auto_journal_service import AutoJournalService, AutoJournalError
+            from decimal import Decimal
+
+            auto_journal = AutoJournalService(db)
+            await auto_journal.generate_for_order_payment(
+                order_id=order.id,
+                amount=Decimal(str(amount)),
+                payment_method="RAZORPAY",
+                reference_number=razorpay_payment_id,
+                user_id=None,  # System-generated
+                auto_post=True,
+                is_cash=False,  # Razorpay is always bank
+            )
+            await db.commit()
+            logger.info(f"Accounting entry created for Razorpay payment {razorpay_payment_id}")
+        except AutoJournalError as e:
+            logger.warning(f"Failed to create accounting entry for payment {razorpay_payment_id}: {e.message}")
+        except Exception as e:
+            logger.warning(f"Unexpected error creating accounting entry for payment {razorpay_payment_id}: {str(e)}")
     logger.info(f"Order updated for payment {razorpay_payment_id}")
 
 

@@ -483,17 +483,6 @@ from app.models.cms import (
     CMSPageStatus,
     CMSAnnouncementType,
 )
-# Vouchers (Unified Voucher System)
-from app.models.voucher import (
-    Voucher,
-    VoucherLine,
-    VoucherAllocation,
-    VoucherType,
-    VoucherStatus as VoucherStatusEnum,
-    PartyType as VoucherPartyType,
-    PaymentMode as VoucherPaymentMode,
-    AllocationSourceType,
-)
 
 __all__ = [
     # Access Control
@@ -888,13 +877,4 @@ __all__ = [
     "CMSSeo",
     "CMSPageStatus",
     "CMSAnnouncementType",
-    # Vouchers (Unified Voucher System)
-    "Voucher",
-    "VoucherLine",
-    "VoucherAllocation",
-    "VoucherType",
-    "VoucherStatusEnum",
-    "VoucherPartyType",
-    "VoucherPaymentMode",
-    "AllocationSourceType",
 ]

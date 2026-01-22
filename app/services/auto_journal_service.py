@@ -494,6 +494,140 @@ class AutoJournalService:
 
         return journal
 
+    async def generate_for_order_payment(
+        self,
+        order_id: UUID,
+        amount: Decimal,
+        payment_method: str,
+        reference_number: str,
+        user_id: Optional[UUID] = None,
+        auto_post: bool = True,
+        is_cash: bool = False
+    ) -> JournalEntry:
+        """
+        Generate journal entry for order payment.
+
+        Debit: Cash/Bank (based on payment method)
+        Credit: Accounts Receivable
+
+        Args:
+            order_id: ID of the order
+            amount: Payment amount
+            payment_method: Payment method (CASH, UPI, CARD, etc.)
+            reference_number: Transaction reference
+            user_id: User creating the journal entry
+            auto_post: If True, automatically post the journal entry
+            is_cash: If True, use Cash account; else use Bank account
+        """
+        from app.models.order import Order
+
+        result = await self.db.execute(
+            select(Order).where(Order.id == order_id)
+        )
+        order = result.scalar_one_or_none()
+
+        if not order:
+            raise AutoJournalError("Order not found")
+
+        # Check if journal entry already exists for this payment reference
+        existing = await self.db.execute(
+            select(JournalEntry).where(
+                and_(
+                    JournalEntry.source_type == "ORDER_PAYMENT",
+                    JournalEntry.source_id == order_id,
+                    JournalEntry.narration.contains(reference_number)
+                )
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise AutoJournalError("Journal entry already exists for this payment")
+
+        # Determine cash/bank account
+        if is_cash or payment_method.upper() in ["CASH", "COD"]:
+            debit_account = await self.get_or_create_account(
+                self.DEFAULT_ACCOUNTS["CASH"],
+                "Cash in Hand",
+                "ASSET",
+                "CASH"
+            )
+        else:
+            debit_account = await self.get_or_create_account(
+                self.DEFAULT_ACCOUNTS["BANK"],
+                "Bank Account",
+                "ASSET",
+                "BANK"
+            )
+
+        # Get AR account
+        credit_account = await self.get_or_create_account(
+            self.DEFAULT_ACCOUNTS["ACCOUNTS_RECEIVABLE"],
+            "Accounts Receivable",
+            "ASSET",
+            "ACCOUNTS_RECEIVABLE"
+        )
+
+        # Get or create financial period
+        period = await self._get_or_create_period()
+
+        # Create journal entry
+        entry_number = await self._generate_entry_number()
+        narration = f"Payment received for Order {order.order_number} via {payment_method}. Ref: {reference_number}"
+
+        journal = JournalEntry(
+            entry_number=entry_number,
+            entry_date=date.today(),
+            entry_type="RECEIPT",
+            source_type="ORDER_PAYMENT",
+            source_id=order_id,
+            source_number=order.order_number,
+            period_id=period.id,
+            narration=narration,
+            total_debit=amount,
+            total_credit=amount,
+            status="DRAFT",
+            is_auto_generated=True,
+            created_by=user_id,
+        )
+        self.db.add(journal)
+        await self.db.flush()
+
+        # Create journal lines
+        lines = []
+
+        # Debit: Cash/Bank
+        debit_line = JournalEntryLine(
+            journal_entry_id=journal.id,
+            account_id=debit_account.id,
+            debit_amount=amount,
+            credit_amount=Decimal("0"),
+            description=f"Payment received - {order.order_number}",
+        )
+        self.db.add(debit_line)
+        lines.append((debit_line.id, debit_line))
+
+        # Credit: Accounts Receivable
+        credit_line = JournalEntryLine(
+            journal_entry_id=journal.id,
+            account_id=credit_account.id,
+            debit_amount=Decimal("0"),
+            credit_amount=amount,
+            description=f"AR cleared - {order.order_number}",
+        )
+        self.db.add(credit_line)
+        lines.append((credit_line.id, credit_line))
+
+        await self.db.flush()
+
+        # Post to GL if auto_post
+        if auto_post:
+            await self._post_journal_entry(journal, lines)
+            journal.status = "POSTED"
+            journal.posted_at = datetime.now(timezone.utc)
+
+        await self.db.flush()
+
+        return journal
+
     async def generate_for_purchase_bill(
         self,
         purchase_invoice_id: UUID,
@@ -657,6 +791,150 @@ class AutoJournalService:
         # Auto-post if requested
         if auto_post:
             journal.status = JournalEntryStatus.POSTED.value
+            journal.posted_at = datetime.now(timezone.utc)
+
+        await self.db.flush()
+
+        return journal
+
+    async def generate_for_stock_adjustment(
+        self,
+        adjustment_id: UUID,
+        adjustment_number: str,
+        adjustment_type: str,  # "POSITIVE" or "NEGATIVE"
+        total_value: Decimal,
+        reason: str,
+        user_id: Optional[UUID] = None,
+        auto_post: bool = True
+    ) -> JournalEntry:
+        """
+        Generate journal entry for stock adjustment.
+
+        For POSITIVE adjustment (stock increase):
+            Debit: Inventory
+            Credit: Inventory Adjustment (Income/Gain)
+
+        For NEGATIVE adjustment (stock decrease):
+            Debit: Inventory Adjustment (Expense/Loss)
+            Credit: Inventory
+
+        Args:
+            adjustment_id: ID of the stock adjustment
+            adjustment_number: Adjustment reference number
+            adjustment_type: "POSITIVE" or "NEGATIVE"
+            total_value: Total value of the adjustment
+            reason: Reason for adjustment
+            user_id: User creating the journal entry
+            auto_post: If True, automatically post the journal entry
+        """
+        # Check if journal entry already exists
+        existing = await self.db.execute(
+            select(JournalEntry).where(
+                and_(
+                    JournalEntry.source_type == "STOCK_ADJUSTMENT",
+                    JournalEntry.source_id == adjustment_id
+                )
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise AutoJournalError("Journal entry already exists for this adjustment")
+
+        # Get inventory account
+        inventory_account = await self.get_or_create_account(
+            self.DEFAULT_ACCOUNTS.get("INVENTORY", "1200"),
+            "Inventory",
+            "ASSET",
+            "INVENTORY"
+        )
+
+        # Get adjustment account (use expense for negative, income for positive)
+        if adjustment_type == "NEGATIVE":
+            adjustment_account = await self.get_or_create_account(
+                "5200",  # Inventory Loss/Write-off
+                "Inventory Write-off",
+                "EXPENSE",
+                "INVENTORY_LOSS"
+            )
+        else:
+            adjustment_account = await self.get_or_create_account(
+                "4200",  # Inventory Gain
+                "Inventory Gain",
+                "REVENUE",
+                "INVENTORY_GAIN"
+            )
+
+        # Get or create financial period
+        period = await self._get_or_create_period()
+
+        # Create journal entry
+        entry_number = await self._generate_entry_number()
+        narration = f"Stock adjustment {adjustment_number}: {reason}"
+
+        journal = JournalEntry(
+            entry_number=entry_number,
+            entry_date=date.today(),
+            entry_type="ADJUSTMENT",
+            source_type="STOCK_ADJUSTMENT",
+            source_id=adjustment_id,
+            source_number=adjustment_number,
+            period_id=period.id,
+            narration=narration,
+            total_debit=total_value,
+            total_credit=total_value,
+            status="DRAFT",
+            is_auto_generated=True,
+            created_by=user_id,
+        )
+        self.db.add(journal)
+        await self.db.flush()
+
+        # Create journal lines
+        lines = []
+
+        if adjustment_type == "NEGATIVE":
+            # Stock decrease: DR Expense, CR Inventory
+            debit_line = JournalEntryLine(
+                journal_entry_id=journal.id,
+                account_id=adjustment_account.id,
+                debit_amount=total_value,
+                credit_amount=Decimal("0"),
+                description=f"Inventory write-off - {adjustment_number}",
+            )
+            credit_line = JournalEntryLine(
+                journal_entry_id=journal.id,
+                account_id=inventory_account.id,
+                debit_amount=Decimal("0"),
+                credit_amount=total_value,
+                description=f"Inventory reduced - {adjustment_number}",
+            )
+        else:
+            # Stock increase: DR Inventory, CR Income
+            debit_line = JournalEntryLine(
+                journal_entry_id=journal.id,
+                account_id=inventory_account.id,
+                debit_amount=total_value,
+                credit_amount=Decimal("0"),
+                description=f"Inventory increased - {adjustment_number}",
+            )
+            credit_line = JournalEntryLine(
+                journal_entry_id=journal.id,
+                account_id=adjustment_account.id,
+                debit_amount=Decimal("0"),
+                credit_amount=total_value,
+                description=f"Inventory gain - {adjustment_number}",
+            )
+
+        self.db.add(debit_line)
+        self.db.add(credit_line)
+        lines.append((debit_line.id, debit_line))
+        lines.append((credit_line.id, credit_line))
+
+        await self.db.flush()
+
+        # Post to GL if auto_post
+        if auto_post:
+            await self._post_journal_entry(journal, lines)
+            journal.status = "POSTED"
             journal.posted_at = datetime.now(timezone.utc)
 
         await self.db.flush()
