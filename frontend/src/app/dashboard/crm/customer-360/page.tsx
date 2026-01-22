@@ -22,17 +22,32 @@ import { formatDate, formatCurrency } from '@/lib/utils';
 interface Customer360Data {
   customer: {
     id: string;
-    name: string;
+    name?: string;
+    full_name?: string;
     email?: string;
     phone: string;
     alternate_phone?: string;
     gst_number?: string;
-    customer_type: 'INDIVIDUAL' | 'BUSINESS';
-    tier: 'REGULAR' | 'SILVER' | 'GOLD' | 'PLATINUM';
-    total_orders: number;
-    total_spent: number;
-    loyalty_points: number;
+    customer_type: string;
+    tier?: 'REGULAR' | 'SILVER' | 'GOLD' | 'PLATINUM';
+    total_orders?: number;
+    total_spent?: number;
+    loyalty_points?: number;
     created_at: string;
+  };
+  stats?: {
+    total_orders: number;
+    total_order_value: number;
+    delivered_orders: number;
+    pending_orders: number;
+    total_installations: number;
+    completed_installations: number;
+    total_service_requests: number;
+    open_service_requests: number;
+    total_calls: number;
+    active_amc_contracts: number;
+    average_rating?: number;
+    customer_since_days: number;
   };
   addresses: Array<{
     id: string;
@@ -217,10 +232,10 @@ export default function Customer360Page() {
                     <User className="h-8 w-8 text-primary" />
                   </div>
                   <div>
-                    <CardTitle>{customer360.customer.name}</CardTitle>
+                    <CardTitle>{customer360.customer.name || customer360.customer.full_name}</CardTitle>
                     <div className="flex items-center gap-2 mt-1">
-                      <Badge className={tierColors[customer360.customer.tier]}>
-                        {customer360.customer.tier}
+                      <Badge className={tierColors[customer360.customer.tier || 'REGULAR']}>
+                        {customer360.customer.tier || 'REGULAR'}
                       </Badge>
                       <Badge variant="outline">
                         {customer360.customer.customer_type}
@@ -253,7 +268,7 @@ export default function Customer360Page() {
                 <Separator className="my-4" />
                 <div className="flex items-center gap-2 text-sm">
                   <Star className="h-4 w-4 text-yellow-500" />
-                  {customer360.customer.loyalty_points.toLocaleString()} loyalty points
+                  {(customer360.customer.loyalty_points || 0).toLocaleString()} loyalty points
                 </div>
               </CardContent>
             </Card>
@@ -267,12 +282,12 @@ export default function Customer360Page() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="p-4 bg-muted/50 rounded-lg text-center">
                     <ShoppingCart className="h-6 w-6 mx-auto mb-2 text-blue-600" />
-                    <div className="text-2xl font-bold">{customer360.customer.total_orders}</div>
+                    <div className="text-2xl font-bold">{customer360.stats?.total_orders || 0}</div>
                     <div className="text-xs text-muted-foreground">Total Orders</div>
                   </div>
                   <div className="p-4 bg-muted/50 rounded-lg text-center">
                     <TrendingUp className="h-6 w-6 mx-auto mb-2 text-green-600" />
-                    <div className="text-2xl font-bold">{formatCurrency(customer360.customer.total_spent)}</div>
+                    <div className="text-2xl font-bold">{formatCurrency(customer360.stats?.total_order_value || 0)}</div>
                     <div className="text-xs text-muted-foreground">Total Spent</div>
                   </div>
                   <div className="p-4 bg-muted/50 rounded-lg text-center">
