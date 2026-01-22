@@ -1,9 +1,10 @@
 from pydantic import BaseModel, Field, EmailStr, computed_field, ConfigDict
 from typing import Optional, List
 from datetime import datetime, date
+from decimal import Decimal
 import uuid
 
-from app.models.customer import CustomerType, CustomerSource, AddressType
+from app.models.customer import CustomerType, CustomerSource, AddressType, CustomerTransactionType
 
 
 # ==================== ADDRESS SCHEMAS ====================
@@ -431,3 +432,141 @@ class Customer360Response(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ==================== CUSTOMER LEDGER SCHEMAS ====================
+
+class CustomerLedgerBase(BaseModel):
+    """Base schema for CustomerLedger."""
+    customer_id: uuid.UUID
+    transaction_type: CustomerTransactionType
+    transaction_date: date
+    due_date: Optional[date] = None
+    reference_type: str = Field(..., max_length=50)
+    reference_number: str = Field(..., max_length=50)
+    reference_id: Optional[uuid.UUID] = None
+    order_id: Optional[uuid.UUID] = None
+    debit_amount: Decimal = Field(Decimal("0"), ge=0)
+    credit_amount: Decimal = Field(Decimal("0"), ge=0)
+    tax_amount: Decimal = Field(Decimal("0"), ge=0)
+    description: Optional[str] = Field(None, max_length=500)
+    notes: Optional[str] = None
+    channel_id: Optional[uuid.UUID] = None
+
+
+class CustomerLedgerCreate(CustomerLedgerBase):
+    """Schema for creating customer ledger entry."""
+    pass
+
+
+class CustomerLedgerResponse(BaseModel):
+    """Response schema for customer ledger entry."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    customer_id: uuid.UUID
+    transaction_type: str  # VARCHAR in DB
+    transaction_date: date
+    due_date: Optional[date] = None
+    reference_type: str
+    reference_number: str
+    reference_id: Optional[uuid.UUID] = None
+    order_id: Optional[uuid.UUID] = None
+    debit_amount: Decimal
+    credit_amount: Decimal
+    balance: Decimal
+    tax_amount: Decimal = Decimal("0")
+    is_settled: bool
+    settled_date: Optional[date] = None
+    description: Optional[str] = None
+    notes: Optional[str] = None
+    channel_id: Optional[uuid.UUID] = None
+    created_at: datetime
+
+    # Computed fields
+    @computed_field
+    @property
+    def is_overdue(self) -> bool:
+        """Check if overdue."""
+        if self.is_settled or not self.due_date:
+            return False
+        return date.today() > self.due_date
+
+    @computed_field
+    @property
+    def days_overdue(self) -> int:
+        """Days overdue."""
+        if not self.is_overdue:
+            return 0
+        return (date.today() - self.due_date).days
+
+
+class CustomerLedgerListResponse(BaseModel):
+    """Response for customer ledger list."""
+    items: List[CustomerLedgerResponse]
+    total: int
+    opening_balance: Decimal
+    total_debit: Decimal
+    total_credit: Decimal
+    closing_balance: Decimal
+
+
+class CustomerPaymentCreate(BaseModel):
+    """Schema for recording customer payment."""
+    customer_id: uuid.UUID
+    amount: Decimal = Field(..., gt=0)
+    payment_date: date
+    payment_mode: str = Field(..., description="CASH, CHEQUE, RTGS, NEFT, UPI, CARD, NET_BANKING")
+    reference_number: str = Field(..., max_length=50)
+    order_id: Optional[uuid.UUID] = None
+    invoice_id: Optional[uuid.UUID] = None
+    cheque_number: Optional[str] = None
+    cheque_date: Optional[date] = None
+    bank_name: Optional[str] = None
+    remarks: Optional[str] = None
+
+
+# ==================== AR AGING SCHEMAS ====================
+
+class ARAgingBucket(BaseModel):
+    """Single aging bucket."""
+    bucket: str  # CURRENT, 1_30, 31_60, 61_90, OVER_90
+    amount: Decimal
+    count: int
+
+
+class CustomerAgingResponse(BaseModel):
+    """Aging details for a single customer."""
+    customer_id: uuid.UUID
+    customer_code: str
+    customer_name: str
+    customer_type: str
+    total_outstanding: Decimal
+    current: Decimal = Decimal("0")
+    days_1_30: Decimal = Decimal("0")
+    days_31_60: Decimal = Decimal("0")
+    days_61_90: Decimal = Decimal("0")
+    over_90_days: Decimal = Decimal("0")
+    buckets: List[ARAgingBucket] = []
+
+
+class ARAgingReport(BaseModel):
+    """Complete AR Aging Report."""
+    as_of_date: date
+    total_outstanding: Decimal
+    total_current: Decimal
+    total_1_30: Decimal
+    total_31_60: Decimal
+    total_61_90: Decimal
+    total_over_90: Decimal
+    customers: List[CustomerAgingResponse]
+    summary_buckets: List[ARAgingBucket]
+
+
+class ARAgingSummary(BaseModel):
+    """Summary of AR Aging for dashboard."""
+    as_of_date: date
+    total_outstanding: Decimal
+    total_customers_with_outstanding: int
+    buckets: List[ARAgingBucket]
+    top_overdue_customers: List[CustomerAgingResponse] = []

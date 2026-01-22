@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime, date, timezone
+from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 
-from sqlalchemy import String, Boolean, DateTime, Date, ForeignKey, Text
+from sqlalchemy import String, Boolean, DateTime, Date, ForeignKey, Text, Numeric, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -250,3 +251,195 @@ class CustomerAddress(Base):
 
     def __repr__(self) -> str:
         return f"<CustomerAddress(type='{self.address_type}', city='{self.city}')>"
+
+
+class CustomerTransactionType(str, Enum):
+    """Customer transaction types for AR ledger."""
+    OPENING_BALANCE = "OPENING_BALANCE"
+    INVOICE = "INVOICE"               # Sales invoice (increases AR)
+    PAYMENT = "PAYMENT"               # Payment received (decreases AR)
+    CREDIT_NOTE = "CREDIT_NOTE"       # Credit note (decreases AR)
+    DEBIT_NOTE = "DEBIT_NOTE"         # Debit note (increases AR)
+    ADVANCE = "ADVANCE"               # Advance payment (decreases AR)
+    ADJUSTMENT = "ADJUSTMENT"         # Manual adjustment
+    REFUND = "REFUND"                 # Refund to customer (increases AR)
+    WRITE_OFF = "WRITE_OFF"           # Bad debt write-off
+
+
+class CustomerLedger(Base):
+    """
+    Customer ledger for Accounts Receivable tracking.
+    Maintains running balance for customer credit management.
+    """
+    __tablename__ = "customer_ledger"
+    __table_args__ = (
+        Index("ix_customer_ledger_date", "customer_id", "transaction_date"),
+        Index("ix_customer_ledger_due_date", "due_date"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("customers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Transaction Details
+    transaction_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="OPENING_BALANCE, INVOICE, PAYMENT, CREDIT_NOTE, DEBIT_NOTE, ADVANCE, ADJUSTMENT, REFUND, WRITE_OFF"
+    )
+    transaction_date: Mapped[date] = mapped_column(Date, nullable=False)
+    due_date: Mapped[Optional[date]] = mapped_column(
+        Date,
+        nullable=True,
+        comment="Due date for payment (for invoices)"
+    )
+
+    # Reference to source document
+    reference_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="INVOICE, PAYMENT_RECEIPT, CREDIT_NOTE, DEBIT_NOTE, ORDER, MANUAL"
+    )
+    reference_number: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="Invoice/Receipt/Order number"
+    )
+    reference_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        comment="UUID of the source document"
+    )
+
+    # Order reference (for linking to orders)
+    order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("orders.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+
+    # Amounts (Debit = Increases AR, Credit = Decreases AR)
+    debit_amount: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        default=Decimal("0"),
+        comment="Increases outstanding (invoices, debit notes)"
+    )
+    credit_amount: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        default=Decimal("0"),
+        comment="Decreases outstanding (payments, credit notes)"
+    )
+    balance: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        default=Decimal("0"),
+        comment="Running balance after this transaction"
+    )
+
+    # Tax amounts (for GST tracking)
+    tax_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        default=Decimal("0"),
+        comment="Tax portion of the amount"
+    )
+
+    # Settlement tracking
+    is_settled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        comment="True if invoice is fully paid"
+    )
+    settled_date: Mapped[Optional[date]] = mapped_column(
+        Date,
+        nullable=True,
+        comment="Date when fully settled"
+    )
+    settled_against_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        comment="Reference to payment/credit that settled this"
+    )
+
+    # Description and notes
+    description: Mapped[Optional[str]] = mapped_column(
+        String(500),
+        nullable=True
+    )
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Channel tracking (for channel-wise reporting)
+    channel_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sales_channels.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Created by
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+    # Relationships
+    customer: Mapped["Customer"] = relationship("Customer", foreign_keys=[customer_id])
+    order: Mapped[Optional["Order"]] = relationship("Order", foreign_keys=[order_id])
+
+    @property
+    def is_overdue(self) -> bool:
+        """Check if the invoice is overdue."""
+        if self.is_settled or not self.due_date:
+            return False
+        return date.today() > self.due_date
+
+    @property
+    def days_overdue(self) -> int:
+        """Get number of days overdue."""
+        if not self.is_overdue:
+            return 0
+        return (date.today() - self.due_date).days
+
+    @property
+    def aging_bucket(self) -> str:
+        """Get aging bucket for the transaction."""
+        if self.is_settled:
+            return "SETTLED"
+        if not self.due_date:
+            return "NOT_DUE"
+
+        days = (date.today() - self.due_date).days
+        if days <= 0:
+            return "CURRENT"
+        elif days <= 30:
+            return "1_30"
+        elif days <= 60:
+            return "31_60"
+        elif days <= 90:
+            return "61_90"
+        else:
+            return "OVER_90"
+
+    def __repr__(self) -> str:
+        return f"<CustomerLedger(customer_id='{self.customer_id}', ref='{self.reference_number}', balance={self.balance})>"
