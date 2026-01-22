@@ -4,6 +4,28 @@ import { PaginatedResponse, User, Role, Permission, Product, Category, Brand, Or
 // Export auth API
 export { authApi } from './auth';
 
+// Export vouchers API
+export { vouchersApi } from './vouchers';
+export type {
+  Voucher,
+  VoucherLine,
+  VoucherAllocation,
+  VoucherCreate,
+  VoucherUpdate,
+  VoucherListResponse,
+  VoucherWorkflowResponse,
+  VoucherTypeMetadata,
+  VoucherTypesResponse,
+  PartyAccountOption,
+  PartyAccountsResponse,
+  VoucherSummary,
+  VoucherListParams,
+  VoucherType,
+  VoucherStatus,
+  PartyType,
+  PaymentMode,
+} from './vouchers';
+
 // Users API
 export const usersApi = {
   list: async (params?: { page?: number; size?: number; search?: string; is_active?: boolean }) => {

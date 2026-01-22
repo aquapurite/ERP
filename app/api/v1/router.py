@@ -55,6 +55,7 @@ from app.api.v1.endpoints import (
     credentials,  # Encrypted Credentials Management
     auto_journal,  # Auto Journal Entry Generation
     tds,  # TDS Certificate Generation
+    vouchers,  # Unified Voucher System
     # Dealer/Distributor
     dealers,
     # Commission & Incentives
@@ -253,6 +254,11 @@ api_router.include_router(
     tds.router,
     prefix="/tds",
     tags=["TDS Certificates"]
+)
+api_router.include_router(
+    vouchers.router,
+    prefix="/vouchers",
+    tags=["Vouchers (Unified Voucher System)"]
 )
 
 # ==================== Dealer/Distributor ====================

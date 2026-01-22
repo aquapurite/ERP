@@ -259,6 +259,7 @@ export const navigation: NavItem[] = [
       { title: 'Chart of Accounts', href: '/dashboard/finance/chart-of-accounts', icon: FolderTree, permissions: ['ACCOUNTS_VIEW'] },
       { title: 'Journal Entries', href: '/dashboard/finance/journal-entries', icon: FileText, permissions: ['JOURNALS_VIEW'] },
       { title: 'Auto Journal', href: '/dashboard/finance/auto-journal', icon: Cog, permissions: ['JOURNALS_VIEW'] },
+      { title: 'Vouchers', href: '/dashboard/finance/vouchers', icon: Receipt, permissions: ['VOUCHERS_VIEW'] },
       { title: 'General Ledger', href: '/dashboard/finance/general-ledger', icon: ScrollText, permissions: ['ACCOUNTS_VIEW'] },
       { title: 'Cost Centers', href: '/dashboard/finance/cost-centers', icon: Building, permissions: ['COST_CENTERS_VIEW'] },
       { title: 'Financial Periods', href: '/dashboard/finance/periods', icon: Calendar, permissions: ['PERIODS_VIEW'] },
