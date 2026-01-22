@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import {
@@ -111,10 +112,20 @@ const emptyLine = (): VoucherLineCreate => ({
 
 export default function VouchersPage() {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const urlType = searchParams.get('type');
+
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<string>(urlType || 'all');
+
+  // Update filter when URL changes
+  useEffect(() => {
+    if (urlType) {
+      setTypeFilter(urlType);
+    }
+  }, [urlType]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
@@ -129,7 +140,7 @@ export default function VouchersPage() {
   const [reversalDate, setReversalDate] = useState(new Date().toISOString().split('T')[0]);
 
   const [formData, setFormData] = useState({
-    voucher_type: 'CONTRA' as VoucherType,
+    voucher_type: (urlType || 'CONTRA') as VoucherType,
     voucher_date: new Date().toISOString().split('T')[0],
     narration: '',
     payment_mode: '' as string,
@@ -138,6 +149,13 @@ export default function VouchersPage() {
     transaction_reference: '',
     lines: [emptyLine(), emptyLine()],
   });
+
+  // Update form voucher type when URL changes
+  useEffect(() => {
+    if (urlType && urlType !== 'all') {
+      setFormData(prev => ({ ...prev, voucher_type: urlType as VoucherType }));
+    }
+  }, [urlType]);
 
   // Queries
   const { data, isLoading } = useQuery({
