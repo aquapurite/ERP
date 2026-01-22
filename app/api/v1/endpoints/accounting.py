@@ -1,7 +1,7 @@
 """API endpoints for Accounting & Finance module."""
 from typing import Optional, List
 from uuid import UUID
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -2368,6 +2368,264 @@ async def get_profit_loss(
         "net_income": net_income,
         "channel_breakdown": channel_breakdown if not channel_id else None,
     }
+
+
+@router.get(
+    "/reports/cash-flow",
+    dependencies=[Depends(require_permissions("finance:view"))]
+)
+async def get_cash_flow_statement(
+    start_date: date,
+    end_date: date,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get Cash Flow Statement (Indirect Method).
+
+    Shows cash movements categorized into:
+    - Operating Activities: Cash from normal business operations
+    - Investing Activities: Cash from buying/selling assets
+    - Financing Activities: Cash from loans, equity, dividends
+
+    Uses the indirect method starting with Net Income and adjusting for non-cash items.
+    """
+    from app.models.banking import BankAccount, BankTransaction
+
+    # Date filter
+    date_filter = and_(
+        GeneralLedger.transaction_date >= start_date,
+        GeneralLedger.transaction_date <= end_date,
+    )
+
+    # ========== 1. OPERATING ACTIVITIES (Indirect Method) ==========
+
+    # Start with Net Income (Revenue - Expenses)
+    # Revenue
+    revenue_query = select(
+        func.sum(GeneralLedger.credit_amount - GeneralLedger.debit_amount)
+    ).select_from(GeneralLedger).join(
+        ChartOfAccount, GeneralLedger.account_id == ChartOfAccount.id
+    ).where(
+        and_(
+            ChartOfAccount.account_type == AccountType.REVENUE,
+            date_filter
+        )
+    )
+    revenue_result = await db.execute(revenue_query)
+    total_revenue = revenue_result.scalar() or Decimal("0")
+
+    # Expenses
+    expense_query = select(
+        func.sum(GeneralLedger.debit_amount - GeneralLedger.credit_amount)
+    ).select_from(GeneralLedger).join(
+        ChartOfAccount, GeneralLedger.account_id == ChartOfAccount.id
+    ).where(
+        and_(
+            ChartOfAccount.account_type == AccountType.EXPENSE,
+            date_filter
+        )
+    )
+    expense_result = await db.execute(expense_query)
+    total_expenses = expense_result.scalar() or Decimal("0")
+
+    net_income = total_revenue - total_expenses
+
+    # Adjustments for non-cash items
+    # 1. Depreciation (add back - it's a non-cash expense)
+    depreciation_query = select(
+        func.sum(GeneralLedger.debit_amount - GeneralLedger.credit_amount)
+    ).select_from(GeneralLedger).join(
+        ChartOfAccount, GeneralLedger.account_id == ChartOfAccount.id
+    ).where(
+        and_(
+            ChartOfAccount.sub_type == AccountSubType.DEPRECIATION,
+            date_filter
+        )
+    )
+    dep_result = await db.execute(depreciation_query)
+    depreciation = dep_result.scalar() or Decimal("0")
+
+    # 2. Change in Accounts Receivable
+    ar_start = await _get_account_balance_at_date(
+        db, AccountSubType.ACCOUNTS_RECEIVABLE, start_date - timedelta(days=1)
+    )
+    ar_end = await _get_account_balance_at_date(
+        db, AccountSubType.ACCOUNTS_RECEIVABLE, end_date
+    )
+    change_in_ar = ar_end - ar_start  # Increase = cash outflow (negative)
+
+    # 3. Change in Inventory
+    inv_start = await _get_account_balance_at_date(
+        db, AccountSubType.INVENTORY, start_date - timedelta(days=1)
+    )
+    inv_end = await _get_account_balance_at_date(
+        db, AccountSubType.INVENTORY, end_date
+    )
+    change_in_inventory = inv_end - inv_start  # Increase = cash outflow
+
+    # 4. Change in Accounts Payable
+    ap_start = await _get_account_balance_at_date(
+        db, AccountSubType.ACCOUNTS_PAYABLE, start_date - timedelta(days=1)
+    )
+    ap_end = await _get_account_balance_at_date(
+        db, AccountSubType.ACCOUNTS_PAYABLE, end_date
+    )
+    change_in_ap = ap_end - ap_start  # Increase = cash inflow (positive)
+
+    # 5. Change in Tax Payable
+    tax_start = await _get_account_balance_at_date(
+        db, AccountSubType.TAX_PAYABLE, start_date - timedelta(days=1)
+    )
+    tax_end = await _get_account_balance_at_date(
+        db, AccountSubType.TAX_PAYABLE, end_date
+    )
+    change_in_tax = tax_end - tax_start
+
+    operating_cash_flow = (
+        net_income
+        + depreciation  # Add back non-cash expense
+        - change_in_ar  # Increase in AR = cash used
+        - change_in_inventory  # Increase in inventory = cash used
+        + change_in_ap  # Increase in AP = cash provided
+        + change_in_tax  # Increase in tax payable = cash provided
+    )
+
+    # ========== 2. INVESTING ACTIVITIES ==========
+
+    # Change in Fixed Assets (purchases/sales)
+    fa_query = select(
+        func.sum(GeneralLedger.debit_amount - GeneralLedger.credit_amount)
+    ).select_from(GeneralLedger).join(
+        ChartOfAccount, GeneralLedger.account_id == ChartOfAccount.id
+    ).where(
+        and_(
+            ChartOfAccount.sub_type == AccountSubType.FIXED_ASSETS,
+            date_filter
+        )
+    )
+    fa_result = await db.execute(fa_query)
+    fixed_asset_change = fa_result.scalar() or Decimal("0")
+
+    # Investments
+    inv_query = select(
+        func.sum(GeneralLedger.debit_amount - GeneralLedger.credit_amount)
+    ).select_from(GeneralLedger).join(
+        ChartOfAccount, GeneralLedger.account_id == ChartOfAccount.id
+    ).where(
+        and_(
+            ChartOfAccount.sub_type == AccountSubType.INVESTMENTS,
+            date_filter
+        )
+    )
+    inv_result = await db.execute(inv_query)
+    investment_change = inv_result.scalar() or Decimal("0")
+
+    investing_cash_flow = -(fixed_asset_change + investment_change)  # Purchases are negative
+
+    # ========== 3. FINANCING ACTIVITIES ==========
+
+    # Change in Loans Payable
+    loan_start = await _get_account_balance_at_date(
+        db, AccountSubType.LOANS_PAYABLE, start_date - timedelta(days=1)
+    )
+    loan_end = await _get_account_balance_at_date(
+        db, AccountSubType.LOANS_PAYABLE, end_date
+    )
+    change_in_loans = loan_end - loan_start  # Increase = cash inflow
+
+    # Change in Equity/Capital
+    equity_query = select(
+        func.sum(GeneralLedger.credit_amount - GeneralLedger.debit_amount)
+    ).select_from(GeneralLedger).join(
+        ChartOfAccount, GeneralLedger.account_id == ChartOfAccount.id
+    ).where(
+        and_(
+            ChartOfAccount.account_type == AccountType.EQUITY,
+            date_filter
+        )
+    )
+    equity_result = await db.execute(equity_query)
+    equity_change = equity_result.scalar() or Decimal("0")
+
+    financing_cash_flow = change_in_loans + equity_change
+
+    # ========== 4. TOTAL & RECONCILIATION ==========
+
+    net_change_in_cash = operating_cash_flow + investing_cash_flow + financing_cash_flow
+
+    # Get actual cash balance change from bank accounts
+    cash_start = await _get_account_balance_at_date(
+        db, AccountSubType.CASH, start_date - timedelta(days=1)
+    )
+    bank_start = await _get_account_balance_at_date(
+        db, AccountSubType.BANK, start_date - timedelta(days=1)
+    )
+    cash_end = await _get_account_balance_at_date(
+        db, AccountSubType.CASH, end_date
+    )
+    bank_end = await _get_account_balance_at_date(
+        db, AccountSubType.BANK, end_date
+    )
+
+    beginning_cash = cash_start + bank_start
+    ending_cash = cash_end + bank_end
+    actual_cash_change = ending_cash - beginning_cash
+
+    return {
+        "period_start": start_date.isoformat(),
+        "period_end": end_date.isoformat(),
+
+        "operating_activities": {
+            "net_income": float(net_income),
+            "adjustments": {
+                "depreciation": float(depreciation),
+                "change_in_accounts_receivable": float(-change_in_ar),
+                "change_in_inventory": float(-change_in_inventory),
+                "change_in_accounts_payable": float(change_in_ap),
+                "change_in_taxes_payable": float(change_in_tax),
+            },
+            "total": float(operating_cash_flow),
+        },
+
+        "investing_activities": {
+            "fixed_asset_purchases": float(-fixed_asset_change) if fixed_asset_change > 0 else 0,
+            "fixed_asset_sales": float(-fixed_asset_change) if fixed_asset_change < 0 else 0,
+            "investment_changes": float(-investment_change),
+            "total": float(investing_cash_flow),
+        },
+
+        "financing_activities": {
+            "loan_proceeds": float(change_in_loans) if change_in_loans > 0 else 0,
+            "loan_repayments": float(-change_in_loans) if change_in_loans < 0 else 0,
+            "equity_changes": float(equity_change),
+            "total": float(financing_cash_flow),
+        },
+
+        "net_change_in_cash": float(net_change_in_cash),
+        "beginning_cash_balance": float(beginning_cash),
+        "ending_cash_balance": float(ending_cash),
+        "actual_cash_change": float(actual_cash_change),
+        "reconciliation_difference": float(net_change_in_cash - actual_cash_change),
+    }
+
+
+async def _get_account_balance_at_date(
+    db: AsyncSession,
+    sub_type: AccountSubType,
+    as_of_date: date
+) -> Decimal:
+    """Helper to get account balance for a subtype as of a date."""
+    query = select(
+        func.coalesce(
+            func.sum(ChartOfAccount.current_balance),
+            0
+        )
+    ).where(
+        ChartOfAccount.sub_type == sub_type
+    )
+    result = await db.execute(query)
+    return result.scalar() or Decimal("0")
 
 
 # ==================== Tax Configuration ====================
