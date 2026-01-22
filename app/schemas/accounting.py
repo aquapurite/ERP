@@ -3,7 +3,7 @@ from datetime import datetime, date
 from typing import Optional, List
 from decimal import Decimal
 from uuid import UUID
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator, field_serializer
 
 from app.models.accounting import (
     AccountType, AccountSubType,
@@ -247,6 +247,11 @@ class JournalEntryLineResponse(JournalEntryLineBase):
     account_code: Optional[str] = None
     account_name: Optional[str] = None
 
+    # Serialize Decimal as float for JSON (frontend expects numbers, not strings)
+    @field_serializer('debit_amount', 'credit_amount')
+    def serialize_decimal(self, value: Decimal) -> float:
+        return float(value) if value is not None else 0.0
+
 
 class JournalEntryBase(BaseModel):
     """Base schema for JournalEntry."""
@@ -331,6 +336,11 @@ class JournalEntryResponse(JournalEntryBase):
     lines: List[JournalEntryLineResponse] = []
     created_at: datetime
     updated_at: datetime
+
+    # Serialize Decimal as float for JSON (frontend expects numbers, not strings)
+    @field_serializer('total_debit', 'total_credit')
+    def serialize_decimal(self, value: Decimal) -> float:
+        return float(value) if value is not None else 0.0
 
 
 class JournalEntryListResponse(BaseModel):
