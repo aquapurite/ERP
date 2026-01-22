@@ -24,11 +24,17 @@ const moduleColors: Record<string, { bg: string; text: string; hover: string; gr
     hover: 'hover:bg-violet-50 dark:hover:bg-violet-900/20',
     gradient: 'from-violet-500 to-purple-600'
   },
-  'Sales & CRM': {
+  'Sales': {
     bg: 'bg-blue-100 dark:bg-blue-900/30',
     text: 'text-blue-600 dark:text-blue-400',
     hover: 'hover:bg-blue-50 dark:hover:bg-blue-900/20',
     gradient: 'from-blue-500 to-cyan-600'
+  },
+  'CRM': {
+    bg: 'bg-pink-100 dark:bg-pink-900/30',
+    text: 'text-pink-600 dark:text-pink-400',
+    hover: 'hover:bg-pink-50 dark:hover:bg-pink-900/20',
+    gradient: 'from-pink-500 to-rose-600'
   },
   'Procurement': {
     bg: 'bg-orange-100 dark:bg-orange-900/30',

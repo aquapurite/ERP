@@ -93,17 +93,19 @@ export interface NavItem {
  * Structure:
  * 1. Dashboard - Overview & KPIs
  * 2. Intelligence - AI & analytics (prominent placement for AI-first approach)
- * 3. Sales & CRM - Customer-facing operations
- * 4. Procurement - Vendor-facing operations (P2P)
- * 5. Inventory - Stock management
- * 6. Warehouse (WMS) - Physical warehouse operations
- * 7. Logistics - Shipping & fulfillment
- * 8. Planning (S&OP) - Demand forecasting & supply planning
- * 9. Finance - Accounting, billing, tax compliance
- * 10. Service - After-sales support
- * 11. Human Resources - Employee management
- * 12. Master Data - Products & configuration
- * 13. Administration - System settings
+ * 3. Sales - Order management & sales channels
+ * 4. CRM - Customer relationship management
+ * 5. Procurement - Vendor-facing operations (P2P)
+ * 6. Inventory - Stock management
+ * 7. Warehouse (WMS) - Physical warehouse operations
+ * 8. Logistics - Shipping & fulfillment
+ * 9. Planning (S&OP) - Demand forecasting & supply planning
+ * 10. Finance - Accounting, billing, tax compliance
+ * 11. Service - After-sales support
+ * 12. Human Resources - Employee management
+ * 13. Master Data - Products & configuration
+ * 14. D2C Content - CMS for storefront
+ * 15. Administration - System settings
  */
 
 export const navigation: NavItem[] = [
@@ -131,37 +133,43 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 3. SALES & CRM ====================
+  // ==================== 3. SALES ====================
   {
-    title: 'Sales & CRM',
+    title: 'Sales',
     icon: ShoppingCart,
-    permissions: ['ORDERS_VIEW', 'CRM_VIEW', 'MARKETING_VIEW'],
+    permissions: ['ORDERS_VIEW', 'MARKETING_VIEW'],
     children: [
       // Orders
       { title: 'All Orders', href: '/dashboard/orders', icon: ShoppingCart, permissions: ['ORDERS_VIEW'] },
       { title: 'New Order', href: '/dashboard/orders/new', icon: FileInput, permissions: ['ORDERS_CREATE'] },
-      // Customers
-      { title: 'Customers', href: '/dashboard/crm/customers', icon: UserCircle, permissions: ['CRM_VIEW'] },
-      { title: 'Customer 360', href: '/dashboard/crm/customer-360', icon: Target, permissions: ['CRM_VIEW'] },
-      // Leads & Pipeline
-      { title: 'Leads', href: '/dashboard/crm/leads', icon: UserPlus, permissions: ['CRM_VIEW'] },
       // Channels
       { title: 'Sales Channels', href: '/dashboard/channels', icon: Network, permissions: ['ORDERS_VIEW'] },
       { title: 'Marketplaces', href: '/dashboard/channels/marketplaces', icon: Store, permissions: ['ORDERS_VIEW'] },
       { title: 'Channel Pricing', href: '/dashboard/channels/pricing', permissions: ['ORDERS_VIEW'] },
       // Distribution Network
-      { title: 'Dealers', href: '/dashboard/distribution/dealers', icon: Handshake, permissions: ['CRM_VIEW'] },
-      { title: 'Franchisees', href: '/dashboard/distribution/franchisees', icon: Building2, permissions: ['CRM_VIEW'] },
-      { title: 'Pricing Tiers', href: '/dashboard/distribution/pricing-tiers', permissions: ['CRM_VIEW'] },
+      { title: 'Dealers', href: '/dashboard/distribution/dealers', icon: Handshake, permissions: ['ORDERS_VIEW'] },
+      { title: 'Franchisees', href: '/dashboard/distribution/franchisees', icon: Building2, permissions: ['ORDERS_VIEW'] },
+      { title: 'Pricing Tiers', href: '/dashboard/distribution/pricing-tiers', permissions: ['ORDERS_VIEW'] },
       // Promotions
       { title: 'Promotions', href: '/dashboard/marketing/promotions', icon: BadgePercent, permissions: ['MARKETING_VIEW'] },
       { title: 'Commissions', href: '/dashboard/marketing/commissions', icon: Banknote, permissions: ['MARKETING_VIEW'] },
-      // Support
+    ],
+  },
+
+  // ==================== 4. CRM ====================
+  {
+    title: 'CRM',
+    icon: UserCircle,
+    permissions: ['CRM_VIEW'],
+    children: [
+      { title: 'Customers', href: '/dashboard/crm/customers', icon: UserCircle, permissions: ['CRM_VIEW'] },
+      { title: 'Customer 360', href: '/dashboard/crm/customer-360', icon: Target, permissions: ['CRM_VIEW'] },
+      { title: 'Leads', href: '/dashboard/crm/leads', icon: UserPlus, permissions: ['CRM_VIEW'] },
       { title: 'Call Center', href: '/dashboard/crm/call-center', icon: Phone, permissions: ['CRM_VIEW'] },
     ],
   },
 
-  // ==================== 4. PROCUREMENT (P2P) ====================
+  // ==================== 5. PROCUREMENT (P2P) ====================
   {
     title: 'Procurement',
     icon: FileInput,
@@ -178,7 +186,7 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 5. INVENTORY ====================
+  // ==================== 6. INVENTORY ====================
   {
     title: 'Inventory',
     icon: Boxes,
@@ -192,7 +200,7 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 6. WAREHOUSE (WMS) ====================
+  // ==================== 7. WAREHOUSE (WMS) ====================
   {
     title: 'Warehouse (WMS)',
     icon: Grid3X3,
@@ -206,7 +214,7 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 7. LOGISTICS & SHIPPING ====================
+  // ==================== 8. LOGISTICS & SHIPPING ====================
   {
     title: 'Logistics',
     icon: Truck,
@@ -226,7 +234,7 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 8. PLANNING (S&OP) ====================
+  // ==================== 9. PLANNING (S&OP) ====================
   {
     title: 'Planning (S&OP)',
     icon: Target,
@@ -241,7 +249,7 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 9. FINANCE & ACCOUNTING ====================
+  // ==================== 10. FINANCE & ACCOUNTING ====================
   {
     title: 'Finance',
     icon: DollarSign,
@@ -277,7 +285,7 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 10. SERVICE & SUPPORT ====================
+  // ==================== 11. SERVICE & SUPPORT ====================
   {
     title: 'Service',
     icon: Wrench,
@@ -293,7 +301,7 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 11. HUMAN RESOURCES ====================
+  // ==================== 12. HUMAN RESOURCES ====================
   {
     title: 'Human Resources',
     icon: Briefcase,
@@ -310,7 +318,7 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 12. MASTER DATA ====================
+  // ==================== 13. MASTER DATA ====================
   {
     title: 'Master Data',
     icon: Package,
@@ -324,7 +332,7 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 13. D2C CONTENT (CMS) ====================
+  // ==================== 14. D2C CONTENT (CMS) ====================
   {
     title: 'D2C Content',
     icon: Globe,
@@ -342,7 +350,7 @@ export const navigation: NavItem[] = [
     ],
   },
 
-  // ==================== 14. ADMINISTRATION ====================
+  // ==================== 15. ADMINISTRATION ====================
   {
     title: 'Administration',
     icon: Cog,
