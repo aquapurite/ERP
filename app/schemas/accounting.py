@@ -259,7 +259,8 @@ class JournalEntryBase(BaseModel):
 
 class JournalEntryCreate(JournalEntryBase):
     """Schema for creating JournalEntry."""
-    period_id: UUID
+    # period_id is optional - backend auto-determines from entry_date
+    period_id: Optional[UUID] = None
     lines: List[JournalEntryLineCreate] = Field(..., min_length=2)
 
     @field_validator("lines")

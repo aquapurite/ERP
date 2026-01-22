@@ -197,7 +197,7 @@ export default function Customer360Page() {
                         className="p-3 hover:bg-muted cursor-pointer border-b last:border-0"
                         onClick={() => handleSelectCustomer(customer.id)}
                       >
-                        <div className="font-medium">{customer.name}</div>
+                        <div className="font-medium">{customer.name || customer.full_name || 'Unknown'}</div>
                         <div className="text-sm text-muted-foreground">
                           {customer.phone} {customer.email && `| ${customer.email}`}
                         </div>
@@ -292,12 +292,12 @@ export default function Customer360Page() {
                   </div>
                   <div className="p-4 bg-muted/50 rounded-lg text-center">
                     <Package className="h-6 w-6 mx-auto mb-2 text-purple-600" />
-                    <div className="text-2xl font-bold">{customer360.installations.length}</div>
+                    <div className="text-2xl font-bold">{customer360.installations?.length || 0}</div>
                     <div className="text-xs text-muted-foreground">Installations</div>
                   </div>
                   <div className="p-4 bg-muted/50 rounded-lg text-center">
                     <Wrench className="h-6 w-6 mx-auto mb-2 text-orange-600" />
-                    <div className="text-2xl font-bold">{customer360.service_requests.length}</div>
+                    <div className="text-2xl font-bold">{customer360.service_requests?.length || 0}</div>
                     <div className="text-xs text-muted-foreground">Service Requests</div>
                   </div>
                 </div>
@@ -308,7 +308,7 @@ export default function Customer360Page() {
                     <MapPin className="h-4 w-4" /> Saved Addresses
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {customer360.addresses.map((address) => (
+                    {(customer360.addresses || []).map((address) => (
                       <div key={address.id} className="p-3 border rounded-lg text-sm">
                         <div className="flex items-center gap-2 mb-1">
                           <Badge variant="outline" className="text-xs">{address.type}</Badge>
@@ -330,19 +330,19 @@ export default function Customer360Page() {
             <Tabs defaultValue="orders" className="w-full">
               <CardHeader>
                 <TabsList>
-                  <TabsTrigger value="orders">Orders ({customer360.orders.length})</TabsTrigger>
-                  <TabsTrigger value="installations">Installations ({customer360.installations.length})</TabsTrigger>
-                  <TabsTrigger value="service">Service ({customer360.service_requests.length})</TabsTrigger>
-                  <TabsTrigger value="warranty">Warranty ({customer360.warranty_claims.length})</TabsTrigger>
-                  <TabsTrigger value="invoices">Invoices ({customer360.invoices.length})</TabsTrigger>
-                  <TabsTrigger value="interactions">Interactions ({customer360.interactions.length})</TabsTrigger>
+                  <TabsTrigger value="orders">Orders ({customer360.orders?.length || 0})</TabsTrigger>
+                  <TabsTrigger value="installations">Installations ({customer360.installations?.length || 0})</TabsTrigger>
+                  <TabsTrigger value="service">Service ({customer360.service_requests?.length || 0})</TabsTrigger>
+                  <TabsTrigger value="warranty">Warranty ({customer360.warranty_claims?.length || 0})</TabsTrigger>
+                  <TabsTrigger value="invoices">Invoices ({customer360.invoices?.length || 0})</TabsTrigger>
+                  <TabsTrigger value="interactions">Interactions ({customer360.interactions?.length || 0})</TabsTrigger>
                 </TabsList>
               </CardHeader>
               <CardContent>
                 <ScrollArea className="h-[400px]">
                   {/* Orders Tab */}
                   <TabsContent value="orders" className="space-y-3">
-                    {customer360.orders.length === 0 ? (
+                    {!customer360.orders?.length ? (
                       <div className="text-center py-8 text-muted-foreground">No orders yet</div>
                     ) : (
                       customer360.orders.map((order) => (
@@ -364,7 +364,7 @@ export default function Customer360Page() {
 
                   {/* Installations Tab */}
                   <TabsContent value="installations" className="space-y-3">
-                    {customer360.installations.length === 0 ? (
+                    {!customer360.installations?.length ? (
                       <div className="text-center py-8 text-muted-foreground">No installations</div>
                     ) : (
                       customer360.installations.map((installation) => (
@@ -391,7 +391,7 @@ export default function Customer360Page() {
 
                   {/* Service Requests Tab */}
                   <TabsContent value="service" className="space-y-3">
-                    {customer360.service_requests.length === 0 ? (
+                    {!customer360.service_requests?.length ? (
                       <div className="text-center py-8 text-muted-foreground">No service requests</div>
                     ) : (
                       customer360.service_requests.map((sr) => (
@@ -413,7 +413,7 @@ export default function Customer360Page() {
 
                   {/* Warranty Claims Tab */}
                   <TabsContent value="warranty" className="space-y-3">
-                    {customer360.warranty_claims.length === 0 ? (
+                    {!customer360.warranty_claims?.length ? (
                       <div className="text-center py-8 text-muted-foreground">No warranty claims</div>
                     ) : (
                       customer360.warranty_claims.map((claim) => (
@@ -432,7 +432,7 @@ export default function Customer360Page() {
 
                   {/* Invoices Tab */}
                   <TabsContent value="invoices" className="space-y-3">
-                    {customer360.invoices.length === 0 ? (
+                    {!customer360.invoices?.length ? (
                       <div className="text-center py-8 text-muted-foreground">No invoices</div>
                     ) : (
                       customer360.invoices.map((invoice) => (
@@ -454,7 +454,7 @@ export default function Customer360Page() {
 
                   {/* Interactions Tab */}
                   <TabsContent value="interactions" className="space-y-3">
-                    {customer360.interactions.length === 0 ? (
+                    {!customer360.interactions?.length ? (
                       <div className="text-center py-8 text-muted-foreground">No interactions recorded</div>
                     ) : (
                       customer360.interactions.map((interaction) => (
