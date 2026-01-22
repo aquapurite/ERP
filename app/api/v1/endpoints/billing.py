@@ -39,6 +39,7 @@ from app.api.deps import DB, CurrentUser, get_current_user, require_permissions
 from app.services.audit_service import AuditService
 from app.services.gst_einvoice_service import GSTEInvoiceService, GSTEInvoiceError
 from app.services.gst_ewaybill_service import GSTEWayBillService, GSTEWayBillError
+from app.services.auto_journal_service import AutoJournalService, AutoJournalError
 
 router = APIRouter()
 
@@ -1777,6 +1778,7 @@ async def create_payment_receipt(
     )
 
     db.add(receipt)
+    await db.flush()  # Get receipt ID for journal entry
 
     # Update invoice
     invoice.amount_paid += receipt_in.amount
@@ -1786,6 +1788,19 @@ async def create_payment_receipt(
         invoice.status = InvoiceStatus.PAID.value
     else:
         invoice.status = InvoiceStatus.PARTIALLY_PAID.value
+
+    # Auto-generate journal entry for payment receipt
+    try:
+        auto_journal_service = AutoJournalService(db)
+        await auto_journal_service.generate_for_payment_receipt(
+            receipt_id=receipt.id,
+            user_id=current_user.id,
+            auto_post=True  # Auto-post payment receipts
+        )
+    except AutoJournalError as e:
+        # Log the error but don't fail the receipt creation
+        import logging
+        logging.warning(f"Failed to auto-generate journal for receipt {receipt.receipt_number}: {e.message}")
 
     await db.commit()
     await db.refresh(receipt)

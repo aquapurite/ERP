@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from app.models.user import User
     from app.models.warehouse import Warehouse
     from app.models.product import Product, Category
+    from app.models.accounting import ChartOfAccount
 
 
 class VendorType(str, Enum):
@@ -310,6 +311,14 @@ class Vendor(Base):
         nullable=True
     )
 
+    # GL Account Link (for Finance Integration)
+    gl_account_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("chart_of_accounts.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Linked GL account for Accounts Payable (Creditors)"
+    )
+
     # Documents
     gst_certificate_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     pan_card_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
@@ -371,6 +380,7 @@ class Vendor(Base):
 
     # Relationships
     default_warehouse: Mapped[Optional["Warehouse"]] = relationship("Warehouse")
+    gl_account: Mapped[Optional["ChartOfAccount"]] = relationship("ChartOfAccount")
     verified_by_user: Mapped[Optional["User"]] = relationship(
         "User",
         foreign_keys=[verified_by]

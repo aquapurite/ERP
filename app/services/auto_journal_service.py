@@ -9,9 +9,14 @@ Automatically generates journal entries for common business transactions:
 - Bank transactions -> Bank account, Appropriate head
 
 Based on pre-configured accounting rules and templates.
+
+IMPORTANT: This service auto-triggers when:
+1. Sales invoice is created (generates DRAFT journal)
+2. Payment receipt is created (generates and posts journal)
+3. Purchase invoice is approved (generates journal)
 """
 
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from decimal import Decimal
 from typing import Optional, Dict, Any, List
 from uuid import UUID
@@ -23,7 +28,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.accounting import (
     JournalEntry, JournalEntryLine, ChartOfAccount,
-    JournalEntryStatus
+    JournalEntryStatus, AccountSubType
 )
 from app.models.billing import TaxInvoice, InvoiceType
 
@@ -56,84 +61,153 @@ class AutoJournalService:
 
     Uses pre-configured rules to determine debit/credit accounts
     based on transaction type and context.
+
+    NOTE: This system is single-company, so company_id is optional.
     """
 
-    # Default ledger account codes (should be configurable per company)
+    # Default ledger account codes (configurable per system)
     DEFAULT_ACCOUNTS = {
         # Revenue accounts
-        "SALES_REVENUE": "SALES-001",
-        "SERVICE_REVENUE": "SALES-002",
+        "SALES_REVENUE": "4000",
+        "SERVICE_REVENUE": "4100",
 
         # Asset accounts
-        "ACCOUNTS_RECEIVABLE": "AR-001",
-        "CASH": "CASH-001",
-        "BANK": "BANK-001",
-        "INVENTORY": "INV-001",
+        "ACCOUNTS_RECEIVABLE": "1300",
+        "CASH": "1010",
+        "BANK": "1020",
+        "INVENTORY": "1400",
 
         # Liability accounts
-        "ACCOUNTS_PAYABLE": "AP-001",
-        "GST_OUTPUT": "GST-OUT",
-        "GST_INPUT": "GST-IN",
-        "CGST_PAYABLE": "CGST-OUT",
-        "SGST_PAYABLE": "SGST-OUT",
-        "IGST_PAYABLE": "IGST-OUT",
-        "CGST_RECEIVABLE": "CGST-IN",
-        "SGST_RECEIVABLE": "SGST-IN",
-        "IGST_RECEIVABLE": "IGST-IN",
-        "TDS_PAYABLE": "TDS-OUT",
-        "TDS_RECEIVABLE": "TDS-IN",
+        "ACCOUNTS_PAYABLE": "2100",
+        "GST_OUTPUT": "2300",
+        "GST_INPUT": "1500",
+        "CGST_PAYABLE": "2310",
+        "SGST_PAYABLE": "2320",
+        "IGST_PAYABLE": "2330",
+        "CGST_RECEIVABLE": "1510",
+        "SGST_RECEIVABLE": "1520",
+        "IGST_RECEIVABLE": "1530",
+        "TDS_PAYABLE": "2400",
+        "TDS_RECEIVABLE": "1600",
 
         # Expense accounts
-        "PURCHASE": "PUR-001",
-        "COST_OF_GOODS_SOLD": "COGS-001",
-        "DISCOUNT_ALLOWED": "DISC-001",
-        "DISCOUNT_RECEIVED": "DISC-002",
-        "ROUND_OFF": "ROUND-001",
+        "PURCHASE": "5000",
+        "COST_OF_GOODS_SOLD": "5100",
+        "DISCOUNT_ALLOWED": "6100",
+        "DISCOUNT_RECEIVED": "4200",
+        "ROUND_OFF": "6900",
     }
 
-    def __init__(self, db: AsyncSession, company_id: UUID):
+    def __init__(self, db: AsyncSession, company_id: UUID = None):
         self.db = db
-        self.company_id = company_id
+        self.company_id = company_id  # Optional for single-company systems
 
     async def get_account_by_code(self, code: str) -> Optional[ChartOfAccount]:
-        """Get ledger account by code."""
+        """Get ledger account by account_code."""
         result = await self.db.execute(
             select(ChartOfAccount).where(
-                and_(
-                    ChartOfAccount.code == code,
-                    ChartOfAccount.company_id == self.company_id
-                )
+                ChartOfAccount.account_code == code
             )
         )
         return result.scalar_one_or_none()
 
-    async def get_or_create_account(self, code: str, name: str, account_type: str) -> ChartOfAccount:
+    async def get_account_by_id(self, account_id: UUID) -> Optional[ChartOfAccount]:
+        """Get ledger account by ID."""
+        result = await self.db.execute(
+            select(ChartOfAccount).where(ChartOfAccount.id == account_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_or_create_account(
+        self,
+        code: str,
+        name: str,
+        account_type: str,
+        sub_type: str = None
+    ) -> ChartOfAccount:
         """Get or create a ledger account."""
         account = await self.get_account_by_code(code)
 
         if not account:
             account = ChartOfAccount(
-                company_id=self.company_id,
-                code=code,
-                name=name,
+                account_code=code,
+                account_name=name,
                 account_type=account_type,
-                is_active=True
+                account_sub_type=sub_type,
+                is_active=True,
+                allow_direct_posting=True
             )
             self.db.add(account)
             await self.db.flush()
 
         return account
 
+    async def get_customer_ar_account(self, customer_id: UUID) -> ChartOfAccount:
+        """
+        Get Accounts Receivable account for a customer.
+        Uses customer's linked GL account if available, otherwise default AR.
+        """
+        from app.models.customer import Customer
+
+        result = await self.db.execute(
+            select(Customer).where(Customer.id == customer_id)
+        )
+        customer = result.scalar_one_or_none()
+
+        if customer and customer.gl_account_id:
+            account = await self.get_account_by_id(customer.gl_account_id)
+            if account:
+                return account
+
+        # Fall back to default AR account
+        return await self.get_or_create_account(
+            self.DEFAULT_ACCOUNTS["ACCOUNTS_RECEIVABLE"],
+            "Accounts Receivable",
+            "ASSET",
+            AccountSubType.ACCOUNTS_RECEIVABLE.value
+        )
+
+    async def get_vendor_ap_account(self, vendor_id: UUID) -> ChartOfAccount:
+        """
+        Get Accounts Payable account for a vendor.
+        Uses vendor's linked GL account if available, otherwise default AP.
+        """
+        from app.models.vendor import Vendor
+
+        result = await self.db.execute(
+            select(Vendor).where(Vendor.id == vendor_id)
+        )
+        vendor = result.scalar_one_or_none()
+
+        if vendor and vendor.gl_account_id:
+            account = await self.get_account_by_id(vendor.gl_account_id)
+            if account:
+                return account
+
+        # Fall back to default AP account
+        return await self.get_or_create_account(
+            self.DEFAULT_ACCOUNTS["ACCOUNTS_PAYABLE"],
+            "Accounts Payable",
+            "LIABILITY",
+            AccountSubType.ACCOUNTS_PAYABLE.value
+        )
+
     async def generate_for_sales_invoice(
         self,
         invoice_id: UUID,
-        user_id: Optional[UUID] = None
+        user_id: Optional[UUID] = None,
+        auto_post: bool = False
     ) -> JournalEntry:
         """
         Generate journal entry for a sales invoice.
 
-        Debit: Accounts Receivable
+        Debit: Accounts Receivable (customer's GL account if linked)
         Credit: Sales Revenue, CGST/SGST/IGST Payable
+
+        Args:
+            invoice_id: ID of the sales invoice
+            user_id: User creating the journal entry
+            auto_post: If True, automatically post the journal entry
         """
         # Get invoice with items
         result = await self.db.execute(
@@ -145,9 +219,6 @@ class AutoJournalService:
 
         if not invoice:
             raise AutoJournalError("Invoice not found")
-
-        if invoice.invoice_type != InvoiceType.STANDARD:
-            raise AutoJournalError("Only standard invoices supported")
 
         # Check if journal entry already exists
         existing = await self.db.execute(
@@ -161,21 +232,26 @@ class AutoJournalService:
         if existing.scalar_one_or_none():
             raise AutoJournalError("Journal entry already exists for this invoice")
 
-        # Get accounts
-        ar_account = await self.get_or_create_account(
-            self.DEFAULT_ACCOUNTS["ACCOUNTS_RECEIVABLE"],
-            "Accounts Receivable",
-            "ASSET"
-        )
+        # Get AR account (use customer's linked GL account if available)
+        if invoice.customer_id:
+            ar_account = await self.get_customer_ar_account(invoice.customer_id)
+        else:
+            ar_account = await self.get_or_create_account(
+                self.DEFAULT_ACCOUNTS["ACCOUNTS_RECEIVABLE"],
+                "Accounts Receivable",
+                "ASSET",
+                AccountSubType.ACCOUNTS_RECEIVABLE.value
+            )
+
         sales_account = await self.get_or_create_account(
             self.DEFAULT_ACCOUNTS["SALES_REVENUE"],
             "Sales Revenue",
-            "REVENUE"
+            "REVENUE",
+            AccountSubType.SALES_REVENUE.value
         )
 
         # Create journal entry
         journal = JournalEntry(
-            company_id=self.company_id,
             entry_type="SALES",
             entry_number=f"JV-SALE-{invoice.invoice_number}",
             entry_date=invoice.invoice_date,
@@ -183,7 +259,7 @@ class AutoJournalService:
             reference_id=invoice_id,
             reference_number=invoice.invoice_number,
             narration=f"Sales invoice {invoice.invoice_number} to {invoice.customer_name}",
-            status=JournalEntryStatus.DRAFT,
+            status=JournalEntryStatus.DRAFT.value,
             created_by=user_id,
         )
         self.db.add(journal)
@@ -195,10 +271,9 @@ class AutoJournalService:
         ar_line = JournalEntryLine(
             journal_entry_id=journal.id,
             account_id=ar_account.id,
-            account_name=ar_account.name,
-            debit=invoice.grand_total,
-            credit=Decimal("0"),
-            narration=f"From {invoice.customer_name}"
+            debit_amount=invoice.grand_total,
+            credit_amount=Decimal("0"),
+            description=f"Receivable from {invoice.customer_name}"
         )
         journal_lines.append(ar_line)
 
@@ -206,10 +281,9 @@ class AutoJournalService:
         sales_line = JournalEntryLine(
             journal_entry_id=journal.id,
             account_id=sales_account.id,
-            account_name=sales_account.name,
-            debit=Decimal("0"),
-            credit=invoice.taxable_amount,
-            narration=f"Sales to {invoice.customer_name}"
+            debit_amount=Decimal("0"),
+            credit_amount=invoice.taxable_amount,
+            description=f"Sales to {invoice.customer_name}"
         )
         journal_lines.append(sales_line)
 
@@ -218,15 +292,15 @@ class AutoJournalService:
             cgst_account = await self.get_or_create_account(
                 self.DEFAULT_ACCOUNTS["CGST_PAYABLE"],
                 "CGST Payable",
-                "LIABILITY"
+                "LIABILITY",
+                AccountSubType.TAX_PAYABLE.value
             )
             cgst_line = JournalEntryLine(
                 journal_entry_id=journal.id,
                 account_id=cgst_account.id,
-                account_name=cgst_account.name,
-                debit=Decimal("0"),
-                credit=invoice.cgst_amount,
-                narration="CGST on sales"
+                debit_amount=Decimal("0"),
+                credit_amount=invoice.cgst_amount,
+                description="CGST on sales"
             )
             journal_lines.append(cgst_line)
 
@@ -234,15 +308,15 @@ class AutoJournalService:
             sgst_account = await self.get_or_create_account(
                 self.DEFAULT_ACCOUNTS["SGST_PAYABLE"],
                 "SGST Payable",
-                "LIABILITY"
+                "LIABILITY",
+                AccountSubType.TAX_PAYABLE.value
             )
             sgst_line = JournalEntryLine(
                 journal_entry_id=journal.id,
                 account_id=sgst_account.id,
-                account_name=sgst_account.name,
-                debit=Decimal("0"),
-                credit=invoice.sgst_amount,
-                narration="SGST on sales"
+                debit_amount=Decimal("0"),
+                credit_amount=invoice.sgst_amount,
+                description="SGST on sales"
             )
             journal_lines.append(sgst_line)
 
@@ -250,15 +324,15 @@ class AutoJournalService:
             igst_account = await self.get_or_create_account(
                 self.DEFAULT_ACCOUNTS["IGST_PAYABLE"],
                 "IGST Payable",
-                "LIABILITY"
+                "LIABILITY",
+                AccountSubType.TAX_PAYABLE.value
             )
             igst_line = JournalEntryLine(
                 journal_entry_id=journal.id,
                 account_id=igst_account.id,
-                account_name=igst_account.name,
-                debit=Decimal("0"),
-                credit=invoice.igst_amount,
-                narration="IGST on sales"
+                debit_amount=Decimal("0"),
+                credit_amount=invoice.igst_amount,
+                description="IGST on sales"
             )
             journal_lines.append(igst_line)
 
@@ -272,10 +346,9 @@ class AutoJournalService:
             roundoff_line = JournalEntryLine(
                 journal_entry_id=journal.id,
                 account_id=roundoff_account.id,
-                account_name=roundoff_account.name,
-                debit=Decimal("0") if invoice.round_off > 0 else abs(invoice.round_off),
-                credit=invoice.round_off if invoice.round_off > 0 else Decimal("0"),
-                narration="Round off adjustment"
+                debit_amount=Decimal("0") if invoice.round_off > 0 else abs(invoice.round_off),
+                credit_amount=invoice.round_off if invoice.round_off > 0 else Decimal("0"),
+                description="Round off adjustment"
             )
             journal_lines.append(roundoff_line)
 
@@ -284,8 +357,8 @@ class AutoJournalService:
             self.db.add(line)
 
         # Calculate totals
-        total_debit = sum(line.debit for line in journal_lines)
-        total_credit = sum(line.credit for line in journal_lines)
+        total_debit = sum(line.debit_amount for line in journal_lines)
+        total_credit = sum(line.credit_amount for line in journal_lines)
         journal.total_debit = total_debit
         journal.total_credit = total_credit
 
@@ -296,8 +369,12 @@ class AutoJournalService:
                 {"difference": float(total_debit - total_credit)}
             )
 
-        await self.db.commit()
-        await self.db.refresh(journal)
+        # Auto-post if requested
+        if auto_post:
+            journal.status = JournalEntryStatus.POSTED.value
+            journal.posted_at = datetime.now(timezone.utc)
+
+        await self.db.flush()
 
         return journal
 
@@ -305,13 +382,20 @@ class AutoJournalService:
         self,
         receipt_id: UUID,
         bank_account_code: str = None,
-        user_id: Optional[UUID] = None
+        user_id: Optional[UUID] = None,
+        auto_post: bool = True
     ) -> JournalEntry:
         """
         Generate journal entry for payment receipt.
 
         Debit: Cash/Bank
-        Credit: Accounts Receivable
+        Credit: Accounts Receivable (customer's GL account if linked)
+
+        Args:
+            receipt_id: ID of the payment receipt
+            bank_account_code: Optional bank account code (defaults to BANK)
+            user_id: User creating the journal entry
+            auto_post: If True, automatically post the journal entry (default True for receipts)
         """
         from app.models.billing import PaymentReceipt
 
@@ -340,25 +424,31 @@ class AutoJournalService:
             debit_account = await self.get_or_create_account(
                 self.DEFAULT_ACCOUNTS["CASH"],
                 "Cash in Hand",
-                "ASSET"
+                "ASSET",
+                AccountSubType.CASH.value
             )
         else:
             bank_code = bank_account_code or self.DEFAULT_ACCOUNTS["BANK"]
             debit_account = await self.get_or_create_account(
                 bank_code,
                 "Bank Account",
-                "ASSET"
+                "ASSET",
+                AccountSubType.BANK.value
             )
 
-        ar_account = await self.get_or_create_account(
-            self.DEFAULT_ACCOUNTS["ACCOUNTS_RECEIVABLE"],
-            "Accounts Receivable",
-            "ASSET"
-        )
+        # Get AR account (use customer's linked GL account if available)
+        if receipt.customer_id:
+            ar_account = await self.get_customer_ar_account(receipt.customer_id)
+        else:
+            ar_account = await self.get_or_create_account(
+                self.DEFAULT_ACCOUNTS["ACCOUNTS_RECEIVABLE"],
+                "Accounts Receivable",
+                "ASSET",
+                AccountSubType.ACCOUNTS_RECEIVABLE.value
+            )
 
         # Create journal entry
         journal = JournalEntry(
-            company_id=self.company_id,
             entry_type="RECEIPT",
             entry_number=f"JV-REC-{receipt.receipt_number}",
             entry_date=receipt.receipt_date,
@@ -366,7 +456,7 @@ class AutoJournalService:
             reference_id=receipt_id,
             reference_number=receipt.receipt_number,
             narration=f"Payment received via {receipt.payment_mode}",
-            status=JournalEntryStatus.DRAFT,
+            status=JournalEntryStatus.DRAFT.value,
             created_by=user_id,
         )
         self.db.add(journal)
@@ -376,10 +466,9 @@ class AutoJournalService:
         debit_line = JournalEntryLine(
             journal_entry_id=journal.id,
             account_id=debit_account.id,
-            account_name=debit_account.name,
-            debit=receipt.amount,
-            credit=Decimal("0"),
-            narration=f"Payment from customer"
+            debit_amount=receipt.amount,
+            credit_amount=Decimal("0"),
+            description=f"Payment received from customer"
         )
         self.db.add(debit_line)
 
@@ -387,18 +476,190 @@ class AutoJournalService:
         credit_line = JournalEntryLine(
             journal_entry_id=journal.id,
             account_id=ar_account.id,
-            account_name=ar_account.name,
-            debit=Decimal("0"),
-            credit=receipt.amount,
-            narration=f"Receipt against invoices"
+            debit_amount=Decimal("0"),
+            credit_amount=receipt.amount,
+            description=f"Receipt against invoice"
         )
         self.db.add(credit_line)
 
         journal.total_debit = receipt.amount
         journal.total_credit = receipt.amount
 
-        await self.db.commit()
-        await self.db.refresh(journal)
+        # Auto-post if requested (default for receipts)
+        if auto_post:
+            journal.status = JournalEntryStatus.POSTED.value
+            journal.posted_at = datetime.now(timezone.utc)
+
+        await self.db.flush()
+
+        return journal
+
+    async def generate_for_purchase_bill(
+        self,
+        purchase_invoice_id: UUID,
+        user_id: Optional[UUID] = None,
+        auto_post: bool = False
+    ) -> JournalEntry:
+        """
+        Generate journal entry for a purchase bill/invoice.
+
+        Debit: Purchase/Expense, GST Input
+        Credit: Accounts Payable (vendor's GL account if linked)
+
+        Args:
+            purchase_invoice_id: ID of the purchase invoice
+            user_id: User creating the journal entry
+            auto_post: If True, automatically post the journal entry
+        """
+        from app.models.purchase import PurchaseInvoice
+
+        result = await self.db.execute(
+            select(PurchaseInvoice)
+            .options(selectinload(PurchaseInvoice.items))
+            .where(PurchaseInvoice.id == purchase_invoice_id)
+        )
+        invoice = result.scalar_one_or_none()
+
+        if not invoice:
+            raise AutoJournalError("Purchase invoice not found")
+
+        # Check if journal entry already exists
+        existing = await self.db.execute(
+            select(JournalEntry).where(
+                and_(
+                    JournalEntry.reference_type == "PurchaseInvoice",
+                    JournalEntry.reference_id == purchase_invoice_id
+                )
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise AutoJournalError("Journal entry already exists for this purchase invoice")
+
+        # Get AP account (use vendor's linked GL account if available)
+        if invoice.vendor_id:
+            ap_account = await self.get_vendor_ap_account(invoice.vendor_id)
+        else:
+            ap_account = await self.get_or_create_account(
+                self.DEFAULT_ACCOUNTS["ACCOUNTS_PAYABLE"],
+                "Accounts Payable",
+                "LIABILITY",
+                AccountSubType.ACCOUNTS_PAYABLE.value
+            )
+
+        purchase_account = await self.get_or_create_account(
+            self.DEFAULT_ACCOUNTS["PURCHASE"],
+            "Purchases",
+            "EXPENSE",
+            AccountSubType.COST_OF_GOODS.value
+        )
+
+        # Create journal entry
+        vendor_name = invoice.vendor.name if invoice.vendor else "Vendor"
+        journal = JournalEntry(
+            entry_type="PURCHASE",
+            entry_number=f"JV-PUR-{invoice.invoice_number}",
+            entry_date=invoice.invoice_date,
+            reference_type="PurchaseInvoice",
+            reference_id=purchase_invoice_id,
+            reference_number=invoice.invoice_number,
+            narration=f"Purchase invoice {invoice.invoice_number} from {vendor_name}",
+            status=JournalEntryStatus.DRAFT.value,
+            created_by=user_id,
+        )
+        self.db.add(journal)
+        await self.db.flush()
+
+        journal_lines = []
+
+        # Debit: Purchase (taxable amount)
+        purchase_line = JournalEntryLine(
+            journal_entry_id=journal.id,
+            account_id=purchase_account.id,
+            debit_amount=invoice.taxable_amount or invoice.total_amount,
+            credit_amount=Decimal("0"),
+            description=f"Purchase from {vendor_name}"
+        )
+        journal_lines.append(purchase_line)
+
+        # Debit: GST Input accounts
+        if hasattr(invoice, 'cgst_amount') and invoice.cgst_amount and invoice.cgst_amount > 0:
+            cgst_account = await self.get_or_create_account(
+                self.DEFAULT_ACCOUNTS["CGST_RECEIVABLE"],
+                "CGST Input",
+                "ASSET"
+            )
+            cgst_line = JournalEntryLine(
+                journal_entry_id=journal.id,
+                account_id=cgst_account.id,
+                debit_amount=invoice.cgst_amount,
+                credit_amount=Decimal("0"),
+                description="CGST Input on purchase"
+            )
+            journal_lines.append(cgst_line)
+
+        if hasattr(invoice, 'sgst_amount') and invoice.sgst_amount and invoice.sgst_amount > 0:
+            sgst_account = await self.get_or_create_account(
+                self.DEFAULT_ACCOUNTS["SGST_RECEIVABLE"],
+                "SGST Input",
+                "ASSET"
+            )
+            sgst_line = JournalEntryLine(
+                journal_entry_id=journal.id,
+                account_id=sgst_account.id,
+                debit_amount=invoice.sgst_amount,
+                credit_amount=Decimal("0"),
+                description="SGST Input on purchase"
+            )
+            journal_lines.append(sgst_line)
+
+        if hasattr(invoice, 'igst_amount') and invoice.igst_amount and invoice.igst_amount > 0:
+            igst_account = await self.get_or_create_account(
+                self.DEFAULT_ACCOUNTS["IGST_RECEIVABLE"],
+                "IGST Input",
+                "ASSET"
+            )
+            igst_line = JournalEntryLine(
+                journal_entry_id=journal.id,
+                account_id=igst_account.id,
+                debit_amount=invoice.igst_amount,
+                credit_amount=Decimal("0"),
+                description="IGST Input on purchase"
+            )
+            journal_lines.append(igst_line)
+
+        # Credit: Accounts Payable (full amount)
+        ap_line = JournalEntryLine(
+            journal_entry_id=journal.id,
+            account_id=ap_account.id,
+            debit_amount=Decimal("0"),
+            credit_amount=invoice.total_amount,
+            description=f"Payable to {vendor_name}"
+        )
+        journal_lines.append(ap_line)
+
+        # Add all lines
+        for line in journal_lines:
+            self.db.add(line)
+
+        # Calculate totals
+        total_debit = sum(line.debit_amount for line in journal_lines)
+        total_credit = sum(line.credit_amount for line in journal_lines)
+        journal.total_debit = total_debit
+        journal.total_credit = total_credit
+
+        # Verify balanced
+        if abs(total_debit - total_credit) > Decimal("0.01"):
+            raise AutoJournalError(
+                f"Journal entry not balanced. Debit: {total_debit}, Credit: {total_credit}",
+                {"difference": float(total_debit - total_credit)}
+            )
+
+        # Auto-post if requested
+        if auto_post:
+            journal.status = JournalEntryStatus.POSTED.value
+            journal.posted_at = datetime.now(timezone.utc)
+
+        await self.db.flush()
 
         return journal
 
@@ -449,7 +710,8 @@ class AutoJournalService:
         bank_ledger = await self.get_or_create_account(
             f"BANK-{bank_account.account_number[-4:]}",
             f"{bank_account.bank_name} - {bank_account.account_number[-4:]}",
-            "ASSET"
+            "ASSET",
+            AccountSubType.BANK.value
         )
 
         contra_ledger = await self.get_account_by_code(contra_account_code)
@@ -458,7 +720,6 @@ class AutoJournalService:
 
         # Create journal
         journal = JournalEntry(
-            company_id=self.company_id,
             entry_type="PAYMENT",
             entry_number=f"JV-BANK-{txn.id.hex[:8].upper()}",
             entry_date=txn.transaction_date,
@@ -466,7 +727,7 @@ class AutoJournalService:
             reference_id=bank_transaction_id,
             reference_number=txn.reference_number,
             narration=txn.description[:500] if txn.description else "Bank transaction",
-            status=JournalEntryStatus.DRAFT,
+            status=JournalEntryStatus.DRAFT.value,
             created_by=user_id,
         )
         self.db.add(journal)
@@ -477,36 +738,32 @@ class AutoJournalService:
             bank_line = JournalEntryLine(
                 journal_entry_id=journal.id,
                 account_id=bank_ledger.id,
-                account_name=bank_ledger.name,
-                debit=txn.amount,
-                credit=Decimal("0"),
-                narration="Bank deposit"
+                debit_amount=txn.amount,
+                credit_amount=Decimal("0"),
+                description="Bank deposit"
             )
             contra_line = JournalEntryLine(
                 journal_entry_id=journal.id,
                 account_id=contra_ledger.id,
-                account_name=contra_ledger.name,
-                debit=Decimal("0"),
-                credit=txn.amount,
-                narration=txn.description[:200] if txn.description else ""
+                debit_amount=Decimal("0"),
+                credit_amount=txn.amount,
+                description=txn.description[:200] if txn.description else ""
             )
         else:
             # Withdrawal: Debit Contra, Credit Bank
             contra_line = JournalEntryLine(
                 journal_entry_id=journal.id,
                 account_id=contra_ledger.id,
-                account_name=contra_ledger.name,
-                debit=txn.amount,
-                credit=Decimal("0"),
-                narration=txn.description[:200] if txn.description else ""
+                debit_amount=txn.amount,
+                credit_amount=Decimal("0"),
+                description=txn.description[:200] if txn.description else ""
             )
             bank_line = JournalEntryLine(
                 journal_entry_id=journal.id,
                 account_id=bank_ledger.id,
-                account_name=bank_ledger.name,
-                debit=Decimal("0"),
-                credit=txn.amount,
-                narration="Bank withdrawal"
+                debit_amount=Decimal("0"),
+                credit_amount=txn.amount,
+                description="Bank withdrawal"
             )
 
         self.db.add(bank_line)
@@ -515,12 +772,11 @@ class AutoJournalService:
         journal.total_debit = txn.amount
         journal.total_credit = txn.amount
 
-        await self.db.commit()
-        await self.db.refresh(journal)
+        await self.db.flush()
 
         # Mark bank transaction as having journal
         txn.matched_journal_entry_id = journal.id
-        await self.db.commit()
+        await self.db.flush()
 
         return journal
 
@@ -536,12 +792,12 @@ class AutoJournalService:
         if not journal:
             raise AutoJournalError("Journal entry not found")
 
-        if journal.status != JournalEntryStatus.DRAFT:
+        if journal.status != JournalEntryStatus.DRAFT.value:
             raise AutoJournalError(f"Cannot post journal in {journal.status} status")
 
         # Verify balanced
-        total_debit = sum(line.debit or Decimal("0") for line in journal.lines)
-        total_credit = sum(line.credit or Decimal("0") for line in journal.lines)
+        total_debit = sum(line.debit_amount or Decimal("0") for line in journal.lines)
+        total_credit = sum(line.credit_amount or Decimal("0") for line in journal.lines)
 
         if abs(total_debit - total_credit) > Decimal("0.01"):
             raise AutoJournalError(
@@ -550,9 +806,8 @@ class AutoJournalService:
             )
 
         journal.status = JournalEntryStatus.POSTED.value
-        journal.posted_at = datetime.utcnow()
+        journal.posted_at = datetime.now(timezone.utc)
 
-        await self.db.commit()
-        await self.db.refresh(journal)
+        await self.db.flush()
 
         return journal

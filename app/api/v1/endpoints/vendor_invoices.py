@@ -18,6 +18,7 @@ from app.models.purchase import (
 from app.models.vendor import Vendor
 from uuid import uuid4
 from datetime import date as date_type
+from app.services.auto_journal_service import AutoJournalService, AutoJournalError
 
 router = APIRouter()
 
@@ -504,9 +505,27 @@ async def approve_invoice(
     invoice.approved_by = current_user.id
     invoice.approved_at = datetime.now(timezone.utc)
 
+    # Auto-generate journal entry for purchase invoice approval
+    journal_entry = None
+    try:
+        auto_journal_service = AutoJournalService(db)
+        journal_entry = await auto_journal_service.generate_for_purchase_bill(
+            purchase_invoice_id=invoice_id,
+            user_id=current_user.id,
+            auto_post=False  # Purchase invoices need separate approval
+        )
+    except AutoJournalError as e:
+        # Log the error but don't fail the approval
+        import logging
+        logging.warning(f"Failed to auto-generate journal for vendor invoice {invoice.invoice_number}: {e.message}")
+
     await db.commit()
 
-    return {"message": "Invoice approved", "status": invoice.status}
+    return {
+        "message": "Invoice approved",
+        "status": invoice.status,
+        "journal_entry_id": str(journal_entry.id) if journal_entry else None
+    }
 
 
 @router.post("/{invoice_id}/record-payment")

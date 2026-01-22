@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from app.models.service_request import ServiceRequest
     from app.models.installation import Installation
     from app.models.amc import AMCContract
+    from app.models.accounting import ChartOfAccount
 
 
 class CustomerType(str, Enum):
@@ -102,6 +103,14 @@ class Customer(Base):
         nullable=True
     )
 
+    # GL Account Link (for Finance Integration)
+    gl_account_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("chart_of_accounts.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Linked GL account for Accounts Receivable (Debtors)"
+    )
+
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -124,6 +133,7 @@ class Customer(Base):
 
     # Relationships
     region: Mapped[Optional["Region"]] = relationship("Region")
+    gl_account: Mapped[Optional["ChartOfAccount"]] = relationship("ChartOfAccount")
     addresses: Mapped[List["CustomerAddress"]] = relationship(
         "CustomerAddress",
         back_populates="customer",

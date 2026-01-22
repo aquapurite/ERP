@@ -84,6 +84,9 @@ class VendorBase(BaseModel):
     # Warehouse
     default_warehouse_id: Optional[UUID] = None
 
+    # GL Account Link (for Finance Integration)
+    gl_account_id: Optional[UUID] = None
+
     # Notes
     internal_notes: Optional[str] = None
 
@@ -138,6 +141,9 @@ class VendorUpdate(BaseModel):
     default_lead_days: Optional[int] = None
     min_order_value: Optional[Decimal] = None
 
+    # GL Account Link
+    gl_account_id: Optional[UUID] = None
+
     internal_notes: Optional[str] = None
 
 
@@ -161,6 +167,7 @@ class VendorResponse(VendorBase):
     quality_rejection_rate: Optional[Decimal] = None
     last_po_date: Optional[datetime] = None
     last_payment_date: Optional[datetime] = None
+    gl_account_id: Optional[UUID] = None  # Linked GL account
     created_at: datetime
     updated_at: datetime
 

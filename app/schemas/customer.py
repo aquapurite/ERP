@@ -88,6 +88,7 @@ class CustomerBase(BaseModel):
     date_of_birth: Optional[date] = None
     anniversary_date: Optional[date] = None
     region_id: Optional[uuid.UUID] = None
+    gl_account_id: Optional[uuid.UUID] = None  # GL Account Link for Finance Integration
     notes: Optional[str] = None
 
 
@@ -112,6 +113,7 @@ class CustomerUpdate(BaseModel):
     date_of_birth: Optional[date] = None
     anniversary_date: Optional[date] = None
     region_id: Optional[uuid.UUID] = None
+    gl_account_id: Optional[uuid.UUID] = None  # GL Account Link
     notes: Optional[str] = None
     is_active: Optional[bool] = None
 
@@ -135,6 +137,7 @@ class CustomerResponse(BaseModel):
     is_active: bool
     is_verified: bool
     notes: Optional[str] = None
+    gl_account_id: Optional[uuid.UUID] = None  # Linked GL account
     addresses: List[AddressResponse] = []
     created_at: datetime
     updated_at: datetime
