@@ -360,20 +360,21 @@ class OrderService:
 
         total_amount = subtotal + tax_amount
 
-        # Create order
+        # Create order - use string values for VARCHAR columns (per CLAUDE.md standards)
+        from app.core.enum_utils import get_enum_value
         order = Order(
             order_number=order_number,
             customer_id=data.customer_id,
-            source=data.source,
-            status=OrderStatus.NEW,
+            source=get_enum_value(data.source),  # Convert enum to string
+            status="NEW",  # VARCHAR column - use string directly
             subtotal=subtotal,
             tax_amount=tax_amount,
             discount_amount=Decimal("0.00"),
             shipping_amount=Decimal("0.00"),
             total_amount=total_amount,
             discount_code=data.discount_code,
-            payment_method=data.payment_method,
-            payment_status=PaymentStatus.PENDING,
+            payment_method=get_enum_value(data.payment_method),  # Convert enum to string
+            payment_status="PENDING",  # VARCHAR column - use string directly
             shipping_address=shipping_address,
             billing_address=billing_address,
             customer_notes=data.customer_notes,
@@ -404,11 +405,11 @@ class OrderService:
             )
             self.db.add(order_item)
 
-        # Create initial status history
+        # Create initial status history - use string value for VARCHAR column
         status_history = OrderStatusHistory(
             order_id=order.id,
             from_status=None,
-            to_status=OrderStatus.NEW,
+            to_status="NEW",  # VARCHAR column - use string directly
             changed_by=created_by,
             notes="Order created",
         )
@@ -512,6 +513,8 @@ class OrderService:
                 auto_post=True,  # Auto-post to GL immediately
                 is_cash=is_cash,
             )
+            # Commit the journal entry and GL entries
+            await self.db.commit()
             logger.info(f"Accounting entry created for payment on order {order.order_number}")
         except AutoJournalError as e:
             # Log but don't fail the payment - accounting can be reconciled later

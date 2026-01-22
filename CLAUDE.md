@@ -1393,6 +1393,149 @@ Pydantic (Enum) ─────────────────────�
 
 ---
 
+## 2026-01-22: Order-to-Cash Flow Testing & Fixes (Complete)
+
+**Session Summary**: Comprehensive end-to-end testing of the D2C order flow with all schema fixes and service corrections.
+
+### Tested Flow (All Passed)
+```
+CREATE ORDER → PAY → ALLOCATE → SHIP → PICK/PACK → MANIFEST → INVOICE → GL + P&L
+```
+
+### Schema Fixes Applied to Production
+
+| Table | Column | Fix Applied | Reason |
+|-------|--------|-------------|--------|
+| `shipments` | `payment_mode` | Added VARCHAR(50) | Column was missing |
+| `shipments` | `packaging_type` | ENUM → VARCHAR(50) | Per CLAUDE.md standards |
+| `shipments` | `ship_to_address` | JSON → JSONB | Per CLAUDE.md standards |
+| `shipment_tracking` | `status` | Added VARCHAR(50) | Column was missing |
+| `manifests` | `business_type` | ENUM → VARCHAR(50) | Per CLAUDE.md standards |
+| `journal_entries` | `created_by` | Made nullable | Allow system-generated entries |
+
+**SQL Commands Used**:
+```sql
+-- Add missing columns
+ALTER TABLE shipments ADD COLUMN IF NOT EXISTS payment_mode VARCHAR(50) DEFAULT 'PREPAID';
+ALTER TABLE shipment_tracking ADD COLUMN IF NOT EXISTS status VARCHAR(50);
+
+-- Convert ENUM to VARCHAR
+ALTER TABLE shipments ALTER COLUMN packaging_type TYPE VARCHAR(50) USING packaging_type::VARCHAR(50);
+ALTER TABLE manifests ALTER COLUMN business_type TYPE VARCHAR(50) USING business_type::VARCHAR(50);
+
+-- Convert JSON to JSONB
+ALTER TABLE shipments ALTER COLUMN ship_to_address TYPE JSONB USING ship_to_address::JSONB;
+
+-- Fix nullable constraint
+ALTER TABLE journal_entries ALTER COLUMN created_by DROP NOT NULL;
+```
+
+### Code Fixes Applied
+
+| File | Line | Fix | Impact |
+|------|------|-----|--------|
+| `app/services/shipment_service.py` | 665 | Added `await self.db.flush()` before tracking entry | Ensures shipment.id is assigned before creating tracking |
+| `app/services/auto_journal_service.py` | 587 | Removed `is_auto_generated=True` | Field doesn't exist in JournalEntry model |
+| `app/services/auto_journal_service.py` | 1093+ | Added helper methods | `_get_or_create_period`, `_generate_entry_number`, `_post_journal_entry` |
+| `app/services/order_service.py` | 515 | Added `await self.db.commit()` after journal entry | Ensures journal entries are persisted |
+
+### Demo Data Created
+
+**Transporter Serviceability** (15 routes from Delhi):
+```python
+transporters.id = 'd96e629d-17bf-4d07-b3d7-6fccb5052f87'  # Delhivery India
+# Routes: Delhi to Mumbai, Bangalore, Chennai, Kolkata, Hyderabad, etc.
+```
+
+**Warehouse Serviceability** (15 pincodes):
+```python
+warehouse.id = '94afba0f-3de0-483a-8cba-5d96c071f4d0'  # Delhi Warehouse
+# Pincodes: 400001 (Mumbai), 560001 (Bangalore), 600001 (Chennai), etc.
+```
+
+**D2C Allocation Rule**:
+```python
+channel_code = 'D2C'
+priority = 1
+warehouse_ids = ['94afba0f-3de0-483a-8cba-5d96c071f4d0']
+```
+
+**GL Accounts Created** (Chart of Accounts):
+| Code | Name | Type | SubType |
+|------|------|------|---------|
+| 1010 | Cash in Hand | ASSET | CASH |
+| 1020 | Bank Account | ASSET | BANK |
+| 1300 | Accounts Receivable | ASSET | ACCOUNTS_RECEIVABLE |
+| 4000 | Sales Revenue | REVENUE | SALES_REVENUE |
+| 2310 | CGST Payable | LIABILITY | TAX_PAYABLE |
+| 2320 | SGST Payable | LIABILITY | TAX_PAYABLE |
+| 2330 | IGST Payable | LIABILITY | TAX_PAYABLE |
+| + 16 more accounts... |
+
+**Financial Period**:
+```python
+period_code = 'FY2526'
+period_name = 'FY 2025-26'
+start_date = '2025-04-01'
+end_date = '2026-03-31'
+status = 'OPEN'
+is_current = True
+```
+
+### Test Scripts Created
+
+| Script | Purpose | Location |
+|--------|---------|----------|
+| `test_d2c_order.py` | D2C order creation with allocation | `scripts/` |
+| `test_payment_flow.py` | Payment with journal entry | `scripts/` |
+| `test_shipment_flow.py` | Shipment lifecycle | `scripts/` |
+| `test_manifest_flow.py` | Manifest and goods issue | `scripts/` |
+| `test_invoice_flow.py` | Invoice generation | `scripts/` |
+| `test_gl_pnl_flow.py` | GL and P&L verification | `scripts/` |
+
+### Schema Verification Results (All Passed)
+
+```
+✅ No PostgreSQL ENUMs - all status fields are VARCHAR
+✅ All JSON columns are JSONB
+✅ All timestamps have timezone (TIMESTAMPTZ)
+✅ Numeric precision adequate (12,2 for amounts, 15,2 for GL)
+```
+
+### Example Journal Entry Created
+
+```
+Entry: JV-202601-0001
+Type: RECEIPT (ORDER_PAYMENT)
+Status: POSTED
+
+Lines:
+  DR Cash in Hand (1010):       212.40
+  CR Accounts Receivable (1300): 212.40
+
+GL Posted: 2 entries
+Account Balances Updated: Yes
+```
+
+### Troubleshooting Reference
+
+**Error**: `'is_auto_generated' is an invalid keyword argument for JournalEntry`
+**Fix**: Remove `is_auto_generated=True` from journal entry creation
+
+**Error**: `null value in column "shipment_id" violates not-null constraint`
+**Fix**: Add `await self.db.flush()` before creating ShipmentTracking
+
+**Error**: `null value in column "created_by" violates not-null constraint`
+**Fix**: `ALTER TABLE journal_entries ALTER COLUMN created_by DROP NOT NULL`
+
+**Error**: `column "payment_mode" of relation "shipments" does not exist`
+**Fix**: `ALTER TABLE shipments ADD COLUMN IF NOT EXISTS payment_mode VARCHAR(50)`
+
+**Error**: `column "business_type" is of type businesstype but expression is of type character varying`
+**Fix**: `ALTER TABLE manifests ALTER COLUMN business_type TYPE VARCHAR(50)`
+
+---
+
 ## Code Style
 
 - Use async/await for all database operations

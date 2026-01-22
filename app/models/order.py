@@ -294,29 +294,29 @@ class Order(Base):
         comment="When order was shipped"
     )
 
-    # Shiprocket Integration
-    shiprocket_order_id: Mapped[Optional[int]] = mapped_column(
-        Integer,
+    # Shiprocket Integration - VARCHAR per production schema
+    shiprocket_order_id: Mapped[Optional[str]] = mapped_column(
+        String(100),
         nullable=True,
         index=True,
         comment="Shiprocket order ID"
     )
-    shiprocket_shipment_id: Mapped[Optional[int]] = mapped_column(
-        Integer,
+    shiprocket_shipment_id: Mapped[Optional[str]] = mapped_column(
+        String(100),
         nullable=True,
         index=True,
         comment="Shiprocket shipment ID"
     )
     awb_code: Mapped[Optional[str]] = mapped_column(
-        String(50),
+        String(100),
         nullable=True,
         index=True,
         comment="Airway Bill number from courier"
     )
-    courier_id: Mapped[Optional[int]] = mapped_column(
-        Integer,
+    courier_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
         nullable=True,
-        comment="Shiprocket courier company ID"
+        comment="Transporter/courier ID - references transporters table"
     )
     courier_name: Mapped[Optional[str]] = mapped_column(
         String(100),
@@ -348,8 +348,8 @@ class Order(Base):
         nullable=True,
         comment="Last tracking activity description"
     )
-    estimated_delivery: Mapped[Optional[str]] = mapped_column(
-        String(50),
+    estimated_delivery: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
         nullable=True,
         comment="Estimated delivery date from courier"
     )

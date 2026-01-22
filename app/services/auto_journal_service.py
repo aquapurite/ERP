@@ -585,7 +585,6 @@ class AutoJournalService:
             total_debit=amount,
             total_credit=amount,
             status="DRAFT",
-            is_auto_generated=True,
             created_by=user_id,
         )
         self.db.add(journal)
@@ -882,7 +881,6 @@ class AutoJournalService:
             total_debit=total_value,
             total_credit=total_value,
             status="DRAFT",
-            is_auto_generated=True,
             created_by=user_id,
         )
         self.db.add(journal)
@@ -1089,3 +1087,114 @@ class AutoJournalService:
         await self.db.flush()
 
         return journal
+
+    # ==================== Helper Methods ====================
+
+    async def _get_or_create_period(self):
+        """Get current financial period or create one if none exists."""
+        from app.models.accounting import FinancialPeriod
+        import uuid as uuid_module
+
+        # Try to find current open period
+        result = await self.db.execute(
+            select(FinancialPeriod).where(
+                and_(
+                    FinancialPeriod.is_current == True,
+                    FinancialPeriod.status == "OPEN"
+                )
+            ).limit(1)
+        )
+        period = result.scalar_one_or_none()
+
+        if period:
+            return period
+
+        # Create a default period for current financial year
+        today = date.today()
+        # Indian FY: April to March
+        if today.month >= 4:
+            fy_start = date(today.year, 4, 1)
+            fy_end = date(today.year + 1, 3, 31)
+            fy_name = f"FY {today.year}-{str(today.year + 1)[2:]}"
+        else:
+            fy_start = date(today.year - 1, 4, 1)
+            fy_end = date(today.year, 3, 31)
+            fy_name = f"FY {today.year - 1}-{str(today.year)[2:]}"
+
+        period = FinancialPeriod(
+            id=uuid_module.uuid4(),
+            period_name=fy_name,
+            period_code=fy_name.replace(" ", "").replace("-", ""),
+            financial_year=f"{fy_start.year}-{fy_end.year % 100:02d}",
+            period_type="YEARLY",
+            is_year_end=False,
+            start_date=fy_start,
+            end_date=fy_end,
+            status="OPEN",
+            is_current=True,
+            is_adjustment_period=False,
+        )
+        self.db.add(period)
+        await self.db.flush()
+
+        return period
+
+    async def _generate_entry_number(self) -> str:
+        """Generate a unique journal entry number."""
+        from sqlalchemy import func
+        import uuid as uuid_module
+
+        # Format: JV-YYYYMM-XXXX
+        today = date.today()
+        prefix = f"JV-{today.strftime('%Y%m')}-"
+
+        # Count existing entries this month
+        result = await self.db.execute(
+            select(func.count(JournalEntry.id)).where(
+                JournalEntry.entry_number.like(f"{prefix}%")
+            )
+        )
+        count = result.scalar() or 0
+
+        return f"{prefix}{(count + 1):04d}"
+
+    async def _post_journal_entry(self, journal: JournalEntry, lines: List):
+        """Post journal entry to general ledger."""
+        from app.models.accounting import GeneralLedger, AccountType
+        import uuid as uuid_module
+
+        for line_id, line in lines:
+            # Get account for balance type determination
+            account = await self.get_account_by_id(line.account_id)
+            if not account:
+                continue
+
+            # Calculate balance change based on account type
+            # Asset/Expense: Debit increases, Credit decreases
+            # Liability/Equity/Revenue: Credit increases, Debit decreases
+            if account.account_type in ["ASSET", "EXPENSE"]:
+                balance_change = (line.debit_amount or Decimal("0")) - (line.credit_amount or Decimal("0"))
+            else:
+                balance_change = (line.credit_amount or Decimal("0")) - (line.debit_amount or Decimal("0"))
+
+            new_balance = (account.current_balance or Decimal("0")) + balance_change
+
+            # Create GL entry
+            gl_entry = GeneralLedger(
+                id=uuid_module.uuid4(),
+                account_id=line.account_id,
+                period_id=journal.period_id,
+                transaction_date=journal.entry_date,
+                journal_entry_id=journal.id,
+                journal_line_id=line.id if hasattr(line, 'id') and line.id else line_id,
+                debit_amount=line.debit_amount or Decimal("0"),
+                credit_amount=line.credit_amount or Decimal("0"),
+                running_balance=new_balance,
+                narration=line.description or journal.narration,
+            )
+            self.db.add(gl_entry)
+
+            # Update account balance
+            account.current_balance = new_balance
+
+        await self.db.flush()
