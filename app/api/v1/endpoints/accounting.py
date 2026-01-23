@@ -1991,7 +1991,6 @@ async def reverse_journal_entry(
 
 @router.get(
     "/ledger/{account_id}",
-    response_model=LedgerListResponse,
     dependencies=[Depends(require_permissions("finance:view"))]
 )
 async def get_account_ledger(
@@ -2012,17 +2011,22 @@ async def get_account_ledger(
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    query = select(GeneralLedger).where(GeneralLedger.account_id == account_id)
+    # Build query with join to get entry_number from journal_entries
+    query = (
+        select(GeneralLedger, JournalEntry.entry_number)
+        .join(JournalEntry, GeneralLedger.journal_entry_id == JournalEntry.id)
+        .where(GeneralLedger.account_id == account_id)
+    )
     count_query = select(func.count(GeneralLedger.id)).where(
         GeneralLedger.account_id == account_id
     )
 
     if start_date:
-        query = query.where(GeneralLedger.entry_date >= start_date)
-        count_query = count_query.where(GeneralLedger.entry_date >= start_date)
+        query = query.where(GeneralLedger.transaction_date >= start_date)
+        count_query = count_query.where(GeneralLedger.transaction_date >= start_date)
     if end_date:
-        query = query.where(GeneralLedger.entry_date <= end_date)
-        count_query = count_query.where(GeneralLedger.entry_date <= end_date)
+        query = query.where(GeneralLedger.transaction_date <= end_date)
+        count_query = count_query.where(GeneralLedger.transaction_date <= end_date)
 
     # Get totals
     totals_query = select(
@@ -2031,9 +2035,9 @@ async def get_account_ledger(
     ).where(GeneralLedger.account_id == account_id)
 
     if start_date:
-        totals_query = totals_query.where(GeneralLedger.entry_date >= start_date)
+        totals_query = totals_query.where(GeneralLedger.transaction_date >= start_date)
     if end_date:
-        totals_query = totals_query.where(GeneralLedger.entry_date <= end_date)
+        totals_query = totals_query.where(GeneralLedger.transaction_date <= end_date)
 
     totals_result = await db.execute(totals_query)
     totals = totals_result.one()
@@ -2041,24 +2045,41 @@ async def get_account_ledger(
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
-    query = query.order_by(GeneralLedger.entry_date, GeneralLedger.created_at)
+    query = query.order_by(GeneralLedger.transaction_date, GeneralLedger.created_at)
     query = query.offset(skip).limit(limit)
 
     result = await db.execute(query)
-    entries = result.scalars().all()
+    rows = result.all()
 
-    return LedgerListResponse(
-        account_id=account_id,
-        account_code=account.account_code,
-        account_name=account.name,
-        items=[GeneralLedgerResponse.model_validate(e) for e in entries],
-        total=total,
-        total_debit=totals.total_debit,
-        total_credit=totals.total_credit,
-        closing_balance=account.current_balance,
-        skip=skip,
-        limit=limit
-    )
+    # Build response items matching frontend LedgerEntry interface
+    items = []
+    for gl, entry_number in rows:
+        items.append({
+            "id": str(gl.id),
+            "entry_date": gl.transaction_date.isoformat(),
+            "entry_number": entry_number or "",
+            "narration": gl.narration or "",
+            "debit": float(gl.debit_amount or 0),
+            "credit": float(gl.credit_amount or 0),
+            "running_balance": float(gl.running_balance or 0),
+            "reference": None,
+        })
+
+    # Calculate pages
+    pages = (total + limit - 1) // limit if limit > 0 else 0
+
+    return {
+        "account_id": str(account_id),
+        "account_code": account.account_code,
+        "account_name": account.account_name,
+        "items": items,
+        "total": total,
+        "pages": pages,
+        "total_debit": float(totals.total_debit),
+        "total_credit": float(totals.total_credit),
+        "opening_balance": float(account.opening_balance or 0),
+        "closing_balance": float(account.current_balance or 0),
+    }
 
 
 # ==================== Reports ====================
