@@ -77,15 +77,19 @@ interface VendorBrief {
   vendor_type?: string;
 }
 
-// Purchase Order from master data
+// Purchase Order from master data (matches POBrief response schema)
 interface PurchaseOrderBrief {
   id: string;
   po_number: string;
-  vendor_id: string;
   vendor_name?: string;
   grand_total: number;
   status: string;
   po_date?: string;
+  vendor?: {
+    id: string;
+    name: string;
+    code?: string;
+  };
 }
 
 // Vendors API - fetches from master Vendors table
@@ -107,11 +111,12 @@ const purchaseOrdersApi = {
       const { data } = await apiClient.get('/purchase/orders', {
         params: {
           ...params,
-          size: 100, // Get enough POs for dropdown
+          limit: 100, // Get enough POs for dropdown
         }
       });
       return data || { items: [] };
-    } catch {
+    } catch (error) {
+      console.error('Failed to fetch POs:', error);
       return { items: [] };
     }
   },
@@ -221,7 +226,7 @@ export default function VendorInvoicesPage() {
 
   // Filter POs by selected vendor (if any)
   const availablePOs = selectedVendorId
-    ? (posData?.items || []).filter(po => po.vendor_id === selectedVendorId)
+    ? (posData?.items || []).filter(po => po.vendor?.id === selectedVendorId)
     : (posData?.items || []);
 
   // Reset form when dialog closes
