@@ -81,6 +81,7 @@ export interface StorefrontCategory {
   icon?: string;
   is_active: boolean;
   is_featured?: boolean;
+  product_count?: number;
   children?: StorefrontCategory[];
 }
 

@@ -1568,3 +1568,394 @@ DEBUG=True
 - [ ] Alembic migration created and reviewed
 - [ ] Tested locally with `alembic upgrade head`
 - [ ] No ad-hoc patches - structural solution only
+
+---
+
+## D2C Storefront Architecture
+
+### Overview
+
+The D2C (Direct-to-Consumer) storefront is a Next.js 14 application located in `/frontend/src/app/(storefront)/`. It connects to the FastAPI backend for product catalog, categories, and content management.
+
+### File Structure
+
+```
+frontend/src/
+├── app/(storefront)/                    # Storefront routes (public)
+│   ├── layout.tsx                       # Storefront layout with header/footer
+│   ├── page.tsx                         # Homepage
+│   ├── products/
+│   │   ├── page.tsx                     # Products listing page
+│   │   └── [slug]/page.tsx              # Product detail page
+│   ├── category/[slug]/page.tsx         # Category products page
+│   └── cart/, checkout/, etc.
+├── components/storefront/
+│   ├── layout/
+│   │   ├── header.tsx                   # Main header with navigation
+│   │   ├── footer.tsx                   # Footer with CMS content
+│   │   └── mega-menu.tsx                # Category mega menu (to implement)
+│   ├── products/
+│   │   ├── product-card.tsx             # Product card component
+│   │   └── product-grid.tsx             # Products grid with filters
+│   └── home/
+│       ├── hero-section.tsx             # Homepage hero
+│       └── featured-products.tsx        # Featured products
+└── lib/storefront/
+    └── api.ts                           # Storefront API client
+```
+
+### Category Hierarchy (ERP → D2C Mega Menu)
+
+#### Database Schema (categories table)
+
+```sql
+-- Categories have parent-child relationship
+categories (
+  id UUID PRIMARY KEY,
+  name VARCHAR,
+  slug VARCHAR UNIQUE,
+  description TEXT,
+  parent_id UUID REFERENCES categories(id),  -- NULL for top-level
+  level INTEGER,                              -- 0=root, 1=child, 2=grandchild
+  image_url VARCHAR,
+  is_active BOOLEAN DEFAULT true,
+  display_order INTEGER DEFAULT 0,
+  company_id UUID REFERENCES companies(id)
+)
+```
+
+#### Category Hierarchy Example
+
+```
+Water Purifiers (parent_id=NULL, level=0)
+├── RO+UV Water Purifiers (parent_id=water_purifiers_id, level=1)
+├── UV Water Purifiers (parent_id=water_purifiers_id, level=1)
+└── RO Water Purifiers (parent_id=water_purifiers_id, level=1)
+
+Spare Parts & Accessories (parent_id=NULL, level=0)
+├── Filters (parent_id=spare_parts_id, level=1)
+├── Membranes (parent_id=spare_parts_id, level=1)
+└── UV Lamps (parent_id=spare_parts_id, level=1)
+```
+
+#### API Endpoint for Category Tree
+
+```python
+# GET /api/v1/storefront/categories/tree
+# Returns nested category structure for mega menu
+
+@router.get("/categories/tree")
+async def get_category_tree(db: AsyncSession = Depends(get_db)):
+    """
+    Returns categories in nested tree format for mega menu.
+    Only returns active categories with products.
+    """
+    # Fetch all active categories with product count
+    query = select(Category).where(
+        Category.is_active == True
+    ).order_by(Category.display_order, Category.name)
+
+    result = await db.execute(query)
+    categories = result.scalars().all()
+
+    # Build tree structure
+    return build_category_tree(categories)
+```
+
+### Mega Menu Implementation
+
+#### Header Component Pattern
+
+```tsx
+// frontend/src/components/storefront/layout/header.tsx
+
+export default function StorefrontHeader() {
+  const [categoryTree, setCategoryTree] = useState<CategoryNode[]>([]);
+
+  useEffect(() => {
+    // Fetch category tree on mount
+    storefrontApi.getCategoryTree().then(setCategoryTree);
+  }, []);
+
+  return (
+    <header>
+      <nav>
+        {categoryTree.map(category => (
+          <MegaMenuItem key={category.id} category={category} />
+        ))}
+      </nav>
+    </header>
+  );
+}
+```
+
+#### Mega Menu Component
+
+```tsx
+// frontend/src/components/storefront/layout/mega-menu.tsx
+
+interface CategoryNode {
+  id: string;
+  name: string;
+  slug: string;
+  image_url?: string;
+  children: CategoryNode[];
+  product_count: number;
+}
+
+export function MegaMenuItem({ category }: { category: CategoryNode }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div
+      onMouseEnter={() => setIsOpen(true)}
+      onMouseLeave={() => setIsOpen(false)}
+      className="relative"
+    >
+      <Link href={`/category/${category.slug}`}>
+        {category.name}
+      </Link>
+
+      {isOpen && category.children.length > 0 && (
+        <div className="absolute top-full left-0 bg-white shadow-lg p-4 grid grid-cols-3 gap-4 min-w-[600px]">
+          {category.children.map(child => (
+            <Link
+              key={child.id}
+              href={`/category/${child.slug}`}
+              className="flex items-center gap-2 hover:text-primary"
+            >
+              {child.image_url && (
+                <img src={child.image_url} alt="" className="w-8 h-8" />
+              )}
+              <span>{child.name}</span>
+              <span className="text-muted-foreground text-sm">
+                ({child.product_count})
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+### Performance Optimization
+
+#### 1. N+1 Query Prevention
+
+**Problem**: Stock queries executing N times for N products
+
+```python
+# BAD: N+1 query pattern
+for product in products:
+    stock = await get_stock(product.id)  # N queries!
+```
+
+**Solution**: Batch query with single JOIN or subquery
+
+```python
+# GOOD: Single query with aggregated stock
+query = select(
+    Product,
+    func.coalesce(
+        select(func.sum(Inventory.quantity_on_hand))
+        .where(Inventory.product_id == Product.id)
+        .correlate(Product)
+        .scalar_subquery(),
+        0
+    ).label('total_stock')
+).where(Product.is_active == True)
+```
+
+#### 2. React Query for Client-Side Caching
+
+```tsx
+// frontend/src/lib/storefront/hooks.ts
+
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { storefrontApi } from './api';
+
+export function useProducts(filters: ProductFilters) {
+  return useQuery({
+    queryKey: ['storefront-products', filters],
+    queryFn: () => storefrontApi.getProducts(filters),
+    staleTime: 5 * 60 * 1000,  // 5 minutes
+    cacheTime: 30 * 60 * 1000, // 30 minutes
+  });
+}
+
+export function useCategoryTree() {
+  return useQuery({
+    queryKey: ['storefront-category-tree'],
+    queryFn: () => storefrontApi.getCategoryTree(),
+    staleTime: 10 * 60 * 1000,  // 10 minutes (categories change rarely)
+  });
+}
+
+export function useProductDetail(slug: string) {
+  return useQuery({
+    queryKey: ['storefront-product', slug],
+    queryFn: () => storefrontApi.getProductBySlug(slug),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+```
+
+#### 3. Composite API Endpoints
+
+**Problem**: Multiple API calls on page load
+
+```tsx
+// BAD: 4 API calls on homepage
+const [categories, products, banners, brands] = await Promise.all([
+  api.getCategories(),
+  api.getProducts(),
+  api.getBanners(),
+  api.getBrands(),
+]);
+```
+
+**Solution**: Single composite endpoint
+
+```python
+# GET /api/v1/storefront/homepage
+@router.get("/homepage")
+async def get_homepage_data(db: AsyncSession = Depends(get_db)):
+    """
+    Returns all data needed for homepage in single request.
+    Cached for 5 minutes.
+    """
+    cache_key = "storefront:homepage"
+    cached = await cache.get(cache_key)
+    if cached:
+        return cached
+
+    # Parallel queries with asyncio.gather
+    categories, featured, banners, brands = await asyncio.gather(
+        get_category_tree(db),
+        get_featured_products(db, limit=8),
+        get_active_banners(db),
+        get_brands_with_products(db),
+    )
+
+    result = {
+        "categories": categories,
+        "featured_products": featured,
+        "banners": banners,
+        "brands": brands,
+    }
+
+    await cache.set(cache_key, result, ttl=300)  # 5 min cache
+    return result
+```
+
+#### 4. Debouncing Filter Changes
+
+```tsx
+// frontend/src/app/(storefront)/products/page.tsx
+
+import { useDebouncedCallback } from 'use-debounce';
+
+export default function ProductsPage() {
+  const [filters, setFilters] = useState<ProductFilters>({});
+
+  // Debounce filter changes to prevent rapid API calls
+  const debouncedSetFilters = useDebouncedCallback(
+    (newFilters: ProductFilters) => {
+      setFilters(newFilters);
+    },
+    300  // 300ms debounce
+  );
+
+  const { data, isLoading } = useProducts(filters);
+
+  return (
+    <div>
+      <FilterSidebar onFilterChange={debouncedSetFilters} />
+      <ProductGrid products={data?.items} loading={isLoading} />
+    </div>
+  );
+}
+```
+
+#### 5. Prefetching on Hover
+
+```tsx
+// Prefetch product detail on hover
+export function ProductCard({ product }: { product: Product }) {
+  const queryClient = useQueryClient();
+
+  const handleMouseEnter = () => {
+    // Prefetch product detail data
+    queryClient.prefetchQuery({
+      queryKey: ['storefront-product', product.slug],
+      queryFn: () => storefrontApi.getProductBySlug(product.slug),
+    });
+  };
+
+  return (
+    <Link
+      href={`/products/${product.slug}`}
+      onMouseEnter={handleMouseEnter}
+    >
+      {/* Product card content */}
+    </Link>
+  );
+}
+```
+
+### Caching Strategy
+
+#### Backend (Redis)
+
+| Cache Key | TTL | Invalidation |
+|-----------|-----|--------------|
+| `storefront:homepage` | 5 min | On product/banner update |
+| `storefront:category-tree` | 10 min | On category create/update/delete |
+| `storefront:products:{filters_hash}` | 2 min | On product update |
+| `storefront:product:{slug}` | 5 min | On specific product update |
+| `cms:menu:{location}` | 10 min | On menu item CRUD |
+
+#### Frontend (React Query)
+
+| Query Key | staleTime | cacheTime |
+|-----------|-----------|-----------|
+| `storefront-category-tree` | 10 min | 30 min |
+| `storefront-products` | 2 min | 10 min |
+| `storefront-product` | 5 min | 30 min |
+| `storefront-homepage` | 5 min | 15 min |
+
+### API Endpoints (Storefront)
+
+```
+GET  /api/v1/storefront/homepage          # Composite homepage data
+GET  /api/v1/storefront/categories/tree   # Category tree for mega menu
+GET  /api/v1/storefront/products          # Products with filters & stock
+GET  /api/v1/storefront/products/{slug}   # Single product detail
+GET  /api/v1/storefront/brands            # Active brands
+```
+
+### Key Implementation Files
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| Header | `components/storefront/layout/header.tsx` | Navigation with mega menu |
+| Mega Menu | `components/storefront/layout/mega-menu.tsx` | Category dropdown |
+| Products Page | `app/(storefront)/products/page.tsx` | Product listing with filters |
+| React Query Hooks | `lib/storefront/hooks.ts` | Data fetching hooks |
+| Storefront API | `lib/storefront/api.ts` | API client functions |
+| Backend Routes | `app/api/v1/endpoints/storefront.py` | FastAPI endpoints |
+
+### Checklist for D2C Performance
+
+- [ ] Category tree API with product counts implemented
+- [ ] Mega menu component with hover state
+- [ ] N+1 queries fixed (stock, categories, brands)
+- [ ] React Query provider added to storefront layout
+- [ ] Custom hooks for data fetching
+- [ ] Composite homepage endpoint
+- [ ] Filter debouncing (300ms)
+- [ ] Product prefetch on hover
+- [ ] Redis caching with proper invalidation
+- [ ] Image optimization with next/image

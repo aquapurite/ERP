@@ -1388,6 +1388,41 @@ export const contentApi = {
   },
 };
 
+// Homepage Composite API - Single request for all homepage data
+// Uses types from @/types/storefront for products, categories, brands
+// Uses local CMS types for banners, usps, testimonials
+export interface HomepageData {
+  categories: import('@/types/storefront').StorefrontCategory[];
+  featured_products: import('@/types/storefront').StorefrontProduct[];
+  bestseller_products: import('@/types/storefront').StorefrontProduct[];
+  new_arrivals: import('@/types/storefront').StorefrontProduct[];
+  banners: StorefrontBanner[];
+  brands: import('@/types/storefront').StorefrontBrand[];
+  usps: StorefrontUsp[];
+  testimonials: StorefrontTestimonial[];
+}
+
+export const homepageApi = {
+  getData: async (): Promise<HomepageData> => {
+    try {
+      const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/homepage`);
+      return data;
+    } catch {
+      // Return empty data on error
+      return {
+        categories: [],
+        featured_products: [],
+        bestseller_products: [],
+        new_arrivals: [],
+        banners: [],
+        brands: [],
+        usps: [],
+        testimonials: [],
+      };
+    }
+  },
+};
+
 export const storefrontApi = {
   products: productsApi,
   categories: categoriesApi,
@@ -1405,6 +1440,7 @@ export const storefrontApi = {
   abandonedCart: abandonedCartApi,
   address: addressApi,
   content: contentApi,
+  homepage: homepageApi,
 };
 
 export default storefrontApi;

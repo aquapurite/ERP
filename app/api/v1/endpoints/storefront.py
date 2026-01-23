@@ -461,7 +461,8 @@ async def get_product_by_slug(slug: str, db: DB, response: Response):
 @router.get("/categories", response_model=List[StorefrontCategoryResponse])
 async def list_categories(db: DB, response: Response):
     """
-    List all active categories for the public storefront.
+    List all active categories for the public storefront as a tree structure.
+    Includes product count for each category (for mega menu).
     No authentication required. Cached for 30 minutes.
     """
     start_time = time.time()
@@ -475,20 +476,28 @@ async def list_categories(db: DB, response: Response):
         response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
         return [StorefrontCategoryResponse(**c) for c in cached_categories]
 
+    # Fetch categories with product count in a single query
     query = (
-        select(Category)
+        select(
+            Category,
+            func.count(Product.id).filter(Product.is_active == True).label('product_count')
+        )
+        .outerjoin(Product, Product.category_id == Category.id)
         .where(Category.is_active == True)
+        .group_by(Category.id)
         .order_by(Category.sort_order.asc(), Category.name.asc())
     )
     result = await db.execute(query)
-    categories = result.scalars().all()
+    categories_with_counts = result.all()
 
     # Build category tree with children
     category_map = {}
     root_categories = []
 
-    # First pass: create all category objects
-    for c in categories:
+    # First pass: create all category objects with product counts
+    for row in categories_with_counts:
+        c = row.Category
+        product_count = row.product_count or 0
         cat_response = StorefrontCategoryResponse(
             id=str(c.id),
             name=c.name,
@@ -499,6 +508,7 @@ async def list_categories(db: DB, response: Response):
             parent_id=str(c.parent_id) if c.parent_id else None,
             is_active=c.is_active,
             is_featured=c.is_featured or False,
+            product_count=product_count,
             children=[],
         )
         category_map[str(c.id)] = {"obj": cat_response, "parent_id": str(c.parent_id) if c.parent_id else None}
@@ -1275,6 +1285,410 @@ async def get_feature_bars(db: DB, response: Response):
     ]
 
     await cache.set(cache_key, [r.model_dump() for r in result_data], ttl=1800)
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result_data
+
+
+# ==================== Composite Homepage Endpoint ====================
+
+import asyncio
+from pydantic import BaseModel
+
+
+class HomepageDataResponse(BaseModel):
+    """Composite response for homepage - all data in single request."""
+    categories: List[StorefrontCategoryResponse]
+    featured_products: List[StorefrontProductResponse]
+    bestseller_products: List[StorefrontProductResponse]
+    new_arrivals: List[StorefrontProductResponse]
+    banners: List[StorefrontBannerResponse]
+    brands: List[StorefrontBrandResponse]
+    usps: List[StorefrontUspResponse]
+    testimonials: List[StorefrontTestimonialResponse]
+
+
+async def _get_featured_products(db, limit: int = 8):
+    """Helper to get featured products with stock."""
+    query = (
+        select(Product)
+        .options(selectinload(Product.images))
+        .options(selectinload(Product.category))
+        .options(selectinload(Product.brand))
+        .where(Product.is_active == True, Product.is_featured == True)
+        .order_by(Product.created_at.desc())
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    products = result.scalars().all()
+
+    # Batch get stock
+    product_ids = [p.id for p in products]
+    if product_ids:
+        stock_query = (
+            select(
+                InventorySummary.product_id,
+                func.sum(InventorySummary.available_quantity).label('total_available')
+            )
+            .where(InventorySummary.product_id.in_(product_ids))
+            .group_by(InventorySummary.product_id)
+        )
+        stock_result = await db.execute(stock_query)
+        stock_map = {row.product_id: row.total_available or 0 for row in stock_result.all()}
+    else:
+        stock_map = {}
+
+    return [
+        StorefrontProductResponse(
+            id=str(p.id),
+            name=p.name,
+            slug=p.slug,
+            sku=p.sku,
+            short_description=p.short_description,
+            mrp=float(p.mrp) if p.mrp else 0,
+            selling_price=float(p.selling_price) if p.selling_price else None,
+            category_id=str(p.category_id) if p.category_id else None,
+            category_name=p.category.name if p.category else None,
+            brand_id=str(p.brand_id) if p.brand_id else None,
+            brand_name=p.brand.name if p.brand else None,
+            is_featured=True,
+            is_bestseller=p.is_bestseller or False,
+            is_new_arrival=p.is_new_arrival or False,
+            images=[
+                StorefrontProductImage(
+                    id=str(img.id),
+                    image_url=img.image_url,
+                    thumbnail_url=img.thumbnail_url,
+                    alt_text=img.alt_text,
+                    is_primary=img.is_primary,
+                    sort_order=img.sort_order or 0,
+                )
+                for img in (p.images or [])
+            ],
+            in_stock=stock_map.get(p.id, 0) > 0,
+            stock_quantity=stock_map.get(p.id, 0),
+        )
+        for p in products
+    ]
+
+
+async def _get_bestseller_products(db, limit: int = 8):
+    """Helper to get bestseller products with stock."""
+    query = (
+        select(Product)
+        .options(selectinload(Product.images))
+        .options(selectinload(Product.category))
+        .options(selectinload(Product.brand))
+        .where(Product.is_active == True, Product.is_bestseller == True)
+        .order_by(Product.created_at.desc())
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    products = result.scalars().all()
+
+    product_ids = [p.id for p in products]
+    if product_ids:
+        stock_query = (
+            select(
+                InventorySummary.product_id,
+                func.sum(InventorySummary.available_quantity).label('total_available')
+            )
+            .where(InventorySummary.product_id.in_(product_ids))
+            .group_by(InventorySummary.product_id)
+        )
+        stock_result = await db.execute(stock_query)
+        stock_map = {row.product_id: row.total_available or 0 for row in stock_result.all()}
+    else:
+        stock_map = {}
+
+    return [
+        StorefrontProductResponse(
+            id=str(p.id),
+            name=p.name,
+            slug=p.slug,
+            sku=p.sku,
+            short_description=p.short_description,
+            mrp=float(p.mrp) if p.mrp else 0,
+            selling_price=float(p.selling_price) if p.selling_price else None,
+            category_id=str(p.category_id) if p.category_id else None,
+            category_name=p.category.name if p.category else None,
+            brand_id=str(p.brand_id) if p.brand_id else None,
+            brand_name=p.brand.name if p.brand else None,
+            is_featured=p.is_featured or False,
+            is_bestseller=True,
+            is_new_arrival=p.is_new_arrival or False,
+            images=[
+                StorefrontProductImage(
+                    id=str(img.id),
+                    image_url=img.image_url,
+                    thumbnail_url=img.thumbnail_url,
+                    alt_text=img.alt_text,
+                    is_primary=img.is_primary,
+                    sort_order=img.sort_order or 0,
+                )
+                for img in (p.images or [])
+            ],
+            in_stock=stock_map.get(p.id, 0) > 0,
+            stock_quantity=stock_map.get(p.id, 0),
+        )
+        for p in products
+    ]
+
+
+async def _get_new_arrival_products(db, limit: int = 8):
+    """Helper to get new arrival products with stock."""
+    query = (
+        select(Product)
+        .options(selectinload(Product.images))
+        .options(selectinload(Product.category))
+        .options(selectinload(Product.brand))
+        .where(Product.is_active == True, Product.is_new_arrival == True)
+        .order_by(Product.created_at.desc())
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    products = result.scalars().all()
+
+    product_ids = [p.id for p in products]
+    if product_ids:
+        stock_query = (
+            select(
+                InventorySummary.product_id,
+                func.sum(InventorySummary.available_quantity).label('total_available')
+            )
+            .where(InventorySummary.product_id.in_(product_ids))
+            .group_by(InventorySummary.product_id)
+        )
+        stock_result = await db.execute(stock_query)
+        stock_map = {row.product_id: row.total_available or 0 for row in stock_result.all()}
+    else:
+        stock_map = {}
+
+    return [
+        StorefrontProductResponse(
+            id=str(p.id),
+            name=p.name,
+            slug=p.slug,
+            sku=p.sku,
+            short_description=p.short_description,
+            mrp=float(p.mrp) if p.mrp else 0,
+            selling_price=float(p.selling_price) if p.selling_price else None,
+            category_id=str(p.category_id) if p.category_id else None,
+            category_name=p.category.name if p.category else None,
+            brand_id=str(p.brand_id) if p.brand_id else None,
+            brand_name=p.brand.name if p.brand else None,
+            is_featured=p.is_featured or False,
+            is_bestseller=p.is_bestseller or False,
+            is_new_arrival=True,
+            images=[
+                StorefrontProductImage(
+                    id=str(img.id),
+                    image_url=img.image_url,
+                    thumbnail_url=img.thumbnail_url,
+                    alt_text=img.alt_text,
+                    is_primary=img.is_primary,
+                    sort_order=img.sort_order or 0,
+                )
+                for img in (p.images or [])
+            ],
+            in_stock=stock_map.get(p.id, 0) > 0,
+            stock_quantity=stock_map.get(p.id, 0),
+        )
+        for p in products
+    ]
+
+
+@router.get("/homepage", response_model=HomepageDataResponse)
+async def get_homepage_data(db: DB, response: Response):
+    """
+    Get all data needed for homepage in a single API call.
+    Includes: categories, featured products, bestsellers, new arrivals,
+    banners, brands, USPs, and testimonials.
+
+    This composite endpoint reduces multiple HTTP requests to just one,
+    significantly improving homepage load time.
+
+    No authentication required. Cached for 5 minutes.
+    """
+    start_time = time.time()
+    cache = get_cache()
+
+    # Try to get from cache
+    cache_key = "storefront:homepage"
+    cached_result = await cache.get(cache_key)
+    if cached_result:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+        return HomepageDataResponse(**cached_result)
+
+    # Fetch all data in parallel using asyncio.gather
+    # Categories
+    async def get_categories():
+        query = (
+            select(
+                Category,
+                func.count(Product.id).filter(Product.is_active == True).label('product_count')
+            )
+            .outerjoin(Product, Product.category_id == Category.id)
+            .where(Category.is_active == True)
+            .group_by(Category.id)
+            .order_by(Category.sort_order.asc(), Category.name.asc())
+        )
+        result = await db.execute(query)
+        categories_with_counts = result.all()
+
+        # Build tree
+        category_map = {}
+        root_categories = []
+        for row in categories_with_counts:
+            c = row.Category
+            product_count = row.product_count or 0
+            cat_response = StorefrontCategoryResponse(
+                id=str(c.id),
+                name=c.name,
+                slug=c.slug,
+                description=c.description,
+                image_url=c.image_url,
+                icon=c.icon,
+                parent_id=str(c.parent_id) if c.parent_id else None,
+                is_active=c.is_active,
+                is_featured=c.is_featured or False,
+                product_count=product_count,
+                children=[],
+            )
+            category_map[str(c.id)] = {"obj": cat_response, "parent_id": str(c.parent_id) if c.parent_id else None}
+
+        for cat_id, cat_data in category_map.items():
+            if cat_data["parent_id"] and cat_data["parent_id"] in category_map:
+                parent = category_map[cat_data["parent_id"]]["obj"]
+                parent.children.append(cat_data["obj"])
+            else:
+                root_categories.append(cat_data["obj"])
+
+        return root_categories
+
+    # Brands
+    async def get_brands():
+        query = (
+            select(Brand)
+            .where(Brand.is_active == True)
+            .order_by(Brand.sort_order.asc(), Brand.name.asc())
+        )
+        result = await db.execute(query)
+        brands = result.scalars().all()
+        return [
+            StorefrontBrandResponse(
+                id=str(b.id),
+                name=b.name,
+                slug=b.slug,
+                description=b.description,
+                logo_url=b.logo_url,
+                is_active=b.is_active,
+            )
+            for b in brands
+        ]
+
+    # Banners
+    async def get_banners():
+        now = func.now()
+        query = (
+            select(CMSBanner)
+            .where(
+                CMSBanner.is_active == True,
+                or_(CMSBanner.starts_at.is_(None), CMSBanner.starts_at <= now),
+                or_(CMSBanner.ends_at.is_(None), CMSBanner.ends_at >= now),
+            )
+            .order_by(CMSBanner.sort_order.asc())
+        )
+        result = await db.execute(query)
+        banners = result.scalars().all()
+        return [
+            StorefrontBannerResponse(
+                id=str(b.id),
+                title=b.title,
+                subtitle=b.subtitle,
+                image_url=b.image_url,
+                mobile_image_url=b.mobile_image_url,
+                cta_text=b.cta_text,
+                cta_link=b.cta_link,
+                text_position=b.text_position,
+                text_color=b.text_color,
+            )
+            for b in banners
+        ]
+
+    # USPs
+    async def get_usps():
+        query = (
+            select(CMSUsp)
+            .where(CMSUsp.is_active == True)
+            .order_by(CMSUsp.sort_order.asc())
+        )
+        result = await db.execute(query)
+        usps = result.scalars().all()
+        return [
+            StorefrontUspResponse(
+                id=str(u.id),
+                title=u.title,
+                description=u.description,
+                icon=u.icon,
+                icon_color=u.icon_color,
+                link_url=u.link_url,
+                link_text=u.link_text,
+            )
+            for u in usps
+        ]
+
+    # Testimonials
+    async def get_testimonials():
+        query = (
+            select(CMSTestimonial)
+            .where(CMSTestimonial.is_active == True)
+            .order_by(CMSTestimonial.is_featured.desc(), CMSTestimonial.sort_order.asc())
+            .limit(6)
+        )
+        result = await db.execute(query)
+        testimonials = result.scalars().all()
+        return [
+            StorefrontTestimonialResponse(
+                id=str(t.id),
+                customer_name=t.customer_name,
+                customer_location=t.customer_location,
+                customer_avatar_url=t.customer_avatar_url,
+                customer_designation=t.customer_designation,
+                rating=t.rating,
+                content=t.content,
+                title=t.title,
+                product_name=t.product_name,
+            )
+            for t in testimonials
+        ]
+
+    # Execute queries sequentially (SQLAlchemy async sessions don't support concurrent operations)
+    # Even though sequential, this is still faster than multiple HTTP requests from frontend
+    categories = await get_categories()
+    featured_products = await _get_featured_products(db, limit=8)
+    bestseller_products = await _get_bestseller_products(db, limit=8)
+    new_arrivals = await _get_new_arrival_products(db, limit=8)
+    banners = await get_banners()
+    brands = await get_brands()
+    usps = await get_usps()
+    testimonials = await get_testimonials()
+
+    result_data = HomepageDataResponse(
+        categories=categories,
+        featured_products=featured_products,
+        bestseller_products=bestseller_products,
+        new_arrivals=new_arrivals,
+        banners=banners,
+        brands=brands,
+        usps=usps,
+        testimonials=testimonials,
+    )
+
+    # Cache for 5 minutes
+    await cache.set(cache_key, result_data.model_dump(), ttl=300)
 
     response.headers["X-Cache"] = "MISS"
     response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"

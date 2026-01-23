@@ -104,6 +104,7 @@ class StorefrontCategoryResponse(BaseModel):
     parent_id: Optional[str] = Field(None, description="Parent category ID")
     is_active: bool = Field(True, description="Whether category is active")
     is_featured: Optional[bool] = Field(False, description="Featured category flag")
+    product_count: int = Field(0, description="Number of products in this category")
     children: List["StorefrontCategoryResponse"] = Field([], description="Child categories")
 
     class Config:

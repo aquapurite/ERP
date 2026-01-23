@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -48,7 +48,8 @@ import {
   StorefrontBrand,
   ProductFilters,
 } from '@/types/storefront';
-import { productsApi, categoriesApi, brandsApi } from '@/lib/storefront/api';
+import { useProductsPageData, usePrefetchProduct } from '@/lib/storefront/hooks';
+import { useDebounce } from '@/hooks/use-debounce';
 import { formatCurrency } from '@/lib/utils';
 
 // View mode storage key
@@ -158,12 +159,8 @@ function ProductListItem({ product }: { product: StorefrontProduct }) {
 
 function ProductsContent() {
   const searchParams = useSearchParams();
+  const prefetchProduct = usePrefetchProduct();
 
-  const [products, setProducts] = useState<StorefrontProduct[]>([]);
-  const [categories, setCategories] = useState<StorefrontCategory[]>([]);
-  const [brands, setBrands] = useState<StorefrontBrand[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [totalProducts, setTotalProducts] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -191,7 +188,7 @@ function ProductsContent() {
     setOpenSections((prev) => ({ ...prev, [section]: !prev[section] }));
   };
 
-  // Filters from URL
+  // Filters from URL - immediate state for UI
   const [filters, setFilters] = useState<ProductFilters>({
     category_id: searchParams.get('category') || undefined,
     brand_id: searchParams.get('brand') || undefined,
@@ -210,41 +207,24 @@ function ProductsContent() {
     size: 12,
   });
 
-  useEffect(() => {
-    const fetchFiltersData = async () => {
-      try {
-        const [categoriesData, brandsData] = await Promise.all([
-          categoriesApi.list(),
-          brandsApi.list(),
-        ]);
-        setCategories(categoriesData);
-        setBrands(brandsData);
-      } catch (error) {
-        console.error('Failed to fetch filters data:', error);
-      }
-    };
-    fetchFiltersData();
-  }, []);
+  // Debounce filters for API calls (300ms delay for price inputs)
+  const debouncedFilters = useDebounce(filters, 300);
 
-  useEffect(() => {
-    const fetchProducts = async () => {
-      setLoading(true);
-      try {
-        const data = await productsApi.list({
-          ...filters,
-          page: currentPage,
-        });
-        setProducts(data.items || []);
-        setTotalProducts(data.total || 0);
-      } catch (error) {
-        console.error('Failed to fetch products:', error);
-        setProducts([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchProducts();
-  }, [filters, currentPage]);
+  // Combine debounced filters with current page
+  const queryFilters = useMemo(() => ({
+    ...debouncedFilters,
+    page: currentPage,
+  }), [debouncedFilters, currentPage]);
+
+  // React Query hooks for data fetching with caching
+  const {
+    categories,
+    brands,
+    products,
+    totalProducts,
+    totalPages,
+    isLoading: loading,
+  } = useProductsPageData(queryFilters);
 
   const updateFilter = (key: keyof ProductFilters, value: any) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -270,7 +250,10 @@ function ProductsContent() {
     filters.is_new_arrival ||
     filters.search;
 
-  const totalPages = Math.ceil(totalProducts / 12);
+  // Prefetch product on hover for faster navigation
+  const handleProductHover = (slug: string) => {
+    prefetchProduct(slug);
+  };
 
   // Filter sidebar content
   const FilterContent = () => (
@@ -685,13 +668,17 @@ function ProductsContent() {
                 {viewMode === 'grid' ? (
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
                     {products.map((product) => (
-                      <ProductCard key={product.id} product={product} />
+                      <div key={product.id} onMouseEnter={() => handleProductHover(product.slug)}>
+                        <ProductCard product={product} />
+                      </div>
                     ))}
                   </div>
                 ) : (
                   <div className="space-y-4">
                     {products.map((product) => (
-                      <ProductListItem key={product.id} product={product} />
+                      <div key={product.id} onMouseEnter={() => handleProductHover(product.slug)}>
+                        <ProductListItem product={product} />
+                      </div>
                     ))}
                   </div>
                 )}

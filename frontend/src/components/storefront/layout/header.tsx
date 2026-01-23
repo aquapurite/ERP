@@ -38,6 +38,7 @@ import { StorefrontCategory, CompanyInfo } from '@/types/storefront';
 import { categoriesApi, companyApi, authApi, contentApi, StorefrontMenuItem } from '@/lib/storefront/api';
 import CartDrawer from '../cart/cart-drawer';
 import SearchAutocomplete from '../search/search-autocomplete';
+import MegaMenu from './mega-menu';
 
 export default function StorefrontHeader() {
   const router = useRouter();
@@ -254,25 +255,17 @@ export default function StorefrontHeader() {
             </div>
           </div>
 
-          {/* Category Navigation - Desktop */}
-          <nav className="hidden md:flex items-center gap-6 py-3 border-t">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="font-medium">
-                  All Categories
-                  <ChevronDown className="ml-1 h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
-                {categories.map((category) => (
-                  <DropdownMenuItem key={category.id} asChild>
-                    <Link href={`/category/${category.slug}`}>
-                      {category.name}
-                    </Link>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+          {/* Category Navigation - Desktop with Mega Menu */}
+          <nav className="hidden md:flex items-center gap-2 py-3 border-t">
+            {/* Mega Menu for ERP Categories */}
+            {categories.length > 0 && (
+              <MegaMenu categories={categories} />
+            )}
+
+            {/* Divider if both categories and menu items exist */}
+            {categories.length > 0 && headerMenuItems.length > 0 && (
+              <div className="h-4 w-px bg-border mx-2" />
+            )}
 
             {/* CMS Menu Items - falls back to defaults if empty */}
             {headerMenuItems.length > 0 ? (
@@ -281,7 +274,7 @@ export default function StorefrontHeader() {
                   key={item.id}
                   href={item.url}
                   target={item.target}
-                  className="text-sm font-medium hover:text-primary transition-colors"
+                  className="px-3 py-2 text-sm font-medium hover:text-primary transition-colors"
                 >
                   {item.title}
                 </Link>
@@ -290,33 +283,21 @@ export default function StorefrontHeader() {
               <>
                 <Link
                   href="/products?is_bestseller=true"
-                  className="text-sm font-medium hover:text-primary transition-colors"
+                  className="px-3 py-2 text-sm font-medium hover:text-primary transition-colors"
                 >
                   Bestsellers
                 </Link>
                 <Link
                   href="/products?is_new_arrival=true"
-                  className="text-sm font-medium hover:text-primary transition-colors"
+                  className="px-3 py-2 text-sm font-medium hover:text-primary transition-colors"
                 >
                   New Arrivals
                 </Link>
                 <Link
                   href="/products"
-                  className="text-sm font-medium hover:text-primary transition-colors"
+                  className="px-3 py-2 text-sm font-medium hover:text-primary transition-colors"
                 >
                   All Products
-                </Link>
-                <Link
-                  href="/about"
-                  className="text-sm font-medium hover:text-primary transition-colors"
-                >
-                  About Us
-                </Link>
-                <Link
-                  href="/contact"
-                  className="text-sm font-medium hover:text-primary transition-colors"
-                >
-                  Contact
                 </Link>
               </>
             )}
@@ -350,15 +331,39 @@ export default function StorefrontHeader() {
             </Link>
             <div className="border-t pt-4">
               <p className="text-sm text-muted-foreground mb-2">Categories</p>
-              {categories.map((category) => (
-                <Link
-                  key={category.id}
-                  href={`/category/${category.slug}`}
-                  className="block py-2 text-base"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  {category.name}
-                </Link>
+              {categories.filter(c => !c.parent_id).map((category) => (
+                <div key={category.id} className="mb-1">
+                  <Link
+                    href={`/category/${category.slug}`}
+                    className="block py-2 text-base font-medium"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    {category.name}
+                    {category.product_count !== undefined && category.product_count > 0 && (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        ({category.product_count})
+                      </span>
+                    )}
+                  </Link>
+                  {/* Subcategories */}
+                  {category.children && category.children.length > 0 && (
+                    <div className="ml-4 border-l pl-3">
+                      {category.children.map((child) => (
+                        <Link
+                          key={child.id}
+                          href={`/category/${child.slug}`}
+                          className="block py-1.5 text-sm text-muted-foreground hover:text-foreground"
+                          onClick={() => setMobileMenuOpen(false)}
+                        >
+                          {child.name}
+                          {child.product_count !== undefined && child.product_count > 0 && (
+                            <span className="ml-1 text-xs">({child.product_count})</span>
+                          )}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
             <div className="border-t pt-4">
