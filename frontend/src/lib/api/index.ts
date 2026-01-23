@@ -233,6 +233,17 @@ export const productsApi = {
       last_calculated_at?: string;
       cost_variance?: number;
       cost_variance_percentage?: number;
+      cost_history?: Array<{
+        date: string;
+        grn_id: string;
+        grn_number: string;
+        quantity: number;
+        unit_cost: number;
+        old_qty: number;
+        old_avg: number;
+        new_qty: number;
+        new_avg: number;
+      }>;
       created_at: string;
       updated_at: string;
     }>(`/products/${productId}/cost`, { params });

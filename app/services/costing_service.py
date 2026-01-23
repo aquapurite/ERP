@@ -576,7 +576,9 @@ class CostingService:
         """
         Initialize ProductCost records for all products that don't have one.
 
-        Uses product's static cost_price as initial average_cost.
+        NOTE: average_cost is initialized to 0 (not from product.cost_price).
+        The average_cost should ONLY be updated from actual GRN receipts.
+        This follows industry best practice for Weighted Average Cost (WAC) accounting.
         """
         # Get products without ProductCost
         subquery = select(ProductCost.product_id)
@@ -589,7 +591,9 @@ class CostingService:
             product_cost = ProductCost(
                 product_id=product.id,
                 valuation_method="WEIGHTED_AVG",
-                average_cost=product.cost_price or Decimal("0"),
+                # IMPORTANT: average_cost starts at 0 and is ONLY updated from GRN receipts
+                # product.cost_price is a static estimate, not actual COGS
+                average_cost=Decimal("0"),
                 quantity_on_hand=0,
                 total_value=Decimal("0"),
             )

@@ -932,10 +932,15 @@ export default function ProductDetailPage() {
                       <div className="p-4 border rounded-lg bg-muted/50">
                         <p className="text-sm text-muted-foreground">Average Cost</p>
                         <p className="text-2xl font-bold text-primary">
-                          {formatCurrency(productCost?.average_cost || product?.cost_price || 0)}
+                          {/* Only show average cost from GRN receipts, not from static cost_price */}
+                          {productCost?.last_grn_id || (productCost?.cost_history && productCost.cost_history.length > 0)
+                            ? formatCurrency(productCost?.average_cost ?? 0)
+                            : <span className="text-muted-foreground">N/A</span>}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Weighted average from POs
+                          {productCost?.last_grn_id || (productCost?.cost_history && productCost.cost_history.length > 0)
+                            ? 'Weighted average from POs'
+                            : 'No purchase orders received yet'}
                         </p>
                       </div>
 
@@ -955,9 +960,11 @@ export default function ProductDetailPage() {
                         <p className="text-sm text-muted-foreground">Gross Margin</p>
                         <p className="text-2xl font-bold text-green-600">
                           {(() => {
-                            const avgCost = productCost?.average_cost || product?.cost_price || 0;
+                            // Only calculate margin if we have actual cost from GRN, not static cost_price
+                            const hasRealCost = productCost?.last_grn_id || (productCost?.cost_history && productCost.cost_history.length > 0);
+                            const avgCost = hasRealCost ? (productCost?.average_cost ?? 0) : 0;
                             const mrp = product?.mrp || 0;
-                            if (mrp > 0 && avgCost > 0) {
+                            if (mrp > 0 && avgCost > 0 && hasRealCost) {
                               return `${(((mrp - avgCost) / mrp) * 100).toFixed(1)}%`;
                             }
                             return 'N/A';
