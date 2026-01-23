@@ -203,9 +203,10 @@ async def get_channel_pl(
         )
         prev_net_revenue = Decimal(str(await db.scalar(prev_revenue_query) or 0))
 
-        # COGS from order items
+        # COGS from order items (using unit_price * 0.6 as estimated cost)
+        # Note: For accurate COGS, should join with ProductCost table
         cogs_query = select(
-            func.coalesce(func.sum(OrderItem.quantity * OrderItem.unit_cost), 0)
+            func.coalesce(func.sum(OrderItem.quantity * OrderItem.unit_price * 0.6), 0)
         ).select_from(OrderItem).join(
             Order, OrderItem.order_id == Order.id
         ).where(
@@ -220,7 +221,7 @@ async def get_channel_pl(
 
         # Previous COGS
         prev_cogs_query = select(
-            func.coalesce(func.sum(OrderItem.quantity * OrderItem.unit_cost), 0)
+            func.coalesce(func.sum(OrderItem.quantity * OrderItem.unit_price * 0.6), 0)
         ).select_from(OrderItem).join(
             Order, OrderItem.order_id == Order.id
         ).where(
