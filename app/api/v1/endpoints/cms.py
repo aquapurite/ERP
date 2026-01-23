@@ -1222,6 +1222,12 @@ async def create_menu_item(
     db.add(item)
     await db.commit()
     await db.refresh(item)
+
+    # Invalidate menu cache so D2C storefront gets fresh data
+    cache = get_cache()
+    await cache.delete("cms:menu:all")
+    await cache.delete(f"cms:menu:{item.menu_location}")
+
     return CMSMenuItemResponse.model_validate(item)
 
 
@@ -1241,12 +1247,23 @@ async def update_menu_item(
     if not item:
         raise HTTPException(status_code=404, detail="Menu item not found")
 
+    # Store old location for cache invalidation
+    old_location = item.menu_location
+
     update_data = data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(item, key, value)
 
     await db.commit()
     await db.refresh(item)
+
+    # Invalidate menu cache so D2C storefront gets fresh data
+    cache = get_cache()
+    await cache.delete("cms:menu:all")
+    await cache.delete(f"cms:menu:{item.menu_location}")
+    if old_location != item.menu_location:
+        await cache.delete(f"cms:menu:{old_location}")
+
     return CMSMenuItemResponse.model_validate(item)
 
 
@@ -1265,8 +1282,16 @@ async def delete_menu_item(
     if not item:
         raise HTTPException(status_code=404, detail="Menu item not found")
 
+    # Store location for cache invalidation
+    menu_location = item.menu_location
+
     await db.delete(item)
     await db.commit()
+
+    # Invalidate menu cache so D2C storefront gets fresh data
+    cache = get_cache()
+    await cache.delete("cms:menu:all")
+    await cache.delete(f"cms:menu:{menu_location}")
 
 
 @router.put("/menu-items/reorder", status_code=200)
@@ -1277,6 +1302,7 @@ async def reorder_menu_items(
     _: bool = Depends(require_permissions(["CMS_EDIT"])),
 ):
     """Reorder menu items."""
+    locations_affected = set()
     for idx, item_id in enumerate(data.ids):
         result = await db.execute(
             select(CMSMenuItem).where(CMSMenuItem.id == item_id)
@@ -1284,8 +1310,16 @@ async def reorder_menu_items(
         item = result.scalar_one_or_none()
         if item:
             item.sort_order = idx
+            locations_affected.add(item.menu_location)
 
     await db.commit()
+
+    # Invalidate menu cache so D2C storefront gets fresh data
+    cache = get_cache()
+    await cache.delete("cms:menu:all")
+    for location in locations_affected:
+        await cache.delete(f"cms:menu:{location}")
+
     return {"success": True, "message": "Menu items reordered"}
 
 

@@ -63,22 +63,20 @@ export default function StorefrontFooter() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [companyData, featureBarsData, menuItemsData, settingsData] = await Promise.all([
+        // Fetch menu items by specific location for better caching and efficiency
+        const [companyData, featureBarsData, quickLinksData, serviceLinksData, settingsData] = await Promise.all([
           companyApi.getInfo(),
           contentApi.getFeatureBars(),
-          contentApi.getMenuItems(),
+          contentApi.getMenuItems('footer_quick'),
+          contentApi.getMenuItems('footer_service'),
           contentApi.getSettings(),
         ]);
 
         setCompany(companyData);
         setFeatureBars(featureBarsData);
+        setQuickLinks(quickLinksData);
+        setServiceLinks(serviceLinksData);
         setSettings(settingsData);
-
-        // Filter menu items by location
-        const quick = menuItemsData.filter(m => m.menu_location === 'footer_quick');
-        const service = menuItemsData.filter(m => m.menu_location === 'footer_service');
-        setQuickLinks(quick);
-        setServiceLinks(service);
       } catch (error) {
         console.error('Failed to fetch footer data:', error);
       }
