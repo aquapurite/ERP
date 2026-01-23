@@ -307,6 +307,47 @@ export interface CMSFeatureBarCreate {
   is_active?: boolean;
 }
 
+// Mega Menu Items
+export interface CMSMegaMenuItem {
+  id: string;
+  title: string;
+  icon?: string;
+  image_url?: string;
+  menu_type: 'CATEGORY' | 'CUSTOM_LINK';
+  category_id?: string;
+  url?: string;
+  target: '_self' | '_blank';
+  show_subcategories: boolean;
+  subcategory_ids?: string[];
+  sort_order: number;
+  is_active: boolean;
+  is_highlighted: boolean;
+  highlight_text?: string;
+  company_id?: string;
+  created_at: string;
+  updated_at: string;
+  created_by?: string;
+  // Resolved from category
+  category_name?: string;
+  category_slug?: string;
+}
+
+export interface CMSMegaMenuItemCreate {
+  title: string;
+  icon?: string;
+  image_url?: string;
+  menu_type: 'CATEGORY' | 'CUSTOM_LINK';
+  category_id?: string;
+  url?: string;
+  target?: '_self' | '_blank';
+  show_subcategories?: boolean;
+  subcategory_ids?: string[];
+  sort_order?: number;
+  is_active?: boolean;
+  is_highlighted?: boolean;
+  highlight_text?: string;
+}
+
 export interface ListResponse<T> {
   items: T[];
   total: number;
@@ -499,6 +540,27 @@ export const cmsApi = {
 
     reorder: (ids: string[]) =>
       apiClient.put<CMSFeatureBar[]>('/cms/feature-bars/reorder', { ids }),
+  },
+
+  // Mega Menu Items
+  megaMenuItems: {
+    list: (params?: { is_active?: boolean; skip?: number; limit?: number }) =>
+      apiClient.get<ListResponse<CMSMegaMenuItem>>('/cms/mega-menu-items', { params }),
+
+    get: (id: string) =>
+      apiClient.get<CMSMegaMenuItem>(`/cms/mega-menu-items/${id}`),
+
+    create: (data: CMSMegaMenuItemCreate) =>
+      apiClient.post<CMSMegaMenuItem>('/cms/mega-menu-items', data),
+
+    update: (id: string, data: Partial<CMSMegaMenuItemCreate>) =>
+      apiClient.put<CMSMegaMenuItem>(`/cms/mega-menu-items/${id}`, data),
+
+    delete: (id: string) =>
+      apiClient.delete(`/cms/mega-menu-items/${id}`),
+
+    reorder: (ids: string[]) =>
+      apiClient.put<CMSMegaMenuItem[]>('/cms/mega-menu-items/reorder', { ids }),
   },
 };
 

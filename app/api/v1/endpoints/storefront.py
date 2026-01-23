@@ -811,7 +811,7 @@ async def check_serviceability(
 
 from app.models.cms import (
     CMSBanner, CMSUsp, CMSTestimonial, CMSAnnouncement, CMSPage,
-    CMSSiteSetting, CMSMenuItem, CMSFeatureBar
+    CMSSiteSetting, CMSMenuItem, CMSFeatureBar, CMSMegaMenuItem
 )
 from app.schemas.cms import (
     StorefrontBannerResponse,
@@ -822,6 +822,8 @@ from app.schemas.cms import (
     StorefrontSettingsResponse,
     StorefrontMenuItemResponse,
     StorefrontFeatureBarResponse,
+    StorefrontMegaMenuItemResponse,
+    StorefrontSubcategoryResponse,
 )
 
 
@@ -1693,3 +1695,135 @@ async def get_homepage_data(db: DB, response: Response):
     response.headers["X-Cache"] = "MISS"
     response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
     return result_data
+
+
+# ==================== Mega Menu Endpoint ====================
+
+@router.get("/mega-menu", response_model=List[StorefrontMegaMenuItemResponse])
+async def get_mega_menu(db: DB, response: Response):
+    """
+    Get CMS-managed mega menu items for storefront navigation.
+    Returns active menu items with resolved category data and subcategories.
+
+    Unlike the categories endpoint which returns ALL categories,
+    this endpoint returns only the curated navigation structure
+    defined by admins in the CMS (similar to Eureka Forbes / Atomberg).
+
+    No authentication required. Cached for 10 minutes.
+    """
+    start_time = time.time()
+    cache = get_cache()
+
+    cache_key = "storefront:mega-menu"
+    cached_result = await cache.get(cache_key)
+    if cached_result:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+        return [StorefrontMegaMenuItemResponse(**item) for item in cached_result]
+
+    # Fetch active mega menu items
+    query = (
+        select(CMSMegaMenuItem)
+        .where(CMSMegaMenuItem.is_active == True)
+        .order_by(CMSMegaMenuItem.sort_order.asc())
+    )
+    result = await db.execute(query)
+    menu_items = result.scalars().all()
+
+    # Build response with resolved category data
+    response_items = []
+    for item in menu_items:
+        menu_response = StorefrontMegaMenuItemResponse(
+            id=str(item.id),
+            title=item.title,
+            icon=item.icon,
+            image_url=item.image_url,
+            menu_type=item.menu_type,
+            url=item.url,
+            target=item.target,
+            is_highlighted=item.is_highlighted,
+            highlight_text=item.highlight_text,
+            category_slug=None,
+            subcategories=[],
+        )
+
+        # For CATEGORY type, resolve the category and its subcategories
+        if item.menu_type == "CATEGORY" and item.category_id:
+            # Get the main category
+            cat_result = await db.execute(
+                select(Category).where(Category.id == item.category_id)
+            )
+            category = cat_result.scalar_one_or_none()
+            if category:
+                menu_response.category_slug = category.slug
+
+                # Determine which subcategories to show
+                if item.show_subcategories:
+                    if item.subcategory_ids and isinstance(item.subcategory_ids, dict):
+                        # Show specific subcategories
+                        specific_ids = item.subcategory_ids.get("ids", [])
+                        if specific_ids:
+                            # Get specific subcategories with product counts
+                            subcat_query = (
+                                select(
+                                    Category,
+                                    func.count(Product.id).filter(Product.is_active == True).label('product_count')
+                                )
+                                .outerjoin(Product, Product.category_id == Category.id)
+                                .where(
+                                    Category.id.in_(specific_ids),
+                                    Category.is_active == True
+                                )
+                                .group_by(Category.id)
+                                .order_by(Category.sort_order.asc(), Category.name.asc())
+                            )
+                            subcat_result = await db.execute(subcat_query)
+                            subcategories = subcat_result.all()
+
+                            menu_response.subcategories = [
+                                StorefrontSubcategoryResponse(
+                                    id=str(sc.Category.id),
+                                    name=sc.Category.name,
+                                    slug=sc.Category.slug,
+                                    image_url=sc.Category.image_url,
+                                    product_count=sc.product_count or 0,
+                                )
+                                for sc in subcategories
+                            ]
+                    else:
+                        # Show all children of this category
+                        subcat_query = (
+                            select(
+                                Category,
+                                func.count(Product.id).filter(Product.is_active == True).label('product_count')
+                            )
+                            .outerjoin(Product, Product.category_id == Category.id)
+                            .where(
+                                Category.parent_id == item.category_id,
+                                Category.is_active == True
+                            )
+                            .group_by(Category.id)
+                            .order_by(Category.sort_order.asc(), Category.name.asc())
+                        )
+                        subcat_result = await db.execute(subcat_query)
+                        subcategories = subcat_result.all()
+
+                        menu_response.subcategories = [
+                            StorefrontSubcategoryResponse(
+                                id=str(sc.Category.id),
+                                name=sc.Category.name,
+                                slug=sc.Category.slug,
+                                image_url=sc.Category.image_url,
+                                product_count=sc.product_count or 0,
+                            )
+                            for sc in subcategories
+                        ]
+
+        response_items.append(menu_response)
+
+    # Cache for 10 minutes (navigation changes infrequently)
+    await cache.set(cache_key, [item.model_dump() for item in response_items], ttl=600)
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return response_items

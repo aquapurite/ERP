@@ -482,6 +482,9 @@ from app.models.cms import (
     CMSSeo,
     CMSPageStatus,
     CMSAnnouncementType,
+    CMSFeatureBar,
+    CMSMegaMenuItem,
+    CMSMegaMenuItemType,
 )
 
 __all__ = [

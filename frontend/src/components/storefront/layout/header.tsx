@@ -35,10 +35,10 @@ import {
 import { useCartStore } from '@/lib/storefront/cart-store';
 import { useAuthStore, useIsAuthenticated, useCustomer } from '@/lib/storefront/auth-store';
 import { StorefrontCategory, CompanyInfo } from '@/types/storefront';
-import { categoriesApi, companyApi, authApi, contentApi, StorefrontMenuItem } from '@/lib/storefront/api';
+import { categoriesApi, companyApi, authApi, contentApi, StorefrontMenuItem, StorefrontMegaMenuItem } from '@/lib/storefront/api';
 import CartDrawer from '../cart/cart-drawer';
 import SearchAutocomplete from '../search/search-autocomplete';
-import MegaMenu from './mega-menu';
+import MegaMenu, { CMSMegaMenu } from './mega-menu';
 
 export default function StorefrontHeader() {
   const router = useRouter();
@@ -50,6 +50,7 @@ export default function StorefrontHeader() {
   const [categories, setCategories] = useState<StorefrontCategory[]>([]);
   const [company, setCompany] = useState<CompanyInfo | null>(null);
   const [headerMenuItems, setHeaderMenuItems] = useState<StorefrontMenuItem[]>([]);
+  const [megaMenuItems, setMegaMenuItems] = useState<StorefrontMegaMenuItem[]>([]);
 
   const cartItemCount = useCartStore((state) => state.getItemCount());
   const openCart = useCartStore((state) => state.openCart);
@@ -81,14 +82,16 @@ export default function StorefrontHeader() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [categoriesData, companyData, menuItems] = await Promise.all([
+        const [categoriesData, companyData, menuItems, megaMenu] = await Promise.all([
           categoriesApi.getTree(),
           companyApi.getInfo(),
           contentApi.getMenuItems('header'),
+          contentApi.getMegaMenu(),
         ]);
         setCategories(categoriesData);
         setCompany(companyData);
         setHeaderMenuItems(menuItems);
+        setMegaMenuItems(megaMenu);
       } catch (error) {
         console.error('Failed to fetch data:', error);
       }
@@ -257,13 +260,15 @@ export default function StorefrontHeader() {
 
           {/* Category Navigation - Desktop with Mega Menu */}
           <nav className="hidden md:flex items-center gap-2 py-3 border-t">
-            {/* Mega Menu for ERP Categories */}
-            {categories.length > 0 && (
+            {/* CMS Mega Menu (admin-curated) takes priority, otherwise fall back to all categories */}
+            {megaMenuItems.length > 0 ? (
+              <CMSMegaMenu items={megaMenuItems} />
+            ) : categories.length > 0 ? (
               <MegaMenu categories={categories} />
-            )}
+            ) : null}
 
-            {/* Divider if both categories and menu items exist */}
-            {categories.length > 0 && headerMenuItems.length > 0 && (
+            {/* Divider if navigation exists and menu items exist */}
+            {(megaMenuItems.length > 0 || categories.length > 0) && headerMenuItems.length > 0 && (
               <div className="h-4 w-px bg-border mx-2" />
             )}
 
@@ -331,40 +336,79 @@ export default function StorefrontHeader() {
             </Link>
             <div className="border-t pt-4">
               <p className="text-sm text-muted-foreground mb-2">Categories</p>
-              {categories.filter(c => !c.parent_id).map((category) => (
-                <div key={category.id} className="mb-1">
-                  <Link
-                    href={`/category/${category.slug}`}
-                    className="block py-2 text-base font-medium"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    {category.name}
-                    {category.product_count !== undefined && category.product_count > 0 && (
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        ({category.product_count})
-                      </span>
+              {/* Use CMS mega menu if available, otherwise fall back to categories */}
+              {megaMenuItems.length > 0 ? (
+                megaMenuItems.map((item) => (
+                  <div key={item.id} className="mb-1">
+                    <Link
+                      href={item.menu_type === 'CATEGORY' ? `/category/${item.category_slug}` : item.url || '#'}
+                      target={item.target}
+                      className="block py-2 text-base font-medium"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      {item.title}
+                      {item.is_highlighted && (
+                        <Badge variant="default" className="ml-2 text-[10px] px-1.5 py-0 bg-amber-500">
+                          {item.highlight_text || 'New'}
+                        </Badge>
+                      )}
+                    </Link>
+                    {/* Subcategories for category type */}
+                    {item.menu_type === 'CATEGORY' && item.subcategories && item.subcategories.length > 0 && (
+                      <div className="ml-4 border-l pl-3">
+                        {item.subcategories.map((sub) => (
+                          <Link
+                            key={sub.id}
+                            href={`/category/${sub.slug}`}
+                            className="block py-1.5 text-sm text-muted-foreground hover:text-foreground"
+                            onClick={() => setMobileMenuOpen(false)}
+                          >
+                            {sub.name}
+                            {sub.product_count > 0 && (
+                              <span className="ml-1 text-xs">({sub.product_count})</span>
+                            )}
+                          </Link>
+                        ))}
+                      </div>
                     )}
-                  </Link>
-                  {/* Subcategories */}
-                  {category.children && category.children.length > 0 && (
-                    <div className="ml-4 border-l pl-3">
-                      {category.children.map((child) => (
-                        <Link
-                          key={child.id}
-                          href={`/category/${child.slug}`}
-                          className="block py-1.5 text-sm text-muted-foreground hover:text-foreground"
-                          onClick={() => setMobileMenuOpen(false)}
-                        >
-                          {child.name}
-                          {child.product_count !== undefined && child.product_count > 0 && (
-                            <span className="ml-1 text-xs">({child.product_count})</span>
-                          )}
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+                  </div>
+                ))
+              ) : (
+                categories.filter(c => !c.parent_id).map((category) => (
+                  <div key={category.id} className="mb-1">
+                    <Link
+                      href={`/category/${category.slug}`}
+                      className="block py-2 text-base font-medium"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      {category.name}
+                      {category.product_count !== undefined && category.product_count > 0 && (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          ({category.product_count})
+                        </span>
+                      )}
+                    </Link>
+                    {/* Subcategories */}
+                    {category.children && category.children.length > 0 && (
+                      <div className="ml-4 border-l pl-3">
+                        {category.children.map((child) => (
+                          <Link
+                            key={child.id}
+                            href={`/category/${child.slug}`}
+                            className="block py-1.5 text-sm text-muted-foreground hover:text-foreground"
+                            onClick={() => setMobileMenuOpen(false)}
+                          >
+                            {child.name}
+                            {child.product_count !== undefined && child.product_count > 0 && (
+                              <span className="ml-1 text-xs">({child.product_count})</span>
+                            )}
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
             <div className="border-t pt-4">
               {isAuthenticated && customer ? (

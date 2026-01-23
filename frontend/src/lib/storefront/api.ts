@@ -1335,6 +1335,29 @@ export interface StorefrontSettings {
   [key: string]: string | undefined;
 }
 
+// Mega Menu Types (CMS-managed navigation)
+export interface StorefrontMegaMenuSubcategory {
+  id: string;
+  name: string;
+  slug: string;
+  image_url?: string;
+  product_count: number;
+}
+
+export interface StorefrontMegaMenuItem {
+  id: string;
+  title: string;
+  icon?: string;
+  image_url?: string;
+  menu_type: 'CATEGORY' | 'CUSTOM_LINK';
+  url?: string;
+  target: '_self' | '_blank';
+  is_highlighted: boolean;
+  highlight_text?: string;
+  category_slug?: string;
+  subcategories: StorefrontMegaMenuSubcategory[];
+}
+
 export const contentApi = {
   getBanners: async (): Promise<StorefrontBanner[]> => {
     try {
@@ -1413,6 +1436,15 @@ export const contentApi = {
   getFeatureBars: async (): Promise<StorefrontFeatureBar[]> => {
     try {
       const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/feature-bars`);
+      return data || [];
+    } catch {
+      return [];
+    }
+  },
+
+  getMegaMenu: async (): Promise<StorefrontMegaMenuItem[]> => {
+    try {
+      const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/mega-menu`);
       return data || [];
     } catch {
       return [];

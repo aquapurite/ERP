@@ -21,6 +21,12 @@ class CMSAnnouncementType(str, Enum):
     SUCCESS = "SUCCESS"
 
 
+class CMSMegaMenuItemType(str, Enum):
+    """Type of mega menu item"""
+    CATEGORY = "CATEGORY"       # Links to ERP category with subcategories
+    CUSTOM_LINK = "CUSTOM_LINK" # Custom URL link
+
+
 # ==================== Banner Schemas ====================
 
 class CMSBannerBase(BaseModel):
@@ -599,6 +605,94 @@ class CMSFeatureBarListResponse(BaseModel):
     """Response for listing feature bar items."""
     items: List[CMSFeatureBarResponse]
     total: int
+
+
+# ==================== Mega Menu Item Schemas ====================
+
+class CMSMegaMenuItemBase(BaseModel):
+    """Base schema for mega menu items."""
+    title: str = Field(..., min_length=1, max_length=100)
+    icon: Optional[str] = Field(None, max_length=50, description="Lucide icon name")
+    image_url: Optional[str] = Field(None, max_length=500)
+    menu_type: CMSMegaMenuItemType = CMSMegaMenuItemType.CATEGORY
+    category_id: Optional[UUID] = Field(None, description="ERP category ID (for CATEGORY type)")
+    url: Optional[str] = Field(None, max_length=500, description="Custom URL (for CUSTOM_LINK type)")
+    target: str = Field("_self", pattern="^(_self|_blank)$")
+    show_subcategories: bool = Field(True, description="Whether to show subcategories in dropdown")
+    subcategory_ids: Optional[List[UUID]] = Field(None, description="Specific subcategory IDs to show (null = all)")
+    sort_order: int = Field(0, ge=0)
+    is_active: bool = True
+    is_highlighted: bool = Field(False, description="Show highlight badge (e.g., 'New')")
+    highlight_text: Optional[str] = Field(None, max_length=20, description="Text for highlight badge")
+
+
+class CMSMegaMenuItemCreate(CMSMegaMenuItemBase):
+    """Schema for creating a mega menu item."""
+    pass
+
+
+class CMSMegaMenuItemUpdate(BaseModel):
+    """Schema for updating a mega menu item."""
+    title: Optional[str] = Field(None, max_length=100)
+    icon: Optional[str] = Field(None, max_length=50)
+    image_url: Optional[str] = Field(None, max_length=500)
+    menu_type: Optional[CMSMegaMenuItemType] = None
+    category_id: Optional[UUID] = None
+    url: Optional[str] = Field(None, max_length=500)
+    target: Optional[str] = Field(None, pattern="^(_self|_blank)$")
+    show_subcategories: Optional[bool] = None
+    subcategory_ids: Optional[List[UUID]] = None
+    sort_order: Optional[int] = Field(None, ge=0)
+    is_active: Optional[bool] = None
+    is_highlighted: Optional[bool] = None
+    highlight_text: Optional[str] = Field(None, max_length=20)
+
+
+class CMSMegaMenuItemResponse(CMSMegaMenuItemBase):
+    """Response schema for mega menu item."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    company_id: Optional[UUID] = None
+    created_at: datetime
+    updated_at: datetime
+    created_by: Optional[UUID] = None
+    # Include category details if linked
+    category_name: Optional[str] = None
+    category_slug: Optional[str] = None
+
+
+class CMSMegaMenuItemListResponse(BaseModel):
+    """Response for listing mega menu items."""
+    items: List[CMSMegaMenuItemResponse]
+    total: int
+
+
+# ==================== Storefront Mega Menu Response ====================
+
+class StorefrontSubcategoryResponse(BaseModel):
+    """Subcategory info for storefront mega menu."""
+    id: str
+    name: str
+    slug: str
+    image_url: Optional[str] = None
+    product_count: int = 0
+
+
+class StorefrontMegaMenuItemResponse(BaseModel):
+    """Public mega menu item response for storefront."""
+    id: str
+    title: str
+    icon: Optional[str] = None
+    image_url: Optional[str] = None
+    menu_type: str
+    url: Optional[str] = None
+    target: str = "_self"
+    is_highlighted: bool = False
+    highlight_text: Optional[str] = None
+    # For CATEGORY type - resolved category data
+    category_slug: Optional[str] = None
+    subcategories: List[StorefrontSubcategoryResponse] = []
 
 
 # ==================== Storefront Settings Response ====================

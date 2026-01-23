@@ -27,6 +27,7 @@ export const storefrontKeys = {
   settings: (group?: string) => [...storefrontKeys.all, 'settings', group] as const,
   featureBars: () => [...storefrontKeys.all, 'feature-bars'] as const,
   homepage: () => [...storefrontKeys.all, 'homepage'] as const,
+  megaMenu: () => [...storefrontKeys.all, 'mega-menu'] as const,
 };
 
 /**
@@ -220,5 +221,20 @@ export function useHomepage() {
     queryFn: () => homepageApi.getData(),
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 15 * 60 * 1000, // 15 minutes
+  });
+}
+
+/**
+ * Fetch CMS-managed mega menu items for navigation
+ * This returns curated navigation structure defined by admins,
+ * unlike categories which returns all categories from the database.
+ * Cached for 10 minutes (navigation changes infrequently)
+ */
+export function useMegaMenu() {
+  return useQuery({
+    queryKey: storefrontKeys.megaMenu(),
+    queryFn: () => contentApi.getMegaMenu(),
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes
   });
 }

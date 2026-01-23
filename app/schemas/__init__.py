@@ -377,6 +377,17 @@ from app.schemas.rate_card import (
     RateCardBrief,
     TransporterRateCardSummary,
 )
+# CMS (D2C Content Management)
+from app.schemas.cms import (
+    CMSMegaMenuItemType,
+    CMSMegaMenuItemBase,
+    CMSMegaMenuItemCreate,
+    CMSMegaMenuItemUpdate,
+    CMSMegaMenuItemResponse,
+    CMSMegaMenuItemListResponse,
+    StorefrontMegaMenuItemResponse,
+    StorefrontSubcategoryResponse,
+)
 # S&OP (Sales and Operations Planning)
 from app.schemas.snop import (
     ForecastDataPoint,
@@ -792,4 +803,13 @@ __all__ = [
     "SNOPDashboardSummary",
     "ForecastAccuracyReport",
     "DemandSupplyGapAnalysis",
+    # CMS (D2C Content Management)
+    "CMSMegaMenuItemType",
+    "CMSMegaMenuItemBase",
+    "CMSMegaMenuItemCreate",
+    "CMSMegaMenuItemUpdate",
+    "CMSMegaMenuItemResponse",
+    "CMSMegaMenuItemListResponse",
+    "StorefrontMegaMenuItemResponse",
+    "StorefrontSubcategoryResponse",
 ]

@@ -31,7 +31,9 @@ from app.models.cms import (
     CMSSiteSetting,
     CMSMenuItem,
     CMSFeatureBar,
+    CMSMegaMenuItem,
 )
+from app.models import Category
 from app.schemas.cms import (
     # Banner schemas
     CMSBannerCreate,
@@ -80,6 +82,11 @@ from app.schemas.cms import (
     CMSFeatureBarUpdate,
     CMSFeatureBarResponse,
     CMSFeatureBarListResponse,
+    # Mega Menu schemas
+    CMSMegaMenuItemCreate,
+    CMSMegaMenuItemUpdate,
+    CMSMegaMenuItemResponse,
+    CMSMegaMenuItemListResponse,
     # Common schemas
     CMSReorderRequest,
 )
@@ -1441,3 +1448,314 @@ async def reorder_feature_bars(
 
     await db.commit()
     return {"success": True, "message": "Feature bars reordered"}
+
+
+# ==================== Mega Menu Item Endpoints ====================
+
+@router.get("/mega-menu-items", response_model=CMSMegaMenuItemListResponse)
+async def list_mega_menu_items(
+    db: DB,
+    current_user: CurrentUser,
+    is_active: Optional[bool] = None,
+    _: bool = Depends(require_permissions(["CMS_VIEW"])),
+):
+    """List all mega menu items for D2C navigation management."""
+    query = select(CMSMegaMenuItem).order_by(CMSMegaMenuItem.sort_order)
+
+    if is_active is not None:
+        query = query.where(CMSMegaMenuItem.is_active == is_active)
+
+    result = await db.execute(query)
+    items = result.scalars().all()
+
+    # Enrich with category names
+    response_items = []
+    for item in items:
+        item_dict = {
+            "id": item.id,
+            "title": item.title,
+            "icon": item.icon,
+            "image_url": item.image_url,
+            "menu_type": item.menu_type,
+            "category_id": item.category_id,
+            "url": item.url,
+            "target": item.target,
+            "show_subcategories": item.show_subcategories,
+            "subcategory_ids": item.subcategory_ids,
+            "sort_order": item.sort_order,
+            "is_active": item.is_active,
+            "is_highlighted": item.is_highlighted,
+            "highlight_text": item.highlight_text,
+            "company_id": item.company_id,
+            "created_at": item.created_at,
+            "updated_at": item.updated_at,
+            "created_by": item.created_by,
+            "category_name": None,
+            "category_slug": None,
+        }
+
+        # Get category details if linked
+        if item.category_id:
+            cat_result = await db.execute(
+                select(Category).where(Category.id == item.category_id)
+            )
+            category = cat_result.scalar_one_or_none()
+            if category:
+                item_dict["category_name"] = category.name
+                item_dict["category_slug"] = category.slug
+
+        response_items.append(CMSMegaMenuItemResponse(**item_dict))
+
+    return CMSMegaMenuItemListResponse(
+        items=response_items,
+        total=len(items)
+    )
+
+
+@router.get("/mega-menu-items/{item_id}", response_model=CMSMegaMenuItemResponse)
+async def get_mega_menu_item(
+    item_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_VIEW"])),
+):
+    """Get a single mega menu item by ID."""
+    result = await db.execute(
+        select(CMSMegaMenuItem).where(CMSMegaMenuItem.id == item_id)
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Mega menu item not found")
+
+    # Get category details if linked
+    category_name = None
+    category_slug = None
+    if item.category_id:
+        cat_result = await db.execute(
+            select(Category).where(Category.id == item.category_id)
+        )
+        category = cat_result.scalar_one_or_none()
+        if category:
+            category_name = category.name
+            category_slug = category.slug
+
+    return CMSMegaMenuItemResponse(
+        id=item.id,
+        title=item.title,
+        icon=item.icon,
+        image_url=item.image_url,
+        menu_type=item.menu_type,
+        category_id=item.category_id,
+        url=item.url,
+        target=item.target,
+        show_subcategories=item.show_subcategories,
+        subcategory_ids=item.subcategory_ids,
+        sort_order=item.sort_order,
+        is_active=item.is_active,
+        is_highlighted=item.is_highlighted,
+        highlight_text=item.highlight_text,
+        company_id=item.company_id,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+        created_by=item.created_by,
+        category_name=category_name,
+        category_slug=category_slug,
+    )
+
+
+@router.post("/mega-menu-items", response_model=CMSMegaMenuItemResponse, status_code=201)
+async def create_mega_menu_item(
+    data: CMSMegaMenuItemCreate,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_CREATE"])),
+):
+    """Create a new mega menu item for D2C navigation."""
+    # Validate category exists if menu_type is CATEGORY
+    category_name = None
+    category_slug = None
+    if data.menu_type.value == "CATEGORY" and data.category_id:
+        cat_result = await db.execute(
+            select(Category).where(Category.id == data.category_id)
+        )
+        category = cat_result.scalar_one_or_none()
+        if not category:
+            raise HTTPException(status_code=400, detail="Category not found")
+        category_name = category.name
+        category_slug = category.slug
+
+    # Convert subcategory_ids list to JSON format for storage
+    item_data = data.model_dump()
+    if item_data.get("subcategory_ids"):
+        item_data["subcategory_ids"] = {"ids": [str(uid) for uid in item_data["subcategory_ids"]]}
+    item_data["menu_type"] = item_data["menu_type"].value if hasattr(item_data["menu_type"], "value") else item_data["menu_type"]
+
+    item = CMSMegaMenuItem(
+        **item_data,
+        created_by=current_user.id,
+    )
+    db.add(item)
+    await db.commit()
+    await db.refresh(item)
+
+    # Invalidate mega menu cache
+    cache = get_cache()
+    await cache.delete("storefront:mega-menu")
+
+    return CMSMegaMenuItemResponse(
+        id=item.id,
+        title=item.title,
+        icon=item.icon,
+        image_url=item.image_url,
+        menu_type=item.menu_type,
+        category_id=item.category_id,
+        url=item.url,
+        target=item.target,
+        show_subcategories=item.show_subcategories,
+        subcategory_ids=data.subcategory_ids,
+        sort_order=item.sort_order,
+        is_active=item.is_active,
+        is_highlighted=item.is_highlighted,
+        highlight_text=item.highlight_text,
+        company_id=item.company_id,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+        created_by=item.created_by,
+        category_name=category_name,
+        category_slug=category_slug,
+    )
+
+
+@router.put("/mega-menu-items/{item_id}", response_model=CMSMegaMenuItemResponse)
+async def update_mega_menu_item(
+    item_id: UUID,
+    data: CMSMegaMenuItemUpdate,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_EDIT"])),
+):
+    """Update a mega menu item."""
+    result = await db.execute(
+        select(CMSMegaMenuItem).where(CMSMegaMenuItem.id == item_id)
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Mega menu item not found")
+
+    update_data = data.model_dump(exclude_unset=True)
+
+    # Validate category if updating to CATEGORY type
+    if update_data.get("menu_type") == "CATEGORY" or (item.menu_type == "CATEGORY" and update_data.get("category_id")):
+        cat_id = update_data.get("category_id", item.category_id)
+        if cat_id:
+            cat_result = await db.execute(
+                select(Category).where(Category.id == cat_id)
+            )
+            if not cat_result.scalar_one_or_none():
+                raise HTTPException(status_code=400, detail="Category not found")
+
+    # Convert subcategory_ids list to JSON format
+    if "subcategory_ids" in update_data and update_data["subcategory_ids"]:
+        update_data["subcategory_ids"] = {"ids": [str(uid) for uid in update_data["subcategory_ids"]]}
+
+    # Convert enum to string if needed
+    if "menu_type" in update_data and update_data["menu_type"]:
+        update_data["menu_type"] = update_data["menu_type"].value if hasattr(update_data["menu_type"], "value") else update_data["menu_type"]
+
+    for key, value in update_data.items():
+        setattr(item, key, value)
+
+    await db.commit()
+    await db.refresh(item)
+
+    # Invalidate mega menu cache
+    cache = get_cache()
+    await cache.delete("storefront:mega-menu")
+
+    # Get category details
+    category_name = None
+    category_slug = None
+    if item.category_id:
+        cat_result = await db.execute(
+            select(Category).where(Category.id == item.category_id)
+        )
+        category = cat_result.scalar_one_or_none()
+        if category:
+            category_name = category.name
+            category_slug = category.slug
+
+    # Convert stored subcategory_ids back to list
+    subcategory_ids = None
+    if item.subcategory_ids and isinstance(item.subcategory_ids, dict):
+        subcategory_ids = item.subcategory_ids.get("ids", [])
+
+    return CMSMegaMenuItemResponse(
+        id=item.id,
+        title=item.title,
+        icon=item.icon,
+        image_url=item.image_url,
+        menu_type=item.menu_type,
+        category_id=item.category_id,
+        url=item.url,
+        target=item.target,
+        show_subcategories=item.show_subcategories,
+        subcategory_ids=subcategory_ids,
+        sort_order=item.sort_order,
+        is_active=item.is_active,
+        is_highlighted=item.is_highlighted,
+        highlight_text=item.highlight_text,
+        company_id=item.company_id,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+        created_by=item.created_by,
+        category_name=category_name,
+        category_slug=category_slug,
+    )
+
+
+@router.delete("/mega-menu-items/{item_id}", status_code=204)
+async def delete_mega_menu_item(
+    item_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_DELETE"])),
+):
+    """Delete a mega menu item."""
+    result = await db.execute(
+        select(CMSMegaMenuItem).where(CMSMegaMenuItem.id == item_id)
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Mega menu item not found")
+
+    await db.delete(item)
+    await db.commit()
+
+    # Invalidate mega menu cache
+    cache = get_cache()
+    await cache.delete("storefront:mega-menu")
+
+
+@router.put("/mega-menu-items/reorder", status_code=200)
+async def reorder_mega_menu_items(
+    data: CMSReorderRequest,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_EDIT"])),
+):
+    """Reorder mega menu items."""
+    for idx, item_id in enumerate(data.ids):
+        result = await db.execute(
+            select(CMSMegaMenuItem).where(CMSMegaMenuItem.id == item_id)
+        )
+        item = result.scalar_one_or_none()
+        if item:
+            item.sort_order = idx
+
+    await db.commit()
+
+    # Invalidate mega menu cache
+    cache = get_cache()
+    await cache.delete("storefront:mega-menu")
+
+    return {"success": True, "message": "Mega menu items reordered"}

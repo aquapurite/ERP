@@ -989,3 +989,141 @@ class CMSFeatureBar(Base):
 
     def __repr__(self) -> str:
         return f"<CMSFeatureBar(title='{self.title}', icon='{self.icon}')>"
+
+
+# ==================== CMS Mega Menu Item Model ====================
+
+class CMSMegaMenuItemType(str, Enum):
+    """Type of mega menu item"""
+    CATEGORY = "CATEGORY"       # Links to ERP category with subcategories
+    CUSTOM_LINK = "CUSTOM_LINK" # Custom URL link
+
+
+class CMSMegaMenuItem(Base):
+    """
+    Mega menu items for D2C storefront navigation.
+    Allows admin to control which categories appear in the mega menu,
+    select specific subcategories, and add custom links.
+
+    Similar to Eureka Forbes / Atomberg navigation structure.
+    """
+    __tablename__ = "cms_mega_menu_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Display
+    title: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        comment="Display title (can override category name)"
+    )
+    icon: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Lucide icon name for the menu item"
+    )
+    image_url: Mapped[Optional[str]] = mapped_column(
+        String(500),
+        nullable=True,
+        comment="Optional image for the menu item"
+    )
+
+    # Type and linking
+    menu_type: Mapped[str] = mapped_column(
+        String(20),
+        default="CATEGORY",
+        nullable=False,
+        comment="CATEGORY or CUSTOM_LINK"
+    )
+
+    # For CATEGORY type: link to ERP category
+    category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("categories.id", ondelete="CASCADE"),
+        nullable=True,
+        comment="ERP category ID (for CATEGORY type)"
+    )
+
+    # For CUSTOM_LINK type: custom URL
+    url: Mapped[Optional[str]] = mapped_column(
+        String(500),
+        nullable=True,
+        comment="Custom URL (for CUSTOM_LINK type)"
+    )
+    target: Mapped[str] = mapped_column(
+        String(20),
+        default="_self",
+        nullable=False,
+        comment="Link target: _self or _blank"
+    )
+
+    # Subcategory control (for CATEGORY type)
+    show_subcategories: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+        comment="Whether to show subcategories in dropdown"
+    )
+    subcategory_ids: Mapped[Optional[dict]] = mapped_column(
+        JSONB,
+        nullable=True,
+        comment="Specific subcategory IDs to show (null = all active subcategories)"
+    )
+
+    # Display settings
+    sort_order: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False
+    )
+    is_highlighted: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        comment="Highlight this item (e.g., 'New' badge)"
+    )
+    highlight_text: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="Text for highlight badge e.g., 'New', 'Sale'"
+    )
+
+    # Multi-tenant
+    company_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=True
+    )
+
+    # Audit
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Relationships
+    category = relationship("Category", foreign_keys=[category_id])
+
+    def __repr__(self) -> str:
+        return f"<CMSMegaMenuItem(title='{self.title}', type={self.menu_type})>"
