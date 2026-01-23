@@ -1,19 +1,55 @@
 """Reports API endpoints for frontend dashboard."""
 from typing import Optional
-from uuid import UUID
 from datetime import date, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, func, and_, case
 
 from app.api.deps import DB, get_current_user
 from app.models.user import User
 from app.models.order import Order, OrderItem
-from app.models.channel import SalesChannel
-from app.models.accounting import GeneralLedger, ChartOfAccount
 
 router = APIRouter()
+
+# Map source codes to display names
+SOURCE_DISPLAY_NAMES = {
+    "WEBSITE": "D2C Website",
+    "D2C": "D2C Website",
+    "MOBILE_APP": "Mobile App",
+    "STORE": "Retail Store",
+    "PHONE": "Phone Orders",
+    "DEALER": "Dealer/B2B",
+    "AMAZON": "Amazon",
+    "FLIPKART": "Flipkart",
+    "OTHER": "Other Channels",
+}
+
+# Map source codes to channel types
+SOURCE_CHANNEL_TYPES = {
+    "WEBSITE": "D2C",
+    "D2C": "D2C",
+    "MOBILE_APP": "D2C",
+    "STORE": "RETAIL",
+    "PHONE": "D2C",
+    "DEALER": "B2B",
+    "AMAZON": "MARKETPLACE",
+    "FLIPKART": "MARKETPLACE",
+    "OTHER": "OTHER",
+}
+
+# Commission rates by channel
+COMMISSION_RATES = {
+    "WEBSITE": Decimal("0"),
+    "D2C": Decimal("0"),
+    "MOBILE_APP": Decimal("0"),
+    "STORE": Decimal("0"),
+    "PHONE": Decimal("0"),
+    "DEALER": Decimal("0.05"),  # 5%
+    "AMAZON": Decimal("0.15"),  # 15%
+    "FLIPKART": Decimal("0.12"),  # 12%
+    "OTHER": Decimal("0.05"),
+}
 
 
 def parse_period(period: str) -> tuple[date, date]:
@@ -59,6 +95,26 @@ def parse_period(period: str) -> tuple[date, date]:
     return start, end
 
 
+def map_channel_filter_to_sources(channel_id: str) -> list[str]:
+    """Map frontend channel filter to Order.source values."""
+    if not channel_id or channel_id == "all":
+        return []  # No filter = all sources
+
+    channel_lower = channel_id.lower()
+    if channel_lower in ["d2c", "website"]:
+        return ["WEBSITE", "D2C", "MOBILE_APP", "PHONE"]
+    elif channel_lower == "amazon":
+        return ["AMAZON"]
+    elif channel_lower == "flipkart":
+        return ["FLIPKART"]
+    elif channel_lower in ["b2b", "dealer"]:
+        return ["DEALER"]
+    elif channel_lower == "store":
+        return ["STORE"]
+    else:
+        return [channel_id.upper()]
+
+
 @router.get("/channel-pl")
 async def get_channel_pl(
     db: DB,
@@ -70,6 +126,7 @@ async def get_channel_pl(
     Get Channel-wise Profit & Loss report.
 
     Response format matches frontend ConsolidatedPL interface.
+    Uses Order.source field for channel aggregation.
     """
     start_date, end_date = parse_period(period)
 
@@ -78,44 +135,29 @@ async def get_channel_pl(
     prev_end = start_date - timedelta(days=1)
     prev_start = prev_end - timedelta(days=period_length - 1)
 
-    # Get channels
-    channels_query = select(SalesChannel).where(SalesChannel.status == "ACTIVE")
-    if channel_id and channel_id != "all":
-        # Map frontend channel codes to actual channel IDs or types
-        if channel_id in ["d2c", "D2C"]:
-            channels_query = channels_query.where(
-                or_(
-                    SalesChannel.channel_type == "D2C",
-                    func.lower(SalesChannel.name).contains("d2c"),
-                    func.lower(SalesChannel.name).contains("website")
-                )
-            )
-        elif channel_id.lower() == "amazon":
-            channels_query = channels_query.where(
-                func.lower(SalesChannel.name).contains("amazon")
-            )
-        elif channel_id.lower() == "flipkart":
-            channels_query = channels_query.where(
-                func.lower(SalesChannel.name).contains("flipkart")
-            )
-        elif channel_id.lower() == "b2b":
-            channels_query = channels_query.where(
-                or_(
-                    SalesChannel.channel_type == "B2B",
-                    func.lower(SalesChannel.name).contains("b2b"),
-                    func.lower(SalesChannel.name).contains("gtmt")
-                )
-            )
-        else:
-            # Try parsing as UUID
-            try:
-                uuid_val = UUID(channel_id)
-                channels_query = channels_query.where(SalesChannel.id == uuid_val)
-            except (ValueError, AttributeError):
-                pass
+    # Get source filter
+    source_filter = map_channel_filter_to_sources(channel_id) if channel_id else []
 
-    channels_result = await db.execute(channels_query)
-    channels = channels_result.scalars().all()
+    # Get distinct sources with data
+    sources_query = select(Order.source).where(
+        and_(
+            Order.status.notin_(["CANCELLED", "DRAFT"]),
+            func.date(Order.created_at) >= start_date,
+            func.date(Order.created_at) <= end_date
+        )
+    )
+    if source_filter:
+        sources_query = sources_query.where(Order.source.in_(source_filter))
+
+    sources_query = sources_query.distinct()
+    sources_result = await db.execute(sources_query)
+    sources = [row[0] for row in sources_result.all() if row[0]]
+
+    # If no data, add all known sources
+    if not sources:
+        sources = list(SOURCE_DISPLAY_NAMES.keys())
+        if source_filter:
+            sources = source_filter
 
     total_revenue = Decimal("0")
     total_cogs = Decimal("0")
@@ -125,7 +167,9 @@ async def get_channel_pl(
 
     channel_data = []
 
-    for channel in channels:
+    for source in sources:
+        source_value = source or "OTHER"
+
         # Current period revenue
         revenue_query = select(
             func.coalesce(func.sum(Order.total_amount), 0).label("revenue"),
@@ -133,7 +177,7 @@ async def get_channel_pl(
             func.count(Order.id).label("order_count")
         ).where(
             and_(
-                Order.channel_id == channel.id,
+                Order.source == source_value,
                 Order.status.notin_(["CANCELLED", "DRAFT"]),
                 func.date(Order.created_at) >= start_date,
                 func.date(Order.created_at) <= end_date
@@ -151,7 +195,7 @@ async def get_channel_pl(
             func.coalesce(func.sum(Order.total_amount - Order.discount_amount), 0)
         ).where(
             and_(
-                Order.channel_id == channel.id,
+                Order.source == source_value,
                 Order.status.notin_(["CANCELLED", "DRAFT"]),
                 func.date(Order.created_at) >= prev_start,
                 func.date(Order.created_at) <= prev_end
@@ -166,7 +210,7 @@ async def get_channel_pl(
             Order, OrderItem.order_id == Order.id
         ).where(
             and_(
-                Order.channel_id == channel.id,
+                Order.source == source_value,
                 Order.status.notin_(["CANCELLED", "DRAFT"]),
                 func.date(Order.created_at) >= start_date,
                 func.date(Order.created_at) <= end_date
@@ -181,7 +225,7 @@ async def get_channel_pl(
             Order, OrderItem.order_id == Order.id
         ).where(
             and_(
-                Order.channel_id == channel.id,
+                Order.source == source_value,
                 Order.status.notin_(["CANCELLED", "DRAFT"]),
                 func.date(Order.created_at) >= prev_start,
                 func.date(Order.created_at) <= prev_end
@@ -195,14 +239,14 @@ async def get_channel_pl(
         prev_gross_profit = prev_net_revenue - prev_cogs
 
         # Operating expenses (channel fees + shipping + payment processing)
-        commission_rate = Decimal(str(channel.commission_percent or 0)) / 100
+        commission_rate = COMMISSION_RATES.get(source_value, Decimal("0.05"))
         channel_fees = net_revenue * commission_rate
 
         shipping_query = select(
             func.coalesce(func.sum(Order.shipping_amount), 0)
         ).where(
             and_(
-                Order.channel_id == channel.id,
+                Order.source == source_value,
                 Order.status.notin_(["CANCELLED", "DRAFT"]),
                 func.date(Order.created_at) >= start_date,
                 func.date(Order.created_at) <= end_date
@@ -224,15 +268,15 @@ async def get_channel_pl(
         revenue_change = float(((net_revenue - prev_net_revenue) / prev_net_revenue * 100) if prev_net_revenue > 0 else 0)
 
         channel_data.append({
-            "channel_id": str(channel.id),
-            "channel_name": channel.name,
-            "channel_type": channel.channel_type or "OTHER",
+            "channel_id": source_value,
+            "channel_name": SOURCE_DISPLAY_NAMES.get(source_value, source_value),
+            "channel_type": SOURCE_CHANNEL_TYPES.get(source_value, "OTHER"),
             "revenue": [
                 {
                     "account_code": "4000",
                     "account_name": "Product Sales",
                     "amount": float(gross_revenue),
-                    "previous_amount": float(prev_net_revenue + (prev_cogs * Decimal("0.1"))),  # Estimate
+                    "previous_amount": float(prev_net_revenue + (prev_cogs * Decimal("0.1"))),
                     "change_percent": revenue_change,
                     "is_header": False,
                     "indent_level": 0
