@@ -16,6 +16,51 @@ from app.models.accounting import ChartOfAccount
 router = APIRouter()
 
 
+# ==================== Helper Functions ====================
+
+def parse_period(period: str) -> tuple[date, date]:
+    """Parse period string to start/end dates."""
+    today = date.today()
+
+    if period == "this_month":
+        start = today.replace(day=1)
+        end = today
+    elif period == "last_month":
+        first_of_this_month = today.replace(day=1)
+        end = first_of_this_month - timedelta(days=1)
+        start = end.replace(day=1)
+    elif period == "this_quarter":
+        quarter = (today.month - 1) // 3
+        start = date(today.year, quarter * 3 + 1, 1)
+        end = today
+    elif period == "last_quarter":
+        quarter = (today.month - 1) // 3
+        if quarter == 0:
+            start = date(today.year - 1, 10, 1)
+            end = date(today.year - 1, 12, 31)
+        else:
+            start = date(today.year, (quarter - 1) * 3 + 1, 1)
+            end_month = quarter * 3
+            if end_month == 3:
+                end = date(today.year, 3, 31)
+            elif end_month == 6:
+                end = date(today.year, 6, 30)
+            else:
+                end = date(today.year, 9, 30)
+    elif period == "this_year":
+        start = date(today.year, 1, 1)
+        end = today
+    elif period == "last_year":
+        start = date(today.year - 1, 1, 1)
+        end = date(today.year - 1, 12, 31)
+    else:
+        # Default to this month
+        start = today.replace(day=1)
+        end = today
+
+    return start, end
+
+
 # ==================== Balance Sheet ====================
 
 # Account sub-types that are considered "current"
@@ -202,6 +247,317 @@ async def get_balance_sheet(
         "working_capital": working_capital,
     }
 
+
+# ==================== Trial Balance ====================
+
+@router.get("/trial-balance")
+async def get_trial_balance(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    period: str = Query("this_month"),
+):
+    """
+    Get Trial Balance report with account-wise debit/credit balances.
+
+    Returns all accounts with opening, period movement, and closing balances.
+    """
+    today = date.today()
+    start_date, end_date = parse_period(period)
+
+    # Get all non-group accounts
+    accounts_query = select(ChartOfAccount).where(
+        and_(
+            ChartOfAccount.is_group == False,
+            ChartOfAccount.is_active == True,
+        )
+    ).order_by(ChartOfAccount.account_type, ChartOfAccount.account_code)
+
+    result = await db.execute(accounts_query)
+    accounts = result.scalars().all()
+
+    account_list = []
+    total_debits = Decimal("0")
+    total_credits = Decimal("0")
+
+    for acc in accounts:
+        current_balance = Decimal(str(acc.current_balance or 0))
+        opening_balance = Decimal(str(acc.opening_balance or 0))
+
+        # Determine debit/credit based on account type and balance sign
+        # Assets & Expenses: positive = debit, negative = credit
+        # Liabilities, Equity, Revenue: positive = credit, negative = debit
+        is_debit_account = acc.account_type in ("ASSET", "EXPENSE")
+
+        if is_debit_account:
+            debit_balance = max(current_balance, Decimal("0"))
+            credit_balance = max(-current_balance, Decimal("0"))
+            opening_debit = max(opening_balance, Decimal("0"))
+            opening_credit = max(-opening_balance, Decimal("0"))
+        else:
+            credit_balance = max(current_balance, Decimal("0"))
+            debit_balance = max(-current_balance, Decimal("0"))
+            opening_credit = max(opening_balance, Decimal("0"))
+            opening_debit = max(-opening_balance, Decimal("0"))
+
+        # Period movement is the difference
+        period_debit = max(debit_balance - opening_debit, Decimal("0"))
+        period_credit = max(credit_balance - opening_credit, Decimal("0"))
+
+        account_list.append({
+            "account_code": acc.account_code,
+            "account_name": acc.account_name,
+            "account_type": acc.account_type,
+            "debit_balance": float(debit_balance),
+            "credit_balance": float(credit_balance),
+            "opening_debit": float(opening_debit),
+            "opening_credit": float(opening_credit),
+            "period_debit": float(period_debit),
+            "period_credit": float(period_credit),
+        })
+
+        total_debits += debit_balance
+        total_credits += credit_balance
+
+    difference = total_debits - total_credits
+
+    return {
+        "as_of_date": today.isoformat(),
+        "period_start": start_date.isoformat(),
+        "period_end": end_date.isoformat(),
+        "accounts": account_list,
+        "total_debits": float(total_debits),
+        "total_credits": float(total_credits),
+        "is_balanced": abs(difference) < Decimal("0.01"),
+        "difference": float(difference),
+    }
+
+
+# ==================== Profit & Loss ====================
+
+@router.get("/profit-loss")
+async def get_profit_loss_report(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    period: str = Query("this_month"),
+):
+    """
+    Get Profit & Loss statement.
+
+    Returns revenue, COGS, operating expenses, and net income.
+    """
+    today = date.today()
+    start_date, end_date = parse_period(period)
+
+    # Get previous period for comparison
+    period_length = (end_date - start_date).days + 1
+    prev_end = start_date - timedelta(days=1)
+    prev_start = prev_end - timedelta(days=period_length - 1)
+
+    # Get revenue accounts (4xxx)
+    revenue_query = select(ChartOfAccount).where(
+        and_(
+            ChartOfAccount.account_type == "REVENUE",
+            ChartOfAccount.is_group == False,
+            ChartOfAccount.is_active == True,
+        )
+    ).order_by(ChartOfAccount.account_code)
+
+    revenue_result = await db.execute(revenue_query)
+    revenue_accounts = revenue_result.scalars().all()
+
+    revenue_items = []
+    total_revenue = Decimal("0")
+
+    for acc in revenue_accounts:
+        amount = Decimal(str(acc.current_balance or 0))
+        total_revenue += amount
+        revenue_items.append({
+            "account_code": acc.account_code,
+            "account_name": acc.account_name,
+            "amount": float(amount),
+            "previous_amount": float(acc.opening_balance or 0),
+            "change_percent": 0.0,
+            "is_header": False,
+            "indent_level": 0,
+        })
+
+    # Get COGS accounts (5xxx)
+    cogs_query = select(ChartOfAccount).where(
+        and_(
+            ChartOfAccount.account_type == "EXPENSE",
+            ChartOfAccount.account_code.like("5%"),
+            ChartOfAccount.is_group == False,
+            ChartOfAccount.is_active == True,
+        )
+    ).order_by(ChartOfAccount.account_code)
+
+    cogs_result = await db.execute(cogs_query)
+    cogs_accounts = cogs_result.scalars().all()
+
+    cogs_items = []
+    total_cogs = Decimal("0")
+
+    for acc in cogs_accounts:
+        amount = Decimal(str(acc.current_balance or 0))
+        total_cogs += amount
+        cogs_items.append({
+            "account_code": acc.account_code,
+            "account_name": acc.account_name,
+            "amount": float(amount),
+            "previous_amount": float(acc.opening_balance or 0),
+            "change_percent": 0.0,
+            "is_header": False,
+            "indent_level": 0,
+        })
+
+    gross_profit = total_revenue - total_cogs
+    gross_margin = float((gross_profit / total_revenue * 100) if total_revenue > 0 else 0)
+
+    # Get operating expense accounts (6xxx, 7xxx)
+    opex_query = select(ChartOfAccount).where(
+        and_(
+            ChartOfAccount.account_type == "EXPENSE",
+            or_(
+                ChartOfAccount.account_code.like("6%"),
+                ChartOfAccount.account_code.like("7%"),
+                ChartOfAccount.account_code.like("3%"),  # Common expense codes
+            ),
+            ~ChartOfAccount.account_code.like("5%"),  # Exclude COGS
+            ChartOfAccount.is_group == False,
+            ChartOfAccount.is_active == True,
+        )
+    ).order_by(ChartOfAccount.account_code)
+
+    opex_result = await db.execute(opex_query)
+    opex_accounts = opex_result.scalars().all()
+
+    opex_items = []
+    total_opex = Decimal("0")
+
+    for acc in opex_accounts:
+        amount = Decimal(str(acc.current_balance or 0))
+        total_opex += amount
+        opex_items.append({
+            "account_code": acc.account_code,
+            "account_name": acc.account_name,
+            "amount": float(amount),
+            "previous_amount": float(acc.opening_balance or 0),
+            "change_percent": 0.0,
+            "is_header": False,
+            "indent_level": 0,
+        })
+
+    operating_income = gross_profit - total_opex
+    net_income = operating_income  # Simplified - no other income/expense for now
+    net_margin = float((net_income / total_revenue * 100) if total_revenue > 0 else 0)
+
+    return {
+        "period_start": start_date.isoformat(),
+        "period_end": end_date.isoformat(),
+        "previous_period_start": prev_start.isoformat(),
+        "previous_period_end": prev_end.isoformat(),
+        "revenue": {
+            "title": "Revenue",
+            "items": revenue_items,
+            "total": float(total_revenue),
+            "previous_total": 0.0,
+        },
+        "cost_of_goods_sold": {
+            "title": "Cost of Goods Sold",
+            "items": cogs_items,
+            "total": float(total_cogs),
+            "previous_total": 0.0,
+        },
+        "gross_profit": float(gross_profit),
+        "gross_margin_percent": round(gross_margin, 2),
+        "operating_expenses": {
+            "title": "Operating Expenses",
+            "items": opex_items,
+            "total": float(total_opex),
+            "previous_total": 0.0,
+        },
+        "operating_income": float(operating_income),
+        "other_income_expense": {
+            "title": "Other Income/Expense",
+            "items": [],
+            "total": 0.0,
+            "previous_total": 0.0,
+        },
+        "net_income": float(net_income),
+        "net_margin_percent": round(net_margin, 2),
+        "previous_gross_profit": 0.0,
+        "previous_operating_income": 0.0,
+        "previous_net_income": 0.0,
+    }
+
+
+# ==================== Channel Balance Sheet ====================
+
+@router.get("/channel-balance-sheet")
+async def get_channel_balance_sheet(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    as_of_date: str = Query("today"),
+):
+    """
+    Get Channel-wise Balance Sheet.
+
+    Note: For now returns overall balance sheet as channel-wise tracking
+    requires GL entries with channel_id, which may not be populated.
+    """
+    # Reuse balance sheet logic but return in channel format
+    today = date.today()
+
+    # Get totals by account type
+    asset_query = select(
+        func.sum(ChartOfAccount.current_balance)
+    ).where(
+        and_(
+            ChartOfAccount.account_type == "ASSET",
+            ChartOfAccount.is_group == False,
+        )
+    )
+    total_assets = float(await db.scalar(asset_query) or 0)
+
+    liability_query = select(
+        func.sum(ChartOfAccount.current_balance)
+    ).where(
+        and_(
+            ChartOfAccount.account_type == "LIABILITY",
+            ChartOfAccount.is_group == False,
+        )
+    )
+    total_liabilities = float(await db.scalar(liability_query) or 0)
+
+    equity_query = select(
+        func.sum(ChartOfAccount.current_balance)
+    ).where(
+        and_(
+            ChartOfAccount.account_type == "EQUITY",
+            ChartOfAccount.is_group == False,
+        )
+    )
+    total_equity = float(await db.scalar(equity_query) or 0)
+
+    return {
+        "as_of_date": today.isoformat(),
+        "total_assets": total_assets,
+        "total_liabilities": total_liabilities,
+        "total_equity": total_equity,
+        "total_liabilities_and_equity": total_liabilities + total_equity,
+        "channels": [
+            {
+                "channel_id": "OVERALL",
+                "channel_name": "All Channels",
+                "channel_type": "CONSOLIDATED",
+                "assets": total_assets,
+                "liabilities": total_liabilities,
+                "equity": total_equity,
+            }
+        ],
+    }
+
+
 # Map source codes to display names
 SOURCE_DISPLAY_NAMES = {
     "WEBSITE": "D2C Website",
@@ -240,49 +596,6 @@ COMMISSION_RATES = {
     "FLIPKART": Decimal("0.12"),  # 12%
     "OTHER": Decimal("0.05"),
 }
-
-
-def parse_period(period: str) -> tuple[date, date]:
-    """Parse period string to start/end dates."""
-    today = date.today()
-
-    if period == "this_month":
-        start = today.replace(day=1)
-        end = today
-    elif period == "last_month":
-        first_of_this_month = today.replace(day=1)
-        end = first_of_this_month - timedelta(days=1)
-        start = end.replace(day=1)
-    elif period == "this_quarter":
-        quarter = (today.month - 1) // 3
-        start = date(today.year, quarter * 3 + 1, 1)
-        end = today
-    elif period == "last_quarter":
-        quarter = (today.month - 1) // 3
-        if quarter == 0:
-            start = date(today.year - 1, 10, 1)
-            end = date(today.year - 1, 12, 31)
-        else:
-            start = date(today.year, (quarter - 1) * 3 + 1, 1)
-            end_month = quarter * 3
-            if end_month == 3:
-                end = date(today.year, 3, 31)
-            elif end_month == 6:
-                end = date(today.year, 6, 30)
-            else:
-                end = date(today.year, 9, 30)
-    elif period == "this_year":
-        start = date(today.year, 1, 1)
-        end = today
-    elif period == "last_year":
-        start = date(today.year - 1, 1, 1)
-        end = date(today.year - 1, 12, 31)
-    else:
-        # Default to this month
-        start = today.replace(day=1)
-        end = today
-
-    return start, end
 
 
 def map_channel_filter_to_sources(channel_id: str) -> list[str]:
