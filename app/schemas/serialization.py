@@ -13,7 +13,7 @@ Barcode Structure: APFSZAIEL000001 (15 characters)
 from datetime import datetime
 from typing import Optional, List, Union
 from uuid import UUID
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from enum import Enum
 
 
@@ -80,7 +80,8 @@ class ModelCodeCreate(BaseModel):
     product_sku: Optional[str] = None
     fg_code: str = Field(..., description="Full FG/Item code like WPRAIEL001")
     model_code: str = Field(..., min_length=2, max_length=10, description="3-letter model code for barcode")
-    item_type: ItemType = ItemType.FINISHED_GOODS
+    # item_type removed from database - ignored in creation, determined from fg_code prefix
+    item_type: Optional[ItemType] = None
     description: Optional[str] = None
 
     @field_validator('model_code')
@@ -104,13 +105,25 @@ class ModelCodeResponse(BaseModel):
     product_sku: Optional[str] = None
     fg_code: str
     model_code: str
-    item_type: ItemType
+    # item_type removed from database - computed from fg_code prefix for backward compatibility
+    item_type: Optional[str] = None
     description: Optional[str] = None
     is_active: bool
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+    @model_validator(mode='after')
+    def compute_item_type(self):
+        # Compute item_type from fg_code prefix if not set
+        if not self.item_type:
+            fg_code = self.fg_code or ''
+            if fg_code.upper().startswith('SP'):
+                self.item_type = 'SP'
+            else:
+                self.item_type = 'FG'  # Default to FG for water purifiers (WP prefix)
+        return self
 
 
 # ==================== Serial Generation Schemas ====================

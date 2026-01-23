@@ -278,8 +278,8 @@ class ModelCodeReference(Base):
     # Model code for barcode (3 letters: IEL, IPR, PRG)
     model_code: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
 
-    # Item type
-    item_type: Mapped[str] = mapped_column(String(10), default="FG", comment="FG, SP, CO")
+    # Note: item_type column removed - does not exist in production database
+    # Item type is determined from fg_code prefix (WP=FG, SP=SP)
 
     # Description
     description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

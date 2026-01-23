@@ -1001,12 +1001,15 @@ class SerializationService:
         self,
         fg_code: str,
         model_code: str,
-        item_type: ItemType = ItemType.FINISHED_GOODS,
         product_id: str = None,
         product_sku: str = None,
         description: str = None
     ) -> ModelCodeReference:
-        """Create a new model code reference"""
+        """Create a new model code reference
+
+        Note: item_type parameter removed - column doesn't exist in production database.
+        Item type is determined from fg_code prefix (WP=FG, SP=SP).
+        """
 
         # Check if FG code already exists
         result = await self.db.execute(
@@ -1019,7 +1022,7 @@ class SerializationService:
             id=str(uuid.uuid4()),
             fg_code=fg_code.upper(),
             model_code=model_code.upper(),
-            item_type=item_type,
+            # Note: item_type removed - determined from fg_code prefix
             product_id=product_id,
             product_sku=product_sku,
             description=description,

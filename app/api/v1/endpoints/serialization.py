@@ -258,7 +258,7 @@ async def auto_create_supplier_code_for_vendor(
 @router.get("/model-codes", response_model=List[ModelCodeResponse])
 async def list_model_codes(
     active_only: bool = Query(True, description="Only show active model codes"),
-    item_type: Optional[ItemType] = Query(None, description="Filter by item type"),
+    item_type: Optional[ItemType] = Query(None, description="Filter by item type (filters by fg_code prefix)"),
     linked_only: bool = Query(False, description="Only show model codes linked to products"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -268,7 +268,12 @@ async def list_model_codes(
     if active_only:
         query = query.where(ModelCodeReference.is_active == True)
     if item_type:
-        query = query.where(ModelCodeReference.item_type == item_type)
+        # Filter by fg_code prefix since item_type column doesn't exist in production
+        # FG codes start with "WP" (Water Purifier), SP codes start with "SP" (Spare Part)
+        if item_type.value == "FG":
+            query = query.where(ModelCodeReference.fg_code.like("WP%"))
+        elif item_type.value == "SP":
+            query = query.where(ModelCodeReference.fg_code.like("SP%"))
     if linked_only:
         query = query.where(ModelCodeReference.product_id.isnot(None))
     query = query.order_by(ModelCodeReference.fg_code)
@@ -289,7 +294,7 @@ async def create_model_code(
         model_ref = await service.create_model_code_reference(
             fg_code=data.fg_code,
             model_code=data.model_code,
-            item_type=data.item_type,
+            # item_type removed - determined from fg_code prefix
             product_id=data.product_id,
             product_sku=data.product_sku,
             description=data.description,
@@ -463,7 +468,8 @@ async def create_product_with_code(
         product_sku=fg_code,
         fg_code=fg_code,
         model_code=data.model_code,
-        item_type=ItemType.FINISHED_GOODS if data.item_type.value == "FG" else ItemType.SPARE_PART,
+        # Note: item_type column removed from production database
+        # Item type is determined from fg_code prefix (WP=FG, SP=SP)
         description=data.name,
         is_active=True,
     )
@@ -1057,7 +1063,7 @@ async def seed_serialization_codes(
             product_id=product_id,  # Link to actual product
             fg_code=data["fg_code"],
             model_code=data["model_code"],
-            item_type=data["item_type"],
+            # Note: item_type removed - determined from fg_code prefix
             product_sku=data["product_sku"],
             description=data["description"],
             is_active=True,
@@ -1082,7 +1088,7 @@ async def seed_serialization_codes(
             product_id=product_id,  # Link to actual product
             fg_code=data["fg_code"],
             model_code=data["model_code"],
-            item_type=data["item_type"],
+            # Note: item_type removed - determined from fg_code prefix
             product_sku=data["product_sku"],
             description=data["description"],
             is_active=True,
@@ -1225,17 +1231,14 @@ async def link_product_to_model_code(
         model_ref.description = product.name
         message = "Updated existing model code reference"
     else:
-        # Determine item type
-        item_type = ItemType.SPARE_PART if (product.sku or "").upper().startswith("SP") else ItemType.FINISHED_GOODS
-
         # Create new
+        # Note: item_type removed - determined from fg_code prefix
         model_ref = ModelCodeReference(
             id=str(uuid_module.uuid4()).replace("-", ""),
             product_id=product_id,
             product_sku=product.sku,
             fg_code=product.fg_code or product.sku,
             model_code=model_code.upper(),
-            item_type=item_type,
             description=product.name,
             is_active=True,
         )
@@ -1315,17 +1318,14 @@ async def sync_products_to_model_codes(
         else:
             model_code = sku[:3].upper() if len(sku) >= 3 else "UNK"
 
-        # Determine item type from SKU prefix
-        item_type = ItemType.SPARE_PART if sku.upper().startswith("SP") else ItemType.FINISHED_GOODS
-
         # Create model code reference
+        # Note: item_type removed - determined from fg_code prefix
         model_ref = ModelCodeReference(
             id=uuid.uuid4(),
             product_id=product.id,
             product_sku=product.sku,
             fg_code=product.fg_code or product.sku,  # Use fg_code if available, else sku
             model_code=model_code,
-            item_type=item_type,
             description=product.name,
             is_active=True,
         )
