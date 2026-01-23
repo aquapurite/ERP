@@ -142,7 +142,7 @@ export default function JournalEntriesPage() {
   });
 
   const submitMutation = useMutation({
-    mutationFn: journalEntriesApi.submit,
+    mutationFn: (id: string) => journalEntriesApi.submit(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
       toast.success('Entry submitted for approval');
@@ -152,7 +152,7 @@ export default function JournalEntriesPage() {
   });
 
   const approveMutation = useMutation({
-    mutationFn: journalEntriesApi.approve,
+    mutationFn: (id: string) => journalEntriesApi.approve(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
       toast.success('Entry approved');
