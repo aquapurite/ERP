@@ -277,7 +277,8 @@ async def get_approval_dashboard(
         .where(ApprovalRequest.status == ApprovalStatus.PENDING)
         .group_by(ApprovalRequest.entity_type)
     )
-    by_entity_type = {row[0].value: row[1] for row in entity_type_result.all()}
+    # row[0] is a string (VARCHAR) from DB, not an enum
+    by_entity_type = {(row[0].value if hasattr(row[0], 'value') else row[0]): row[1] for row in entity_type_result.all()}
 
     # Recent approvals (last 10)
     recent_result = await db.execute(
@@ -476,7 +477,9 @@ async def list_pending_approvals(
 
     items = []
     for a in approvals:
-        mapped_type = entity_type_map.get(a.entity_type.value, a.entity_type.value)
+        # entity_type is VARCHAR in DB, not enum
+        entity_type_str = a.entity_type.value if hasattr(a.entity_type, 'value') else a.entity_type
+        mapped_type = entity_type_map.get(entity_type_str, entity_type_str)
         level_num = a.approval_level[-1] if a.approval_level else "1"
         is_overdue = a.due_date < datetime.utcnow() if a.due_date else False
 
@@ -566,7 +569,8 @@ async def get_approval_stats(
         .where(ApprovalRequest.status == ApprovalStatus.PENDING)
         .group_by(ApprovalRequest.entity_type)
     )
-    by_entity_type = {row[0].value: row[1] for row in entity_type_result.all()}
+    # row[0] is a string (VARCHAR) from DB, not an enum
+    by_entity_type = {(row[0].value if hasattr(row[0], 'value') else row[0]): row[1] for row in entity_type_result.all()}
 
     return {
         "pending_count": total_pending,
@@ -631,7 +635,9 @@ async def get_approval_history(
             "DEBIT_NOTE": "CREDIT_NOTE",
             "SALES_CHANNEL": "VENDOR",
         }
-        mapped_type = entity_type_map.get(a.entity_type.value, a.entity_type.value)
+        # entity_type is VARCHAR in DB, not enum
+        entity_type_str = a.entity_type.value if hasattr(a.entity_type, 'value') else a.entity_type
+        mapped_type = entity_type_map.get(entity_type_str, entity_type_str)
 
         items.append({
             "id": str(a.id),

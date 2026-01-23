@@ -1637,20 +1637,23 @@ export const journalEntriesApi = {
     const { data } = await apiClient.post('/accounting/journals', payload);
     return data;
   },
-  submit: async (id: string) => {
-    const { data } = await apiClient.post(`/accounting/journals/${id}/submit`);
+  submit: async (id: string, remarks?: string) => {
+    // Backend expects JournalSubmitRequest body with optional remarks
+    const { data } = await apiClient.post(`/accounting/journals/${id}/submit`, { remarks: remarks || null });
     return data;
   },
-  approve: async (id: string) => {
-    const { data } = await apiClient.post(`/accounting/journals/${id}/approve`);
+  approve: async (id: string, remarks?: string, autoPost: boolean = true) => {
+    // Backend expects JournalApproveRequest body with optional remarks and auto_post
+    const { data } = await apiClient.post(`/accounting/journals/${id}/approve`, { remarks: remarks || null, auto_post: autoPost });
     return data;
   },
   reject: async (id: string, reason: string) => {
     const { data } = await apiClient.post(`/accounting/journals/${id}/reject`, { reason });
     return data;
   },
-  resubmit: async (id: string) => {
-    const { data } = await apiClient.post(`/accounting/journals/${id}/resubmit`);
+  resubmit: async (id: string, remarks?: string) => {
+    // Backend expects JournalSubmitRequest body with optional remarks
+    const { data } = await apiClient.post(`/accounting/journals/${id}/resubmit`, { remarks: remarks || null });
     return data;
   },
   post: async (id: string) => {
