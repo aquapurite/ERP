@@ -4,11 +4,13 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, and_, case
+from sqlalchemy import select, func, and_, case, or_
+from sqlalchemy.orm import aliased
 
 from app.api.deps import DB, get_current_user
 from app.models.user import User
 from app.models.order import Order, OrderItem
+from app.models.product_cost import ProductCost
 
 router = APIRouter()
 
@@ -126,7 +128,7 @@ async def get_channel_pl(
     Get Channel-wise Profit & Loss report.
 
     Response format matches frontend ConsolidatedPL interface.
-    Uses Order.source field for channel aggregation.
+    COGS calculated from ProductCost.average_cost (PO → GRN flow).
     """
     start_date, end_date = parse_period(period)
 
@@ -153,11 +155,16 @@ async def get_channel_pl(
     sources_result = await db.execute(sources_query)
     sources = [row[0] for row in sources_result.all() if row[0]]
 
-    # If no data, add all known sources
+    # If no data, return empty but with structure
     if not sources:
-        sources = list(SOURCE_DISPLAY_NAMES.keys())
-        if source_filter:
-            sources = source_filter
+        return {
+            "total_revenue": 0.0,
+            "total_cogs": 0.0,
+            "total_gross_profit": 0.0,
+            "total_operating_expenses": 0.0,
+            "total_net_income": 0.0,
+            "channels": []
+        }
 
     total_revenue = Decimal("0")
     total_cogs = Decimal("0")
@@ -203,12 +210,28 @@ async def get_channel_pl(
         )
         prev_net_revenue = Decimal(str(await db.scalar(prev_revenue_query) or 0))
 
-        # COGS from order items (using unit_price * 0.6 as estimated cost)
-        # Note: For accurate COGS, should join with ProductCost table
+        # COGS from OrderItem joined with ProductCost (proper WAC from PO → GRN)
+        # Join OrderItem with ProductCost on product_id to get average_cost
+        # Use LEFT JOIN so orders without ProductCost still show (with 0 COGS)
         cogs_query = select(
-            func.coalesce(func.sum(OrderItem.quantity * OrderItem.unit_price * 0.6), 0)
+            func.coalesce(
+                func.sum(
+                    OrderItem.quantity * func.coalesce(ProductCost.average_cost, Decimal("0"))
+                ),
+                0
+            )
         ).select_from(OrderItem).join(
             Order, OrderItem.order_id == Order.id
+        ).outerjoin(
+            ProductCost,
+            and_(
+                ProductCost.product_id == OrderItem.product_id,
+                # Get company-wide cost (warehouse_id IS NULL)
+                or_(
+                    ProductCost.warehouse_id.is_(None),
+                    ProductCost.warehouse_id == Order.warehouse_id
+                )
+            )
         ).where(
             and_(
                 Order.source == source_value,
@@ -221,9 +244,23 @@ async def get_channel_pl(
 
         # Previous COGS
         prev_cogs_query = select(
-            func.coalesce(func.sum(OrderItem.quantity * OrderItem.unit_price * 0.6), 0)
+            func.coalesce(
+                func.sum(
+                    OrderItem.quantity * func.coalesce(ProductCost.average_cost, Decimal("0"))
+                ),
+                0
+            )
         ).select_from(OrderItem).join(
             Order, OrderItem.order_id == Order.id
+        ).outerjoin(
+            ProductCost,
+            and_(
+                ProductCost.product_id == OrderItem.product_id,
+                or_(
+                    ProductCost.warehouse_id.is_(None),
+                    ProductCost.warehouse_id == Order.warehouse_id
+                )
+            )
         ).where(
             and_(
                 Order.source == source_value,
@@ -259,7 +296,7 @@ async def get_channel_pl(
 
         operating_expenses = channel_fees + shipping + payment_fees
         operating_income = gross_profit - operating_expenses
-        net_income = operating_income  # Simplified: net = operating for now
+        net_income = operating_income
         net_margin = float((net_income / net_revenue * 100) if net_revenue > 0 else 0)
 
         prev_operating_expenses = prev_net_revenue * (commission_rate + Decimal("0.02"))
