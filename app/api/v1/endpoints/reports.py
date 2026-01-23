@@ -141,9 +141,15 @@ async def get_channel_pl(
     source_filter = map_channel_filter_to_sources(channel_id) if channel_id else []
 
     # Get distinct sources with data
+    # Only count orders with payment_status = 'PAID' (same as Dashboard)
     sources_query = select(Order.source).where(
         and_(
             Order.status.notin_(["CANCELLED", "DRAFT"]),
+            or_(
+                Order.payment_status == "PAID",
+                Order.payment_status == "paid",
+                func.upper(Order.payment_status) == "PAID"
+            ),
             func.date(Order.created_at) >= start_date,
             func.date(Order.created_at) <= end_date
         )
@@ -177,7 +183,7 @@ async def get_channel_pl(
     for source in sources:
         source_value = source or "OTHER"
 
-        # Current period revenue
+        # Current period revenue (only PAID orders - same as Dashboard)
         revenue_query = select(
             func.coalesce(func.sum(Order.total_amount), 0).label("revenue"),
             func.coalesce(func.sum(Order.discount_amount), 0).label("discounts"),
@@ -186,6 +192,10 @@ async def get_channel_pl(
             and_(
                 Order.source == source_value,
                 Order.status.notin_(["CANCELLED", "DRAFT"]),
+                or_(
+                    Order.payment_status == "PAID",
+                    func.upper(Order.payment_status) == "PAID"
+                ),
                 func.date(Order.created_at) >= start_date,
                 func.date(Order.created_at) <= end_date
             )
@@ -197,13 +207,17 @@ async def get_channel_pl(
         discounts = Decimal(str(revenue_data.discounts or 0))
         net_revenue = gross_revenue - discounts
 
-        # Previous period revenue
+        # Previous period revenue (only PAID orders)
         prev_revenue_query = select(
             func.coalesce(func.sum(Order.total_amount - Order.discount_amount), 0)
         ).where(
             and_(
                 Order.source == source_value,
                 Order.status.notin_(["CANCELLED", "DRAFT"]),
+                or_(
+                    Order.payment_status == "PAID",
+                    func.upper(Order.payment_status) == "PAID"
+                ),
                 func.date(Order.created_at) >= prev_start,
                 func.date(Order.created_at) <= prev_end
             )
@@ -236,6 +250,10 @@ async def get_channel_pl(
             and_(
                 Order.source == source_value,
                 Order.status.notin_(["CANCELLED", "DRAFT"]),
+                or_(
+                    Order.payment_status == "PAID",
+                    func.upper(Order.payment_status) == "PAID"
+                ),
                 func.date(Order.created_at) >= start_date,
                 func.date(Order.created_at) <= end_date
             )
@@ -265,6 +283,10 @@ async def get_channel_pl(
             and_(
                 Order.source == source_value,
                 Order.status.notin_(["CANCELLED", "DRAFT"]),
+                or_(
+                    Order.payment_status == "PAID",
+                    func.upper(Order.payment_status) == "PAID"
+                ),
                 func.date(Order.created_at) >= prev_start,
                 func.date(Order.created_at) <= prev_end
             )
@@ -286,6 +308,10 @@ async def get_channel_pl(
             and_(
                 Order.source == source_value,
                 Order.status.notin_(["CANCELLED", "DRAFT"]),
+                or_(
+                    Order.payment_status == "PAID",
+                    func.upper(Order.payment_status) == "PAID"
+                ),
                 func.date(Order.created_at) >= start_date,
                 func.date(Order.created_at) <= end_date
             )
