@@ -1,5 +1,5 @@
 """Reports API endpoints for frontend dashboard."""
-from typing import Optional
+from typing import Optional, List
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -11,8 +11,196 @@ from app.api.deps import DB, get_current_user
 from app.models.user import User
 from app.models.order import Order, OrderItem
 from app.models.product_cost import ProductCost
+from app.models.accounting import ChartOfAccount
 
 router = APIRouter()
+
+
+# ==================== Balance Sheet ====================
+
+# Account sub-types that are considered "current"
+CURRENT_ASSET_SUBTYPES = {"CASH", "BANK", "ACCOUNTS_RECEIVABLE", "INVENTORY", "PREPAID_EXPENSE", "CURRENT_ASSET"}
+CURRENT_LIABILITY_SUBTYPES = {"ACCOUNTS_PAYABLE", "TAX_PAYABLE", "ACCRUED_EXPENSE", "SHORT_TERM_DEBT", "CURRENT_LIABILITY"}
+
+
+def build_section_items(accounts: list, previous_balances: dict) -> List[dict]:
+    """Build line items for a balance sheet section."""
+    items = []
+    for acc in accounts:
+        current = float(acc.current_balance or 0)
+        previous = previous_balances.get(str(acc.id), 0.0)
+        variance = current - previous
+        variance_pct = (variance / previous * 100) if previous != 0 else 0
+
+        items.append({
+            "account_code": acc.account_code,
+            "account_name": acc.account_name,
+            "current_balance": current,
+            "previous_balance": previous,
+            "variance": variance,
+            "variance_percentage": round(variance_pct, 2),
+            "is_group": acc.is_group,
+            "indent_level": acc.level - 1 if acc.level else 0
+        })
+    return items
+
+
+@router.get("/balance-sheet")
+async def get_balance_sheet(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    as_of_date: str = Query("today"),
+    compare: bool = Query(True),
+):
+    """
+    Get Balance Sheet report with line items and comparison.
+
+    Returns assets, liabilities, equity with individual account breakdowns.
+    """
+    today = date.today()
+
+    # For now, we use current balances from chart_of_accounts
+    # In a full implementation, we'd query GL entries up to as_of_date
+
+    # Get all non-group asset accounts
+    asset_query = select(ChartOfAccount).where(
+        and_(
+            ChartOfAccount.account_type == "ASSET",
+            ChartOfAccount.is_group == False,
+            ChartOfAccount.is_active == True,
+        )
+    ).order_by(ChartOfAccount.account_code)
+
+    asset_result = await db.execute(asset_query)
+    all_assets = asset_result.scalars().all()
+
+    # Split into current and non-current
+    current_assets = [a for a in all_assets if a.account_sub_type in CURRENT_ASSET_SUBTYPES or a.account_sub_type is None]
+    non_current_assets = [a for a in all_assets if a.account_sub_type and a.account_sub_type not in CURRENT_ASSET_SUBTYPES]
+
+    # Get all non-group liability accounts
+    liability_query = select(ChartOfAccount).where(
+        and_(
+            ChartOfAccount.account_type == "LIABILITY",
+            ChartOfAccount.is_group == False,
+            ChartOfAccount.is_active == True,
+        )
+    ).order_by(ChartOfAccount.account_code)
+
+    liability_result = await db.execute(liability_query)
+    all_liabilities = liability_result.scalars().all()
+
+    # Split into current and non-current
+    current_liabilities = [l for l in all_liabilities if l.account_sub_type in CURRENT_LIABILITY_SUBTYPES or l.account_sub_type is None]
+    non_current_liabilities = [l for l in all_liabilities if l.account_sub_type and l.account_sub_type not in CURRENT_LIABILITY_SUBTYPES]
+
+    # Get all equity accounts
+    equity_query = select(ChartOfAccount).where(
+        and_(
+            ChartOfAccount.account_type == "EQUITY",
+            ChartOfAccount.is_group == False,
+            ChartOfAccount.is_active == True,
+        )
+    ).order_by(ChartOfAccount.account_code)
+
+    equity_result = await db.execute(equity_query)
+    equity_accounts = equity_result.scalars().all()
+
+    # For comparison, use opening_balance as "previous" (simplified)
+    # In a full implementation, we'd query GL at a previous date
+    previous_balances = {}
+    for acc in all_assets + all_liabilities + equity_accounts:
+        previous_balances[str(acc.id)] = float(acc.opening_balance or 0)
+
+    # Build sections
+    current_assets_items = build_section_items(current_assets, previous_balances)
+    non_current_assets_items = build_section_items(non_current_assets, previous_balances)
+    current_liabilities_items = build_section_items(current_liabilities, previous_balances)
+    non_current_liabilities_items = build_section_items(non_current_liabilities, previous_balances)
+    equity_items = build_section_items(equity_accounts, previous_balances)
+
+    # Calculate totals
+    total_current_assets = sum(float(a.current_balance or 0) for a in current_assets)
+    total_non_current_assets = sum(float(a.current_balance or 0) for a in non_current_assets)
+    total_assets = total_current_assets + total_non_current_assets
+
+    total_current_liabilities = sum(float(l.current_balance or 0) for l in current_liabilities)
+    total_non_current_liabilities = sum(float(l.current_balance or 0) for l in non_current_liabilities)
+    total_liabilities = total_current_liabilities + total_non_current_liabilities
+
+    total_equity = sum(float(e.current_balance or 0) for e in equity_accounts)
+
+    # Previous totals
+    prev_current_assets = sum(previous_balances.get(str(a.id), 0) for a in current_assets)
+    prev_non_current_assets = sum(previous_balances.get(str(a.id), 0) for a in non_current_assets)
+    prev_total_assets = prev_current_assets + prev_non_current_assets
+
+    prev_current_liabilities = sum(previous_balances.get(str(l.id), 0) for l in current_liabilities)
+    prev_non_current_liabilities = sum(previous_balances.get(str(l.id), 0) for l in non_current_liabilities)
+    prev_total_liabilities = prev_current_liabilities + prev_non_current_liabilities
+
+    prev_total_equity = sum(previous_balances.get(str(e.id), 0) for e in equity_accounts)
+
+    total_liabilities_and_equity = total_liabilities + total_equity
+    prev_total_liabilities_and_equity = prev_total_liabilities + prev_total_equity
+
+    # Ratios
+    working_capital = total_current_assets - total_current_liabilities
+    current_ratio = total_current_assets / total_current_liabilities if total_current_liabilities > 0 else 0
+    debt_to_equity = total_liabilities / total_equity if total_equity > 0 else 0
+
+    difference = total_assets - total_liabilities_and_equity
+    is_balanced = abs(difference) < 0.01
+
+    return {
+        "as_of_date": today.isoformat(),
+        "previous_date": (today - timedelta(days=30)).isoformat(),
+        "assets": {
+            "current_assets": {
+                "title": "Current Assets",
+                "items": current_assets_items,
+                "total": total_current_assets,
+                "previous_total": prev_current_assets,
+            },
+            "non_current_assets": {
+                "title": "Non-Current Assets",
+                "items": non_current_assets_items,
+                "total": total_non_current_assets,
+                "previous_total": prev_non_current_assets,
+            },
+            "total": total_assets,
+            "previous_total": prev_total_assets,
+        },
+        "liabilities": {
+            "current_liabilities": {
+                "title": "Current Liabilities",
+                "items": current_liabilities_items,
+                "total": total_current_liabilities,
+                "previous_total": prev_current_liabilities,
+            },
+            "non_current_liabilities": {
+                "title": "Non-Current Liabilities",
+                "items": non_current_liabilities_items,
+                "total": total_non_current_liabilities,
+                "previous_total": prev_non_current_liabilities,
+            },
+            "total": total_liabilities,
+            "previous_total": prev_total_liabilities,
+        },
+        "equity": {
+            "title": "Shareholders Equity",
+            "items": equity_items,
+            "total": total_equity,
+            "previous_total": prev_total_equity,
+        },
+        "total_liabilities_and_equity": total_liabilities_and_equity,
+        "previous_total_liabilities_and_equity": prev_total_liabilities_and_equity,
+        "is_balanced": is_balanced,
+        "difference": difference,
+        "current_ratio": round(current_ratio, 2),
+        "debt_to_equity": round(debt_to_equity, 2),
+        "working_capital": working_capital,
+    }
 
 # Map source codes to display names
 SOURCE_DISPLAY_NAMES = {
