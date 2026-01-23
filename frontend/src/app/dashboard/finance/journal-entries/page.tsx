@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, BookOpen, Trash2, CheckCircle, XCircle, Send, FileCheck, Loader2, Copy, Pencil } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, BookOpen, Trash2, CheckCircle, XCircle, Send, FileCheck, Loader2, Copy, Pencil, RotateCcw, BookMarked } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -107,9 +107,13 @@ export default function JournalEntriesPage() {
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isReverseDialogOpen, setIsReverseDialogOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null);
   const [entryToDelete, setEntryToDelete] = useState<JournalEntry | null>(null);
+  const [entryToReverse, setEntryToReverse] = useState<JournalEntry | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [reversalDate, setReversalDate] = useState(new Date().toISOString().split('T')[0]);
+  const [reversalReason, setReversalReason] = useState('');
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
 
@@ -204,6 +208,37 @@ export default function JournalEntriesPage() {
     },
     onError: (error: Error) => toast.error(error.message || 'Failed to delete entry'),
   });
+
+  const reverseMutation = useMutation({
+    mutationFn: ({ id, date, reason }: { id: string; date: string; reason: string }) =>
+      journalEntriesApi.reverse(id, date, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+      toast.success('Reversing entry created');
+      setIsViewOpen(false);
+      setIsReverseDialogOpen(false);
+      setEntryToReverse(null);
+      setReversalReason('');
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to reverse entry'),
+  });
+
+  const handleReverse = (entry: JournalEntry) => {
+    setEntryToReverse(entry);
+    setReversalDate(new Date().toISOString().split('T')[0]);
+    setReversalReason(`Reversal of ${entry.entry_number}`);
+    setIsReverseDialogOpen(true);
+  };
+
+  const confirmReverse = () => {
+    if (entryToReverse && reversalDate) {
+      reverseMutation.mutate({
+        id: entryToReverse.id,
+        date: reversalDate,
+        reason: reversalReason,
+      });
+    }
+  };
 
   const resetForm = () => {
     setFormData({
@@ -483,6 +518,19 @@ export default function JournalEntriesPage() {
                 <DropdownMenuItem onClick={() => postMutation.mutate(row.original.id)}>
                   <FileCheck className="mr-2 h-4 w-4 text-blue-600" />
                   Post to Ledger
+                </DropdownMenuItem>
+              </>
+            )}
+            {row.original.status === 'POSTED' && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => handleReverse(row.original)}>
+                  <RotateCcw className="mr-2 h-4 w-4 text-orange-600" />
+                  Reverse Entry
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => window.open(`/dashboard/finance/general-ledger?entry=${row.original.id}`, '_blank')}>
+                  <BookMarked className="mr-2 h-4 w-4 text-purple-600" />
+                  View in Ledger
                 </DropdownMenuItem>
               </>
             )}
@@ -923,6 +971,49 @@ export default function JournalEntriesPage() {
             >
               {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Delete Entry
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reverse Entry Dialog */}
+      <AlertDialog open={isReverseDialogOpen} onOpenChange={setIsReverseDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reverse Journal Entry</AlertDialogTitle>
+            <AlertDialogDescription>
+              Create a reversing entry for{' '}
+              <span className="font-medium">{entryToReverse?.entry_number}</span>.
+              This will create a new journal entry with opposite debit/credit amounts.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label>Reversal Date</Label>
+              <Input
+                type="date"
+                value={reversalDate}
+                onChange={(e) => setReversalDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Reason (optional)</Label>
+              <Textarea
+                placeholder="Reason for reversal..."
+                value={reversalReason}
+                onChange={(e) => setReversalReason(e.target.value)}
+              />
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmReverse}
+              disabled={!reversalDate || reverseMutation.isPending}
+              className="bg-orange-600 text-white hover:bg-orange-700"
+            >
+              {reverseMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Create Reversal
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
