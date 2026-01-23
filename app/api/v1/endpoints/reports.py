@@ -339,11 +339,13 @@ async def get_profit_loss_report(
     db: DB,
     current_user: User = Depends(get_current_user),
     period: str = Query("this_month"),
+    compare: bool = Query(True),
 ):
     """
     Get Profit & Loss statement.
 
     Returns revenue, COGS, operating expenses, and net income.
+    Matches frontend ProfitLossData interface exactly.
     """
     today = date.today()
     start_date, end_date = parse_period(period)
@@ -352,6 +354,25 @@ async def get_profit_loss_report(
     period_length = (end_date - start_date).days + 1
     prev_end = start_date - timedelta(days=1)
     prev_start = prev_end - timedelta(days=period_length - 1)
+
+    # Period names for display
+    period_name = f"{start_date.strftime('%b %d')} - {end_date.strftime('%b %d, %Y')}"
+    previous_period_name = f"{prev_start.strftime('%b %d')} - {prev_end.strftime('%b %d, %Y')}"
+
+    def build_line_item(acc, current_amount: Decimal, previous_amount: Decimal = Decimal("0")) -> dict:
+        """Build a line item matching ProfitLossLineItem interface."""
+        variance = float(current_amount - previous_amount)
+        variance_pct = (variance / float(previous_amount) * 100) if previous_amount != 0 else 0.0
+        return {
+            "account_code": acc.account_code,
+            "account_name": acc.account_name,
+            "current_period": float(current_amount),
+            "previous_period": float(previous_amount),
+            "variance": variance,
+            "variance_percentage": round(variance_pct, 2),
+            "is_group": False,
+            "indent_level": 0,
+        }
 
     # Get revenue accounts (4xxx)
     revenue_query = select(ChartOfAccount).where(
@@ -367,19 +388,15 @@ async def get_profit_loss_report(
 
     revenue_items = []
     total_revenue = Decimal("0")
+    prev_total_revenue = Decimal("0")
 
     for acc in revenue_accounts:
         amount = Decimal(str(acc.current_balance or 0))
+        prev_amount = Decimal(str(acc.opening_balance or 0))
         total_revenue += amount
-        revenue_items.append({
-            "account_code": acc.account_code,
-            "account_name": acc.account_name,
-            "amount": float(amount),
-            "previous_amount": float(acc.opening_balance or 0),
-            "change_percent": 0.0,
-            "is_header": False,
-            "indent_level": 0,
-        })
+        prev_total_revenue += prev_amount
+        if amount != 0 or prev_amount != 0:
+            revenue_items.append(build_line_item(acc, amount, prev_amount))
 
     # Get COGS accounts (5xxx)
     cogs_query = select(ChartOfAccount).where(
@@ -396,32 +413,24 @@ async def get_profit_loss_report(
 
     cogs_items = []
     total_cogs = Decimal("0")
+    prev_total_cogs = Decimal("0")
 
     for acc in cogs_accounts:
         amount = Decimal(str(acc.current_balance or 0))
+        prev_amount = Decimal(str(acc.opening_balance or 0))
         total_cogs += amount
-        cogs_items.append({
-            "account_code": acc.account_code,
-            "account_name": acc.account_name,
-            "amount": float(amount),
-            "previous_amount": float(acc.opening_balance or 0),
-            "change_percent": 0.0,
-            "is_header": False,
-            "indent_level": 0,
-        })
+        prev_total_cogs += prev_amount
+        if amount != 0 or prev_amount != 0:
+            cogs_items.append(build_line_item(acc, amount, prev_amount))
 
     gross_profit = total_revenue - total_cogs
-    gross_margin = float((gross_profit / total_revenue * 100) if total_revenue > 0 else 0)
+    prev_gross_profit = prev_total_revenue - prev_total_cogs
+    gross_margin_pct = float((gross_profit / total_revenue * 100) if total_revenue > 0 else 0)
 
-    # Get operating expense accounts (6xxx, 7xxx)
+    # Get operating expense accounts (3xxx, 6xxx, 7xxx - excluding 5xxx COGS)
     opex_query = select(ChartOfAccount).where(
         and_(
             ChartOfAccount.account_type == "EXPENSE",
-            or_(
-                ChartOfAccount.account_code.like("6%"),
-                ChartOfAccount.account_code.like("7%"),
-                ChartOfAccount.account_code.like("3%"),  # Common expense codes
-            ),
             ~ChartOfAccount.account_code.like("5%"),  # Exclude COGS
             ChartOfAccount.is_group == False,
             ChartOfAccount.is_active == True,
@@ -433,61 +442,77 @@ async def get_profit_loss_report(
 
     opex_items = []
     total_opex = Decimal("0")
+    prev_total_opex = Decimal("0")
 
     for acc in opex_accounts:
         amount = Decimal(str(acc.current_balance or 0))
+        prev_amount = Decimal(str(acc.opening_balance or 0))
         total_opex += amount
-        opex_items.append({
-            "account_code": acc.account_code,
-            "account_name": acc.account_name,
-            "amount": float(amount),
-            "previous_amount": float(acc.opening_balance or 0),
-            "change_percent": 0.0,
-            "is_header": False,
-            "indent_level": 0,
-        })
+        prev_total_opex += prev_amount
+        if amount != 0 or prev_amount != 0:
+            opex_items.append(build_line_item(acc, amount, prev_amount))
 
     operating_income = gross_profit - total_opex
-    net_income = operating_income  # Simplified - no other income/expense for now
-    net_margin = float((net_income / total_revenue * 100) if total_revenue > 0 else 0)
+    prev_operating_income = prev_gross_profit - prev_total_opex
+    operating_margin_pct = float((operating_income / total_revenue * 100) if total_revenue > 0 else 0)
+
+    # For now, no other income/expenses or taxes
+    net_profit_before_tax = operating_income
+    prev_net_profit_before_tax = prev_operating_income
+    tax_expense = Decimal("0")
+    prev_tax_expense = Decimal("0")
+    net_profit = net_profit_before_tax - tax_expense
+    prev_net_profit = prev_net_profit_before_tax - prev_tax_expense
+    net_margin_pct = float((net_profit / total_revenue * 100) if total_revenue > 0 else 0)
 
     return {
-        "period_start": start_date.isoformat(),
-        "period_end": end_date.isoformat(),
-        "previous_period_start": prev_start.isoformat(),
-        "previous_period_end": prev_end.isoformat(),
+        "period_name": period_name,
+        "from_date": start_date.isoformat(),
+        "to_date": end_date.isoformat(),
+        "previous_period_name": previous_period_name,
         "revenue": {
             "title": "Revenue",
             "items": revenue_items,
             "total": float(total_revenue),
-            "previous_total": 0.0,
+            "previous_total": float(prev_total_revenue),
         },
         "cost_of_goods_sold": {
             "title": "Cost of Goods Sold",
             "items": cogs_items,
             "total": float(total_cogs),
-            "previous_total": 0.0,
+            "previous_total": float(prev_total_cogs),
         },
         "gross_profit": float(gross_profit),
-        "gross_margin_percent": round(gross_margin, 2),
+        "previous_gross_profit": float(prev_gross_profit),
         "operating_expenses": {
             "title": "Operating Expenses",
             "items": opex_items,
             "total": float(total_opex),
-            "previous_total": 0.0,
+            "previous_total": float(prev_total_opex),
         },
         "operating_income": float(operating_income),
-        "other_income_expense": {
-            "title": "Other Income/Expense",
+        "previous_operating_income": float(prev_operating_income),
+        "other_income": {
+            "title": "Other Income",
             "items": [],
             "total": 0.0,
             "previous_total": 0.0,
         },
-        "net_income": float(net_income),
-        "net_margin_percent": round(net_margin, 2),
-        "previous_gross_profit": 0.0,
-        "previous_operating_income": 0.0,
-        "previous_net_income": 0.0,
+        "other_expenses": {
+            "title": "Other Expenses",
+            "items": [],
+            "total": 0.0,
+            "previous_total": 0.0,
+        },
+        "net_profit_before_tax": float(net_profit_before_tax),
+        "previous_net_profit_before_tax": float(prev_net_profit_before_tax),
+        "tax_expense": float(tax_expense),
+        "previous_tax_expense": float(prev_tax_expense),
+        "net_profit": float(net_profit),
+        "previous_net_profit": float(prev_net_profit),
+        "gross_margin_percentage": round(gross_margin_pct, 2),
+        "operating_margin_percentage": round(operating_margin_pct, 2),
+        "net_margin_percentage": round(net_margin_pct, 2),
     }
 
 
