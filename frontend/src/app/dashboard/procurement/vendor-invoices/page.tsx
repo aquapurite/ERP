@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, FileText, CheckCircle, XCircle, Upload, Download, AlertTriangle, Clock, DollarSign, FileCheck } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, FileText, CheckCircle, XCircle, Upload, Download, AlertTriangle, Clock, DollarSign, FileCheck, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -68,10 +68,59 @@ interface InvoiceStats {
   total_overdue_amount: number;
 }
 
+// Vendor from master data
+interface VendorBrief {
+  id: string;
+  vendor_code: string;
+  name: string;
+  gstin?: string;
+  vendor_type?: string;
+}
+
+// Purchase Order from master data
+interface PurchaseOrderBrief {
+  id: string;
+  po_number: string;
+  vendor_id: string;
+  vendor_name?: string;
+  grand_total: number;
+  status: string;
+  po_date?: string;
+}
+
+// Vendors API - fetches from master Vendors table
+const vendorsApi = {
+  getDropdown: async (): Promise<VendorBrief[]> => {
+    try {
+      const { data } = await apiClient.get('/vendors/dropdown', { params: { active_only: true } });
+      return data || [];
+    } catch {
+      return [];
+    }
+  },
+};
+
+// Purchase Orders API - fetches from master PO table
+const purchaseOrdersApi = {
+  list: async (params?: { vendor_id?: string; status?: string }): Promise<{ items: PurchaseOrderBrief[] }> => {
+    try {
+      const { data } = await apiClient.get('/purchase/orders', {
+        params: {
+          ...params,
+          size: 100, // Get enough POs for dropdown
+        }
+      });
+      return data || { items: [] };
+    } catch {
+      return { items: [] };
+    }
+  },
+};
+
 const vendorInvoicesApi = {
   list: async (params?: { page?: number; size?: number; status?: string; payment_status?: string }) => {
     try {
-      const { data } = await apiClient.get('/purchase/vendor-invoices', { params });
+      const { data } = await apiClient.get('/vendor-invoices', { params });
       return data;
     } catch {
       return { items: [], total: 0, pages: 0 };
@@ -79,29 +128,37 @@ const vendorInvoicesApi = {
   },
   getStats: async (): Promise<InvoiceStats> => {
     try {
-      const { data } = await apiClient.get('/purchase/vendor-invoices/stats');
+      const { data } = await apiClient.get('/vendor-invoices/stats');
       return data;
     } catch {
       return { total_invoices: 0, pending_review: 0, matched: 0, mismatch: 0, overdue: 0, total_pending_amount: 0, total_overdue_amount: 0 };
     }
   },
-  upload: async (file: File, vendorId: string) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('vendor_id', vendorId);
-    const { data } = await apiClient.post('/purchase/vendor-invoices/upload', formData);
+  create: async (invoiceData: {
+    vendor_id: string;
+    invoice_number: string;
+    invoice_date: string;
+    purchase_order_id?: string;
+    subtotal: number;
+    taxable_amount: number;
+    cgst_amount: number;
+    sgst_amount: number;
+    grand_total: number;
+    due_date: string;
+  }) => {
+    const { data } = await apiClient.post('/vendor-invoices', invoiceData);
     return data;
   },
   approve: async (id: string) => {
-    const { data } = await apiClient.post(`/purchase/vendor-invoices/${id}/approve`);
+    const { data } = await apiClient.post(`/vendor-invoices/${id}/approve`);
     return data;
   },
   reject: async (id: string, reason: string) => {
-    const { data } = await apiClient.post(`/purchase/vendor-invoices/${id}/reject`, { reason });
+    const { data } = await apiClient.post(`/vendor-invoices/${id}/reject`, { reason });
     return data;
   },
   initiateMatch: async (id: string) => {
-    const { data } = await apiClient.post(`/purchase/vendor-invoices/${id}/match`);
+    const { data } = await apiClient.post(`/vendor-invoices/${id}/three-way-match`);
     return data;
   },
 };
@@ -137,7 +194,51 @@ export default function VendorInvoicesPage() {
   const [paymentFilter, setPaymentFilter] = useState<string>('all');
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
 
+  // Upload form state
+  const [selectedVendorId, setSelectedVendorId] = useState<string>('');
+  const [selectedPOId, setSelectedPOId] = useState<string>('');
+  const [invoiceNumber, setInvoiceNumber] = useState<string>('');
+  const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
+
   const queryClient = useQueryClient();
+
+  // Fetch vendors from master Vendors table
+  const { data: vendors = [], isLoading: vendorsLoading } = useQuery({
+    queryKey: ['vendors-dropdown'],
+    queryFn: vendorsApi.getDropdown,
+  });
+
+  // Fetch POs - filtered by selected vendor
+  const { data: posData, isLoading: posLoading } = useQuery({
+    queryKey: ['purchase-orders-dropdown', selectedVendorId],
+    queryFn: () => purchaseOrdersApi.list({
+      vendor_id: selectedVendorId || undefined,
+      status: 'APPROVED', // Only show approved POs for linking
+    }),
+    enabled: true, // Always fetch, but filter by vendor if selected
+  });
+
+  // Filter POs by selected vendor (if any)
+  const availablePOs = selectedVendorId
+    ? (posData?.items || []).filter(po => po.vendor_id === selectedVendorId)
+    : (posData?.items || []);
+
+  // Reset form when dialog closes
+  useEffect(() => {
+    if (!isUploadDialogOpen) {
+      setSelectedVendorId('');
+      setSelectedPOId('');
+      setInvoiceNumber('');
+      setInvoiceDate(new Date().toISOString().split('T')[0]);
+      setInvoiceFile(null);
+    }
+  }, [isUploadDialogOpen]);
+
+  // Reset PO selection when vendor changes
+  useEffect(() => {
+    setSelectedPOId('');
+  }, [selectedVendorId]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['vendor-invoices', page, pageSize, statusFilter, paymentFilter],
@@ -175,6 +276,51 @@ export default function VendorInvoicesPage() {
       toast.error(error.message || 'Failed to initiate 3-way match');
     },
   });
+
+  const createInvoiceMutation = useMutation({
+    mutationFn: vendorInvoicesApi.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['vendor-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['vendor-invoices-stats'] });
+      setIsUploadDialogOpen(false);
+      toast.success('Vendor invoice created successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to create vendor invoice');
+    },
+  });
+
+  const handleUploadSubmit = () => {
+    if (!selectedVendorId) {
+      toast.error('Please select a vendor');
+      return;
+    }
+    if (!invoiceNumber.trim()) {
+      toast.error('Please enter invoice number');
+      return;
+    }
+    if (!invoiceDate) {
+      toast.error('Please enter invoice date');
+      return;
+    }
+
+    // Calculate due date (30 days from invoice date)
+    const dueDate = new Date(invoiceDate);
+    dueDate.setDate(dueDate.getDate() + 30);
+
+    createInvoiceMutation.mutate({
+      vendor_id: selectedVendorId,
+      invoice_number: invoiceNumber,
+      invoice_date: invoiceDate,
+      purchase_order_id: selectedPOId || undefined,
+      subtotal: 0, // These would be entered in a full form or extracted from file
+      taxable_amount: 0,
+      cgst_amount: 0,
+      sgst_amount: 0,
+      grand_total: 0,
+      due_date: dueDate.toISOString().split('T')[0],
+    });
+  };
 
   const columns: ColumnDef<VendorInvoice>[] = [
     {
@@ -350,15 +496,31 @@ export default function VendorInvoicesPage() {
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Vendor</label>
-                    <Select>
+                    <label className="text-sm font-medium">Vendor *</label>
+                    <Select value={selectedVendorId} onValueChange={setSelectedVendorId}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select vendor" />
+                        <SelectValue placeholder={vendorsLoading ? "Loading vendors..." : "Select vendor"} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="v1">Aqua Systems Pvt Ltd</SelectItem>
-                        <SelectItem value="v2">Filter World India</SelectItem>
-                        <SelectItem value="v3">Pure Flow Technologies</SelectItem>
+                        {vendorsLoading ? (
+                          <div className="flex items-center justify-center py-4">
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            Loading...
+                          </div>
+                        ) : vendors.length === 0 ? (
+                          <div className="py-4 text-center text-sm text-muted-foreground">
+                            No active vendors found
+                          </div>
+                        ) : (
+                          vendors.map((vendor) => (
+                            <SelectItem key={vendor.id} value={vendor.id}>
+                              <div className="flex flex-col">
+                                <span>{vendor.name}</span>
+                                <span className="text-xs text-muted-foreground">{vendor.vendor_code}</span>
+                              </div>
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -372,36 +534,98 @@ export default function VendorInvoicesPage() {
                       <p className="text-xs text-muted-foreground mt-1">
                         PDF, JPG, PNG (max 10MB)
                       </p>
-                      <Input type="file" className="mt-2" accept=".pdf,.jpg,.jpeg,.png" />
+                      <Input
+                        type="file"
+                        className="mt-2"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        onChange={(e) => setInvoiceFile(e.target.files?.[0] || null)}
+                      />
+                      {invoiceFile && (
+                        <p className="text-xs text-green-600 mt-1">
+                          Selected: {invoiceFile.name}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Invoice Number</label>
-                      <Input placeholder="INV-001" />
+                      <label className="text-sm font-medium">Invoice Number *</label>
+                      <Input
+                        placeholder="INV-001"
+                        value={invoiceNumber}
+                        onChange={(e) => setInvoiceNumber(e.target.value)}
+                      />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Invoice Date</label>
-                      <Input type="date" />
+                      <label className="text-sm font-medium">Invoice Date *</label>
+                      <Input
+                        type="date"
+                        value={invoiceDate}
+                        onChange={(e) => setInvoiceDate(e.target.value)}
+                      />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Link to PO (Optional)</label>
-                    <Select>
+                    <Select
+                      value={selectedPOId}
+                      onValueChange={setSelectedPOId}
+                      disabled={!selectedVendorId}
+                    >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select PO" />
+                        <SelectValue placeholder={
+                          !selectedVendorId
+                            ? "Select vendor first"
+                            : posLoading
+                              ? "Loading POs..."
+                              : "Select PO"
+                        } />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="po1">PO-2026-001</SelectItem>
-                        <SelectItem value="po2">PO-2026-002</SelectItem>
-                        <SelectItem value="po3">PO-2026-003</SelectItem>
+                        {posLoading ? (
+                          <div className="flex items-center justify-center py-4">
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            Loading...
+                          </div>
+                        ) : availablePOs.length === 0 ? (
+                          <div className="py-4 text-center text-sm text-muted-foreground">
+                            {selectedVendorId
+                              ? "No approved POs for this vendor"
+                              : "Select a vendor to see POs"}
+                          </div>
+                        ) : (
+                          availablePOs.map((po) => (
+                            <SelectItem key={po.id} value={po.id}>
+                              <div className="flex flex-col">
+                                <span>{po.po_number}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {formatCurrency(po.grand_total)} • {po.status}
+                                </span>
+                              </div>
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
+                    {selectedVendorId && availablePOs.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {availablePOs.length} approved PO(s) available for this vendor
+                      </p>
+                    )}
                   </div>
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setIsUploadDialogOpen(false)}>Cancel</Button>
-                  <Button onClick={() => { toast.success('Processing invoice upload'); setIsUploadDialogOpen(false); }}>Upload & Process</Button>
+                  <Button onClick={handleUploadSubmit} disabled={createInvoiceMutation.isPending}>
+                    {createInvoiceMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      'Upload & Process'
+                    )}
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
