@@ -65,6 +65,8 @@ from app.api.v1.endpoints import (
     channels,
     marketplaces,  # Marketplace API Integration
     channel_reports,  # Channel P&L & Balance Sheet
+    # Reports (Dashboard)
+    reports,  # Channel P&L for frontend dashboard
     # Company/Business Entity
     company,
     # OMS/WMS
@@ -560,6 +562,13 @@ api_router.include_router(
     channel_reports.router,
     prefix="/channel-reports",
     tags=["Channel Reports"]
+)
+
+# ==================== Reports (Dashboard) ====================
+api_router.include_router(
+    reports.router,
+    prefix="/reports",
+    tags=["Reports"]
 )
 
 # ==================== CMS (D2C Content Management) ====================
