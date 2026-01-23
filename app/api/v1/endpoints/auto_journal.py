@@ -270,13 +270,13 @@ async def post_journal_entry(
             id=journal.id,
             entry_number=journal.entry_number,
             entry_date=journal.entry_date,
-            journal_type=journal.journal_type if journal.journal_type else "GENERAL",
+            journal_type=journal.entry_type if journal.entry_type else "GENERAL",
             narration=journal.narration or "",
             total_debit=float(journal.total_debit or 0),
             total_credit=float(journal.total_credit or 0),
             status=journal.status if journal.status else "DRAFT",
-            reference_type=journal.reference_type,
-            reference_id=journal.reference_id
+            reference_type=journal.source_type,
+            reference_id=journal.source_id
         )
 
     except AutoJournalError as e:
@@ -317,12 +317,12 @@ async def list_pending_journal_entries(
             "id": str(j.id),
             "entry_number": j.entry_number,
             "entry_date": str(j.entry_date),
-            "journal_type": j.journal_type if j.journal_type else None,
+            "journal_type": j.entry_type if j.entry_type else None,
             "narration": j.narration,
             "total_debit": float(j.total_debit or 0),
             "total_credit": float(j.total_credit or 0),
-            "reference_type": j.reference_type,
-            "reference_id": str(j.reference_id) if j.reference_id else None,
+            "reference_type": j.source_type,
+            "reference_id": str(j.source_id) if j.source_id else None,
             "lines_count": len(j.lines) if j.lines else 0
         }
         for j in journals

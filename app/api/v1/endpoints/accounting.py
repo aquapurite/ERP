@@ -2143,31 +2143,31 @@ async def get_balance_sheet(
     """Get Balance Sheet report."""
     # Assets
     assets_query = select(
-        ChartOfAccount.sub_type,
+        ChartOfAccount.account_sub_type,
         func.sum(ChartOfAccount.current_balance).label("total")
     ).where(
         and_(
             ChartOfAccount.account_type == AccountType.ASSET,
             ChartOfAccount.is_group == False,
         )
-    ).group_by(ChartOfAccount.sub_type)
+    ).group_by(ChartOfAccount.account_sub_type)
 
     assets_result = await db.execute(assets_query)
-    assets_data = {row.sub_type if row.sub_type else "other": float(row.total or 0) for row in assets_result.all()}
+    assets_data = {row.account_sub_type if row.account_sub_type else "other": float(row.total or 0) for row in assets_result.all()}
 
     # Liabilities
     liabilities_query = select(
-        ChartOfAccount.sub_type,
+        ChartOfAccount.account_sub_type,
         func.sum(ChartOfAccount.current_balance).label("total")
     ).where(
         and_(
             ChartOfAccount.account_type == AccountType.LIABILITY,
             ChartOfAccount.is_group == False,
         )
-    ).group_by(ChartOfAccount.sub_type)
+    ).group_by(ChartOfAccount.account_sub_type)
 
     liabilities_result = await db.execute(liabilities_query)
-    liabilities_data = {row.sub_type if row.sub_type else "other": float(row.total or 0) for row in liabilities_result.all()}
+    liabilities_data = {row.account_sub_type if row.account_sub_type else "other": float(row.total or 0) for row in liabilities_result.all()}
 
     # Equity
     equity_query = select(
