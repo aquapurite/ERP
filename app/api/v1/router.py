@@ -47,6 +47,7 @@ from app.api.v1.endpoints import (
     grn,  # Goods Receipt Notes
     vendor_invoices,  # Vendor Invoice & 3-Way Matching
     vendor_proformas,  # Vendor Proforma/Quotations
+    vendor_payments,  # Vendor Payments (Finance)
     sales_returns,  # Sales Return Notes (SRN)
     # Accounting & Finance
     accounting,
@@ -513,6 +514,13 @@ api_router.include_router(
     vendor_invoices.router,
     prefix="/vendor-invoices",
     tags=["Vendor Invoices"]
+)
+
+# ==================== Vendor Payments ====================
+api_router.include_router(
+    vendor_payments.router,
+    prefix="/vendor-payments",
+    tags=["Vendor Payments"]
 )
 
 # ==================== Vendor Proformas/Quotations ====================
