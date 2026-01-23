@@ -441,6 +441,10 @@ export default function JournalEntriesPage() {
             {row.original.status === 'DRAFT' && (
               <>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => submitMutation.mutate(row.original.id)}>
+                  <Send className="mr-2 h-4 w-4" />
+                  Submit for Approval
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleEdit(row.original)}>
                   <Pencil className="mr-2 h-4 w-4" />
                   Edit
@@ -451,6 +455,34 @@ export default function JournalEntriesPage() {
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
                   Delete
+                </DropdownMenuItem>
+              </>
+            )}
+            {row.original.status === 'PENDING_APPROVAL' && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => approveMutation.mutate(row.original.id)}>
+                  <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
+                  Approve
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setSelectedEntry(row.original);
+                    setIsRejectDialogOpen(true);
+                  }}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <XCircle className="mr-2 h-4 w-4" />
+                  Reject
+                </DropdownMenuItem>
+              </>
+            )}
+            {row.original.status === 'APPROVED' && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => postMutation.mutate(row.original.id)}>
+                  <FileCheck className="mr-2 h-4 w-4 text-blue-600" />
+                  Post to Ledger
                 </DropdownMenuItem>
               </>
             )}
