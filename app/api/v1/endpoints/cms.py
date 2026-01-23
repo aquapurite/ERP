@@ -19,6 +19,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, CurrentUser, require_permissions
+from app.services.cache_service import get_cache
 from app.models.cms import (
     CMSBanner,
     CMSUsp,
@@ -746,7 +747,18 @@ async def update_page(
 
     page.updated_by = current_user.id
 
+    # Store old slug for cache invalidation if slug is changing
+    old_slug = page.slug if data.slug and data.slug != page.slug else None
+
     await db.commit()
+
+    # Invalidate cache for this page (so D2C storefront gets fresh content)
+    cache = get_cache()
+    await cache.delete(f"cms:page:{page.slug}")
+    if old_slug:
+        await cache.delete(f"cms:page:{old_slug}")
+    # Also invalidate footer pages cache in case this page is in footer
+    await cache.delete("cms:pages:footer")
 
     # Reload with versions
     result = await db.execute(
@@ -774,8 +786,16 @@ async def delete_page(
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
 
+    # Store slug for cache invalidation before deletion
+    page_slug = page.slug
+
     await db.delete(page)
     await db.commit()
+
+    # Invalidate cache
+    cache = get_cache()
+    await cache.delete(f"cms:page:{page_slug}")
+    await cache.delete("cms:pages:footer")
 
 
 @router.post("/pages/{page_id}/publish", response_model=CMSPageResponse)
@@ -801,6 +821,11 @@ async def publish_page(
 
     await db.commit()
     await db.refresh(page)
+
+    # Invalidate cache so the page appears on storefront immediately
+    cache = get_cache()
+    await cache.delete(f"cms:page:{page.slug}")
+    await cache.delete("cms:pages:footer")
 
     return CMSPageResponse.model_validate(page)
 
