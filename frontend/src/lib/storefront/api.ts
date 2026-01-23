@@ -99,14 +99,46 @@ export const categoriesApi = {
 
   getBySlug: async (slug: string): Promise<StorefrontCategory> => {
     const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/categories`);
-    const category = (data || []).find((c: StorefrontCategory) => c.slug === slug);
+
+    // Recursive function to search through category tree (including nested children)
+    const findCategoryBySlug = (categories: StorefrontCategory[], targetSlug: string): StorefrontCategory | null => {
+      for (const cat of categories) {
+        if (cat.slug === targetSlug) {
+          return cat;
+        }
+        // Search in children recursively
+        if (cat.children && cat.children.length > 0) {
+          const found = findCategoryBySlug(cat.children, targetSlug);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const category = findCategoryBySlug(data || [], slug);
     if (!category) throw new Error('Category not found');
     return category;
   },
 
   getById: async (id: string): Promise<StorefrontCategory> => {
     const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/categories`);
-    const category = (data || []).find((c: StorefrontCategory) => c.id === id);
+
+    // Recursive function to search through category tree (including nested children)
+    const findCategoryById = (categories: StorefrontCategory[], targetId: string): StorefrontCategory | null => {
+      for (const cat of categories) {
+        if (cat.id === targetId) {
+          return cat;
+        }
+        // Search in children recursively
+        if (cat.children && cat.children.length > 0) {
+          const found = findCategoryById(cat.children, targetId);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const category = findCategoryById(data || [], id);
     if (!category) throw new Error('Category not found');
     return category;
   },
