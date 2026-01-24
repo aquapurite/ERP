@@ -211,14 +211,14 @@ class NotificationTemplateResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    notification_type: NotificationType
+    notification_type: str  # VARCHAR in DB
     title_template: str
     message_template: str
     email_subject_template: Optional[str] = None
     email_body_template: Optional[str] = None
     sms_template: Optional[str] = None
     default_channels: List[str]
-    default_priority: NotificationPriority
+    default_priority: str  # VARCHAR in DB
     is_active: bool
     created_at: datetime
     updated_at: datetime

@@ -82,7 +82,7 @@ class StockAdjustmentResponse(BaseModel):
     """Stock adjustment response schema."""
     id: uuid.UUID
     adjustment_number: str
-    adjustment_type: AdjustmentType
+    adjustment_type: str  # VARCHAR in DB
     status: str
     warehouse_id: uuid.UUID
     adjustment_date: datetime

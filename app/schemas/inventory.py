@@ -197,7 +197,7 @@ class StockMovementResponse(BaseModel):
     """Stock movement response."""
     id: uuid.UUID
     movement_number: str
-    movement_type: StockMovementType
+    movement_type: str  # VARCHAR in DB
     movement_date: datetime
     warehouse_id: uuid.UUID
     product_id: uuid.UUID

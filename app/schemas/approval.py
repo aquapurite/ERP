@@ -109,11 +109,11 @@ class ApprovalRequestResponse(BaseModel):
     """Response schema for approval request."""
     id: UUID
     request_number: str
-    entity_type: ApprovalEntityType
+    entity_type: str  # VARCHAR in DB
     entity_id: UUID
     entity_number: str
     amount: Decimal
-    approval_level: ApprovalLevel
+    approval_level: str  # VARCHAR in DB
     approval_level_name: Optional[str] = None
     status: str
     priority: int

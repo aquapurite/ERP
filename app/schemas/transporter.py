@@ -102,7 +102,7 @@ class TransporterResponse(BaseModel):
     id: uuid.UUID
     code: str
     name: str
-    transporter_type: TransporterType
+    transporter_type: str  # VARCHAR in DB
     is_active: bool
     supports_cod: bool
     supports_prepaid: bool

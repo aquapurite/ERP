@@ -46,7 +46,7 @@ class ZoneResponse(BaseModel):
     zone_code: str
     zone_name: str
     description: Optional[str] = None
-    zone_type: ZoneType
+    zone_type: str  # VARCHAR in DB
     floor_number: Optional[int] = None
     area_sqft: Optional[float] = None
     max_capacity: Optional[int] = None
@@ -68,7 +68,7 @@ class ZoneBrief(BaseModel):
     id: uuid.UUID
     zone_code: str
     zone_name: str
-    zone_type: ZoneType
+    zone_type: str  # VARCHAR in DB
 
     class Config:
         from_attributes = True
@@ -157,7 +157,7 @@ class BinResponse(BaseModel):
     rack: Optional[str] = None
     shelf: Optional[str] = None
     position: Optional[str] = None
-    bin_type: BinType
+    bin_type: str  # VARCHAR in DB
     length: Optional[float] = None
     width: Optional[float] = None
     height: Optional[float] = None
@@ -185,7 +185,7 @@ class BinBrief(BaseModel):
     """Brief bin info."""
     id: uuid.UUID
     bin_code: str
-    bin_type: BinType
+    bin_type: str  # VARCHAR in DB
     current_items: int
 
     class Config:
