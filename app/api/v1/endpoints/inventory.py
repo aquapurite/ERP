@@ -5,6 +5,8 @@ from math import ceil
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends, Body
+from sqlalchemy import select, func, and_
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, CurrentUser, require_permissions
 from app.models.inventory import StockItemStatus, StockMovementType
