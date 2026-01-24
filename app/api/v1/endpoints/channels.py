@@ -150,6 +150,57 @@ async def list_sales_channels(
     )
 
 
+@router.get("/stats")
+async def get_channel_stats(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get channel statistics for dashboard."""
+    # Total channels
+    total_result = await db.execute(select(func.count(SalesChannel.id)))
+    total_channels = total_result.scalar() or 0
+
+    # Active channels
+    active_result = await db.execute(
+        select(func.count(SalesChannel.id)).where(
+            SalesChannel.status == ChannelStatus.ACTIVE.value
+        )
+    )
+    active_channels = active_result.scalar() or 0
+
+    # Today's orders and revenue from channel_orders
+    today = date.today()
+    today_start = datetime.combine(today, datetime.min.time())
+    today_end = datetime.combine(today, datetime.max.time())
+
+    orders_today_result = await db.execute(
+        select(func.count(ChannelOrder.id)).where(
+            and_(
+                ChannelOrder.created_at >= today_start,
+                ChannelOrder.created_at <= today_end
+            )
+        )
+    )
+    total_orders_today = orders_today_result.scalar() or 0
+
+    revenue_today_result = await db.execute(
+        select(func.coalesce(func.sum(ChannelOrder.total_amount), 0)).where(
+            and_(
+                ChannelOrder.created_at >= today_start,
+                ChannelOrder.created_at <= today_end
+            )
+        )
+    )
+    total_revenue_today = float(revenue_today_result.scalar() or 0)
+
+    return {
+        "total_channels": total_channels,
+        "active_channels": active_channels,
+        "total_orders_today": total_orders_today,
+        "total_revenue_today": total_revenue_today,
+    }
+
+
 @router.get("/dropdown")
 async def get_channels_dropdown(
     db: DB,

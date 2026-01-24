@@ -1,9 +1,10 @@
 """Pydantic schemas for Sales Channel module."""
+import json
 from datetime import datetime
 from typing import Optional, List
 from decimal import Decimal
 from uuid import UUID
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 from app.models.channel import ChannelType, ChannelStatus
 
@@ -112,6 +113,17 @@ class SalesChannelResponse(SalesChannelBase):
 
     # Computed
     is_marketplace: bool = False
+
+    @field_validator('config', mode='before')
+    @classmethod
+    def parse_config(cls, v):
+        """Handle config stored as JSON string in database."""
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return None
+        return v
 
 
 class SalesChannelListResponse(BaseModel):
