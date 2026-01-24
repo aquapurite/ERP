@@ -1134,7 +1134,7 @@ async def bulk_update_site_settings(
     current_user: CurrentUser,
     _: bool = Depends(require_permissions(["CMS_EDIT"])),
 ):
-    """Bulk update site settings by key-value pairs."""
+    """Bulk update site settings by key-value pairs. Creates settings if they don't exist."""
     updated = []
     for key, value in data.settings.items():
         result = await db.execute(
@@ -1142,14 +1142,41 @@ async def bulk_update_site_settings(
         )
         setting = result.scalar_one_or_none()
         if setting:
+            # Update existing setting
             setting.setting_value = value
             updated.append(setting)
+        else:
+            # Create new setting if it doesn't exist
+            # Determine setting type and group from key
+            setting_type = "url" if "url" in key.lower() or "link" in key.lower() else "text"
+            setting_group = "social" if any(s in key.lower() for s in ["facebook", "twitter", "instagram", "youtube", "linkedin"]) else "general"
+            if "phone" in key.lower() or "email" in key.lower() or "address" in key.lower():
+                setting_group = "contact"
+            elif "footer" in key.lower() or "copyright" in key.lower():
+                setting_group = "footer"
+            elif "newsletter" in key.lower():
+                setting_group = "newsletter"
+
+            new_setting = CMSSiteSetting(
+                setting_key=key,
+                setting_value=value,
+                setting_type=setting_type,
+                setting_group=setting_group,
+                label=key.replace("_", " ").title(),
+                sort_order=0,
+            )
+            db.add(new_setting)
+            updated.append(new_setting)
 
     await db.commit()
 
     # Refresh all updated settings
     for setting in updated:
         await db.refresh(setting)
+
+    # Invalidate settings cache
+    cache = get_cache()
+    await cache.delete("storefront:settings")
 
     return CMSSiteSettingListResponse(
         items=[CMSSiteSettingResponse.model_validate(s) for s in updated],
