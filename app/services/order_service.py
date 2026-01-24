@@ -16,6 +16,7 @@ from app.models.order import (
 )
 from app.models.product import Product, ProductVariant
 from app.schemas.order import OrderCreate, OrderUpdate, OrderItemCreate
+from app.services.pricing_service import PricingService
 
 logger = logging.getLogger(__name__)
 
@@ -314,6 +315,10 @@ class OrderService:
                 customer
             )
 
+        # Initialize pricing service for channel-specific pricing
+        pricing_service = PricingService(self.db)
+        customer_segment = data.customer_segment or "STANDARD"
+
         # Calculate totals
         subtotal = Decimal("0.00")
         tax_amount = Decimal("0.00")
@@ -328,15 +333,42 @@ class OrderService:
             if item_data.variant_id:
                 variant = await self._get_variant(item_data.variant_id)
 
-            # Determine prices
-            unit_price = item_data.unit_price or product.selling_price
+            # Determine prices using PricingService (if channel_id provided)
+            unit_price = item_data.unit_price  # Use explicit price if provided
             unit_mrp = product.mrp
+            pricing_rules_applied = []
 
+            if not unit_price:
+                if data.channel_id:
+                    # Use channel-specific pricing with rules
+                    try:
+                        price_result = await pricing_service.calculate_price(
+                            product_id=item_data.product_id,
+                            channel_id=data.channel_id,
+                            quantity=item_data.quantity,
+                            variant_id=item_data.variant_id,
+                            customer_segment=customer_segment,
+                        )
+                        unit_price = Decimal(str(price_result["unit_price"]))
+                        if price_result.get("mrp"):
+                            unit_mrp = Decimal(str(price_result["mrp"]))
+                        pricing_rules_applied = price_result.get("rules_applied", [])
+                        logger.info(
+                            f"Channel pricing applied for product {item_data.product_id}: "
+                            f"price={unit_price}, source={price_result['price_source']}"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Channel pricing failed, using product price: {e}")
+                        unit_price = product.selling_price or product.mrp
+                else:
+                    # Fallback to product master pricing
+                    unit_price = product.selling_price or product.mrp
+
+            # Override with variant pricing if applicable
             if variant:
-                if variant.selling_price:
-                    unit_price = item_data.unit_price or variant.selling_price
                 if variant.mrp:
                     unit_mrp = variant.mrp
+                # Note: Variant pricing is already considered in PricingService if variant_id passed
 
             # Calculate item totals
             item_subtotal = unit_price * item_data.quantity
@@ -353,6 +385,7 @@ class OrderService:
                 "tax_rate": item_tax_rate,
                 "tax_amount": item_tax,
                 "total_amount": item_total,
+                "pricing_rules_applied": pricing_rules_applied,
             })
 
             subtotal += item_subtotal
@@ -365,6 +398,7 @@ class OrderService:
         order = Order(
             order_number=order_number,
             customer_id=data.customer_id,
+            channel_id=data.channel_id,  # Sales channel for pricing
             source=get_enum_value(data.source),  # Convert enum to string
             status="NEW",  # VARCHAR column - use string directly
             subtotal=subtotal,

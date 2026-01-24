@@ -946,6 +946,132 @@ async def sync_channel_pricing(
     }
 
 
+# ==================== Pricing Calculation & Bulk Operations ====================
+
+@router.post("/{channel_id}/pricing/calculate")
+async def calculate_product_price(
+    channel_id: UUID,
+    db: DB,
+    product_id: UUID = Query(..., description="Product to calculate price for"),
+    quantity: int = Query(1, ge=1, description="Quantity for volume discounts"),
+    variant_id: Optional[UUID] = Query(None, description="Product variant"),
+    customer_segment: str = Query("STANDARD", description="Customer segment for pricing"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Calculate the final price for a product on this channel.
+
+    Applies:
+    - Channel-specific pricing (ChannelPricing table)
+    - Volume discounts (quantity-based)
+    - Customer segment discounts
+    - Max discount threshold validation
+
+    Returns the breakdown of base price, discounts applied, and final price.
+    """
+    from app.services.pricing_service import PricingService
+
+    pricing_service = PricingService(db)
+
+    try:
+        result = await pricing_service.calculate_price(
+            product_id=product_id,
+            channel_id=channel_id,
+            quantity=quantity,
+            variant_id=variant_id,
+            customer_segment=customer_segment,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{channel_id}/pricing/bulk")
+async def bulk_create_channel_pricing(
+    channel_id: UUID,
+    pricing_data: List[ChannelPricingCreate],
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Bulk create or update channel pricing.
+
+    For each item:
+    - If pricing exists for product+variant, updates it
+    - Otherwise creates new pricing record
+
+    Returns count of created/updated records and any errors.
+    """
+    from app.services.pricing_service import PricingService
+
+    pricing_service = PricingService(db)
+
+    # Convert Pydantic models to dicts
+    data_list = [item.model_dump() for item in pricing_data]
+
+    result = await pricing_service.bulk_create_channel_pricing(
+        channel_id=channel_id,
+        pricing_data=data_list,
+    )
+
+    return result
+
+
+@router.get("/{channel_id}/pricing/alerts")
+async def get_pricing_alerts(
+    channel_id: UUID,
+    db: DB,
+    min_margin_threshold: Decimal = Query(Decimal("10"), description="Minimum margin % threshold"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get products with pricing below margin threshold.
+
+    Returns list of products where margin % < min_margin_threshold.
+    """
+    from app.services.pricing_service import PricingService
+
+    pricing_service = PricingService(db)
+    alerts = await pricing_service.get_pricing_alerts(
+        channel_id=channel_id,
+        min_margin_threshold=min_margin_threshold,
+    )
+
+    return {
+        "channel_id": str(channel_id),
+        "threshold": float(min_margin_threshold),
+        "alerts": alerts,
+        "total_alerts": len(alerts),
+    }
+
+
+@router.get("/pricing/compare/{product_id}")
+async def compare_product_pricing(
+    product_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Compare a product's pricing across all channels.
+
+    Returns pricing details for each channel including:
+    - Selling price
+    - Transfer price (for B2B)
+    - Margin percentage
+    - Max discount allowed
+    """
+    from app.services.pricing_service import PricingService
+
+    pricing_service = PricingService(db)
+    comparisons = await pricing_service.compare_prices_across_channels(product_id)
+
+    return {
+        "product_id": str(product_id),
+        "channels": comparisons,
+        "total_channels": len(comparisons),
+    }
+
+
 # ==================== Channel Inventory ====================
 
 @router.get("/{channel_id}/inventory", response_model=ChannelInventoryListResponse)

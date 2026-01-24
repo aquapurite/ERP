@@ -161,6 +161,15 @@ class Order(Base):
         comment="For dealer/distributor orders"
     )
 
+    # Sales Channel (for channel-specific pricing)
+    channel_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sales_channels.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="Sales channel for channel-specific pricing"
+    )
+
     # Pricing (all in INR)
     subtotal: Mapped[Decimal] = mapped_column(
         Numeric(12, 2),

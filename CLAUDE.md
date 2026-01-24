@@ -1959,3 +1959,263 @@ GET  /api/v1/storefront/brands            # Active brands
 - [ ] Product prefetch on hover
 - [ ] Redis caching with proper invalidation
 - [ ] Image optimization with next/image
+
+---
+
+## Channel Pricing Architecture (2026-01-24)
+
+### Overview
+
+The Channel Pricing system manages product prices across multiple sales channels (D2C, B2B, Marketplaces, Offline). It follows industry best practices for omnichannel pricing with a hybrid strategy - uniform MRP with channel-specific selling prices.
+
+### Data Source of Truth
+
+| Data | Source of Truth | Used By |
+|------|-----------------|---------|
+| **Product Name, SKU, Specs** | Product Master (`products` table) | All systems |
+| **Base MRP** | Product Master (`products.mrp`) | Reference price |
+| **Cost Price (COGS)** | GRN/Weighted Avg Cost (`product_costs` table) | Margin calculation |
+| **HSN Code, GST Rate** | Product Master | Invoice, GST filing |
+| **Channel Selling Price** | **ChannelPricing** (`channel_pricing` table) | Order, Invoice |
+| **Commission, Fees** | SalesChannel + ChannelPricing | Invoice, P&L |
+| **Pricing Rules** | PricingRules (`pricing_rules` table) | Order pricing |
+
+### Pricing Architecture Layers
+
+```
+LAYER 1: PRODUCT MASTER (Source of Truth)
+├── Base MRP (Maximum Retail Price) - NEVER changes per channel
+├── Cost Price (from GRN/COGS - auto-calculated)
+├── HSN Code & GST Rate
+├── Specifications
+└── Category & Brand
+
+LAYER 2: SALES CHANNEL CONFIGURATION
+├── Channel Type: D2C / B2B / MARKETPLACE / OFFLINE
+├── Commission % (for marketplaces)
+├── Fixed Fees (per order)
+├── Default Markup/Discount %
+├── Tax Settings (inclusive/exclusive)
+└── Payment Terms
+
+LAYER 3: PRICING RULES ENGINE
+├── Volume Discounts: Qty 1-10 = 0%, 11-50 = 5%, 50+ = 10%
+├── Customer Segment: VIP = 5% off, Dealer = 15% off
+├── Promotional: Date range discounts
+├── Bundle: Product A + B = 12% off
+└── Time-based: Weekend/Festival pricing
+
+LAYER 4: CHANNEL PRICING (Product-Level Override)
+├── Channel + Product + Variant (unique combo)
+├── MRP Override (optional)
+├── Selling Price (channel-specific)
+├── Transfer Price (for B2B/Dealers)
+├── Max Discount % (guard rail)
+├── Effective From/To (temporal pricing)
+└── Is Listed (visibility on channel)
+
+LAYER 5: ORDER PRICING CALCULATION
+├── Get ChannelPricing for product
+├── Apply Pricing Rules (volume, segment, promo)
+├── Validate against Max Discount %
+└── Store in OrderItem.unit_price
+
+LAYER 6: INVOICE GENERATION
+├── Line Items from Order (with channel pricing)
+├── GST Calculation (from Product Master HSN)
+├── Channel Commission/Fees (for marketplace)
+└── Net Receivable calculation
+
+LAYER 7: GL & P&L POSTING
+├── Revenue by Channel
+├── Commission Expense (for marketplaces)
+├── COGS (from Product Cost)
+└── Channel Profitability Report
+```
+
+### Database Tables
+
+#### Core Pricing Tables
+```sql
+-- Channel-specific product pricing
+channel_pricing (
+    id UUID PRIMARY KEY,
+    channel_id UUID REFERENCES sales_channels(id),
+    product_id UUID REFERENCES products(id),
+    variant_id UUID REFERENCES product_variants(id),  -- Optional
+    mrp NUMERIC(12,2),
+    selling_price NUMERIC(12,2) NOT NULL,
+    transfer_price NUMERIC(12,2),  -- For B2B/Dealers
+    discount_percentage NUMERIC(5,2),
+    max_discount_percentage NUMERIC(5,2),
+    effective_from TIMESTAMPTZ,
+    effective_to TIMESTAMPTZ,
+    is_active BOOLEAN DEFAULT TRUE,
+    is_listed BOOLEAN DEFAULT TRUE,
+    UNIQUE(channel_id, product_id, variant_id)
+)
+
+-- Pricing rules engine
+pricing_rules (
+    id UUID PRIMARY KEY,
+    code VARCHAR(50) UNIQUE NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    rule_type VARCHAR(50) NOT NULL,  -- VOLUME_DISCOUNT, SEGMENT, PROMO, BUNDLE, TIME_BASED
+    channel_id UUID,  -- NULL = all channels
+    category_id UUID,  -- NULL = all categories
+    product_id UUID,   -- NULL = all products
+    conditions JSONB NOT NULL,
+    discount_type VARCHAR(20) NOT NULL,  -- PERCENTAGE, FIXED_AMOUNT
+    discount_value NUMERIC(10,2) NOT NULL,
+    effective_from TIMESTAMPTZ,
+    effective_to TIMESTAMPTZ,
+    priority INT DEFAULT 100,
+    is_combinable BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE
+)
+
+-- Audit trail
+pricing_history (
+    id UUID PRIMARY KEY,
+    entity_type VARCHAR(50) NOT NULL,  -- CHANNEL_PRICING, PRICING_RULE
+    entity_id UUID NOT NULL,
+    field_name VARCHAR(100) NOT NULL,
+    old_value TEXT,
+    new_value TEXT,
+    changed_by UUID REFERENCES users(id),
+    changed_at TIMESTAMPTZ DEFAULT NOW(),
+    change_reason TEXT
+)
+```
+
+### Pricing Calculation Flow
+
+```python
+async def calculate_line_price(
+    product_id: UUID,
+    channel_id: UUID,
+    quantity: int,
+    customer_segment: str = "STANDARD"
+) -> Decimal:
+    """
+    Calculate final price for order line item.
+
+    1. Get channel pricing (or fallback to product price)
+    2. Apply pricing rules (volume, segment, promo)
+    3. Validate against max discount
+    4. Return final price
+    """
+    # Step 1: Get base price from ChannelPricing
+    channel_pricing = await get_channel_pricing(product_id, channel_id)
+
+    if channel_pricing and channel_pricing.selling_price:
+        base_price = channel_pricing.selling_price
+    else:
+        product = await get_product(product_id)
+        base_price = product.selling_price or product.mrp
+
+    # Step 2: Apply pricing rules
+    final_price = await apply_pricing_rules(
+        base_price, product_id, channel_id, quantity, customer_segment
+    )
+
+    # Step 3: Validate against max discount
+    if channel_pricing and channel_pricing.max_discount_percentage:
+        min_allowed = base_price * (1 - channel_pricing.max_discount_percentage / 100)
+        final_price = max(final_price, min_allowed)
+
+    return final_price
+```
+
+### API Endpoints
+
+```
+# Channel Pricing CRUD
+GET    /api/v1/channels/{id}/pricing              # List pricing for channel
+POST   /api/v1/channels/{id}/pricing              # Create pricing
+PUT    /api/v1/channels/{id}/pricing/{pricing_id} # Update pricing
+DELETE /api/v1/channels/{id}/pricing/{pricing_id} # Delete pricing
+POST   /api/v1/channels/{id}/pricing/bulk         # Bulk create/update
+POST   /api/v1/channels/{id}/pricing/import       # Import from CSV
+GET    /api/v1/channels/{id}/pricing/export       # Export to CSV
+POST   /api/v1/channels/{id}/pricing/copy-from/{source_id}  # Copy from channel
+
+# Pricing Rules
+GET    /api/v1/pricing-rules                      # List all rules
+POST   /api/v1/pricing-rules                      # Create rule
+PUT    /api/v1/pricing-rules/{id}                 # Update rule
+DELETE /api/v1/pricing-rules/{id}                 # Delete rule
+
+# Price Calculation
+POST   /api/v1/pricing/calculate                  # Calculate price
+GET    /api/v1/pricing/compare/{product_id}       # Compare across channels
+
+# History & Validation
+GET    /api/v1/channels/{id}/pricing/history      # Pricing change history
+POST   /api/v1/pricing/validate                   # Validate pricing
+GET    /api/v1/pricing/alerts                     # Below margin threshold
+```
+
+### Frontend Pages
+
+| Page | Path | Purpose |
+|------|------|---------|
+| Channel Pricing Dashboard | `/dashboard/channels/pricing` | Main pricing management |
+| Pricing Rules | `/dashboard/channels/pricing/rules` | Rule engine management |
+| Pricing History | `/dashboard/channels/pricing/history` | Audit trail |
+| Bulk Import | `/dashboard/channels/pricing/import` | CSV upload |
+| Price Comparison | `/dashboard/channels/pricing/compare` | Cross-channel comparison |
+
+### Implementation Checklist
+
+**Phase 1: Critical Fix (Invoice Integration)**
+- [ ] Create PricingService with `get_channel_price()` method
+- [ ] Modify order creation to use ChannelPricing
+- [ ] Ensure invoice uses OrderItem.unit_price (already set correctly from order)
+- [ ] Add fallback to product.selling_price if no channel pricing
+
+**Phase 2: Enhanced UI**
+- [ ] Channel Pricing page with tabs (Pricing, Commission, Rules, History)
+- [ ] Channel + Category + Product selectors
+- [ ] Bulk edit functionality
+- [ ] Margin calculation display
+
+**Phase 3: Pricing Rules Engine**
+- [ ] Create pricing_rules table
+- [ ] Create PricingRuleService
+- [ ] Volume discount rules
+- [ ] Customer segment pricing
+- [ ] Promotional/time-based pricing
+
+**Phase 4: Audit & History**
+- [ ] Create pricing_history table
+- [ ] Track all pricing changes
+- [ ] History UI with filters
+
+**Phase 5: Bulk Operations**
+- [ ] CSV import endpoint
+- [ ] CSV export endpoint
+- [ ] Copy pricing between channels
+
+**Phase 6: Reports**
+- [ ] Cross-channel price comparison
+- [ ] Margin alerts (below threshold)
+- [ ] Channel profitability report
+
+### Key Files
+
+| Component | File |
+|-----------|------|
+| Channel Model | `app/models/channel.py` |
+| Channel Schemas | `app/schemas/channel.py` |
+| Channel Endpoints | `app/api/v1/endpoints/channels.py` |
+| Pricing Service | `app/services/pricing_service.py` (NEW) |
+| Order Service | `app/services/order_service.py` |
+| Invoice Service | `app/services/invoice_service.py` |
+| Frontend Pricing Page | `frontend/src/app/dashboard/channels/pricing/page.tsx` |
+
+### References
+
+- [G2 Omnichannel Pricing Guide](https://learn.g2.com/omnichannel-pricing)
+- [Revionics Multi-Channel Strategy](https://revionics.com/blog/multi-channel-pricing-strategy-start-the-omnichannel-journey)
+- [BigCommerce B2B Pricing](https://www.bigcommerce.com/articles/b2b-ecommerce/b2b-pricing-strategy/)

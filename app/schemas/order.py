@@ -148,6 +148,7 @@ class OrderCreate(BaseModel):
     """Order creation schema."""
     customer_id: uuid.UUID
     source: OrderSource = OrderSource.WEBSITE
+    channel_id: Optional[uuid.UUID] = None  # Sales channel for channel-specific pricing
     items: List[OrderItemCreate] = Field(..., min_length=1)
     shipping_address: AddressInput
     billing_address: Optional[AddressInput] = None
@@ -156,6 +157,7 @@ class OrderCreate(BaseModel):
     customer_notes: Optional[str] = None
     internal_notes: Optional[str] = None
     region_id: Optional[uuid.UUID] = None
+    customer_segment: Optional[str] = None  # For segment-based pricing (VIP, DEALER, etc.)
 
 
 class OrderUpdate(BaseModel):
