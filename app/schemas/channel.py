@@ -187,6 +187,9 @@ class ChannelPricingResponse(ChannelPricingBase):
 
     id: UUID
     margin_percentage: Decimal
+    # Product details from joined Product table
+    product_name: Optional[str] = None
+    product_sku: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

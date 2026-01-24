@@ -775,8 +775,13 @@ async def get_channel_pricing(
     is_active: bool = True,
     current_user: User = Depends(get_current_user),
 ):
-    """Get pricing for a sales channel."""
-    query = select(ChannelPricing).where(ChannelPricing.channel_id == channel_id)
+    """Get pricing for a sales channel with product details."""
+    # Use selectinload to eagerly load product relationship
+    query = (
+        select(ChannelPricing)
+        .options(selectinload(ChannelPricing.product))
+        .where(ChannelPricing.channel_id == channel_id)
+    )
     count_query = select(func.count(ChannelPricing.id)).where(
         ChannelPricing.channel_id == channel_id
     )
@@ -793,10 +798,35 @@ async def get_channel_pricing(
 
     query = query.offset(skip).limit(limit)
     result = await db.execute(query)
-    pricing = result.scalars().all()
+    pricing_list = result.scalars().all()
+
+    # Transform to include product_name and product_sku from loaded relationship
+    items = []
+    for p in pricing_list:
+        item_dict = {
+            "id": p.id,
+            "channel_id": p.channel_id,
+            "product_id": p.product_id,
+            "variant_id": p.variant_id,
+            "mrp": p.mrp,
+            "selling_price": p.selling_price,
+            "transfer_price": p.transfer_price,
+            "discount_percentage": p.discount_percentage,
+            "max_discount_percentage": p.max_discount_percentage,
+            "is_active": p.is_active,
+            "is_listed": p.is_listed,
+            "effective_from": p.effective_from,
+            "effective_to": p.effective_to,
+            "margin_percentage": p.margin_percentage,
+            "product_name": p.product.name if p.product else None,
+            "product_sku": p.product.sku if p.product else None,
+            "created_at": p.created_at,
+            "updated_at": p.updated_at,
+        }
+        items.append(ChannelPricingResponse.model_validate(item_dict))
 
     return ChannelPricingListResponse(
-        items=[ChannelPricingResponse.model_validate(p) for p in pricing],
+        items=items,
         total=total,
         skip=skip,
         limit=limit

@@ -63,6 +63,9 @@ interface ChannelPricing {
   updated_at: string;
   // Computed/joined fields
   margin_percentage?: number;
+  // Product details from server-side join
+  product_name?: string;
+  product_sku?: string;
 }
 
 interface Channel {
@@ -250,6 +253,21 @@ export default function ChannelPricingPage() {
     enabled: !!selectedChannelId,
   });
 
+  // Get product IDs from pricing data to fetch their details
+  const pricingProductIds = useMemo(() => {
+    const items = pricingData?.items || [];
+    return items.map((p: ChannelPricing) => p.product_id);
+  }, [pricingData]);
+
+  // Fetch all products (for displaying names of existing pricing records)
+  const { data: allProductsData } = useQuery({
+    queryKey: ['products-all-for-pricing', pricingProductIds],
+    queryFn: () => productsApi.list({ size: 200 }), // Fetch all products
+    enabled: !!selectedChannelId && pricingProductIds.length > 0 && !subcategoryId,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+  const allProducts: Product[] = allProductsData?.items || [];
+
   // Fetch selected channel details for commission settings
   const { data: selectedChannel } = useQuery({
     queryKey: ['channel-detail', selectedChannelId],
@@ -297,12 +315,15 @@ export default function ChannelPricingPage() {
     }
   }, [selectedChannel]);
 
-  // Get product map for displaying names
+  // Get product map for displaying names (includes both filtered products AND all products for pricing display)
   const productMap = useMemo(() => {
     const map = new Map<string, Product>();
+    // Add all products first (for existing pricing display)
+    allProducts.forEach(p => map.set(p.id, p));
+    // Then add/override with filtered products (when subcategory is selected)
     products.forEach(p => map.set(p.id, p));
     return map;
-  }, [products]);
+  }, [products, allProducts]);
 
   // Get channel map
   const channelMap = useMemo(() => {
@@ -319,8 +340,39 @@ export default function ChannelPricingPage() {
   }, [pricingData]);
 
   // ==================== STRUCTURAL FIX ====================
-  // Merged view: Products from Master + Channel Pricing (if exists)
-  // This shows ALL products with their pricing status (configured or not)
+  // Two views:
+  // 1. When only channel selected (no subcategory): Show ALL existing channel pricing records
+  // 2. When subcategory selected: Show products from Master with pricing status
+
+  // View 1: Existing channel pricing (direct from channel_pricing table)
+  // Now uses product_name and product_sku from API response (joined with products table)
+  const existingPricingWithProducts = useMemo((): ProductWithPricing[] => {
+    const items = pricingData?.items || [];
+    if (items.length === 0) return [];
+
+    return items.map((pricing: ChannelPricing & { product_name?: string; product_sku?: string }) => {
+      // Use product_name/sku from API response (server-side join), fallback to productMap
+      const product = productMap.get(pricing.product_id);
+      return {
+        product_id: pricing.product_id,
+        product_name: pricing.product_name || product?.name || `Unknown Product`,
+        product_sku: pricing.product_sku || product?.sku || '-',
+        master_mrp: product?.mrp || pricing.mrp,
+        pricing_id: pricing.id,
+        channel_mrp: pricing.mrp,
+        selling_price: pricing.selling_price,
+        transfer_price: pricing.transfer_price,
+        discount_percentage: pricing.discount_percentage,
+        max_discount_percentage: pricing.max_discount_percentage,
+        is_active: pricing.is_active,
+        is_listed: pricing.is_listed,
+        has_pricing: true,
+      };
+    });
+  }, [pricingData, productMap]);
+
+  // View 2: Merged Products from Master + Channel Pricing (if exists)
+  // This shows ALL products in selected subcategory with their pricing status
   const mergedProductsWithPricing = useMemo((): ProductWithPricing[] => {
     // Only merge when we have a subcategory selected (products loaded)
     if (!subcategoryId || products.length === 0) {
@@ -346,6 +398,9 @@ export default function ChannelPricingPage() {
       };
     });
   }, [products, pricingMap, subcategoryId]);
+
+  // Use merged view if subcategory selected, otherwise show existing pricing
+  const displayData = subcategoryId ? mergedProductsWithPricing : existingPricingWithProducts;
 
   // Calculate stats from pricing data
   const stats = useMemo(() => {
@@ -985,20 +1040,51 @@ export default function ChannelPricingPage() {
           </TabsList>
 
           <TabsContent value="pricing" className="space-y-4">
-            {!subcategoryId ? (
+            {/* Show helpful message based on current filter state */}
+            {!subcategoryId && existingPricingWithProducts.length > 0 && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  <strong>Showing all existing pricing for this channel.</strong> Use the category filters above to browse products by category and add new pricing.
+                </p>
+              </div>
+            )}
+            {subcategoryId && (
+              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-sm text-green-800">
+                  <strong>Showing products from Product Master.</strong> Products with pricing are marked as "Active", others show "Not Configured" with an option to add pricing.
+                </p>
+              </div>
+            )}
+
+            {/* Data Table - shows displayData (existing pricing OR merged products) */}
+            <DataTable
+              columns={columns}
+              data={displayData}
+              isLoading={isLoading || productsLoading}
+            />
+
+            {/* Empty state when no data */}
+            {!isLoading && !productsLoading && displayData.length === 0 && (
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-12">
-                  <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
-                  <p className="text-lg font-medium">Select a Category & Subcategory</p>
-                  <p className="text-sm text-muted-foreground">Choose a subcategory above to view products and their pricing</p>
+                  <DollarSign className="h-12 w-12 text-muted-foreground mb-4" />
+                  {!subcategoryId ? (
+                    <>
+                      <p className="text-lg font-medium">No Pricing Configured Yet</p>
+                      <p className="text-sm text-muted-foreground">
+                        Select a Parent Category → Subcategory above to browse products and add pricing
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-lg font-medium">No Products in This Subcategory</p>
+                      <p className="text-sm text-muted-foreground">
+                        Add products to this subcategory in Product Master first
+                      </p>
+                    </>
+                  )}
                 </CardContent>
               </Card>
-            ) : (
-              <DataTable
-                columns={columns}
-                data={mergedProductsWithPricing}
-                isLoading={isLoading || productsLoading}
-              />
             )}
           </TabsContent>
 
