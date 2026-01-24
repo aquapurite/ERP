@@ -158,6 +158,7 @@ class OrderCreate(BaseModel):
     internal_notes: Optional[str] = None
     region_id: Optional[uuid.UUID] = None
     customer_segment: Optional[str] = None  # For segment-based pricing (VIP, DEALER, etc.)
+    partner_code: Optional[str] = None  # Community Partner referral code for commission attribution
 
 
 class OrderUpdate(BaseModel):

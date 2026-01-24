@@ -15,6 +15,7 @@ from app.models.order import (
     Payment, PaymentStatus, PaymentMethod, OrderSource, Invoice
 )
 from app.models.product import Product, ProductVariant
+from app.models.community_partner import CommunityPartner, PartnerOrder, PartnerCommission
 from app.schemas.order import OrderCreate, OrderUpdate, OrderItemCreate
 from app.services.pricing_service import PricingService
 
@@ -449,6 +450,15 @@ class OrderService:
         )
         self.db.add(status_history)
 
+        # Handle Community Partner attribution if partner_code provided
+        if data.partner_code:
+            await self._attribute_order_to_partner(
+                order=order,
+                partner_code=data.partner_code,
+                order_amount=total_amount,
+                customer_id=data.customer_id
+            )
+
         await self.db.commit()
         return await self.get_order_by_id(order.id, include_all=True)
 
@@ -472,6 +482,8 @@ class OrderService:
             order.confirmed_at = datetime.utcnow()
         elif new_status == OrderStatus.DELIVERED:
             order.delivered_at = datetime.utcnow()
+            # Calculate partner commission on delivery
+            await self.calculate_partner_commission(order_id)
         elif new_status == OrderStatus.CANCELLED:
             order.cancelled_at = datetime.utcnow()
 
@@ -768,3 +780,180 @@ class OrderService:
             del activity["created_at"]
 
         return activities[:limit]
+
+    # ==================== COMMUNITY PARTNER ATTRIBUTION ====================
+
+    async def _attribute_order_to_partner(
+        self,
+        order: Order,
+        partner_code: str,
+        order_amount: Decimal,
+        customer_id: uuid.UUID
+    ) -> Optional[PartnerOrder]:
+        """
+        Attribute an order to a Community Partner.
+        Creates PartnerOrder record for tracking.
+        Commission is calculated when order is delivered.
+        """
+        # Look up partner by referral code or partner code
+        partner_result = await self.db.execute(
+            select(CommunityPartner).where(
+                or_(
+                    CommunityPartner.referral_code == partner_code,
+                    CommunityPartner.partner_code == partner_code
+                )
+            )
+        )
+        partner = partner_result.scalar_one_or_none()
+
+        if not partner:
+            logger.warning(f"Partner not found for code: {partner_code}")
+            return None
+
+        if partner.status != "ACTIVE":
+            logger.warning(f"Partner {partner_code} is not active (status: {partner.status})")
+            return None
+
+        # Create partner order attribution
+        partner_order = PartnerOrder(
+            id=uuid.uuid4(),
+            partner_id=partner.id,
+            order_id=order.id,
+            customer_id=customer_id,
+            order_amount=order_amount,
+            attribution_source="REFERRAL_CODE",
+        )
+        self.db.add(partner_order)
+
+        # Update partner order count (commission calculated on delivery)
+        partner.total_orders = (partner.total_orders or 0) + 1
+        partner.total_sales = (partner.total_sales or Decimal("0")) + order_amount
+        partner.last_active_at = datetime.utcnow()
+
+        logger.info(f"Order {order.order_number} attributed to partner {partner.partner_code}")
+
+        return partner_order
+
+    async def calculate_partner_commission(
+        self,
+        order_id: uuid.UUID
+    ) -> Optional[PartnerCommission]:
+        """
+        Calculate and record commission for a partner's order.
+        Called when order status changes to DELIVERED.
+        """
+        from app.models.community_partner import PartnerTier
+
+        # Get partner order
+        po_result = await self.db.execute(
+            select(PartnerOrder).where(PartnerOrder.order_id == order_id)
+        )
+        partner_order = po_result.scalar_one_or_none()
+
+        if not partner_order:
+            return None  # Order not attributed to any partner
+
+        if partner_order.commission_id:
+            logger.info(f"Commission already calculated for order {order_id}")
+            return None
+
+        # Get partner with tier
+        partner_result = await self.db.execute(
+            select(CommunityPartner)
+            .options(selectinload(CommunityPartner.tier))
+            .where(CommunityPartner.id == partner_order.partner_id)
+        )
+        partner = partner_result.scalar_one_or_none()
+
+        if not partner:
+            return None
+
+        # Get commission rate from tier
+        commission_rate = Decimal("10.00")  # Default Bronze rate
+        bonus_rate = Decimal("0")
+        if partner.tier:
+            commission_rate = partner.tier.commission_rate
+            bonus_rate = partner.tier.bonus_rate
+
+        order_amount = partner_order.order_amount
+        commission_amount = (order_amount * commission_rate / Decimal("100")).quantize(Decimal("0.01"))
+        bonus_amount = (order_amount * bonus_rate / Decimal("100")).quantize(Decimal("0.01"))
+
+        # TDS calculation (5% if total commission > 15000 in FY)
+        tds_rate = Decimal("0")
+        tds_amount = Decimal("0")
+
+        # Check total commission this FY
+        fy_start = datetime(
+            datetime.utcnow().year if datetime.utcnow().month >= 4 else datetime.utcnow().year - 1,
+            4, 1
+        )
+        fy_total_result = await self.db.execute(
+            select(func.coalesce(func.sum(PartnerCommission.commission_amount), 0))
+            .where(
+                PartnerCommission.partner_id == partner.id,
+                PartnerCommission.created_at >= fy_start
+            )
+        )
+        fy_total = fy_total_result.scalar() or Decimal("0")
+
+        if fy_total + commission_amount > Decimal("15000"):
+            tds_rate = Decimal("5.00")
+            tds_amount = (commission_amount * tds_rate / Decimal("100")).quantize(Decimal("0.01"))
+
+        net_amount = commission_amount + bonus_amount - tds_amount
+
+        # Create commission record
+        commission = PartnerCommission(
+            id=uuid.uuid4(),
+            partner_id=partner.id,
+            order_id=order_id,
+            order_amount=order_amount,
+            commission_rate=commission_rate,
+            commission_amount=commission_amount,
+            bonus_amount=bonus_amount,
+            tds_rate=tds_rate,
+            tds_amount=tds_amount,
+            net_amount=net_amount,
+            status="PENDING",
+        )
+        self.db.add(commission)
+        await self.db.flush()
+
+        # Link commission to partner order
+        partner_order.commission_id = commission.id
+
+        # Update partner totals
+        partner.total_commission_earned = (partner.total_commission_earned or Decimal("0")) + net_amount
+        partner.pending_commission = (partner.pending_commission or Decimal("0")) + net_amount
+
+        logger.info(
+            f"Commission created for partner {partner.partner_code}: "
+            f"Order {order_id}, Amount: {net_amount} (Rate: {commission_rate}%)"
+        )
+
+        # Check for tier upgrade
+        await self._check_partner_tier_upgrade(partner)
+
+        return commission
+
+    async def _check_partner_tier_upgrade(self, partner: CommunityPartner) -> None:
+        """Check if partner qualifies for tier upgrade."""
+        from app.models.community_partner import PartnerTier
+
+        # Get all tiers ordered by commission rate (descending)
+        tiers_result = await self.db.execute(
+            select(PartnerTier)
+            .where(PartnerTier.is_active == True)
+            .order_by(PartnerTier.commission_rate.desc())
+        )
+        tiers = tiers_result.scalars().all()
+
+        for tier in tiers:
+            if (partner.total_orders >= tier.min_orders and
+                (partner.total_sales or Decimal("0")) >= tier.min_revenue):
+                if partner.tier_id != tier.id:
+                    old_tier = partner.tier.name if partner.tier else "None"
+                    partner.tier_id = tier.id
+                    logger.info(f"Partner {partner.partner_code} upgraded from {old_tier} to {tier.name}")
+                break
