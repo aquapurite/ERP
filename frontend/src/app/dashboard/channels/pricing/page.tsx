@@ -149,12 +149,13 @@ export default function ChannelPricingPage() {
   const categories: Category[] = categoriesData?.items || [];
 
   // Fetch products for dropdown (filtered by category if selected)
-  const { data: productsData, isLoading: productsLoading, error: productsError } = useQuery({
+  const { data: productsData, isLoading: productsLoading, error: productsError, isFetching: productsFetching } = useQuery({
     queryKey: ['products-dropdown', selectedCategoryId],
     queryFn: () => productsApi.list({
       size: 100,
       ...(selectedCategoryId ? { category_id: selectedCategoryId } : {})
     }),
+    placeholderData: (previousData) => previousData, // Keep showing previous products while loading new ones
   });
   const products: Product[] = productsData?.items || [];
 
@@ -905,7 +906,7 @@ export default function ChannelPricingPage() {
           <div className="grid gap-4 py-4">
             {!selectedPricing && (
               <div className="space-y-2">
-                <Label>Product {productsLoading ? '(Loading...)' : `(${products.length} available)`}</Label>
+                <Label>Product {productsLoading ? '(Loading...)' : productsFetching ? `(${products.length} available, refreshing...)` : `(${products.length} available)`}</Label>
                 {productsError && (
                   <p className="text-sm text-red-500">Error loading products: {String(productsError)}</p>
                 )}
