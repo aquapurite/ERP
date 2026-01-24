@@ -1147,6 +1147,43 @@ class GoodsReceiptNote(Base):
     put_away_complete: Mapped[bool] = mapped_column(Boolean, default=False)
     put_away_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Forced GRN (when serials don't match PO serials)
+    is_forced: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        comment="True if GRN was forced without serial validation"
+    )
+    force_reason: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Reason for forcing GRN (required if is_forced=True)"
+    )
+    forced_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Supply Chain Head who forced the GRN"
+    )
+
+    # Serial Validation Status
+    serial_validation_status: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="VALIDATED, PARTIAL_MATCH, NO_MATCH, SKIPPED"
+    )
+    serial_mismatch_details: Mapped[Optional[dict]] = mapped_column(
+        JSONB,
+        nullable=True,
+        comment="Details of serial mismatches if any"
+    )
+
+    # Stock Items Created flag
+    stock_items_created: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        comment="True after stock_items have been created from this GRN"
+    )
+
     # Documents
     grn_pdf_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     photos_urls: Mapped[Optional[List[str]]] = mapped_column(

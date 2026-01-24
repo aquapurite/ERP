@@ -21,6 +21,7 @@ from app.models.product import Product
 from app.services.document_sequence_service import DocumentSequenceService
 from app.services.costing_service import CostingService
 from app.services.channel_inventory_service import ChannelInventoryService, allocate_grn_to_channels
+from app.services.grn_service import GRNService
 from app.models.channel import SalesChannel, ChannelInventory, ProductChannelSettings
 
 router = APIRouter()
@@ -517,13 +518,107 @@ async def complete_qc(
     }
 
 
+@router.get("/{grn_id}/validate-serials")
+async def validate_grn_serials(
+    grn_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Validate serial numbers in GRN against PO serials.
+
+    Returns validation result showing:
+    - matched: Serials that match PO serials
+    - not_in_po: Serials scanned but not in PO
+    - already_received: Serials already received in another GRN
+    - requires_force: True if GRN needs to be forced due to mismatches
+    """
+    grn_service = GRNService(db)
+    try:
+        result = await grn_service.validate_grn_serials(grn_id)
+        return result
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.post("/{grn_id}/force")
+async def force_grn(
+    grn_id: UUID,
+    reason: str,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Force GRN acceptance when serials don't match.
+
+    Requires 'grn:force_receive' permission (typically only Supply Chain Head).
+    This bypasses serial validation and allows GRN to proceed.
+    """
+    grn_service = GRNService(db)
+
+    # Check permission
+    has_permission = await grn_service.check_force_permission(current_user.id)
+    if not has_permission:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to force GRN. Only Supply Chain Head can do this."
+        )
+
+    try:
+        result = await grn_service.force_grn_receive(
+            grn_id=grn_id,
+            force_reason=reason,
+            user_id=current_user.id,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.get("/{grn_id}/serial-status")
+async def get_grn_serial_status(
+    grn_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get GRN with detailed serial validation status for each item.
+    """
+    grn_service = GRNService(db)
+    result = await grn_service.get_grn_with_serial_status(grn_id)
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="GRN not found"
+        )
+
+    return result
+
+
 @router.post("/{grn_id}/accept")
 async def accept_grn(
     grn_id: UUID,
     db: DB,
     current_user: User = Depends(get_current_user),
+    skip_serial_validation: bool = False,
 ):
-    """Accept GRN after QC and update PO quantities and product costs (COGS)."""
+    """
+    Accept GRN after QC and create stock items.
+
+    This endpoint:
+    1. Validates serials against PO serials (unless is_forced or skip_serial_validation)
+    2. Updates PO quantities
+    3. Creates stock_items from serials
+    4. Updates inventory_summary
+    5. Updates product costs (COGS)
+    """
     grn = await db.get(GoodsReceiptNote, grn_id)
     if not grn:
         raise HTTPException(
@@ -536,6 +631,25 @@ async def accept_grn(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot accept GRN with status {grn.status}"
         )
+
+    grn_service = GRNService(db)
+
+    # Validate serials (unless forced or skipped)
+    if not grn.is_forced and not skip_serial_validation:
+        validation = await grn_service.validate_grn_serials(grn_id)
+        if not validation["is_valid"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "message": "Serial validation failed. Use /force endpoint to bypass.",
+                    "validation": validation,
+                }
+            )
+        grn.serial_validation_status = "VALIDATED"
+    elif grn.is_forced:
+        grn.serial_validation_status = "SKIPPED"
+    else:
+        grn.serial_validation_status = "SKIPPED"
 
     # Update PO item received quantities
     items_query = select(GRNItem).where(GRNItem.grn_id == grn_id)
@@ -584,11 +698,26 @@ async def accept_grn(
         import logging
         logging.getLogger(__name__).error(f"Failed to update product costs for GRN {grn_id}: {e}")
 
+    # Create stock items and update inventory
+    stock_result = None
+    try:
+        stock_result = await grn_service.create_stock_items_from_grn(
+            grn_id=grn_id,
+            user_id=current_user.id,
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Failed to create stock items for GRN {grn_id}: {e}")
+        # Don't fail the acceptance, but include the error
+        stock_result = {"error": str(e)}
+
     return {
-        "message": "GRN accepted and PO updated",
+        "message": "GRN accepted, stock items created, and inventory updated",
         "status": grn.status,
         "po_status": po.status if po else None,
         "cost_update": costing_result,
+        "stock_items": stock_result,
+        "serial_validation_status": grn.serial_validation_status,
     }
 
 

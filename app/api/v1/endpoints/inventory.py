@@ -412,7 +412,6 @@ async def check_warehouse_availability(
 
 @router.get(
     "/stock-items",
-    response_model=StockItemListResponse,
     dependencies=[Depends(require_permissions("inventory:view"))]
 )
 async def list_stock_items(
@@ -421,34 +420,136 @@ async def list_stock_items(
     size: int = Query(50, ge=1, le=200),
     warehouse_id: Optional[uuid.UUID] = Query(None),
     product_id: Optional[uuid.UUID] = Query(None),
-    status: Optional[StockItemStatus] = Query(None),
+    status: Optional[str] = Query(None),
     serial_number: Optional[str] = Query(None),
     batch_number: Optional[str] = Query(None),
+    view: str = Query("aggregate", description="View mode: 'aggregate' for inventory_summary, 'serialized' for stock_items"),
 ):
     """
     Get paginated list of stock items.
+
+    Two view modes:
+    - aggregate (default): Returns inventory_summary data (product-level aggregates)
+    - serialized: Returns individual stock_items with serial numbers
+
     Requires: inventory:view permission
     """
-    service = InventoryService(db)
+    from app.models.inventory import InventorySummary, StockItem
+    from app.models.product import Product
+    from app.models.warehouse import Warehouse
+    from sqlalchemy.orm import selectinload
+
     skip = (page - 1) * size
 
-    items, total = await service.get_stock_items(
-        warehouse_id=warehouse_id,
-        product_id=product_id,
-        status=status,
-        serial_number=serial_number,
-        batch_number=batch_number,
-        skip=skip,
-        limit=size,
-    )
+    if view == "serialized":
+        # Original behavior - query stock_items table
+        service = InventoryService(db)
+        items, total = await service.get_stock_items(
+            warehouse_id=warehouse_id,
+            product_id=product_id,
+            status=StockItemStatus(status) if status else None,
+            serial_number=serial_number,
+            batch_number=batch_number,
+            skip=skip,
+            limit=size,
+        )
 
-    return StockItemListResponse(
-        items=[StockItemResponse.model_validate(i) for i in items],
-        total=total,
-        page=page,
-        size=size,
-        pages=ceil(total / size) if total > 0 else 1,
-    )
+        return {
+            "items": [
+                {
+                    "id": str(item.id),
+                    "product": {
+                        "id": str(item.product_id),
+                        "name": item.product.name if item.product else None,
+                        "sku": item.product.sku if item.product else None,
+                    },
+                    "warehouse": {
+                        "id": str(item.warehouse_id),
+                        "name": item.warehouse.name if item.warehouse else None,
+                        "code": item.warehouse.code if item.warehouse else None,
+                    },
+                    "serial_number": item.serial_number,
+                    "batch_number": item.batch_number,
+                    "quantity": 1,  # Each stock_item is 1 unit
+                    "reserved_quantity": 1 if item.status in ["RESERVED", "ALLOCATED"] else 0,
+                    "available_quantity": 1 if item.status == "AVAILABLE" else 0,
+                    "reorder_level": 0,
+                    "status": item.status,
+                }
+                for item in items
+            ],
+            "total": total,
+            "page": page,
+            "size": size,
+            "pages": ceil(total / size) if total > 0 else 1,
+        }
+
+    else:
+        # Aggregate view - query inventory_summary table
+        query = select(InventorySummary).options(
+            selectinload(InventorySummary.product),
+            selectinload(InventorySummary.warehouse),
+        )
+
+        conditions = []
+        if warehouse_id:
+            conditions.append(InventorySummary.warehouse_id == warehouse_id)
+        if product_id:
+            conditions.append(InventorySummary.product_id == product_id)
+        if status:
+            # Map status to inventory condition
+            if status == "LOW_STOCK":
+                conditions.append(InventorySummary.available_quantity <= InventorySummary.reorder_level)
+            elif status == "OUT_OF_STOCK":
+                conditions.append(InventorySummary.available_quantity == 0)
+            elif status == "IN_STOCK":
+                conditions.append(InventorySummary.available_quantity > 0)
+
+        if conditions:
+            query = query.where(and_(*conditions))
+
+        # Count
+        count_query = select(func.count()).select_from(InventorySummary)
+        if conditions:
+            count_query = count_query.where(and_(*conditions))
+        total = await db.scalar(count_query) or 0
+
+        # Paginate
+        query = query.order_by(InventorySummary.product_id).offset(skip).limit(size)
+        result = await db.execute(query)
+        items = result.scalars().all()
+
+        return {
+            "items": [
+                {
+                    "id": str(item.id),
+                    "product": {
+                        "id": str(item.product_id),
+                        "name": item.product.name if item.product else None,
+                        "sku": item.product.sku if item.product else None,
+                    },
+                    "warehouse": {
+                        "id": str(item.warehouse_id),
+                        "name": item.warehouse.name if item.warehouse else None,
+                        "code": item.warehouse.code if item.warehouse else None,
+                    },
+                    "serial_number": None,  # Aggregate view doesn't have serials
+                    "batch_number": None,
+                    "quantity": item.total_quantity,
+                    "reserved_quantity": item.reserved_quantity,
+                    "available_quantity": item.available_quantity,
+                    "reorder_level": item.reorder_level,
+                    "status": "OUT_OF_STOCK" if item.available_quantity == 0 else (
+                        "LOW_STOCK" if item.available_quantity <= item.reorder_level else "IN_STOCK"
+                    ),
+                }
+                for item in items
+            ],
+            "total": total,
+            "page": page,
+            "size": size,
+            "pages": ceil(total / size) if total > 0 else 1,
+        }
 
 
 @router.get(
