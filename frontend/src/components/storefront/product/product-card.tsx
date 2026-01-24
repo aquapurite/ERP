@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { useCartStore } from '@/lib/storefront/cart-store';
+import { usePrefetchProduct } from '@/lib/storefront/hooks';
 import { formatCurrency } from '@/lib/utils';
 
 // Common product interface that works with both server and client products
@@ -49,6 +50,12 @@ export default function ProductCard({
   showAddToCart = true,
 }: ProductCardProps) {
   const addItem = useCartStore((state) => state.addItem);
+  const prefetchProduct = usePrefetchProduct();
+
+  // Prefetch product detail on hover for faster navigation
+  const handleMouseEnter = () => {
+    prefetchProduct(product.slug);
+  };
 
   const primaryImage =
     product.images?.find((img) => img.is_primary) || product.images?.[0];
@@ -71,7 +78,10 @@ export default function ProductCard({
   };
 
   return (
-    <Card className="group overflow-hidden hover:shadow-lg transition-shadow">
+    <Card
+      className="group overflow-hidden hover:shadow-lg transition-shadow"
+      onMouseEnter={handleMouseEnter}
+    >
       <Link href={`/products/${product.slug}`}>
         <div className="relative aspect-square overflow-hidden bg-muted">
           {primaryImage ? (
