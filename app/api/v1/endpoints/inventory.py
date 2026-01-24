@@ -458,6 +458,8 @@ async def list_stock_items(
             "items": [
                 {
                     "id": str(item.id),
+                    "product_id": str(item.product_id),
+                    "warehouse_id": str(item.warehouse_id),
                     "product": {
                         "id": str(item.product_id),
                         "name": item.product.name if item.product else None,
@@ -523,6 +525,8 @@ async def list_stock_items(
             "items": [
                 {
                     "id": str(item.id),
+                    "product_id": str(item.product_id),
+                    "warehouse_id": str(item.warehouse_id),
                     "product": {
                         "id": str(item.product_id),
                         "name": item.product.name if item.product else None,
@@ -539,9 +543,7 @@ async def list_stock_items(
                     "reserved_quantity": item.reserved_quantity,
                     "available_quantity": item.available_quantity,
                     "reorder_level": item.reorder_level,
-                    "status": "OUT_OF_STOCK" if item.available_quantity == 0 else (
-                        "LOW_STOCK" if item.available_quantity <= item.reorder_level else "IN_STOCK"
-                    ),
+                    "status": "AVAILABLE" if item.available_quantity > 0 else "OUT_OF_STOCK",
                 }
                 for item in items
             ],
