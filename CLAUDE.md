@@ -2440,3 +2440,201 @@ productsApi.list({ category_id: parentCategoryId }) // Returns 0 products
 - [ ] Products are fetched by subcategory, not parent category
 - [ ] MRP/price auto-populated from product master when selected
 - [ ] Backend supports `include_children` for hierarchy traversal
+
+---
+
+## Inventory Architecture (2026-01-24)
+
+### Overview
+
+The Inventory module follows a **dual-table architecture** with clear separation between aggregate inventory and serialized stock items. This design supports both high-level inventory management and individual unit tracking with full traceability.
+
+### Data Model
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         INVENTORY DATA MODEL                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────────┐         ┌─────────────────────┐                   │
+│  │  inventory_summary  │         │    stock_items      │                   │
+│  │  (Aggregate View)   │         │  (Serialized View)  │                   │
+│  ├─────────────────────┤         ├─────────────────────┤                   │
+│  │ product_id          │         │ serial_number       │                   │
+│  │ warehouse_id        │         │ barcode             │                   │
+│  │ total_quantity      │ ◄────── │ product_id          │                   │
+│  │ available_quantity  │  SUM()  │ warehouse_id        │                   │
+│  │ reserved_quantity   │         │ status              │                   │
+│  │ reorder_level       │         │ grn_number          │                   │
+│  └─────────────────────┘         │ po_serial_id        │                   │
+│                                  └─────────────────────┘                   │
+│                                           │                                 │
+│                                           ▼                                 │
+│                                  ┌─────────────────────┐                   │
+│                                  │   stock_movements   │                   │
+│                                  │   (Audit Trail)     │                   │
+│                                  ├─────────────────────┤                   │
+│                                  │ movement_type       │                   │
+│                                  │ quantity            │                   │
+│                                  │ reference_type      │                   │
+│                                  │ reference_id        │                   │
+│                                  └─────────────────────┘                   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Navigation Structure
+
+```
+Inventory (Menu Section)
+├── Dashboard              → Overview stats, alerts, quick actions
+├── Stock Summary          → Aggregate view (inventory_summary table)
+│   ├── Filter: Item Type [All | FG | SP | CO | CN | AC]
+│   ├── Filter: Warehouse
+│   └── Filter: Status [In Stock | Low Stock | Out of Stock]
+├── Serialized Items       → Individual units (stock_items table)
+│   ├── Filter: Item Type
+│   ├── Filter: Status [AVAILABLE | RESERVED | ALLOCATED | etc.]
+│   ├── Filter: GRN Number
+│   └── Shows: Serial#, Barcode, Location, Status, GRN link
+├── Stock Movements        → Audit trail (stock_movements table)
+│   ├── Filter: Movement Type [RECEIPT | ISSUE | TRANSFER | RETURN]
+│   ├── Filter: Date Range
+│   └── Shows: Full history with references
+├── Warehouses             → Warehouse management
+└── Stock Adjustments      → Manual adjustments with reason codes
+```
+
+### View Types
+
+| View | Data Source | Purpose | Use Case |
+|------|-------------|---------|----------|
+| **Stock Summary** | `inventory_summary` | Aggregate qty by product+warehouse | "How many RO Membranes in Delhi?" |
+| **Serialized Items** | `stock_items` | Individual serialized units | "Where is serial APAAASED00000001?" |
+| **Stock Movements** | `stock_movements` | Complete audit trail | "What happened to stock on Jan 24?" |
+
+### Item Type Classification
+
+Products are classified by `item_type` field in `products` table:
+
+| Code | Name | Description | Serialized |
+|------|------|-------------|------------|
+| `FG` | Finished Goods | Water Purifiers, complete units | Yes |
+| `SP` | Spare Parts | Filters, Membranes, UV Lamps | Yes |
+| `CO` | Components | Internal parts, assemblies | Optional |
+| `CN` | Consumables | Packaging, labels, chemicals | No |
+| `AC` | Accessories | Stands, covers, tools | Optional |
+
+### Stock Item Status Flow
+
+```
+GENERATED (PO Serial)
+      │
+      ▼ [GRN Accept]
+AVAILABLE ──────────────────────────────────────────┐
+      │                                              │
+      ├──▶ RESERVED ──▶ ALLOCATED ──▶ PICKED        │
+      │         │              │          │          │
+      │         └──────────────┴──────────┘          │
+      │                   │                          │
+      │                   ▼                          │
+      │              PACKED ──▶ SHIPPED ──▶ SOLD    │
+      │                                              │
+      ├──▶ DAMAGED ──▶ QUARANTINE ──▶ SCRAPPED     │
+      │                                              │
+      └──▶ RETURNED ◄──────────────────────────────┘
+```
+
+### GRN → Stock Items Flow
+
+```
+1. PO Created
+      │
+      ▼
+2. PO Approved → Serials generated in `po_serials` (status: GENERATED)
+      │
+      ▼
+3. GRN Created with serial_numbers in items
+      │
+      ▼
+4. GET /grn/{id}/validate-serials → Match against po_serials
+      │
+      ├── All match → serial_validation_status = "VALIDATED"
+      │
+      └── Mismatch → serial_validation_status = "PARTIAL_MATCH" or "NO_MATCH"
+                          │
+                          ▼
+               POST /grn/{id}/force (Director only)
+                          │
+                          ▼
+                    is_forced = true
+      │
+      ▼
+5. POST /grn/{id}/accept
+      │
+      ├── Update po_serials.status = "RECEIVED"
+      ├── Create stock_items (status: AVAILABLE)
+      ├── Link po_serials.stock_item_id
+      ├── Update inventory_summary quantities
+      └── Create stock_movements (type: RECEIPT)
+```
+
+### API Endpoints
+
+```
+# Stock Summary (Aggregate)
+GET  /api/v1/inventory/stock-items                    # Default: aggregate view
+GET  /api/v1/inventory/stock-items?view=aggregate     # Explicit aggregate
+GET  /api/v1/inventory/stock-items?item_type=FG       # Filter by item type
+
+# Serialized Items
+GET  /api/v1/inventory/stock-items?view=serialized    # Individual stock items
+GET  /api/v1/inventory/stock-items?view=serialized&grn_number=GRN/TEST/26-01/00006
+
+# Stock Movements
+GET  /api/v1/inventory/movements                      # Audit trail
+GET  /api/v1/inventory/movements?type=RECEIPT         # Filter by type
+
+# Stats
+GET  /api/v1/inventory/stats                          # Summary stats
+GET  /api/v1/inventory/low-stock                      # Low stock alerts
+```
+
+### Database Tables
+
+| Table | Purpose | Key Fields |
+|-------|---------|------------|
+| `inventory_summary` | Aggregate inventory per product/warehouse | product_id, warehouse_id, total_quantity, available_quantity |
+| `stock_items` | Individual serialized items | serial_number, product_id, warehouse_id, status, grn_number |
+| `stock_movements` | Audit trail for all inventory changes | movement_type, quantity, reference_type, reference_id |
+| `po_serials` | Serials generated at PO approval | barcode, po_id, status, stock_item_id |
+
+### Key Files
+
+| Component | File |
+|-----------|------|
+| Inventory Models | `app/models/inventory.py` |
+| Inventory Service | `app/services/inventory_service.py` |
+| Inventory Endpoints | `app/api/v1/endpoints/inventory.py` |
+| GRN Service | `app/services/grn_service.py` |
+| Stock Items Page | `frontend/src/app/dashboard/inventory/stock-items/page.tsx` |
+
+### Implementation Checklist (Phase 2)
+
+- [x] Add `item_type` filter to Stock Summary endpoint (2026-01-24)
+- [x] Create Serialized Items view with tabs in Stock Items page (2026-01-24)
+- [x] Add GRN column to Serialized Items view (2026-01-24)
+- [x] Add Item Type badges to product display (2026-01-24)
+- [x] Add Serial Number and GRN search filters (2026-01-24)
+- [ ] Create Stock Movements page (`/dashboard/inventory/movements`)
+- [ ] Update Inventory navigation menu
+- [ ] Create reusable InventoryTable component
+
+### Best Practices
+
+1. **Always update both tables**: When stock changes, update `stock_items` AND `inventory_summary`
+2. **Create movement records**: Every stock change must have a `stock_movements` entry
+3. **Use transactions**: Wrap multi-table updates in database transactions
+4. **Validate serials**: Always validate serial numbers against `po_serials` before acceptance
+5. **Track references**: Link movements to source documents (GRN, Order, Transfer)
+
