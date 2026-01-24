@@ -101,7 +101,18 @@ async def list_products(
 
     # Apply filters
     if category_id:
-        query = query.where(Product.category_id == category_id)
+        # Get child category IDs to include products from all subcategories
+        child_categories_query = (
+            select(Category.id)
+            .where(Category.parent_id == category_id)
+            .where(Category.is_active == True)
+        )
+        child_categories_result = await db.execute(child_categories_query)
+        child_category_ids = [str(row[0]) for row in child_categories_result.fetchall()]
+
+        # Include the parent category and all its children
+        all_category_ids = [category_id] + child_category_ids
+        query = query.where(Product.category_id.in_(all_category_ids))
     if brand_id:
         query = query.where(Product.brand_id == brand_id)
     if min_price is not None:

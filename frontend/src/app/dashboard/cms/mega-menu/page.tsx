@@ -305,7 +305,19 @@ function MegaMenuForm({ item, categories, onSubmit, onCancel, isLoading }: MegaM
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
+    // Clean up the form data - remove empty strings for UUID fields
+    const cleanedData = {
+      ...formData,
+      // Don't send empty strings for UUID fields - send null instead
+      category_id: formData.category_id || undefined,
+      subcategory_ids: formData.subcategory_ids?.length ? formData.subcategory_ids : undefined,
+      // Don't send empty strings for optional string fields
+      icon: formData.icon || undefined,
+      image_url: formData.image_url || undefined,
+      url: formData.url || undefined,
+      highlight_text: formData.highlight_text || undefined,
+    };
+    onSubmit(cleanedData as CMSMegaMenuItemCreate);
   };
 
   return (

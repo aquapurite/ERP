@@ -99,10 +99,20 @@ class ProductService:
         return category
 
     async def get_category_tree(self) -> List[Category]:
-        """Get full category tree."""
+        """Get full category tree with recursive children loading."""
+        from sqlalchemy.orm import selectinload
+
+        # Use recursive selectinload to load all nested children
+        # This handles categories up to 5 levels deep
         stmt = (
             select(Category)
-            .options(selectinload(Category.children))
+            .options(
+                selectinload(Category.children)
+                .selectinload(Category.children)
+                .selectinload(Category.children)
+                .selectinload(Category.children)
+                .selectinload(Category.children)
+            )
             .where(Category.parent_id.is_(None))
             .where(Category.is_active == True)
             .order_by(Category.sort_order, Category.name)

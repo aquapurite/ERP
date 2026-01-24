@@ -1574,7 +1574,9 @@ async def create_mega_menu_item(
     # Validate category exists if menu_type is CATEGORY
     category_name = None
     category_slug = None
-    if data.menu_type.value == "CATEGORY" and data.category_id:
+    # Handle both enum and string for menu_type
+    menu_type_str = data.menu_type.value if hasattr(data.menu_type, 'value') else data.menu_type
+    if menu_type_str == "CATEGORY" and data.category_id:
         cat_result = await db.execute(
             select(Category).where(Category.id == data.category_id)
         )
