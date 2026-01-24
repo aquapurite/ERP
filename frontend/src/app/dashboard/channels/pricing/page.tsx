@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Pencil, Trash2, DollarSign, TrendingUp, AlertCircle, Loader2, RefreshCw } from 'lucide-react';
+import { MoreHorizontal, Plus, Pencil, Trash2, DollarSign, TrendingUp, AlertCircle, Loader2, RefreshCw, Download, Upload, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -146,6 +146,9 @@ export default function ChannelPricingPage() {
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [activeTab, setActiveTab] = useState('pricing');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
   const [selectedPricing, setSelectedPricing] = useState<ChannelPricing | null>(null);
   // Dialog form state - includes cascading category for product selection
   const [dialogParentCategoryId, setDialogParentCategoryId] = useState<string>('');
@@ -771,6 +774,134 @@ export default function ChannelPricingPage() {
     },
   });
 
+  // Import mutation
+  const importMutation = useMutation({
+    mutationFn: async (items: Array<{
+      product_id: string;
+      mrp: number;
+      selling_price: number;
+      transfer_price?: number;
+      max_discount_percentage?: number;
+      is_active?: boolean;
+    }>) => channelsApi.pricing.bulk(selectedChannelId, items),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['channel-pricing'] });
+      toast.success(`Successfully imported ${result.created || 0} new, updated ${result.updated || 0} existing pricing rules`);
+      setIsImportDialogOpen(false);
+      setImportFile(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to import pricing');
+    },
+  });
+
+  // Export pricing to CSV
+  const handleExport = async () => {
+    if (!selectedChannelId) {
+      toast.error('Please select a channel first');
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const data = await channelsApi.pricing.export(selectedChannelId);
+      const items = data.items || [];
+
+      if (items.length === 0) {
+        toast.error('No pricing data to export');
+        setIsExporting(false);
+        return;
+      }
+
+      // Generate CSV content
+      const headers = ['Product ID', 'Product Name', 'SKU', 'MRP', 'Selling Price', 'Transfer Price', 'Max Discount %', 'Active'];
+      const rows = items.map((item: ChannelPricing & { product_name?: string; product_sku?: string }) => [
+        item.product_id,
+        item.product_name || '',
+        item.product_sku || '',
+        item.mrp,
+        item.selling_price,
+        item.transfer_price || '',
+        item.max_discount_percentage || '',
+        item.is_active ? 'Yes' : 'No',
+      ]);
+
+      const csvContent = [
+        headers.join(','),
+        ...rows.map((row: (string | number)[]) => row.map((cell: string | number) => `"${cell}"`).join(',')),
+      ].join('\n');
+
+      // Download CSV
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      const channel = channels.find((c: Channel) => c.id === selectedChannelId);
+      link.download = `channel-pricing-${channel?.code || 'export'}-${new Date().toISOString().split('T')[0]}.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+
+      toast.success(`Exported ${items.length} pricing rules`);
+    } catch (error) {
+      toast.error('Failed to export pricing data');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Process imported CSV file
+  const handleImportFile = async () => {
+    if (!importFile) {
+      toast.error('Please select a file');
+      return;
+    }
+
+    const text = await importFile.text();
+    const lines = text.split('\n').filter(line => line.trim());
+
+    if (lines.length < 2) {
+      toast.error('CSV file must have a header row and at least one data row');
+      return;
+    }
+
+    // Parse CSV (skip header)
+    const items: Array<{
+      product_id: string;
+      mrp: number;
+      selling_price: number;
+      transfer_price?: number;
+      max_discount_percentage?: number;
+      is_active?: boolean;
+    }> = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      // Simple CSV parsing (handles quoted values)
+      const values = line.match(/("([^"]*)"|[^,]*)/g)?.map(v => v.replace(/^"|"$/g, '').trim()) || [];
+
+      if (values.length >= 5) {
+        const [product_id, , , mrp, selling_price, transfer_price, max_discount, is_active] = values;
+
+        if (product_id && mrp && selling_price) {
+          items.push({
+            product_id,
+            mrp: parseFloat(mrp) || 0,
+            selling_price: parseFloat(selling_price) || 0,
+            transfer_price: transfer_price ? parseFloat(transfer_price) : undefined,
+            max_discount_percentage: max_discount ? parseFloat(max_discount) : undefined,
+            is_active: is_active?.toLowerCase() !== 'no',
+          });
+        }
+      }
+    }
+
+    if (items.length === 0) {
+      toast.error('No valid pricing data found in CSV');
+      return;
+    }
+
+    importMutation.mutate(items);
+  };
+
   const handleSaveCommission = () => {
     commissionMutation.mutate(commissionForm);
   };
@@ -811,18 +942,39 @@ export default function ChannelPricingPage() {
         actions={
           <div className="flex gap-2">
             {selectedChannelId && (
-              <Button
-                variant="outline"
-                onClick={() => syncMutation.mutate()}
-                disabled={syncMutation.isPending}
-              >
-                {syncMutation.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                )}
-                Sync to Channel
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleExport}
+                  disabled={isExporting}
+                >
+                  {isExporting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="mr-2 h-4 w-4" />
+                  )}
+                  Export CSV
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsImportDialogOpen(true)}
+                >
+                  <Upload className="mr-2 h-4 w-4" />
+                  Import CSV
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => syncMutation.mutate()}
+                  disabled={syncMutation.isPending}
+                >
+                  {syncMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Sync to Channel
+                </Button>
+              </>
             )}
             <Button onClick={handleAddNew} disabled={!selectedChannelId}>
               <Plus className="mr-2 h-4 w-4" />
@@ -1320,6 +1472,85 @@ export default function ChannelPricingPage() {
           </TabsContent>
         </Tabs>
       )}
+
+      {/* Import CSV Dialog */}
+      <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5" />
+              Import Pricing from CSV
+            </DialogTitle>
+            <DialogDescription>
+              Upload a CSV file to bulk update pricing for {channelMap.get(selectedChannelId)?.name || 'this channel'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {/* CSV Format Instructions */}
+            <div className="p-4 bg-muted rounded-lg">
+              <p className="font-medium text-sm mb-2">CSV Format Requirements:</p>
+              <ul className="text-sm text-muted-foreground space-y-1">
+                <li>• First row must be headers</li>
+                <li>• Required columns: <code className="bg-background px-1 rounded">Product ID, Product Name, SKU, MRP, Selling Price</code></li>
+                <li>• Optional columns: <code className="bg-background px-1 rounded">Transfer Price, Max Discount %, Active</code></li>
+                <li>• Active column accepts: Yes/No</li>
+              </ul>
+              <div className="mt-3 pt-3 border-t">
+                <p className="text-sm text-muted-foreground">
+                  <strong>Tip:</strong> Export existing pricing first to get the correct format, modify values, then import.
+                </p>
+              </div>
+            </div>
+
+            {/* File Input */}
+            <div className="space-y-2">
+              <Label>Select CSV File</Label>
+              <Input
+                type="file"
+                accept=".csv"
+                onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                className="cursor-pointer"
+              />
+              {importFile && (
+                <p className="text-sm text-muted-foreground">
+                  Selected: {importFile.name} ({(importFile.size / 1024).toFixed(1)} KB)
+                </p>
+              )}
+            </div>
+
+            {/* Preview Info */}
+            {importFile && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  Ready to import. This will create new pricing rules or update existing ones for products in the file.
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsImportDialogOpen(false);
+                setImportFile(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleImportFile}
+              disabled={!importFile || importMutation.isPending}
+            >
+              {importMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="mr-2 h-4 w-4" />
+              )}
+              Import {importFile ? 'File' : ''}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Add/Edit Pricing Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

@@ -637,6 +637,22 @@ export const channelsApi = {
       const { data } = await apiClient.post(`/channels/${channelId}/pricing/sync`, { product_ids: productIds });
       return data;
     },
+    bulk: async (channelId: string, items: Array<{
+      product_id: string;
+      mrp: number;
+      selling_price: number;
+      transfer_price?: number;
+      max_discount_percentage?: number;
+      is_active?: boolean;
+    }>) => {
+      const { data } = await apiClient.post(`/channels/${channelId}/pricing/bulk`, { items });
+      return data;
+    },
+    export: async (channelId: string) => {
+      // Get all pricing for export
+      const { data } = await apiClient.get(`/channels/${channelId}/pricing`, { params: { limit: 1000 } });
+      return data;
+    },
   },
 
   // Pricing Rules
