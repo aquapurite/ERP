@@ -20,8 +20,8 @@ class DealerBase(BaseModel):
     name: str = Field(..., min_length=2, max_length=200)
     legal_name: str = Field(..., min_length=2, max_length=200)
     display_name: Optional[str] = None
-    dealer_type: DealerType
-    tier: DealerTier = DealerTier.STANDARD
+    dealer_type: str  # VARCHAR in DB: DISTRIBUTOR, RETAILER, FRANCHISE, etc.
+    tier: str = "STANDARD"  # VARCHAR in DB: PLATINUM, GOLD, SILVER, BRONZE, STANDARD
 
     # GST & Tax
     gstin: str = Field(..., min_length=15, max_length=15, alias="gst_number")
@@ -110,8 +110,8 @@ class DealerUpdate(BaseModel):
     name: Optional[str] = None
     legal_name: Optional[str] = None
     display_name: Optional[str] = None
-    status: Optional[DealerStatus] = None
-    tier: Optional[DealerTier] = None
+    status: Optional[str] = None  # VARCHAR: ACTIVE, INACTIVE, SUSPENDED, PENDING
+    tier: Optional[str] = None  # VARCHAR: PLATINUM, GOLD, SILVER, BRONZE, STANDARD
     contact_person: Optional[str] = None
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
@@ -237,7 +237,7 @@ class DealerApproveRequest(BaseModel):
     dealer_id: UUID
     credit_limit: Optional[Decimal] = None
     credit_days: Optional[int] = None
-    tier: Optional[DealerTier] = None
+    tier: Optional[str] = None  # VARCHAR: PLATINUM, GOLD, SILVER, BRONZE, STANDARD
 
 
 class DealerKYCRequest(BaseModel):
@@ -300,7 +300,7 @@ class DealerPricingBulkCreate(BaseModel):
 
 class DealerTierPricingBase(BaseModel):
     """Base schema for DealerTierPricing."""
-    tier: DealerTier
+    tier: str = Field(..., pattern="^(PLATINUM|GOLD|SILVER|BRONZE|STANDARD)$")  # VARCHAR in DB
     product_id: UUID
     variant_id: Optional[UUID] = None
     discount_percentage: Decimal = Field(..., ge=0, le=100)

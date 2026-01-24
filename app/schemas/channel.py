@@ -17,7 +17,7 @@ class SalesChannelBase(BaseModel):
     channel_type: ChannelType
     code: Optional[str] = Field(None, min_length=2, max_length=30)
     display_name: Optional[str] = Field(None, min_length=2, max_length=200)
-    status: ChannelStatus = ChannelStatus.ACTIVE
+    status: str = "ACTIVE"  # VARCHAR in DB, not Enum
 
     # Marketplace Integration
     seller_id: Optional[str] = None
@@ -71,7 +71,7 @@ class SalesChannelUpdate(BaseModel):
     """Schema for updating SalesChannel."""
     name: Optional[str] = None
     display_name: Optional[str] = None
-    status: Optional[ChannelStatus] = None
+    status: Optional[str] = None  # VARCHAR in DB: ACTIVE, INACTIVE, SUSPENDED
     seller_id: Optional[str] = None
     api_endpoint: Optional[str] = None
     api_key: Optional[str] = None

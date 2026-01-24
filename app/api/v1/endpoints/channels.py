@@ -189,7 +189,7 @@ async def get_channel_stats(
     total_orders_today = orders_today_result.scalar() or 0
 
     revenue_today_result = await db.execute(
-        select(func.coalesce(func.sum(ChannelOrder.total_amount), 0)).where(
+        select(func.coalesce(func.sum(ChannelOrder.channel_selling_price), 0)).where(
             and_(
                 ChannelOrder.created_at >= today_start,
                 ChannelOrder.created_at <= today_end
@@ -216,7 +216,7 @@ async def get_channels_dropdown(
     query = select(SalesChannel)
 
     if active_only:
-        query = query.where(SalesChannel.status == ChannelStatus.ACTIVE)
+        query = query.where(SalesChannel.status == "ACTIVE")  # VARCHAR comparison
 
     query = query.order_by(SalesChannel.name)
     result = await db.execute(query)

@@ -320,19 +320,19 @@ async def create_dealer_pricing(
 @router.get("/tiers/pricing", response_model=List[DealerTierPricingResponse])
 async def get_tier_pricing(
     db: DB,
-    tier: Optional[DealerTier] = None,
-    category_id: Optional[UUID] = None,
+    tier: Optional[str] = None,
+    product_id: Optional[UUID] = None,
     current_user: User = Depends(get_current_user),
 ):
     """Get tier-based pricing."""
     query = select(DealerTierPricing)
 
     if tier:
-        query = query.where(DealerTierPricing.tier == tier)
-    if category_id:
-        query = query.where(DealerTierPricing.category_id == category_id)
+        query = query.where(DealerTierPricing.tier == tier)  # VARCHAR comparison
+    if product_id:
+        query = query.where(DealerTierPricing.product_id == product_id)
 
-    query = query.order_by(DealerTierPricing.tier, DealerTierPricing.category_id)
+    query = query.order_by(DealerTierPricing.tier, DealerTierPricing.product_id)
     result = await db.execute(query)
     pricing = result.scalars().all()
 
@@ -351,7 +351,7 @@ async def create_tier_pricing(
         select(DealerTierPricing).where(
             and_(
                 DealerTierPricing.tier == pricing_in.tier,
-                DealerTierPricing.category_id == pricing_in.category_id,
+                DealerTierPricing.product_id == pricing_in.product_id,
                 DealerTierPricing.is_active == True,
             )
         )
@@ -359,12 +359,11 @@ async def create_tier_pricing(
     if existing.scalar_one_or_none():
         raise HTTPException(
             status_code=400,
-            detail="Active tier pricing already exists for this category"
+            detail="Active tier pricing already exists for this product"
         )
 
     pricing = DealerTierPricing(
         **pricing_in.model_dump(),
-        created_by=current_user.id,
     )
 
     db.add(pricing)
