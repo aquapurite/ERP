@@ -4,6 +4,7 @@ These endpoints are accessible without authentication for the D2C website.
 Includes Redis caching for improved performance.
 """
 import time
+import uuid as uuid_module
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Query, Response
 from sqlalchemy import select, func, or_
@@ -101,20 +102,44 @@ async def list_products(
 
     # Apply filters
     if category_id:
-        # Get child category IDs to include products from all subcategories
+        # Convert string to UUID for proper database comparison
+        try:
+            category_uuid = uuid_module.UUID(category_id)
+        except (ValueError, AttributeError):
+            # Invalid UUID format, return empty results
+            return PaginatedProductsResponse(items=[], total=0, page=page, size=size, pages=0)
+
+        # Collect all relevant category IDs (current + children + parent chain)
+        all_category_ids = [category_uuid]
+
+        # Get child category IDs (products in subcategories should show when viewing parent)
         child_categories_query = (
             select(Category.id)
-            .where(Category.parent_id == category_id)
+            .where(Category.parent_id == category_uuid)
             .where(Category.is_active == True)
         )
         child_categories_result = await db.execute(child_categories_query)
-        child_category_ids = [str(row[0]) for row in child_categories_result.fetchall()]
+        child_category_ids = [row[0] for row in child_categories_result.fetchall()]
+        all_category_ids.extend(child_category_ids)
 
-        # Include the parent category and all its children
-        all_category_ids = [category_id] + child_category_ids
+        # Also get parent category IDs (products assigned to parent should show in children)
+        # This handles the case where "Aquapurite Optima" is in "Water Purifiers" (parent)
+        # but user is viewing "RO+UV Water Purifiers" (child)
+        current_cat_result = await db.execute(
+            select(Category.parent_id).where(Category.id == category_uuid)
+        )
+        current_cat_row = current_cat_result.fetchone()
+        if current_cat_row and current_cat_row[0]:
+            # Add parent category to the filter
+            all_category_ids.append(current_cat_row[0])
+
         query = query.where(Product.category_id.in_(all_category_ids))
     if brand_id:
-        query = query.where(Product.brand_id == brand_id)
+        try:
+            brand_uuid = uuid_module.UUID(brand_id)
+            query = query.where(Product.brand_id == brand_uuid)
+        except (ValueError, AttributeError):
+            pass  # Invalid brand_id, skip filter
     if min_price is not None:
         query = query.where(Product.selling_price >= min_price)
     if max_price is not None:
