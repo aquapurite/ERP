@@ -3,7 +3,8 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Pencil, Trash2, DollarSign, TrendingUp, AlertCircle, Loader2, RefreshCw, Download, Upload, FileSpreadsheet } from 'lucide-react';
+import { MoreHorizontal, Plus, Pencil, Trash2, DollarSign, TrendingUp, AlertCircle, Loader2, RefreshCw, Download, Upload, FileSpreadsheet, BarChart3 } from 'lucide-react';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -941,6 +942,12 @@ export default function ChannelPricingPage() {
         description="Manage product prices across different sales channels"
         actions={
           <div className="flex gap-2">
+            <Link href="/dashboard/channels/pricing/compare">
+              <Button variant="outline">
+                <BarChart3 className="mr-2 h-4 w-4" />
+                Compare Channels
+              </Button>
+            </Link>
             {selectedChannelId && (
               <>
                 <Button

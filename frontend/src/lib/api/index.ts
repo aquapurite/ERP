@@ -653,6 +653,16 @@ export const channelsApi = {
       const { data } = await apiClient.get(`/channels/${channelId}/pricing`, { params: { limit: 1000 } });
       return data;
     },
+    // Compare pricing across channels for a product
+    compare: async (productId: string) => {
+      const { data } = await apiClient.get(`/pricing/compare/${productId}`);
+      return data;
+    },
+    // Get comparison for multiple products
+    compareMultiple: async (productIds: string[]) => {
+      const { data } = await apiClient.post('/pricing/compare', { product_ids: productIds });
+      return data;
+    },
   },
 
   // Pricing Rules
