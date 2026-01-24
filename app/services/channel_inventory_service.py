@@ -876,6 +876,216 @@ async def reserve_channel_inventory(
     )
 
 
+    # ==================== Dashboard Methods ====================
+
+    async def get_inventory_dashboard(self) -> Dict[str, Any]:
+        """
+        Get comprehensive channel inventory dashboard data.
+
+        Returns:
+            Dict with by_channel, by_warehouse, by_channel_location breakdowns
+        """
+        # Get all active channels
+        channels_query = select(SalesChannel).where(SalesChannel.status == "ACTIVE")
+        channels_result = await self.db.execute(channels_query)
+        channels = channels_result.scalars().all()
+
+        # Get all active warehouses
+        warehouses_query = select(Warehouse).where(Warehouse.is_active == True)
+        warehouses_result = await self.db.execute(warehouses_query)
+        warehouses = warehouses_result.scalars().all()
+
+        # Build channel summaries
+        by_channel = []
+        total_allocated_quantity = 0
+        total_available_quantity = 0
+        total_products_allocated = set()
+
+        for channel in channels:
+            # Get inventory stats for this channel
+            stats_query = select(
+                func.count(ChannelInventory.id).label("products_count"),
+                func.coalesce(func.sum(ChannelInventory.allocated_quantity), 0).label("total_allocated"),
+                func.coalesce(func.sum(ChannelInventory.buffer_quantity), 0).label("total_buffer"),
+                func.coalesce(func.sum(ChannelInventory.reserved_quantity), 0).label("total_reserved"),
+            ).where(
+                and_(
+                    ChannelInventory.channel_id == channel.id,
+                    ChannelInventory.is_active == True,
+                )
+            )
+            stats_result = await self.db.execute(stats_query)
+            stats = stats_result.one()
+
+            allocated = int(stats.total_allocated)
+            buffer = int(stats.total_buffer)
+            reserved = int(stats.total_reserved)
+            available = max(0, allocated - buffer - reserved)
+
+            total_allocated_quantity += allocated
+            total_available_quantity += available
+
+            # Get unique products
+            products_query = select(ChannelInventory.product_id).where(
+                and_(
+                    ChannelInventory.channel_id == channel.id,
+                    ChannelInventory.is_active == True,
+                )
+            ).distinct()
+            products_result = await self.db.execute(products_query)
+            for row in products_result.all():
+                total_products_allocated.add(row.product_id)
+
+            # Count low stock (available < reorder_point)
+            low_stock_query = select(func.count(ChannelInventory.id)).where(
+                and_(
+                    ChannelInventory.channel_id == channel.id,
+                    ChannelInventory.is_active == True,
+                    ChannelInventory.reorder_point > 0,
+                    (
+                        func.coalesce(ChannelInventory.allocated_quantity, 0) -
+                        func.coalesce(ChannelInventory.buffer_quantity, 0) -
+                        func.coalesce(ChannelInventory.reserved_quantity, 0)
+                    ) < ChannelInventory.reorder_point,
+                )
+            )
+            low_stock_result = await self.db.execute(low_stock_query)
+            low_stock_count = low_stock_result.scalar() or 0
+
+            # Count out of stock (available == 0)
+            oos_query = select(func.count(ChannelInventory.id)).where(
+                and_(
+                    ChannelInventory.channel_id == channel.id,
+                    ChannelInventory.is_active == True,
+                    (
+                        func.coalesce(ChannelInventory.allocated_quantity, 0) -
+                        func.coalesce(ChannelInventory.buffer_quantity, 0) -
+                        func.coalesce(ChannelInventory.reserved_quantity, 0)
+                    ) <= 0,
+                )
+            )
+            oos_result = await self.db.execute(oos_query)
+            oos_count = oos_result.scalar() or 0
+
+            by_channel.append({
+                "channel_id": channel.id,
+                "channel_code": channel.code,
+                "channel_name": channel.name,
+                "channel_type": channel.channel_type or "OTHER",
+                "total_allocated": allocated,
+                "total_buffer": buffer,
+                "total_reserved": reserved,
+                "total_available": available,
+                "products_count": stats.products_count,
+                "low_stock_count": low_stock_count,
+                "out_of_stock_count": oos_count,
+            })
+
+        # Build warehouse summaries
+        by_warehouse = []
+        for warehouse in warehouses:
+            # Get inventory stats for this warehouse from inventory_summary
+            inv_query = select(
+                func.count(InventorySummary.id).label("products_count"),
+                func.coalesce(func.sum(InventorySummary.total_quantity), 0).label("total_quantity"),
+                func.coalesce(func.sum(InventorySummary.reserved_quantity), 0).label("total_reserved"),
+                func.coalesce(func.sum(InventorySummary.available_quantity), 0).label("total_available"),
+            ).where(InventorySummary.warehouse_id == warehouse.id)
+            inv_result = await self.db.execute(inv_query)
+            inv_stats = inv_result.one()
+
+            # Count low stock in this warehouse
+            low_stock_query = select(func.count(InventorySummary.id)).where(
+                and_(
+                    InventorySummary.warehouse_id == warehouse.id,
+                    InventorySummary.is_low_stock == True,
+                )
+            )
+            low_stock_result = await self.db.execute(low_stock_query)
+            low_stock_count = low_stock_result.scalar() or 0
+
+            # Count channels served from this warehouse
+            channels_query = select(func.count(func.distinct(ChannelInventory.channel_id))).where(
+                and_(
+                    ChannelInventory.warehouse_id == warehouse.id,
+                    ChannelInventory.is_active == True,
+                )
+            )
+            channels_result = await self.db.execute(channels_query)
+            channels_served = channels_result.scalar() or 0
+
+            by_warehouse.append({
+                "warehouse_id": warehouse.id,
+                "warehouse_code": warehouse.code,
+                "warehouse_name": warehouse.name,
+                "total_quantity": int(inv_stats.total_quantity),
+                "total_reserved": int(inv_stats.total_reserved),
+                "total_available": int(inv_stats.total_available),
+                "products_count": inv_stats.products_count,
+                "low_stock_count": low_stock_count,
+                "channels_served": channels_served,
+            })
+
+        # Build channel-location breakdown
+        by_channel_location = []
+        breakdown_query = select(
+            ChannelInventory.channel_id,
+            ChannelInventory.warehouse_id,
+            func.count(ChannelInventory.id).label("products_count"),
+            func.coalesce(func.sum(ChannelInventory.allocated_quantity), 0).label("allocated"),
+            func.coalesce(func.sum(ChannelInventory.buffer_quantity), 0).label("buffer"),
+            func.coalesce(func.sum(ChannelInventory.reserved_quantity), 0).label("reserved"),
+        ).where(
+            ChannelInventory.is_active == True
+        ).group_by(
+            ChannelInventory.channel_id,
+            ChannelInventory.warehouse_id
+        )
+
+        breakdown_result = await self.db.execute(breakdown_query)
+
+        # Build lookup maps
+        channel_map = {c.id: c for c in channels}
+        warehouse_map = {w.id: w for w in warehouses}
+
+        for row in breakdown_result.all():
+            channel = channel_map.get(row.channel_id)
+            warehouse = warehouse_map.get(row.warehouse_id)
+
+            if channel and warehouse:
+                allocated = int(row.allocated)
+                buffer = int(row.buffer)
+                reserved = int(row.reserved)
+
+                by_channel_location.append({
+                    "channel_id": row.channel_id,
+                    "channel_code": channel.code,
+                    "channel_name": channel.name,
+                    "warehouse_id": row.warehouse_id,
+                    "warehouse_code": warehouse.code,
+                    "warehouse_name": warehouse.name,
+                    "allocated_quantity": allocated,
+                    "buffer_quantity": buffer,
+                    "reserved_quantity": reserved,
+                    "available_quantity": max(0, allocated - buffer - reserved),
+                    "products_count": row.products_count,
+                })
+
+        return {
+            "total_channels": len(channels),
+            "total_warehouses": len(warehouses),
+            "total_products_allocated": len(total_products_allocated),
+            "total_allocated_quantity": total_allocated_quantity,
+            "total_available_quantity": total_available_quantity,
+            "by_channel": by_channel,
+            "by_warehouse": by_warehouse,
+            "by_channel_location": by_channel_location,
+        }
+
+
+# ==================== Convenience Functions ====================
+
+
 async def allocate_grn_to_channels(
     db: AsyncSession,
     warehouse_id: uuid.UUID,

@@ -39,6 +39,8 @@ from app.schemas.channel import (
     MarketplaceSyncRequest, MarketplaceSyncResponse,
     # Channel inventory summary
     ChannelInventorySummary,
+    # Channel inventory dashboard
+    ChannelInventoryDashboardResponse,
     # Pricing Rules
     PricingRuleCreate, PricingRuleUpdate, PricingRuleResponse, PricingRuleListResponse,
     # Pricing History
@@ -352,6 +354,30 @@ async def get_channel_inventory_status(
             for row in channels
         ]
     }
+
+
+# ==================== Channel Inventory Dashboard ====================
+
+@router.get("/inventory/dashboard", response_model=ChannelInventoryDashboardResponse)
+async def get_channel_inventory_dashboard(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get comprehensive channel inventory dashboard.
+
+    Returns:
+        - Summary stats (total channels, warehouses, products allocated)
+        - By channel breakdown (inventory per channel)
+        - By warehouse breakdown (inventory per warehouse)
+        - By channel-location breakdown (inventory per channel-warehouse combo)
+    """
+    from app.services.channel_inventory_service import ChannelInventoryService
+
+    service = ChannelInventoryService(db)
+    dashboard_data = await service.get_inventory_dashboard()
+
+    return ChannelInventoryDashboardResponse(**dashboard_data)
 
 
 # ==================== Global Channel Inventory (All Channels) ====================
