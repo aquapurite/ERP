@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Pencil, Trash2, DollarSign, TrendingUp, AlertCircle, Loader2, RefreshCw, Download, Upload, FileSpreadsheet, BarChart3 } from 'lucide-react';
+import { MoreHorizontal, Plus, Pencil, Trash2, DollarSign, TrendingUp, AlertCircle, Loader2, RefreshCw, Download, Upload, FileSpreadsheet, BarChart3, Copy } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -148,6 +148,9 @@ export default function ChannelPricingPage() {
   const [activeTab, setActiveTab] = useState('pricing');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [isCopyDialogOpen, setIsCopyDialogOpen] = useState(false);
+  const [sourceChannelId, setSourceChannelId] = useState<string>('');
+  const [copyOverwrite, setCopyOverwrite] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [selectedPricing, setSelectedPricing] = useState<ChannelPricing | null>(null);
@@ -796,6 +799,24 @@ export default function ChannelPricingPage() {
     },
   });
 
+  // Copy pricing mutation
+  const copyMutation = useMutation({
+    mutationFn: async () => channelsApi.pricing.copyFrom(selectedChannelId, sourceChannelId, copyOverwrite),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['channel-pricing'] });
+      const message = copyOverwrite
+        ? `Copied ${result.copied || 0} new, updated ${result.updated || 0} existing pricing rules`
+        : `Copied ${result.copied || 0} pricing rules (${result.skipped || 0} skipped - already exist)`;
+      toast.success(message);
+      setIsCopyDialogOpen(false);
+      setSourceChannelId('');
+      setCopyOverwrite(false);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to copy pricing');
+    },
+  });
+
   // Export pricing to CSV
   const handleExport = async () => {
     if (!selectedChannelId) {
@@ -950,6 +971,13 @@ export default function ChannelPricingPage() {
             </Link>
             {selectedChannelId && (
               <>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsCopyDialogOpen(true)}
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copy From Channel
+                </Button>
                 <Button
                   variant="outline"
                   onClick={handleExport}
@@ -1554,6 +1582,98 @@ export default function ChannelPricingPage() {
                 <Upload className="mr-2 h-4 w-4" />
               )}
               Import {importFile ? 'File' : ''}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Copy Pricing Dialog */}
+      <Dialog open={isCopyDialogOpen} onOpenChange={setIsCopyDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Copy className="h-5 w-5" />
+              Copy Pricing From Another Channel
+            </DialogTitle>
+            <DialogDescription>
+              Copy all pricing rules from a source channel to {channelMap.get(selectedChannelId)?.name || 'this channel'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {/* Source Channel Selection */}
+            <div className="space-y-2">
+              <Label>Source Channel</Label>
+              <Select value={sourceChannelId} onValueChange={setSourceChannelId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select source channel" />
+                </SelectTrigger>
+                <SelectContent>
+                  {channels
+                    .filter((c: Channel) => c.id !== selectedChannelId)
+                    .map((channel: Channel) => (
+                      <SelectItem key={channel.id} value={channel.id}>
+                        {channel.name} ({channel.code})
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Select the channel to copy pricing from
+              </p>
+            </div>
+
+            {/* Overwrite Option */}
+            <div className="flex items-start space-x-3 p-4 bg-muted rounded-lg">
+              <input
+                type="checkbox"
+                id="copyOverwrite"
+                checked={copyOverwrite}
+                onChange={(e) => setCopyOverwrite(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-gray-300"
+              />
+              <div className="space-y-1">
+                <Label htmlFor="copyOverwrite" className="font-medium cursor-pointer">
+                  Overwrite existing pricing
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  If checked, existing pricing for the same products will be updated.
+                  Otherwise, products with existing pricing will be skipped.
+                </p>
+              </div>
+            </div>
+
+            {/* Info Box */}
+            {sourceChannelId && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  <strong>Ready to copy.</strong> This will copy all active pricing rules from{' '}
+                  <strong>{channelMap.get(sourceChannelId)?.name}</strong> to{' '}
+                  <strong>{channelMap.get(selectedChannelId)?.name}</strong>.
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsCopyDialogOpen(false);
+                setSourceChannelId('');
+                setCopyOverwrite(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => copyMutation.mutate()}
+              disabled={!sourceChannelId || copyMutation.isPending}
+            >
+              {copyMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Copy className="mr-2 h-4 w-4" />
+              )}
+              Copy Pricing
             </Button>
           </DialogFooter>
         </DialogContent>

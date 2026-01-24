@@ -610,6 +610,96 @@ class PricingService:
             "total_processed": created + updated,
         }
 
+    async def copy_pricing_between_channels(
+        self,
+        source_channel_id: uuid.UUID,
+        destination_channel_id: uuid.UUID,
+        overwrite: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Copy all pricing from source channel to destination channel.
+
+        Args:
+            source_channel_id: Channel to copy FROM
+            destination_channel_id: Channel to copy TO
+            overwrite: If True, update existing pricing; if False, skip existing
+
+        Returns:
+            - copied: count of new records created
+            - updated: count of existing records updated (if overwrite=True)
+            - skipped: count of records skipped (if overwrite=False and pricing exists)
+            - total_source: total pricing records in source channel
+        """
+        # Get all pricing from source channel
+        stmt = select(ChannelPricing).where(
+            and_(
+                ChannelPricing.channel_id == source_channel_id,
+                ChannelPricing.is_active == True,
+            )
+        )
+        result = await self.db.execute(stmt)
+        source_pricing = result.scalars().all()
+
+        copied = 0
+        updated = 0
+        skipped = 0
+        errors = []
+
+        for source in source_pricing:
+            try:
+                # Check if destination already has pricing for this product
+                existing = await self.get_channel_pricing(
+                    source.product_id,
+                    destination_channel_id,
+                    source.variant_id,
+                )
+
+                if existing:
+                    if overwrite:
+                        # Update existing pricing
+                        existing.mrp = source.mrp
+                        existing.selling_price = source.selling_price
+                        existing.transfer_price = source.transfer_price
+                        existing.discount_percentage = source.discount_percentage
+                        existing.max_discount_percentage = source.max_discount_percentage
+                        existing.is_listed = source.is_listed
+                        existing.updated_at = datetime.now(timezone.utc)
+                        updated += 1
+                    else:
+                        skipped += 1
+                else:
+                    # Create new pricing for destination channel
+                    new_pricing = ChannelPricing(
+                        channel_id=destination_channel_id,
+                        product_id=source.product_id,
+                        variant_id=source.variant_id,
+                        mrp=source.mrp,
+                        selling_price=source.selling_price,
+                        transfer_price=source.transfer_price,
+                        discount_percentage=source.discount_percentage,
+                        max_discount_percentage=source.max_discount_percentage,
+                        is_active=True,
+                        is_listed=source.is_listed,
+                    )
+                    self.db.add(new_pricing)
+                    copied += 1
+
+            except Exception as e:
+                errors.append({
+                    "product_id": str(source.product_id),
+                    "error": str(e),
+                })
+
+        await self.db.commit()
+
+        return {
+            "copied": copied,
+            "updated": updated,
+            "skipped": skipped,
+            "total_source": len(source_pricing),
+            "errors": errors,
+        }
+
     # ==================== PRICE COMPARISON ====================
 
     async def compare_prices_across_channels(

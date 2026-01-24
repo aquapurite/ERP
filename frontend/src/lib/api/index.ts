@@ -663,6 +663,15 @@ export const channelsApi = {
       const { data } = await apiClient.post('/pricing/compare', { product_ids: productIds });
       return data;
     },
+    // Copy pricing from one channel to another
+    copyFrom: async (destinationChannelId: string, sourceChannelId: string, overwrite: boolean = false) => {
+      const { data } = await apiClient.post(
+        `/channels/${destinationChannelId}/pricing/copy-from/${sourceChannelId}`,
+        null,
+        { params: { overwrite } }
+      );
+      return data;
+    },
   },
 
   // Pricing Rules

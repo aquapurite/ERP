@@ -1113,6 +1113,36 @@ async def bulk_create_channel_pricing(
     return result
 
 
+@router.post("/{channel_id}/pricing/copy-from/{source_channel_id}")
+async def copy_pricing_from_channel(
+    channel_id: UUID,
+    source_channel_id: UUID,
+    db: DB,
+    overwrite: bool = Query(False, description="Overwrite existing pricing if exists"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Copy all pricing from source channel to destination channel.
+
+    - source_channel_id: Channel to copy pricing FROM
+    - channel_id: Channel to copy pricing TO
+    - overwrite: If True, overwrites existing pricing; if False, skips existing
+
+    Returns count of copied/skipped records.
+    """
+    from app.services.pricing_service import PricingService
+
+    pricing_service = PricingService(db)
+
+    result = await pricing_service.copy_pricing_between_channels(
+        source_channel_id=source_channel_id,
+        destination_channel_id=channel_id,
+        overwrite=overwrite,
+    )
+
+    return result
+
+
 @router.get("/{channel_id}/pricing/alerts")
 async def get_pricing_alerts(
     channel_id: UUID,
