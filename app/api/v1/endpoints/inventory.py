@@ -425,6 +425,8 @@ async def list_stock_items(
     status: Optional[str] = Query(None),
     serial_number: Optional[str] = Query(None),
     batch_number: Optional[str] = Query(None),
+    grn_number: Optional[str] = Query(None, description="Filter by GRN number"),
+    item_type: Optional[str] = Query(None, description="Filter by item type: FG, SP, CO, CN, AC"),
     view: str = Query("aggregate", description="View mode: 'aggregate' for inventory_summary, 'serialized' for stock_items"),
 ):
     """
@@ -444,17 +446,45 @@ async def list_stock_items(
     skip = (page - 1) * size
 
     if view == "serialized":
-        # Original behavior - query stock_items table
-        service = InventoryService(db)
-        items, total = await service.get_stock_items(
-            warehouse_id=warehouse_id,
-            product_id=product_id,
-            status=StockItemStatus(status) if status else None,
-            serial_number=serial_number,
-            batch_number=batch_number,
-            skip=skip,
-            limit=size,
+        # Serialized view - query stock_items table with all filters
+        query = select(StockItem).options(
+            selectinload(StockItem.product),
+            selectinload(StockItem.warehouse),
         )
+
+        conditions = []
+        if warehouse_id:
+            conditions.append(StockItem.warehouse_id == warehouse_id)
+        if product_id:
+            conditions.append(StockItem.product_id == product_id)
+        if status:
+            conditions.append(StockItem.status == status)
+        if serial_number:
+            conditions.append(StockItem.serial_number.ilike(f"%{serial_number}%"))
+        if batch_number:
+            conditions.append(StockItem.batch_number == batch_number)
+        if grn_number:
+            conditions.append(StockItem.grn_number.ilike(f"%{grn_number}%"))
+        if item_type:
+            # Join with Product to filter by item_type
+            query = query.join(Product, StockItem.product_id == Product.id)
+            conditions.append(Product.item_type == item_type)
+
+        if conditions:
+            query = query.where(and_(*conditions))
+
+        # Count query
+        count_query = select(func.count(StockItem.id))
+        if item_type:
+            count_query = count_query.join(Product, StockItem.product_id == Product.id)
+        if conditions:
+            count_query = count_query.where(and_(*conditions))
+        total = await db.scalar(count_query) or 0
+
+        # Paginate
+        query = query.order_by(StockItem.created_at.desc()).offset(skip).limit(size)
+        result = await db.execute(query)
+        items = result.scalars().all()
 
         return {
             "items": [
@@ -473,12 +503,17 @@ async def list_stock_items(
                         "code": item.warehouse.code if item.warehouse else None,
                     },
                     "serial_number": item.serial_number,
+                    "barcode": item.barcode,
                     "batch_number": item.batch_number,
+                    "grn_number": item.grn_number,
+                    "purchase_order_id": str(item.purchase_order_id) if item.purchase_order_id else None,
                     "quantity": 1,  # Each stock_item is 1 unit
                     "reserved_quantity": 1 if item.status in ["RESERVED", "ALLOCATED"] else 0,
                     "available_quantity": 1 if item.status == "AVAILABLE" else 0,
                     "reorder_level": 0,
                     "status": item.status,
+                    "received_date": item.received_date.isoformat() if item.received_date else None,
+                    "item_type": item.product.item_type if item.product else None,
                 }
                 for item in items
             ],
@@ -508,12 +543,18 @@ async def list_stock_items(
                 conditions.append(InventorySummary.available_quantity == 0)
             elif status == "IN_STOCK":
                 conditions.append(InventorySummary.available_quantity > 0)
+        if item_type:
+            # Join with Product to filter by item_type
+            query = query.join(Product, InventorySummary.product_id == Product.id)
+            conditions.append(Product.item_type == item_type)
 
         if conditions:
             query = query.where(and_(*conditions))
 
         # Count
-        count_query = select(func.count()).select_from(InventorySummary)
+        count_query = select(func.count(InventorySummary.id))
+        if item_type:
+            count_query = count_query.join(Product, InventorySummary.product_id == Product.id)
         if conditions:
             count_query = count_query.where(and_(*conditions))
         total = await db.scalar(count_query) or 0
@@ -533,6 +574,7 @@ async def list_stock_items(
                         "id": str(item.product_id),
                         "name": item.product.name if item.product else None,
                         "sku": item.product.sku if item.product else None,
+                        "item_type": item.product.item_type if item.product else None,
                     },
                     "warehouse": {
                         "id": str(item.warehouse_id),
@@ -546,6 +588,7 @@ async def list_stock_items(
                     "available_quantity": item.available_quantity,
                     "reorder_level": item.reorder_level,
                     "status": "AVAILABLE" if item.available_quantity > 0 else "OUT_OF_STOCK",
+                    "item_type": item.product.item_type if item.product else None,
                 }
                 for item in items
             ],

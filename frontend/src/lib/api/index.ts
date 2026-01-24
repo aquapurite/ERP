@@ -809,7 +809,17 @@ export const channelsApi = {
 
 // Inventory API
 export const inventoryApi = {
-  getStock: async (params?: { page?: number; size?: number; warehouse_id?: string; product_id?: string; status?: string }) => {
+  getStock: async (params?: {
+    page?: number;
+    size?: number;
+    warehouse_id?: string;
+    product_id?: string;
+    status?: string;
+    view?: 'aggregate' | 'serialized';
+    item_type?: string;
+    grn_number?: string;
+    serial_number?: string;
+  }) => {
     const { data } = await apiClient.get<PaginatedResponse<StockItem>>('/inventory/stock-items', { params });
     return data;
   },
