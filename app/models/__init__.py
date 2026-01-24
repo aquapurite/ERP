@@ -486,6 +486,21 @@ from app.models.cms import (
     CMSMegaMenuItem,
     CMSMegaMenuItemType,
 )
+# Community Sales Channel (Meesho-style)
+from app.models.community_partner import (
+    CommunityPartner,
+    PartnerTier,
+    PartnerCommission,
+    PartnerPayout,
+    PartnerReferral,
+    PartnerTraining,
+    PartnerOrder,
+    PartnerStatus,
+    KYCStatus,
+    CommissionStatus as PartnerCommissionStatus,
+    PayoutStatus as PartnerPayoutStatus,
+    PayoutMethod,
+)
 
 __all__ = [
     # Access Control
@@ -880,4 +895,17 @@ __all__ = [
     "CMSSeo",
     "CMSPageStatus",
     "CMSAnnouncementType",
+    # Community Sales Channel (Meesho-style)
+    "CommunityPartner",
+    "PartnerTier",
+    "PartnerCommission",
+    "PartnerPayout",
+    "PartnerReferral",
+    "PartnerTraining",
+    "PartnerOrder",
+    "PartnerStatus",
+    "KYCStatus",
+    "PartnerCommissionStatus",
+    "PartnerPayoutStatus",
+    "PayoutMethod",
 ]

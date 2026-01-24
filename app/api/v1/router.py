@@ -118,6 +118,8 @@ from app.api.v1.endpoints import (
     audit_logs,
     # Dashboard Charts
     dashboard_charts,
+    # Community Partners (Meesho-style)
+    partners,
 )
 
 
@@ -584,4 +586,10 @@ api_router.include_router(
     cms.router,
     prefix="/cms",
     tags=["CMS (Content Management)"]
+)
+
+# ==================== Community Partners (Meesho-style) ====================
+api_router.include_router(
+    partners.router,
+    tags=["Community Partners"]
 )
