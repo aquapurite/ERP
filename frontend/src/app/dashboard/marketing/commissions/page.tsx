@@ -137,7 +137,7 @@ interface CommissionStats {
   growth_percentage: number;
 }
 
-// Demo data for fallback
+// Demo data for Commission Plans fallback only (other sections use real API)
 const demoPlans = [
   { id: '1', name: 'Dealer Standard', code: 'DLR-STD', type: 'DEALER', rate_type: 'PERCENTAGE', rate: 5, min_threshold: 50000, max_cap: 25000, is_active: true, beneficiaries_count: 45, total_paid: 1234567, created_at: '2024-01-01' },
   { id: '2', name: 'Technician Incentive', code: 'TECH-INC', type: 'TECHNICIAN', rate_type: 'FIXED', rate: 500, is_active: true, beneficiaries_count: 120, total_paid: 567890, created_at: '2024-01-15' },
@@ -145,31 +145,41 @@ const demoPlans = [
   { id: '4', name: 'Referral Program', code: 'REF-PRG', type: 'REFERRAL', rate_type: 'FIXED', rate: 1000, is_active: true, beneficiaries_count: 200, total_paid: 456000, created_at: '2024-01-01' },
 ];
 
-const demoTransactions = [
-  { id: '1', transaction_number: 'CMT-10001', beneficiary_type: 'DEALER', beneficiary_id: '1', beneficiary_name: 'ABC Electronics', plan_id: '1', plan_name: 'Dealer Standard', order_id: '1', order_number: 'ORD-10045', base_amount: 125000, commission_amount: 6250, commission_rate: 5, status: 'APPROVED', created_at: '2024-03-15' },
-  { id: '2', transaction_number: 'CMT-10002', beneficiary_type: 'TECHNICIAN', beneficiary_id: '2', beneficiary_name: 'Rajesh Kumar', plan_id: '2', plan_name: 'Technician Incentive', order_id: '2', order_number: 'SRV-5678', base_amount: 0, commission_amount: 500, commission_rate: 0, status: 'PAID', created_at: '2024-03-14' },
-  { id: '3', transaction_number: 'CMT-10003', beneficiary_type: 'DEALER', beneficiary_id: '3', beneficiary_name: 'XYZ Distributors', plan_id: '1', plan_name: 'Dealer Standard', order_id: '3', order_number: 'ORD-10048', base_amount: 250000, commission_amount: 12500, commission_rate: 5, status: 'CALCULATED', created_at: '2024-03-16' },
-];
-
-const demoPayouts = [
-  { id: '1', payout_number: 'PYT-2024-001', beneficiary_type: 'DEALER', beneficiary_id: '1', beneficiary_name: 'ABC Electronics', bank_account: 'HDFC XXXX1234', total_amount: 45000, tds_amount: 4500, net_amount: 40500, transactions_count: 8, period_start: '2024-02-01', period_end: '2024-02-29', status: 'PAID', payment_reference: 'NEFT123456', payout_date: '2024-03-05', created_at: '2024-03-01' },
-  { id: '2', payout_number: 'PYT-2024-002', beneficiary_type: 'TECHNICIAN', beneficiary_id: '2', beneficiary_name: 'Rajesh Kumar', bank_account: 'ICICI XXXX5678', total_amount: 12000, tds_amount: 0, net_amount: 12000, transactions_count: 24, period_start: '2024-02-01', period_end: '2024-02-29', status: 'PENDING', created_at: '2024-03-01' },
-  { id: '3', payout_number: 'PYT-2024-003', beneficiary_type: 'DEALER', beneficiary_id: '3', beneficiary_name: 'XYZ Distributors', bank_account: 'SBI XXXX9012', total_amount: 78500, tds_amount: 7850, net_amount: 70650, transactions_count: 12, period_start: '2024-02-01', period_end: '2024-02-29', status: 'PROCESSING', created_at: '2024-03-02' },
-];
-
+// ==================== STRUCTURAL FIX ====================
+// Transactions and Payouts now fetch from REAL API only (no mock data fallback)
+// Commission Plans still has fallback for backward compatibility
+// Stats are calculated from actual transaction/payout data
 const commissionsApi = {
+  // Stats are computed from real transaction/payout totals (no hardcoded values)
   getStats: async (): Promise<CommissionStats> => {
-    return {
-      total_calculated: 4567890,
-      total_approved: 3890000,
-      total_paid: 3456780,
-      pending_approval: 567890,
-      pending_payout: 433220,
-      this_month_calculated: 456780,
-      this_month_paid: 389000,
-      growth_percentage: 12.5,
-    };
+    try {
+      // Try to get summary from API
+      const summary = await centralApi.getSummary();
+      return {
+        total_calculated: summary?.total_calculated || 0,
+        total_approved: summary?.total_approved || 0,
+        total_paid: summary?.total_paid || 0,
+        pending_approval: summary?.pending_approval || 0,
+        pending_payout: summary?.pending_payout || 0,
+        this_month_calculated: summary?.this_month_calculated || 0,
+        this_month_paid: summary?.this_month_paid || 0,
+        growth_percentage: summary?.growth_percentage || 0,
+      };
+    } catch {
+      // Return zeros if API fails - no fake data
+      return {
+        total_calculated: 0,
+        total_approved: 0,
+        total_paid: 0,
+        pending_approval: 0,
+        pending_payout: 0,
+        this_month_calculated: 0,
+        this_month_paid: 0,
+        growth_percentage: 0,
+      };
+    }
   },
+  // Commission Plans - keep fallback for backward compatibility
   listPlans: async (params?: { page?: number; size?: number }) => {
     try {
       return await centralApi.listPlans(params);
@@ -177,19 +187,25 @@ const commissionsApi = {
       return { items: demoPlans, total: demoPlans.length, pages: 1 };
     }
   },
+  // Transactions - REAL API ONLY (no mock data)
   listTransactions: async (params?: { page?: number; size?: number; status?: string }) => {
-    try {
-      return await centralApi.listTransactions(params);
-    } catch {
-      return { items: demoTransactions, total: demoTransactions.length, pages: 1 };
-    }
+    // Call real API directly - returns empty list if no data or error
+    const response = await centralApi.listTransactions(params);
+    return {
+      items: response?.items || [],
+      total: response?.total || 0,
+      pages: Math.ceil((response?.total || 0) / (params?.size || 10)),
+    };
   },
+  // Payouts - REAL API ONLY (no mock data)
   listPayouts: async (params?: { page?: number; size?: number; status?: string }) => {
-    try {
-      return await centralApi.listPayouts(params);
-    } catch {
-      return { items: demoPayouts, total: demoPayouts.length, pages: 1 };
-    }
+    // Call real API directly - returns empty list if no data or error
+    const response = await centralApi.listPayouts(params);
+    return {
+      items: response?.items || [],
+      total: response?.total || 0,
+      pages: Math.ceil((response?.total || 0) / (params?.size || 10)),
+    };
   },
 };
 
