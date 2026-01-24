@@ -533,7 +533,8 @@ class GRNService:
 
         Returns True if user has 'grn:force_receive' permission.
         """
-        from app.models.rbac import UserRole, RolePermission, Permission
+        from app.models.user import UserRole
+        from app.models.permission import Permission, RolePermission
 
         query = select(Permission.code).select_from(Permission).join(
             RolePermission, Permission.id == RolePermission.permission_id
