@@ -814,7 +814,13 @@ export const inventoryApi = {
     return data;
   },
   getStockSummary: async () => {
-    const { data } = await apiClient.get('/inventory/summary');
+    // Dashboard Summary page - calls /dashboard-stats for stats
+    const { data } = await apiClient.get('/inventory/dashboard-stats');
+    return data;
+  },
+  getInventorySummaryList: async (params?: { page?: number; size?: number; warehouse_id?: string }) => {
+    // Paginated list of inventory summary records
+    const { data } = await apiClient.get('/inventory/summary', { params });
     return data;
   },
   getLowStock: async () => {
@@ -822,6 +828,7 @@ export const inventoryApi = {
     return data;
   },
   getStats: async () => {
+    // Stock Items page stats - returns total_skus, in_stock, low_stock, out_of_stock
     const { data } = await apiClient.get('/inventory/stats');
     return data;
   },

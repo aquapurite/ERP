@@ -24,6 +24,7 @@ from app.schemas.inventory import (
     BulkStockReceipt,
     BulkStockReceiptResponse,
     InventoryStats,
+    InventoryDashboardStats,
     StockVerificationRequest,
     StockVerificationResponse,
     BulkStockVerificationRequest,
@@ -807,9 +808,29 @@ async def get_inventory_stats(
     warehouse_id: Optional[uuid.UUID] = Query(None),
 ):
     """
-    Get inventory statistics.
+    Get inventory statistics for Stock Items page.
+    Returns: total_skus, in_stock, low_stock, out_of_stock
     Requires: inventory:view permission
     """
     service = InventoryService(db)
     stats = await service.get_inventory_stats(warehouse_id=warehouse_id)
-    return InventoryStats(**stats)
+    return stats
+
+
+@router.get(
+    "/dashboard-stats",
+    response_model=InventoryDashboardStats,
+    dependencies=[Depends(require_permissions("inventory:view"))]
+)
+async def get_inventory_dashboard_stats(
+    db: DB,
+    warehouse_id: Optional[uuid.UUID] = Query(None),
+):
+    """
+    Get inventory statistics for Dashboard Summary page.
+    Returns: total_items, total_warehouses, pending_transfers, low_stock_items
+    Requires: inventory:view permission
+    """
+    service = InventoryService(db)
+    stats = await service.get_dashboard_stats(warehouse_id=warehouse_id)
+    return InventoryDashboardStats(**stats)

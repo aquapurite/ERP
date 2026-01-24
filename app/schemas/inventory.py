@@ -269,15 +269,27 @@ class StockAllocation(BaseModel):
 # ==================== DASHBOARD/STATS ====================
 
 class InventoryStats(BaseModel):
-    """Inventory dashboard statistics."""
-    total_products: int
-    total_stock_items: int
+    """Inventory dashboard statistics for Stock Items page."""
+    # Backend field names with frontend aliases
+    total_products: int = Field(alias="total_skus", serialization_alias="total_skus")
+    total_stock_items: int = Field(alias="in_stock", serialization_alias="in_stock")
     total_stock_value: float
-    low_stock_products: int
-    out_of_stock_products: int
+    low_stock_products: int = Field(alias="low_stock", serialization_alias="low_stock")
+    out_of_stock_products: int = Field(alias="out_of_stock", serialization_alias="out_of_stock")
     warehouses_count: int
     pending_transfers: int
     pending_adjustments: int
+
+    model_config = {"populate_by_name": True}
+
+
+class InventoryDashboardStats(BaseModel):
+    """Inventory dashboard statistics for Summary page."""
+    total_items: int
+    total_warehouses: int
+    pending_transfers: int
+    low_stock_items: int
+    total_value: float = 0
 
 
 class WarehouseStock(BaseModel):

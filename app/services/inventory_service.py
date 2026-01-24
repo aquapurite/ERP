@@ -567,20 +567,27 @@ class InventoryService:
         self,
         warehouse_id: Optional[uuid.UUID] = None,
     ) -> dict:
-        """Get inventory statistics."""
-        # Total products with stock
-        products_query = select(func.count(func.distinct(InventorySummary.product_id)))
-        if warehouse_id:
-            products_query = products_query.where(InventorySummary.warehouse_id == warehouse_id)
-        total_products = await self.db.scalar(products_query) or 0
+        """Get inventory statistics for Stock Items page.
 
-        # Total stock items
-        items_query = select(func.count()).select_from(StockItem).where(
-            StockItem.status.in_([StockItemStatus.AVAILABLE, StockItemStatus.RESERVED, StockItemStatus.ALLOCATED])
+        Returns stats with field names matching frontend expectations:
+        - total_skus: Unique products with inventory records
+        - in_stock: Products with available_quantity > 0
+        - low_stock: Products below reorder level
+        - out_of_stock: Products with zero available quantity
+        """
+        # Total SKUs (unique products in inventory)
+        total_skus_query = select(func.count(func.distinct(InventorySummary.product_id)))
+        if warehouse_id:
+            total_skus_query = total_skus_query.where(InventorySummary.warehouse_id == warehouse_id)
+        total_skus = await self.db.scalar(total_skus_query) or 0
+
+        # In stock count - products with available_quantity > 0
+        in_stock_query = select(func.count()).select_from(InventorySummary).where(
+            InventorySummary.available_quantity > 0
         )
         if warehouse_id:
-            items_query = items_query.where(StockItem.warehouse_id == warehouse_id)
-        total_items = await self.db.scalar(items_query) or 0
+            in_stock_query = in_stock_query.where(InventorySummary.warehouse_id == warehouse_id)
+        in_stock = await self.db.scalar(in_stock_query) or 0
 
         # Total value
         value_query = select(func.sum(InventorySummary.total_value))
@@ -588,10 +595,10 @@ class InventoryService:
             value_query = value_query.where(InventorySummary.warehouse_id == warehouse_id)
         total_value = await self.db.scalar(value_query) or 0
 
-        # Low stock count
+        # Low stock count - products below reorder level but not zero
         low_stock_query = select(func.count()).select_from(InventorySummary).where(
             and_(
-                InventorySummary.available_quantity <= InventorySummary.reorder_level,
+                InventorySummary.available_quantity <= func.coalesce(InventorySummary.reorder_level, 10),
                 InventorySummary.available_quantity > 0,
             )
         )
@@ -599,7 +606,7 @@ class InventoryService:
             low_stock_query = low_stock_query.where(InventorySummary.warehouse_id == warehouse_id)
         low_stock = await self.db.scalar(low_stock_query) or 0
 
-        # Out of stock count
+        # Out of stock count - products with zero available quantity
         out_of_stock_query = select(func.count()).select_from(InventorySummary).where(
             InventorySummary.available_quantity == 0
         )
@@ -623,13 +630,67 @@ class InventoryService:
         )
         pending_adjustments = await self.db.scalar(adjustments_query) or 0
 
+        # Return with frontend-expected field names
         return {
-            "total_products": total_products,
-            "total_stock_items": total_items,
+            "total_skus": total_skus,
+            "in_stock": in_stock,
             "total_stock_value": float(total_value),
-            "low_stock_products": low_stock,
-            "out_of_stock_products": out_of_stock,
+            "low_stock": low_stock,
+            "out_of_stock": out_of_stock,
             "warehouses_count": warehouses_count,
             "pending_transfers": pending_transfers,
             "pending_adjustments": pending_adjustments,
+        }
+
+    async def get_dashboard_stats(
+        self,
+        warehouse_id: Optional[uuid.UUID] = None,
+    ) -> dict:
+        """Get inventory statistics for Dashboard Summary page.
+
+        Returns stats for the main inventory dashboard:
+        - total_items: Total inventory records
+        - total_warehouses: Active warehouse count
+        - pending_transfers: Transfers in progress
+        - low_stock_items: Items below reorder level
+        """
+        # Total items in inventory_summary
+        total_items_query = select(func.count()).select_from(InventorySummary)
+        if warehouse_id:
+            total_items_query = total_items_query.where(InventorySummary.warehouse_id == warehouse_id)
+        total_items = await self.db.scalar(total_items_query) or 0
+
+        # Total active warehouses
+        warehouses_query = select(func.count()).select_from(Warehouse).where(Warehouse.is_active == True)
+        total_warehouses = await self.db.scalar(warehouses_query) or 0
+
+        # Pending transfers
+        transfers_query = select(func.count()).select_from(StockTransfer).where(
+            StockTransfer.status.in_([TransferStatus.PENDING_APPROVAL, TransferStatus.APPROVED, TransferStatus.IN_TRANSIT])
+        )
+        pending_transfers = await self.db.scalar(transfers_query) or 0
+
+        # Low stock items
+        low_stock_query = select(func.count()).select_from(InventorySummary).where(
+            and_(
+                InventorySummary.available_quantity <= func.coalesce(InventorySummary.reorder_level, 10),
+                InventorySummary.available_quantity > 0,
+            )
+        )
+        if warehouse_id:
+            low_stock_query = low_stock_query.where(InventorySummary.warehouse_id == warehouse_id)
+        low_stock_items = await self.db.scalar(low_stock_query) or 0
+
+        # Total value
+        value_query = select(func.sum(InventorySummary.total_value))
+        if warehouse_id:
+            value_query = value_query.where(InventorySummary.warehouse_id == warehouse_id)
+        total_value = await self.db.scalar(value_query) or 0
+
+        return {
+            "total_items": total_items,
+            "total_warehouses": total_warehouses,
+            "pending_transfers": pending_transfers,
+            "low_stock_items": low_stock_items,
+            "total_value": float(total_value),
         }
