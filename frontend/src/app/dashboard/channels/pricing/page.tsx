@@ -149,7 +149,7 @@ export default function ChannelPricingPage() {
   const categories: Category[] = categoriesData?.items || [];
 
   // Fetch products for dropdown (filtered by category if selected)
-  const { data: productsData } = useQuery({
+  const { data: productsData, isLoading: productsLoading, error: productsError } = useQuery({
     queryKey: ['products-dropdown', selectedCategoryId],
     queryFn: () => productsApi.list({
       size: 100,
@@ -905,7 +905,10 @@ export default function ChannelPricingPage() {
           <div className="grid gap-4 py-4">
             {!selectedPricing && (
               <div className="space-y-2">
-                <Label>Product</Label>
+                <Label>Product {productsLoading ? '(Loading...)' : `(${products.length} available)`}</Label>
+                {productsError && (
+                  <p className="text-sm text-red-500">Error loading products: {String(productsError)}</p>
+                )}
                 <Select
                   value={formData.product_id}
                   onValueChange={(value) => {
@@ -922,13 +925,22 @@ export default function ChannelPricingPage() {
                     <SelectValue placeholder="Select product" />
                   </SelectTrigger>
                   <SelectContent>
-                    {products.map((product) => (
-                      <SelectItem key={product.id} value={product.id}>
-                        {product.name} ({product.sku})
+                    {products.length === 0 ? (
+                      <SelectItem value="none" disabled>
+                        {productsLoading ? 'Loading products...' : 'No products found'}
                       </SelectItem>
-                    ))}
+                    ) : (
+                      products.map((product) => (
+                        <SelectItem key={product.id} value={product.id}>
+                          {product.name} ({product.sku})
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  Category filter: {selectedCategoryId || 'All categories'}
+                </p>
               </div>
             )}
             <div className="grid grid-cols-2 gap-4">
