@@ -975,6 +975,12 @@ export default function ChannelPricingPage() {
                 Profitability
               </Button>
             </Link>
+            <Link href="/dashboard/channels/pricing/promotions">
+              <Button variant="outline">
+                <DollarSign className="mr-2 h-4 w-4" />
+                Promotions
+              </Button>
+            </Link>
             {selectedChannelId && (
               <>
                 <Button
