@@ -688,3 +688,83 @@ class PricingHistoryListResponse(BaseModel):
     page: int = 1
     size: int = 50
     pages: int = 1
+
+
+# ==================== Channel Inventory Dashboard Schemas ====================
+
+class ChannelInventorySummary(BaseModel):
+    """Summary of inventory for a single channel."""
+    channel_id: UUID
+    channel_code: str
+    channel_name: str
+    channel_type: str
+    total_allocated: int = 0
+    total_buffer: int = 0
+    total_reserved: int = 0
+    total_available: int = 0  # allocated - buffer - reserved
+    products_count: int = 0
+    low_stock_count: int = 0
+    out_of_stock_count: int = 0
+
+
+class WarehouseInventorySummary(BaseModel):
+    """Summary of inventory for a single warehouse/location."""
+    warehouse_id: UUID
+    warehouse_code: str
+    warehouse_name: str
+    total_quantity: int = 0
+    total_reserved: int = 0
+    total_available: int = 0
+    products_count: int = 0
+    low_stock_count: int = 0
+    channels_served: int = 0  # Number of channels with allocation from this warehouse
+
+
+class ChannelLocationBreakdown(BaseModel):
+    """Inventory breakdown by channel and location."""
+    channel_id: UUID
+    channel_code: str
+    channel_name: str
+    warehouse_id: UUID
+    warehouse_code: str
+    warehouse_name: str
+    allocated_quantity: int = 0
+    buffer_quantity: int = 0
+    reserved_quantity: int = 0
+    available_quantity: int = 0  # allocated - buffer - reserved
+    products_count: int = 0
+
+
+class ProductChannelInventory(BaseModel):
+    """Inventory for a single product across channels."""
+    product_id: UUID
+    product_name: str
+    product_sku: str
+    category_name: Optional[str] = None
+    total_stock: int = 0  # From inventory_summary
+    channel_allocations: List[dict] = []  # [{channel_code, allocated, buffer, reserved, available}]
+
+
+class ChannelInventoryDashboardResponse(BaseModel):
+    """Complete channel inventory dashboard data."""
+    # Summary stats
+    total_channels: int = 0
+    total_warehouses: int = 0
+    total_products_allocated: int = 0
+    total_allocated_quantity: int = 0
+    total_available_quantity: int = 0
+
+    # Breakdowns
+    by_channel: List[ChannelInventorySummary] = []
+    by_warehouse: List[WarehouseInventorySummary] = []
+    by_channel_location: List[ChannelLocationBreakdown] = []
+
+
+class ChannelInventoryDetailResponse(BaseModel):
+    """Detailed channel inventory with product-level data."""
+    channel: ChannelInventorySummary
+    products: List[ProductChannelInventory] = []
+    total: int = 0
+    page: int = 1
+    size: int = 50
+    pages: int = 1
