@@ -1,5 +1,5 @@
 import apiClient from './client';
-import { PaginatedResponse, User, Role, Permission, Product, Category, Brand, Order, Customer, Warehouse, StockItem, Vendor, PurchaseOrder, ServiceRequest, Dealer } from '@/types';
+import { PaginatedResponse, User, Role, Permission, Product, Category, Brand, Order, Customer, Warehouse, StockItem, StockMovement, Vendor, PurchaseOrder, ServiceRequest, Dealer } from '@/types';
 
 // Export auth API
 export { authApi } from './auth';
@@ -844,6 +844,18 @@ export const inventoryApi = {
   },
   adjustStock: async (adjustment: { product_id: string; warehouse_id: string; quantity: number; reason: string }) => {
     const { data } = await apiClient.post('/inventory/adjust', adjustment);
+    return data;
+  },
+  getMovements: async (params?: {
+    page?: number;
+    size?: number;
+    warehouse_id?: string;
+    product_id?: string;
+    movement_type?: string;
+    date_from?: string;
+    date_to?: string;
+  }) => {
+    const { data } = await apiClient.get<PaginatedResponse<StockMovement>>('/inventory/movements', { params });
     return data;
   },
 };

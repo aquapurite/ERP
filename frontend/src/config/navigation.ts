@@ -195,6 +195,7 @@ export const navigation: NavItem[] = [
     children: [
       { title: 'Stock Summary', href: '/dashboard/inventory', icon: BarChart3, permissions: ['INVENTORY_VIEW'] },
       { title: 'Stock Items', href: '/dashboard/inventory/stock-items', icon: Package, permissions: ['INVENTORY_VIEW'] },
+      { title: 'Stock Movements', href: '/dashboard/inventory/movements', icon: History, permissions: ['INVENTORY_VIEW'] },
       { title: 'Warehouses', href: '/dashboard/inventory/warehouses', icon: Warehouse, permissions: ['INVENTORY_VIEW'] },
       { title: 'Stock Transfers', href: '/dashboard/inventory/transfers', icon: ArrowRightLeft, permissions: ['INVENTORY_VIEW'] },
       { title: 'Stock Adjustments', href: '/dashboard/inventory/adjustments', icon: Calculator, permissions: ['INVENTORY_VIEW'] },

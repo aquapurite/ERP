@@ -336,6 +336,45 @@ export interface StockItem {
   warehouse?: Warehouse;
 }
 
+export type StockMovementType =
+  | 'RECEIPT'
+  | 'ISSUE'
+  | 'TRANSFER_IN'
+  | 'TRANSFER_OUT'
+  | 'RETURN_IN'
+  | 'RETURN_OUT'
+  | 'ADJUSTMENT_PLUS'
+  | 'ADJUSTMENT_MINUS'
+  | 'DAMAGE'
+  | 'SCRAP'
+  | 'CYCLE_COUNT';
+
+export interface StockMovement {
+  id: string;
+  movement_number: string;
+  movement_type: StockMovementType;
+  movement_date: string;
+  warehouse_id: string;
+  product_id: string;
+  variant_id?: string;
+  stock_item_id?: string;
+  quantity: number;
+  balance_before?: number;
+  balance_after?: number;
+  reference_type?: string;
+  reference_id?: string;
+  reference_number?: string;
+  unit_cost?: number;
+  total_cost?: number;
+  notes?: string;
+  created_at: string;
+  // Joined fields
+  product_name?: string;
+  product_sku?: string;
+  warehouse_name?: string;
+  serial_number?: string;
+}
+
 // Vendor Types
 export type VendorType =
   | 'MANUFACTURER'
