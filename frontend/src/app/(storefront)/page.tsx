@@ -1,136 +1,35 @@
-'use client';
-
-import { useEffect, useState } from 'react';
+import { Suspense } from 'react';
+import { Metadata } from 'next';
 import HeroBanner from '@/components/storefront/home/hero-banner';
 import CategoryGrid from '@/components/storefront/home/category-grid';
 import ProductSection from '@/components/storefront/home/product-section';
 import WhyChooseUs from '@/components/storefront/home/why-choose-us';
 import Testimonials from '@/components/storefront/home/testimonials';
-import RecentlyViewed from '@/components/storefront/product/recently-viewed';
-import { StorefrontProduct, StorefrontCategory, CompanyInfo } from '@/types/storefront';
-import { productsApi, categoriesApi, companyApi } from '@/lib/storefront/api';
+import RecentlyViewedWrapper from '@/components/storefront/product/recently-viewed-wrapper';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  getHomepageData,
+  getCompanyInfo,
+} from '@/lib/storefront/server-api';
 
-export default function HomePage() {
-  const [categories, setCategories] = useState<StorefrontCategory[]>([]);
-  const [bestsellers, setBestsellers] = useState<StorefrontProduct[]>([]);
-  const [newArrivals, setNewArrivals] = useState<StorefrontProduct[]>([]);
-  const [featured, setFeatured] = useState<StorefrontProduct[]>([]);
-  const [company, setCompany] = useState<CompanyInfo | null>(null);
-  const [loading, setLoading] = useState(true);
+// ISR: Revalidate homepage every 60 seconds
+export const revalidate = 60;
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [categoriesData, bestsellersData, newArrivalsData, featuredData, companyData] =
-          await Promise.all([
-            categoriesApi.getTree().catch(() => []),
-            productsApi.getBestsellers(8).catch(() => []),
-            productsApi.getNewArrivals(8).catch(() => []),
-            productsApi.getFeatured(8).catch(() => []),
-            companyApi.getInfo().catch(() => null),
-          ]);
+// Generate metadata
+export async function generateMetadata(): Promise<Metadata> {
+  const company = await getCompanyInfo();
 
-        setCategories(categoriesData);
-        setBestsellers(bestsellersData);
-        setNewArrivals(newArrivalsData);
-        setFeatured(featuredData);
-        setCompany(companyData);
-      } catch (error) {
-        console.error('Failed to fetch homepage data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, []);
-
-  return (
-    <>
-      {/* Hero Banner */}
-      <HeroBanner />
-
-      {/* Categories */}
-      <CategoryGrid categories={categories} />
-
-      {/* Bestsellers */}
-      {loading ? (
-        <ProductSectionSkeleton title="Bestsellers" />
-      ) : (
-        <ProductSection
-          title="Bestsellers"
-          subtitle="Our most popular products loved by customers"
-          products={bestsellers}
-          viewAllLink="/products?is_bestseller=true"
-        />
-      )}
-
-      {/* Why Choose Us */}
-      <WhyChooseUs />
-
-      {/* New Arrivals */}
-      {loading ? (
-        <ProductSectionSkeleton title="New Arrivals" />
-      ) : (
-        <ProductSection
-          title="New Arrivals"
-          subtitle="Discover our latest water purification solutions"
-          products={newArrivals}
-          viewAllLink="/products?is_new_arrival=true"
-        />
-      )}
-
-      {/* Featured Products */}
-      {loading ? (
-        <ProductSectionSkeleton title="Featured Products" />
-      ) : (
-        featured.length > 0 && (
-          <div className="bg-muted/50">
-            <ProductSection
-              title="Featured Products"
-              subtitle="Handpicked products for you"
-              products={featured}
-              viewAllLink="/products?is_featured=true"
-            />
-          </div>
-        )
-      )}
-
-      {/* Recently Viewed Products */}
-      <RecentlyViewed maxItems={8} />
-
-      {/* Testimonials */}
-      <Testimonials />
-
-      {/* CTA Section */}
-      <section className="py-16 bg-gradient-to-r from-primary to-primary/80 text-white">
-        <div className="container mx-auto px-4 text-center">
-          <h2 className="text-2xl md:text-3xl font-bold mb-4">
-            Need Help Choosing the Right Purifier?
-          </h2>
-          <p className="text-lg text-white/80 mb-6 max-w-2xl mx-auto">
-            Our experts are here to help you find the perfect water purification
-            solution for your home or office.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a
-              href={`tel:${company?.phone?.replace(/[^0-9+]/g, '') || '18001234567'}`}
-              className="inline-flex items-center justify-center px-6 py-3 bg-background text-primary font-semibold rounded-lg hover:bg-muted transition-colors"
-            >
-              Call {company?.phone || '1800-123-4567'}
-            </a>
-            <a
-              href="/contact"
-              className="inline-flex items-center justify-center px-6 py-3 border-2 border-white text-white font-semibold rounded-lg hover:bg-white/10 transition-colors"
-            >
-              Contact Us
-            </a>
-          </div>
-        </div>
-      </section>
-    </>
-  );
+  return {
+    title: `${company.name} - Pure Water, Healthy Life`,
+    description:
+      "India's trusted water purifier brand. Advanced RO, UV, and UF water purification systems for homes and offices.",
+    openGraph: {
+      title: `${company.name} - Pure Water, Healthy Life`,
+      description:
+        "India's trusted water purifier brand. Advanced RO, UV, and UF water purification systems for homes and offices.",
+      type: 'website',
+    },
+  };
 }
 
 // Loading skeleton for product sections
@@ -153,5 +52,107 @@ function ProductSectionSkeleton({ title }: { title: string }) {
         </div>
       </div>
     </section>
+  );
+}
+
+// CTA Section Component
+async function CTASection() {
+  const company = await getCompanyInfo();
+
+  return (
+    <section className="py-16 bg-gradient-to-r from-primary to-primary/80 text-white">
+      <div className="container mx-auto px-4 text-center">
+        <h2 className="text-2xl md:text-3xl font-bold mb-4">
+          Need Help Choosing the Right Purifier?
+        </h2>
+        <p className="text-lg text-white/80 mb-6 max-w-2xl mx-auto">
+          Our experts are here to help you find the perfect water purification
+          solution for your home or office.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <a
+            href={`tel:${company.phone?.replace(/[^0-9+]/g, '') || '18001234567'}`}
+            className="inline-flex items-center justify-center px-6 py-3 bg-background text-primary font-semibold rounded-lg hover:bg-muted transition-colors"
+          >
+            Call {company.phone || '1800-123-4567'}
+          </a>
+          <a
+            href="/contact"
+            className="inline-flex items-center justify-center px-6 py-3 border-2 border-white text-white font-semibold rounded-lg hover:bg-white/10 transition-colors"
+          >
+            Contact Us
+          </a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// Main Homepage Component (Server Component with ISR)
+export default async function HomePage() {
+  // Fetch all homepage data with ISR caching
+  const homepageData = await getHomepageData();
+
+  const {
+    categories,
+    bestseller_products: bestsellers,
+    new_arrivals: newArrivals,
+    featured_products: featured,
+  } = homepageData;
+
+  return (
+    <>
+      {/* Hero Banner */}
+      <HeroBanner />
+
+      {/* Categories */}
+      <CategoryGrid categories={categories} />
+
+      {/* Bestsellers */}
+      {bestsellers.length > 0 && (
+        <ProductSection
+          title="Bestsellers"
+          subtitle="Our most popular products loved by customers"
+          products={bestsellers}
+          viewAllLink="/products?is_bestseller=true"
+        />
+      )}
+
+      {/* Why Choose Us */}
+      <WhyChooseUs />
+
+      {/* New Arrivals */}
+      {newArrivals.length > 0 && (
+        <ProductSection
+          title="New Arrivals"
+          subtitle="Discover our latest water purification solutions"
+          products={newArrivals}
+          viewAllLink="/products?is_new_arrival=true"
+        />
+      )}
+
+      {/* Featured Products */}
+      {featured.length > 0 && (
+        <div className="bg-muted/50">
+          <ProductSection
+            title="Featured Products"
+            subtitle="Handpicked products for you"
+            products={featured}
+            viewAllLink="/products?is_featured=true"
+          />
+        </div>
+      )}
+
+      {/* Recently Viewed Products (Client Component) */}
+      <Suspense fallback={<ProductSectionSkeleton title="Recently Viewed" />}>
+        <RecentlyViewedWrapper maxItems={8} />
+      </Suspense>
+
+      {/* Testimonials */}
+      <Testimonials />
+
+      {/* CTA Section */}
+      <CTASection />
+    </>
   );
 }

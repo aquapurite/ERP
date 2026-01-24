@@ -4,12 +4,37 @@ import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ProductCard from '../product/product-card';
-import { StorefrontProduct } from '@/types/storefront';
+
+// Common product interface that works with both server and client products
+interface BaseProduct {
+  id: string;
+  name: string;
+  slug: string;
+  mrp: number;
+  selling_price?: number | null;
+  is_bestseller?: boolean;
+  is_new_arrival?: boolean;
+  images?: Array<{
+    id: string;
+    image_url: string;
+    is_primary?: boolean;
+  }>;
+  category?: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+  brand?: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+}
 
 interface ProductSectionProps {
   title: string;
   subtitle?: string;
-  products: StorefrontProduct[];
+  products: BaseProduct[];
   viewAllLink?: string;
   viewAllText?: string;
 }

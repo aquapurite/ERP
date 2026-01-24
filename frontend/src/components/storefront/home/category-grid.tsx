@@ -2,10 +2,19 @@
 
 import Link from 'next/link';
 import { Droplet, Filter, Cog, Wrench, Package, Zap, ThermometerSun, Shield } from 'lucide-react';
-import { StorefrontCategory } from '@/types/storefront';
+
+// Common category interface that works with both server and client categories
+interface BaseCategory {
+  id: string;
+  name: string;
+  slug: string;
+  icon?: string;
+  image_url?: string;
+  children?: BaseCategory[];
+}
 
 interface CategoryGridProps {
-  categories: StorefrontCategory[];
+  categories: BaseCategory[];
 }
 
 // Default categories if API returns empty - Water Purifiers and Spare Parts prominently displayed

@@ -5,12 +5,42 @@ import { ShoppingCart, Heart, Star, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { StorefrontProduct } from '@/types/storefront';
 import { useCartStore } from '@/lib/storefront/cart-store';
 import { formatCurrency } from '@/lib/utils';
 
+// Common product interface that works with both server and client products
+interface BaseProduct {
+  id: string;
+  name: string;
+  slug: string;
+  mrp: number;
+  selling_price?: number | null;
+  is_bestseller?: boolean;
+  is_new_arrival?: boolean;
+  in_stock?: boolean;
+  stock_quantity?: number | null;
+  warranty_months?: number | null;
+  images?: Array<{
+    id: string;
+    image_url: string;
+    thumbnail_url?: string;
+    alt_text?: string;
+    is_primary?: boolean;
+  }>;
+  category?: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+  brand?: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+}
+
 interface ProductCardProps {
-  product: StorefrontProduct;
+  product: BaseProduct;
   showAddToCart?: boolean;
 }
 
@@ -23,8 +53,9 @@ export default function ProductCard({
   const primaryImage =
     product.images?.find((img) => img.is_primary) || product.images?.[0];
 
-  const discountPercentage = product.mrp > product.selling_price
-    ? Math.round(((product.mrp - product.selling_price) / product.mrp) * 100)
+  const sellingPrice = product.selling_price ?? product.mrp;
+  const discountPercentage = product.mrp > sellingPrice
+    ? Math.round(((product.mrp - sellingPrice) / product.mrp) * 100)
     : 0;
 
   // Check stock status
@@ -34,7 +65,8 @@ export default function ProductCard({
     e.preventDefault();
     e.stopPropagation();
     if (!isOutOfStock) {
-      addItem(product, 1);
+      // Convert to cart-compatible product format
+      addItem(product as any, 1);
     }
   };
 
@@ -134,9 +166,9 @@ export default function ProductCard({
           {/* Price */}
           <div className="flex items-center gap-2 mt-2">
             <span className="text-lg font-bold text-primary">
-              {formatCurrency(product.selling_price)}
+              {formatCurrency(sellingPrice)}
             </span>
-            {product.mrp > product.selling_price && (
+            {product.mrp > sellingPrice && (
               <span className="text-sm text-muted-foreground line-through">
                 {formatCurrency(product.mrp)}
               </span>
