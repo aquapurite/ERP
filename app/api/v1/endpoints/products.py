@@ -1,5 +1,6 @@
 from typing import Optional
 import uuid
+import json
 from math import ceil
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends
@@ -669,7 +670,8 @@ def _build_product_detail_response(p) -> ProductDetailResponse:
             "sort_order": doc.sort_order,
             "created_at": doc.created_at,
         } for doc in p.documents],
-        extra_data=p.extra_data,
+        # Handle extra_data being stored as JSON string in some records
+        extra_data=json.loads(p.extra_data) if isinstance(p.extra_data, str) else p.extra_data,
         created_at=p.created_at,
         updated_at=p.updated_at,
         published_at=p.published_at,
