@@ -550,7 +550,20 @@ export const channelsApi = {
     const { data } = await apiClient.post('/channels', channel);
     return data;
   },
-  update: async (id: string, channel: Partial<{ name: string; channel_type: string; description?: string; status?: string }>) => {
+  update: async (id: string, channel: Partial<{
+    name: string;
+    channel_type: string;
+    description?: string;
+    status?: string;
+    commission_percentage?: number;
+    fixed_fee_per_order?: number;
+    payment_cycle_days?: number;
+    price_markup_percentage?: number;
+    price_discount_percentage?: number;
+    tax_inclusive_pricing?: boolean;
+    collect_tcs?: boolean;
+    tcs_rate?: number;
+  }>) => {
     const { data } = await apiClient.put(`/channels/${id}`, channel);
     return data;
   },
@@ -612,6 +625,64 @@ export const channelsApi = {
     },
     sync: async (channelId: string, productIds?: string[]) => {
       const { data } = await apiClient.post(`/channels/${channelId}/pricing/sync`, { product_ids: productIds });
+      return data;
+    },
+  },
+
+  // Pricing Rules
+  pricingRules: {
+    list: async (params?: { page?: number; size?: number; channel_id?: string; rule_type?: string; is_active?: boolean }) => {
+      const { data } = await apiClient.get('/channels/pricing-rules', { params });
+      return data;
+    },
+    getById: async (ruleId: string) => {
+      const { data } = await apiClient.get(`/channels/pricing-rules/${ruleId}`);
+      return data;
+    },
+    create: async (rule: {
+      code: string;
+      name: string;
+      description?: string;
+      rule_type: string;
+      channel_id?: string;
+      category_id?: string;
+      product_id?: string;
+      conditions: Record<string, unknown>;
+      discount_type: string;
+      discount_value: number;
+      effective_from?: string;
+      effective_to?: string;
+      priority?: number;
+      is_combinable?: boolean;
+      is_active?: boolean;
+    }) => {
+      const { data } = await apiClient.post('/channels/pricing-rules', rule);
+      return data;
+    },
+    update: async (ruleId: string, rule: Partial<{
+      name: string;
+      description: string;
+      conditions: Record<string, unknown>;
+      discount_type: string;
+      discount_value: number;
+      effective_from: string;
+      effective_to: string;
+      priority: number;
+      is_combinable: boolean;
+      is_active: boolean;
+    }>) => {
+      const { data } = await apiClient.put(`/channels/pricing-rules/${ruleId}`, rule);
+      return data;
+    },
+    delete: async (ruleId: string) => {
+      await apiClient.delete(`/channels/pricing-rules/${ruleId}`);
+    },
+  },
+
+  // Pricing History
+  pricingHistory: {
+    list: async (params?: { page?: number; size?: number; entity_type?: string; entity_id?: string; channel_id?: string }) => {
+      const { data } = await apiClient.get('/channels/pricing-history', { params });
       return data;
     },
   },

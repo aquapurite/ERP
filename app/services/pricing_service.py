@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.channel import (
-    SalesChannel, ChannelPricing, ChannelStatus
+    SalesChannel, ChannelPricing, ChannelStatus, PricingRule
 )
 from app.models.product import Product, ProductVariant
 
@@ -261,33 +261,113 @@ class PricingService:
         """
         rules_applied = []
         final_price = base_price
+        now = datetime.now(timezone.utc)
 
-        # TODO: When pricing_rules table is created, query rules here
-        # For now, implement basic volume discount logic
+        # Query active pricing rules from database
+        query = select(PricingRule).where(
+            and_(
+                PricingRule.is_active == True,
+                or_(
+                    PricingRule.channel_id == channel_id,
+                    PricingRule.channel_id.is_(None)  # Global rules
+                ),
+                or_(
+                    PricingRule.product_id == product_id,
+                    PricingRule.product_id.is_(None)  # Category/all products
+                ),
+                or_(
+                    PricingRule.effective_from.is_(None),
+                    PricingRule.effective_from <= now
+                ),
+                or_(
+                    PricingRule.effective_to.is_(None),
+                    PricingRule.effective_to >= now
+                ),
+            )
+        ).order_by(PricingRule.priority)
 
-        # Volume Discount (built-in logic for now)
-        volume_discount = self._calculate_volume_discount(quantity)
-        if volume_discount > 0:
-            discount_amount = final_price * (volume_discount / 100)
-            final_price = final_price - discount_amount
-            rules_applied.append({
-                "rule_type": "VOLUME_DISCOUNT",
-                "quantity": quantity,
-                "discount_percentage": float(volume_discount),
-                "discount_amount": float(discount_amount),
-            })
+        result = await self.db.execute(query)
+        db_rules = result.scalars().all()
 
-        # Customer Segment Discount
-        segment_discount = self._get_segment_discount(customer_segment)
-        if segment_discount > 0:
-            discount_amount = final_price * (segment_discount / 100)
-            final_price = final_price - discount_amount
-            rules_applied.append({
-                "rule_type": "CUSTOMER_SEGMENT",
-                "segment": customer_segment,
-                "discount_percentage": float(segment_discount),
-                "discount_amount": float(discount_amount),
-            })
+        # Track which rule types have been applied (for non-combinable rules)
+        applied_rule_types = set()
+
+        for rule in db_rules:
+            # Skip if this rule type already applied and rule is not combinable
+            if rule.rule_type in applied_rule_types and not rule.is_combinable:
+                continue
+
+            discount_to_apply = Decimal("0")
+
+            # Check rule conditions based on rule_type
+            if rule.rule_type == "VOLUME_DISCOUNT":
+                conditions = rule.conditions or {}
+                min_qty = conditions.get("min_quantity", 0)
+                if quantity >= min_qty:
+                    if rule.discount_type == "PERCENTAGE":
+                        discount_to_apply = rule.discount_value
+                    else:  # FIXED_AMOUNT
+                        discount_to_apply = (rule.discount_value / final_price) * 100 if final_price > 0 else Decimal("0")
+
+            elif rule.rule_type == "CUSTOMER_SEGMENT":
+                conditions = rule.conditions or {}
+                applicable_segments = conditions.get("segments", [])
+                if not applicable_segments or customer_segment.upper() in [s.upper() for s in applicable_segments]:
+                    if rule.discount_type == "PERCENTAGE":
+                        discount_to_apply = rule.discount_value
+                    else:
+                        discount_to_apply = (rule.discount_value / final_price) * 100 if final_price > 0 else Decimal("0")
+
+            elif rule.rule_type == "PROMOTIONAL":
+                conditions = rule.conditions or {}
+                rule_promo_code = conditions.get("promo_code", "")
+                if promo_code and promo_code.upper() == rule_promo_code.upper():
+                    # Check max uses
+                    if rule.max_uses and rule.current_uses >= rule.max_uses:
+                        continue
+                    if rule.discount_type == "PERCENTAGE":
+                        discount_to_apply = rule.discount_value
+                    else:
+                        discount_to_apply = (rule.discount_value / final_price) * 100 if final_price > 0 else Decimal("0")
+
+            # Apply discount if any
+            if discount_to_apply > 0:
+                discount_amount = final_price * (discount_to_apply / 100)
+                final_price = final_price - discount_amount
+                rules_applied.append({
+                    "rule_id": str(rule.id),
+                    "rule_code": rule.code,
+                    "rule_type": rule.rule_type,
+                    "discount_percentage": float(discount_to_apply),
+                    "discount_amount": float(discount_amount),
+                })
+                applied_rule_types.add(rule.rule_type)
+
+        # If no database rules found, fall back to built-in logic
+        if not db_rules:
+            # Volume Discount (built-in logic)
+            volume_discount = self._calculate_volume_discount(quantity)
+            if volume_discount > 0:
+                discount_amount = final_price * (volume_discount / 100)
+                final_price = final_price - discount_amount
+                rules_applied.append({
+                    "rule_type": "VOLUME_DISCOUNT",
+                    "quantity": quantity,
+                    "discount_percentage": float(volume_discount),
+                    "discount_amount": float(discount_amount),
+                })
+
+            # Customer Segment Discount
+            segment_discount = self._get_segment_discount(customer_segment)
+            if segment_discount > 0:
+                discount_amount = final_price * (segment_discount / 100)
+                final_price = final_price - discount_amount
+                rules_applied.append({
+                    "rule_type": "CUSTOMER_SEGMENT",
+                    "segment": customer_segment,
+                    "discount_percentage": float(segment_discount),
+                    "discount_amount": float(discount_amount),
+                })
 
         # Round final price
         final_price = final_price.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)

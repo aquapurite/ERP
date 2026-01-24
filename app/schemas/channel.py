@@ -6,7 +6,7 @@ from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
-from app.models.channel import ChannelType, ChannelStatus
+from app.models.channel import ChannelType, ChannelStatus, PricingRuleType
 
 
 # ==================== SalesChannel Schemas ====================
@@ -595,3 +595,93 @@ class ChannelInventorySummary(BaseModel):
     synced_products: int = 0
     out_of_sync_products: int = 0
     low_stock_products: int = 0
+
+
+# ==================== Pricing Rules Schemas ====================
+
+class PricingRuleBase(BaseModel):
+    """Base schema for PricingRule."""
+    code: str = Field(..., min_length=2, max_length=50)
+    name: str = Field(..., min_length=2, max_length=200)
+    description: Optional[str] = None
+    rule_type: PricingRuleType
+    channel_id: Optional[UUID] = None
+    category_id: Optional[UUID] = None
+    product_id: Optional[UUID] = None
+    brand_id: Optional[UUID] = None
+    conditions: dict = Field(default_factory=dict)
+    discount_type: str = Field(..., pattern="^(PERCENTAGE|FIXED_AMOUNT)$")
+    discount_value: Decimal = Field(..., ge=0)
+    effective_from: Optional[datetime] = None
+    effective_to: Optional[datetime] = None
+    priority: int = Field(default=100, ge=1, le=1000)
+    is_combinable: bool = False
+    is_active: bool = True
+    max_uses: Optional[int] = None
+    max_uses_per_customer: Optional[int] = None
+
+
+class PricingRuleCreate(PricingRuleBase):
+    """Schema for creating PricingRule."""
+    pass
+
+
+class PricingRuleUpdate(BaseModel):
+    """Schema for updating PricingRule."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    conditions: Optional[dict] = None
+    discount_type: Optional[str] = None
+    discount_value: Optional[Decimal] = None
+    effective_from: Optional[datetime] = None
+    effective_to: Optional[datetime] = None
+    priority: Optional[int] = None
+    is_combinable: Optional[bool] = None
+    is_active: Optional[bool] = None
+    max_uses: Optional[int] = None
+    max_uses_per_customer: Optional[int] = None
+
+
+class PricingRuleResponse(PricingRuleBase):
+    """Response schema for PricingRule."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    current_uses: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class PricingRuleListResponse(BaseModel):
+    """Paginated list of pricing rules."""
+    items: List[PricingRuleResponse]
+    total: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
+
+
+# ==================== Pricing History Schemas ====================
+
+class PricingHistoryResponse(BaseModel):
+    """Response schema for PricingHistory."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    entity_type: str
+    entity_id: UUID
+    field_name: str
+    old_value: Optional[str] = None
+    new_value: Optional[str] = None
+    changed_by: Optional[UUID] = None
+    changed_at: datetime
+    change_reason: Optional[str] = None
+
+
+class PricingHistoryListResponse(BaseModel):
+    """Paginated list of pricing history."""
+    items: List[PricingHistoryResponse]
+    total: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1

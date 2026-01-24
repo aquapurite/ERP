@@ -13,7 +13,8 @@ from sqlalchemy.orm import selectinload
 from app.models.channel import (
     SalesChannel, ChannelType, ChannelStatus,
     ChannelPricing, ChannelInventory, ChannelOrder,
-    ProductChannelSettings,
+    ProductChannelSettings, PricingRule, PricingHistory,
+    PricingRuleType,
 )
 from app.models.product import Product
 from app.models.warehouse import Warehouse
@@ -38,6 +39,10 @@ from app.schemas.channel import (
     MarketplaceSyncRequest, MarketplaceSyncResponse,
     # Channel inventory summary
     ChannelInventorySummary,
+    # Pricing Rules
+    PricingRuleCreate, PricingRuleUpdate, PricingRuleResponse, PricingRuleListResponse,
+    # Pricing History
+    PricingHistoryResponse, PricingHistoryListResponse,
 )
 from app.api.deps import DB, CurrentUser, get_current_user, require_permissions
 from app.services.audit_service import AuditService
@@ -839,6 +844,18 @@ async def create_channel_pricing(
     await db.commit()
     await db.refresh(pricing)
 
+    # Log to pricing history
+    history = PricingHistory(
+        entity_type="CHANNEL_PRICING",
+        entity_id=pricing.id,
+        field_name="created",
+        old_value=None,
+        new_value=f"selling_price={pricing.selling_price}, mrp={pricing.mrp}",
+        changed_by=current_user.id,
+    )
+    db.add(history)
+    await db.commit()
+
     return pricing
 
 
@@ -866,6 +883,18 @@ async def update_channel_pricing(
 
     update_data = pricing_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
+        old_value = getattr(pricing, field, None)
+        if old_value != value:
+            # Log to pricing history
+            history = PricingHistory(
+                entity_type="CHANNEL_PRICING",
+                entity_id=pricing.id,
+                field_name=field,
+                old_value=str(old_value) if old_value is not None else None,
+                new_value=str(value) if value is not None else None,
+                changed_by=current_user.id,
+            )
+            db.add(history)
         setattr(pricing, field, value)
 
     await db.commit()
@@ -894,6 +923,17 @@ async def delete_channel_pricing(
 
     if not pricing:
         raise HTTPException(status_code=404, detail="Channel pricing not found")
+
+    # Log to pricing history before delete
+    history = PricingHistory(
+        entity_type="CHANNEL_PRICING",
+        entity_id=pricing.id,
+        field_name="deleted",
+        old_value=f"selling_price={pricing.selling_price}, mrp={pricing.mrp}",
+        new_value=None,
+        changed_by=current_user.id,
+    )
+    db.add(history)
 
     await db.delete(pricing)
     await db.commit()
@@ -2099,3 +2139,216 @@ async def get_channel_inventory_summary(
         "low_stock_items": low_stock_products,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+# ==================== Pricing Rules ====================
+
+@router.get("/pricing-rules", response_model=PricingRuleListResponse)
+async def list_pricing_rules(
+    db: DB,
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=100),
+    channel_id: Optional[UUID] = None,
+    rule_type: Optional[str] = None,
+    is_active: Optional[bool] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """List all pricing rules with optional filters."""
+    query = select(PricingRule)
+    count_query = select(func.count(PricingRule.id))
+
+    filters = []
+    if channel_id:
+        filters.append(or_(
+            PricingRule.channel_id == channel_id,
+            PricingRule.channel_id.is_(None)  # Include global rules
+        ))
+    if rule_type:
+        filters.append(PricingRule.rule_type == rule_type)
+    if is_active is not None:
+        filters.append(PricingRule.is_active == is_active)
+
+    if filters:
+        query = query.where(and_(*filters))
+        count_query = count_query.where(and_(*filters))
+
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    skip = (page - 1) * size
+    query = query.order_by(PricingRule.priority, PricingRule.created_at.desc()).offset(skip).limit(size)
+    result = await db.execute(query)
+    rules = result.scalars().all()
+
+    return PricingRuleListResponse(
+        items=[PricingRuleResponse.model_validate(r) for r in rules],
+        total=total,
+        page=page,
+        size=size,
+        pages=ceil(total / size) if total > 0 else 1
+    )
+
+
+@router.post("/pricing-rules", response_model=PricingRuleResponse, status_code=status.HTTP_201_CREATED)
+async def create_pricing_rule(
+    rule_in: PricingRuleCreate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Create a new pricing rule."""
+    # Check for duplicate code
+    existing = await db.execute(
+        select(PricingRule).where(PricingRule.code == rule_in.code)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Pricing rule with code '{rule_in.code}' already exists"
+        )
+
+    rule = PricingRule(**rule_in.model_dump())
+    db.add(rule)
+    await db.commit()
+    await db.refresh(rule)
+
+    return rule
+
+
+@router.get("/pricing-rules/{rule_id}", response_model=PricingRuleResponse)
+async def get_pricing_rule(
+    rule_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get a specific pricing rule."""
+    result = await db.execute(
+        select(PricingRule).where(PricingRule.id == rule_id)
+    )
+    rule = result.scalar_one_or_none()
+
+    if not rule:
+        raise HTTPException(status_code=404, detail="Pricing rule not found")
+
+    return rule
+
+
+@router.put("/pricing-rules/{rule_id}", response_model=PricingRuleResponse)
+async def update_pricing_rule(
+    rule_id: UUID,
+    rule_in: PricingRuleUpdate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Update a pricing rule."""
+    result = await db.execute(
+        select(PricingRule).where(PricingRule.id == rule_id)
+    )
+    rule = result.scalar_one_or_none()
+
+    if not rule:
+        raise HTTPException(status_code=404, detail="Pricing rule not found")
+
+    # Store old values for history
+    old_values = {}
+    update_data = rule_in.model_dump(exclude_unset=True)
+
+    for field, new_value in update_data.items():
+        old_value = getattr(rule, field, None)
+        if old_value != new_value:
+            old_values[field] = str(old_value) if old_value is not None else None
+            setattr(rule, field, new_value)
+
+            # Log to pricing history
+            history = PricingHistory(
+                entity_type="PRICING_RULE",
+                entity_id=rule.id,
+                field_name=field,
+                old_value=old_values[field],
+                new_value=str(new_value) if new_value is not None else None,
+                changed_by=current_user.id,
+            )
+            db.add(history)
+
+    await db.commit()
+    await db.refresh(rule)
+
+    return rule
+
+
+@router.delete("/pricing-rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_pricing_rule(
+    rule_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a pricing rule."""
+    result = await db.execute(
+        select(PricingRule).where(PricingRule.id == rule_id)
+    )
+    rule = result.scalar_one_or_none()
+
+    if not rule:
+        raise HTTPException(status_code=404, detail="Pricing rule not found")
+
+    await db.delete(rule)
+    await db.commit()
+
+
+# ==================== Pricing History ====================
+
+@router.get("/pricing-history", response_model=PricingHistoryListResponse)
+async def list_pricing_history(
+    db: DB,
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=100),
+    entity_type: Optional[str] = None,
+    entity_id: Optional[UUID] = None,
+    channel_id: Optional[UUID] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """List pricing change history with optional filters."""
+    query = select(PricingHistory)
+    count_query = select(func.count(PricingHistory.id))
+
+    filters = []
+    if entity_type:
+        filters.append(PricingHistory.entity_type == entity_type)
+    if entity_id:
+        filters.append(PricingHistory.entity_id == entity_id)
+
+    # If channel_id provided, get history for pricing items in that channel
+    if channel_id:
+        # Get all pricing IDs for this channel
+        pricing_ids_subquery = select(ChannelPricing.id).where(
+            ChannelPricing.channel_id == channel_id
+        )
+        filters.append(
+            or_(
+                and_(
+                    PricingHistory.entity_type == "CHANNEL_PRICING",
+                    PricingHistory.entity_id.in_(pricing_ids_subquery)
+                ),
+                # Also include global pricing rules
+                PricingHistory.entity_type == "PRICING_RULE"
+            )
+        )
+
+    if filters:
+        query = query.where(and_(*filters))
+        count_query = count_query.where(and_(*filters))
+
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    skip = (page - 1) * size
+    query = query.order_by(PricingHistory.changed_at.desc()).offset(skip).limit(size)
+    result = await db.execute(query)
+    history_items = result.scalars().all()
+
+    return PricingHistoryListResponse(
+        items=[PricingHistoryResponse.model_validate(h) for h in history_items],
+        total=total,
+        page=page,
+        size=size,
+        pages=ceil(total / size) if total > 0 else 1
+    )

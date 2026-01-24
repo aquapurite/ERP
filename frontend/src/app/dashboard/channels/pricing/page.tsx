@@ -168,6 +168,53 @@ export default function ChannelPricingPage() {
     enabled: !!selectedChannelId,
   });
 
+  // Fetch selected channel details for commission settings
+  const { data: selectedChannel } = useQuery({
+    queryKey: ['channel-detail', selectedChannelId],
+    queryFn: () => channelsApi.getById(selectedChannelId),
+    enabled: !!selectedChannelId,
+  });
+
+  // Fetch pricing rules for selected channel
+  const { data: rulesData, isLoading: rulesLoading } = useQuery({
+    queryKey: ['pricing-rules', selectedChannelId],
+    queryFn: () => channelsApi.pricingRules.list({
+      channel_id: selectedChannelId || undefined,
+      is_active: true,
+    }),
+    enabled: !!selectedChannelId,
+  });
+
+  // Fetch pricing history for selected channel
+  const { data: historyData, isLoading: historyLoading } = useQuery({
+    queryKey: ['pricing-history', selectedChannelId],
+    queryFn: () => channelsApi.pricingHistory.list({
+      channel_id: selectedChannelId || undefined,
+      size: 50,
+    }),
+    enabled: !!selectedChannelId,
+  });
+
+  // Commission form state
+  const [commissionForm, setCommissionForm] = useState({
+    commission_percentage: 0,
+    fixed_fee_per_order: 0,
+    payment_cycle_days: 7,
+    price_markup_percentage: 0,
+  });
+
+  // Update commission form when channel data loads
+  useMemo(() => {
+    if (selectedChannel) {
+      setCommissionForm({
+        commission_percentage: selectedChannel.commission_percentage || 0,
+        fixed_fee_per_order: selectedChannel.fixed_fee_per_order || 0,
+        payment_cycle_days: selectedChannel.payment_cycle_days || 7,
+        price_markup_percentage: selectedChannel.price_markup_percentage || 0,
+      });
+    }
+  }, [selectedChannel]);
+
   // Get product map for displaying names
   const productMap = useMemo(() => {
     const map = new Map<string, Product>();
@@ -386,6 +433,51 @@ export default function ChannelPricingPage() {
     },
   });
 
+  // Commission update mutation
+  const commissionMutation = useMutation({
+    mutationFn: (data: {
+      commission_percentage?: number;
+      fixed_fee_per_order?: number;
+      payment_cycle_days?: number;
+      price_markup_percentage?: number;
+    }) => channelsApi.update(selectedChannelId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['channel-detail', selectedChannelId] });
+      toast.success('Commission settings saved successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to save commission settings');
+    },
+  });
+
+  // Pricing rule mutations
+  const createRuleMutation = useMutation({
+    mutationFn: (rule: Parameters<typeof channelsApi.pricingRules.create>[0]) =>
+      channelsApi.pricingRules.create(rule),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pricing-rules'] });
+      toast.success('Pricing rule created');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to create pricing rule');
+    },
+  });
+
+  const deleteRuleMutation = useMutation({
+    mutationFn: (ruleId: string) => channelsApi.pricingRules.delete(ruleId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pricing-rules'] });
+      toast.success('Pricing rule deleted');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to delete pricing rule');
+    },
+  });
+
+  const handleSaveCommission = () => {
+    commissionMutation.mutate(commissionForm);
+  };
+
   const handleSubmit = () => {
     if (selectedPricing) {
       updateMutation.mutate({
@@ -574,29 +666,69 @@ export default function ChannelPricingPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Default Commission %</Label>
-                      <Input type="number" placeholder="0" defaultValue="10" />
+                      <Input
+                        type="number"
+                        placeholder="0"
+                        value={commissionForm.commission_percentage || ''}
+                        onChange={(e) => setCommissionForm({
+                          ...commissionForm,
+                          commission_percentage: parseFloat(e.target.value) || 0
+                        })}
+                      />
                       <p className="text-xs text-muted-foreground">Applied to all products in this channel</p>
                     </div>
                     <div className="space-y-2">
-                      <Label>Fixed Fee per Order</Label>
-                      <Input type="number" placeholder="0" defaultValue="0" />
+                      <Label>Fixed Fee per Order (₹)</Label>
+                      <Input
+                        type="number"
+                        placeholder="0"
+                        value={commissionForm.fixed_fee_per_order || ''}
+                        onChange={(e) => setCommissionForm({
+                          ...commissionForm,
+                          fixed_fee_per_order: parseFloat(e.target.value) || 0
+                        })}
+                      />
                       <p className="text-xs text-muted-foreground">Additional fee per order</p>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>Payment Gateway Fee %</Label>
-                      <Input type="number" placeholder="0" defaultValue="2" />
-                      <p className="text-xs text-muted-foreground">Deducted from order value</p>
+                      <Label>Payment Cycle (Days)</Label>
+                      <Input
+                        type="number"
+                        placeholder="7"
+                        value={commissionForm.payment_cycle_days || ''}
+                        onChange={(e) => setCommissionForm({
+                          ...commissionForm,
+                          payment_cycle_days: parseInt(e.target.value) || 7
+                        })}
+                      />
+                      <p className="text-xs text-muted-foreground">Settlement cycle in days</p>
                     </div>
                     <div className="space-y-2">
-                      <Label>Logistics Fee</Label>
-                      <Input type="number" placeholder="0" defaultValue="50" />
-                      <p className="text-xs text-muted-foreground">Per shipment charge</p>
+                      <Label>Price Markup %</Label>
+                      <Input
+                        type="number"
+                        placeholder="0"
+                        value={commissionForm.price_markup_percentage || ''}
+                        onChange={(e) => setCommissionForm({
+                          ...commissionForm,
+                          price_markup_percentage: parseFloat(e.target.value) || 0
+                        })}
+                      />
+                      <p className="text-xs text-muted-foreground">Default markup on base price</p>
                     </div>
                   </div>
                   <div className="pt-4 border-t">
-                    <Button>Save Commission Settings</Button>
+                    <Button
+                      onClick={handleSaveCommission}
+                      disabled={commissionMutation.isPending}
+                    >
+                      {commissionMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : null}
+                      Save Commission Settings
+                    </Button>
                   </div>
                 </div>
               </CardContent>
@@ -607,73 +739,87 @@ export default function ChannelPricingPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>Pricing Rules</CardTitle>
-                <Button size="sm">
+                <Button size="sm" disabled>
                   <Plus className="mr-2 h-4 w-4" />
                   Add Rule
                 </Button>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {/* Volume Discount Rule */}
-                  <div className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary">VOLUME_DISCOUNT</Badge>
-                        <span className="font-medium">Bulk Purchase Discount</span>
+                {rulesLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (rulesData?.items?.length || 0) === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No pricing rules configured for this channel.</p>
+                    <p className="text-sm mt-2">Default volume and segment discounts are applied automatically.</p>
+                    <div className="mt-4 p-4 bg-muted rounded-lg text-left">
+                      <p className="font-medium mb-2">Default Volume Discounts:</p>
+                      <div className="grid grid-cols-4 gap-2 text-sm">
+                        <div>10+ units: 3% off</div>
+                        <div>25+ units: 5% off</div>
+                        <div>50+ units: 7% off</div>
+                        <div>100+ units: 10% off</div>
                       </div>
-                      <Badge variant="outline" className="text-green-600">Active</Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-2">
-                      Quantity-based discounts for bulk orders
-                    </p>
-                    <div className="grid grid-cols-4 gap-2 text-sm">
-                      <div className="bg-muted p-2 rounded">
-                        <div className="font-medium">10+ units</div>
-                        <div className="text-muted-foreground">3% off</div>
-                      </div>
-                      <div className="bg-muted p-2 rounded">
-                        <div className="font-medium">25+ units</div>
-                        <div className="text-muted-foreground">5% off</div>
-                      </div>
-                      <div className="bg-muted p-2 rounded">
-                        <div className="font-medium">50+ units</div>
-                        <div className="text-muted-foreground">7% off</div>
-                      </div>
-                      <div className="bg-muted p-2 rounded">
-                        <div className="font-medium">100+ units</div>
-                        <div className="text-muted-foreground">10% off</div>
+                      <p className="font-medium mt-4 mb-2">Default Segment Discounts:</p>
+                      <div className="grid grid-cols-3 gap-2 text-sm">
+                        <div>VIP: 5% off</div>
+                        <div>Dealer: 15% off</div>
+                        <div>Distributor: 20% off</div>
                       </div>
                     </div>
                   </div>
-
-                  {/* Customer Segment Rule */}
-                  <div className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary">CUSTOMER_SEGMENT</Badge>
-                        <span className="font-medium">Customer Type Pricing</span>
+                ) : (
+                  <div className="space-y-4">
+                    {rulesData?.items?.map((rule: {
+                      id: string;
+                      code: string;
+                      name: string;
+                      description?: string;
+                      rule_type: string;
+                      discount_type: string;
+                      discount_value: number;
+                      is_active: boolean;
+                      conditions: Record<string, unknown>;
+                    }) => (
+                      <div key={rule.id} className="border rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary">{rule.rule_type}</Badge>
+                            <span className="font-medium">{rule.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant={rule.is_active ? "outline" : "secondary"} className={rule.is_active ? "text-green-600" : ""}>
+                              {rule.is_active ? "Active" : "Inactive"}
+                            </Badge>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive"
+                              onClick={() => {
+                                if (confirm(`Delete rule "${rule.name}"?`)) {
+                                  deleteRuleMutation.mutate(rule.id);
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                        {rule.description && (
+                          <p className="text-sm text-muted-foreground mb-2">{rule.description}</p>
+                        )}
+                        <div className="flex items-center gap-4 text-sm">
+                          <span className="bg-muted px-2 py-1 rounded">
+                            {rule.discount_type === 'PERCENTAGE' ? `${rule.discount_value}% off` : `₹${rule.discount_value} off`}
+                          </span>
+                          <span className="text-muted-foreground">Code: {rule.code}</span>
+                        </div>
                       </div>
-                      <Badge variant="outline" className="text-green-600">Active</Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-2">
-                      Special pricing for different customer segments
-                    </p>
-                    <div className="grid grid-cols-3 gap-2 text-sm">
-                      <div className="bg-muted p-2 rounded">
-                        <div className="font-medium">VIP Customers</div>
-                        <div className="text-muted-foreground">5% off</div>
-                      </div>
-                      <div className="bg-muted p-2 rounded">
-                        <div className="font-medium">Dealers</div>
-                        <div className="text-muted-foreground">15% off</div>
-                      </div>
-                      <div className="bg-muted p-2 rounded">
-                        <div className="font-medium">Distributors</div>
-                        <div className="text-muted-foreground">20% off</div>
-                      </div>
-                    </div>
+                    ))}
                   </div>
-                </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -684,41 +830,59 @@ export default function ChannelPricingPage() {
                 <CardTitle>Pricing History</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center gap-4 text-sm border-b pb-4">
-                    <div className="w-32 font-medium">2026-01-24 10:30</div>
-                    <Badge variant="outline">PRICE_UPDATE</Badge>
-                    <div className="flex-1">
-                      <span className="font-medium">Aquapurite Blitz</span>
-                      <span className="text-muted-foreground"> - Selling price changed from </span>
-                      <span className="line-through text-red-500">₹15,999</span>
-                      <span className="text-muted-foreground"> to </span>
-                      <span className="text-green-600">₹14,999</span>
-                    </div>
-                    <div className="text-muted-foreground">by Admin</div>
+                {historyLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
-                  <div className="flex items-center gap-4 text-sm border-b pb-4">
-                    <div className="w-32 font-medium">2026-01-23 15:45</div>
-                    <Badge variant="outline">RULE_ADDED</Badge>
-                    <div className="flex-1">
-                      <span className="font-medium">Volume Discount Rule</span>
-                      <span className="text-muted-foreground"> created with 4 tiers</span>
-                    </div>
-                    <div className="text-muted-foreground">by Admin</div>
+                ) : (historyData?.items?.length || 0) === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <RefreshCw className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No pricing changes recorded yet.</p>
+                    <p className="text-sm mt-2">Changes to pricing will appear here.</p>
                   </div>
-                  <div className="flex items-center gap-4 text-sm border-b pb-4">
-                    <div className="w-32 font-medium">2026-01-22 09:15</div>
-                    <Badge variant="outline">BULK_IMPORT</Badge>
-                    <div className="flex-1">
-                      <span className="font-medium">12 products</span>
-                      <span className="text-muted-foreground"> pricing imported from CSV</span>
-                    </div>
-                    <div className="text-muted-foreground">by Admin</div>
+                ) : (
+                  <div className="space-y-4">
+                    {historyData?.items?.map((item: {
+                      id: string;
+                      entity_type: string;
+                      entity_id: string;
+                      field_name: string;
+                      old_value?: string;
+                      new_value?: string;
+                      changed_at: string;
+                      change_reason?: string;
+                    }) => (
+                      <div key={item.id} className="flex items-center gap-4 text-sm border-b pb-4">
+                        <div className="w-36 font-medium text-muted-foreground">
+                          {new Date(item.changed_at).toLocaleString()}
+                        </div>
+                        <Badge variant="outline">
+                          {item.field_name === 'created' ? 'CREATED' :
+                           item.field_name === 'deleted' ? 'DELETED' :
+                           item.entity_type === 'PRICING_RULE' ? 'RULE_UPDATE' : 'PRICE_UPDATE'}
+                        </Badge>
+                        <div className="flex-1">
+                          <span className="font-medium">{item.field_name}</span>
+                          {item.old_value && item.new_value ? (
+                            <>
+                              <span className="text-muted-foreground"> changed from </span>
+                              <span className="line-through text-red-500">{item.old_value}</span>
+                              <span className="text-muted-foreground"> to </span>
+                              <span className="text-green-600">{item.new_value}</span>
+                            </>
+                          ) : item.new_value ? (
+                            <span className="text-green-600"> = {item.new_value}</span>
+                          ) : item.old_value ? (
+                            <span className="line-through text-red-500"> = {item.old_value}</span>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      Showing {historyData?.items?.length || 0} of {historyData?.total || 0} changes
+                    </p>
                   </div>
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    Showing last 30 days of changes
-                  </p>
-                </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
