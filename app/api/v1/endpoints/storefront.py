@@ -1863,3 +1863,39 @@ async def get_mega_menu(db: DB, response: Response):
     response.headers["X-Cache"] = "MISS"
     response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
     return response_items
+
+
+# ==================== Cache Management ====================
+
+@router.post("/cache/clear")
+async def clear_storefront_cache(secret: str = Query(..., description="Admin secret key")):
+    """
+    Clear all storefront caches.
+    Requires admin secret for protection.
+    Use this after updating categories, products, or menu items.
+    """
+    # Simple protection - in production, use proper auth
+    if secret != "aquapurite2026":
+        raise HTTPException(status_code=403, detail="Invalid secret")
+
+    cache = get_cache()
+
+    # Clear all storefront-related caches
+    cleared = 0
+    cleared += await cache.delete("storefront:mega-menu")
+    cleared += await cache.delete("storefront:categories")
+    cleared += await cache.clear_pattern("storefront:*")
+    cleared += await cache.clear_pattern("products:*")
+    cleared += await cache.clear_pattern("categories:*")
+
+    return {
+        "success": True,
+        "message": f"Cleared {cleared} cache entries",
+        "cleared_keys": [
+            "storefront:mega-menu",
+            "storefront:categories",
+            "storefront:*",
+            "products:*",
+            "categories:*"
+        ]
+    }
