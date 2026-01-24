@@ -3,7 +3,7 @@ from typing import Optional, List, Tuple
 from datetime import datetime, date, timedelta
 import uuid
 
-from sqlalchemy import select, func, and_, or_, update
+from sqlalchemy import select, func, and_, or_, update, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, joinedload
 
@@ -479,3 +479,132 @@ class ServiceRequestService:
         )
         count = await self.db.scalar(query)
         return f"SR-{date_part}-{(count or 0) + 1:04d}"
+
+    # ==================== AUTO ASSIGNMENT ====================
+
+    async def auto_assign_technician(
+        self,
+        request_id: uuid.UUID,
+        assigned_by: uuid.UUID,
+    ) -> Optional[ServiceRequest]:
+        """
+        Automatically assign the best available technician to a service request.
+
+        Selection criteria (in order of priority):
+        1. Technician services the request's pincode
+        2. Technician is ACTIVE and available
+        3. Lowest current workload (current_month_jobs)
+        4. Highest rating (average_rating)
+        5. Higher skill level preferred
+
+        Returns None if no suitable technician found.
+        """
+        service_request = await self.get_service_request_by_id(request_id)
+        if not service_request:
+            return None
+
+        # Already assigned?
+        if service_request.technician_id:
+            return service_request
+
+        # Get request pincode
+        request_pincode = service_request.service_pincode
+        if not request_pincode:
+            # Try to get from customer address
+            if service_request.customer_id:
+                customer = await self.db.get(Customer, service_request.customer_id)
+                if customer and customer.primary_address:
+                    request_pincode = customer.primary_address.get("pincode")
+
+        if not request_pincode:
+            raise ValueError("Service request has no pincode for technician matching")
+
+        # Find available technicians who service this pincode
+        # Using PostgreSQL JSONB contains operator for pincode matching
+        query = select(Technician).where(
+            and_(
+                Technician.status == "ACTIVE",
+                Technician.is_available == True,
+                # Check if technician's service_pincodes contains the request pincode
+                or_(
+                    Technician.service_pincodes.contains([request_pincode]),
+                    # Also check if they're in the same region
+                    Technician.region_id == service_request.region_id
+                )
+            )
+        ).order_by(
+            # Priority: lowest workload first
+            Technician.current_month_jobs.asc(),
+            # Then highest rating
+            Technician.average_rating.desc(),
+            # Then by skill level (we want higher skill)
+            func.case(
+                (Technician.skill_level == "MASTER", 5),
+                (Technician.skill_level == "EXPERT", 4),
+                (Technician.skill_level == "SENIOR", 3),
+                (Technician.skill_level == "JUNIOR", 2),
+                (Technician.skill_level == "TRAINEE", 1),
+                else_=0
+            ).desc()
+        ).limit(1)
+
+        result = await self.db.execute(query)
+        best_technician = result.scalar_one_or_none()
+
+        if not best_technician:
+            return None
+
+        # Assign the technician
+        return await self.assign_technician(
+            request_id=request_id,
+            technician_id=best_technician.id,
+            assigned_by=assigned_by,
+            notes=f"Auto-assigned based on availability and workload",
+        )
+
+    async def bulk_auto_assign(
+        self,
+        assigned_by: uuid.UUID,
+        region_id: Optional[uuid.UUID] = None,
+        limit: int = 50,
+    ) -> dict:
+        """
+        Auto-assign technicians to multiple pending service requests.
+
+        Returns dict with counts: assigned, failed, skipped.
+        """
+        # Get pending requests without technicians
+        query = select(ServiceRequest).where(
+            and_(
+                ServiceRequest.status == ServiceStatus.PENDING,
+                ServiceRequest.technician_id.is_(None),
+            )
+        )
+
+        if region_id:
+            query = query.where(ServiceRequest.region_id == region_id)
+
+        query = query.order_by(
+            # Prioritize by SLA breach time (most urgent first)
+            ServiceRequest.sla_breach_at.asc()
+        ).limit(limit)
+
+        result = await self.db.execute(query)
+        pending_requests = result.scalars().all()
+
+        stats = {"assigned": 0, "failed": 0, "skipped": 0}
+
+        for request in pending_requests:
+            try:
+                assigned = await self.auto_assign_technician(
+                    request_id=request.id,
+                    assigned_by=assigned_by,
+                )
+                if assigned and assigned.technician_id:
+                    stats["assigned"] += 1
+                else:
+                    stats["failed"] += 1
+            except Exception as e:
+                stats["failed"] += 1
+
+        return stats

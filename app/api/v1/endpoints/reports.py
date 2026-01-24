@@ -945,3 +945,397 @@ async def get_channel_pl(
         "total_net_income": float(total_net_income),
         "channels": channel_data
     }
+
+
+# ==================== GEOGRAPHIC ANALYTICS ====================
+
+from app.models.customer import Customer
+
+
+@router.get("/geographic/orders")
+async def get_geographic_order_stats(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    period: str = Query("this_month"),
+    group_by: str = Query("state", regex="^(state|city|pincode)$"),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """
+    Get order statistics grouped by geographic location.
+
+    Grouping options:
+    - state: Orders by state
+    - city: Orders by city
+    - pincode: Orders by pincode
+
+    Returns top locations by order count and revenue.
+    """
+    start_date, end_date = parse_period(period)
+
+    # Build the group by column based on parameter
+    # Orders have shipping_address as JSON, need to extract location fields
+    if group_by == "state":
+        # Extract state from JSON shipping_address
+        location_field = func.json_extract_path_text(Order.shipping_address, 'state')
+    elif group_by == "city":
+        location_field = func.json_extract_path_text(Order.shipping_address, 'city')
+    else:  # pincode
+        location_field = func.json_extract_path_text(Order.shipping_address, 'pincode')
+
+    # Query orders grouped by location
+    query = select(
+        location_field.label('location'),
+        func.count(Order.id).label('order_count'),
+        func.sum(Order.total_amount).label('total_revenue'),
+        func.avg(Order.total_amount).label('avg_order_value'),
+        func.count(func.distinct(Order.customer_id)).label('unique_customers'),
+    ).where(
+        and_(
+            Order.status.notin_(["CANCELLED", "DRAFT"]),
+            func.date(Order.created_at) >= start_date,
+            func.date(Order.created_at) <= end_date,
+            location_field.isnot(None),
+            location_field != "",
+        )
+    ).group_by(location_field).order_by(
+        func.count(Order.id).desc()
+    ).limit(limit)
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    # Calculate totals
+    total_orders = sum(row.order_count for row in rows)
+    total_revenue = sum(float(row.total_revenue or 0) for row in rows)
+
+    locations = []
+    for row in rows:
+        revenue = float(row.total_revenue or 0)
+        locations.append({
+            "location": row.location,
+            "order_count": row.order_count,
+            "order_share": round((row.order_count / total_orders * 100) if total_orders > 0 else 0, 2),
+            "total_revenue": revenue,
+            "revenue_share": round((revenue / total_revenue * 100) if total_revenue > 0 else 0, 2),
+            "avg_order_value": round(float(row.avg_order_value or 0), 2),
+            "unique_customers": row.unique_customers,
+        })
+
+    return {
+        "period": period,
+        "group_by": group_by,
+        "total_orders": total_orders,
+        "total_revenue": total_revenue,
+        "locations": locations,
+    }
+
+
+@router.get("/geographic/customers")
+async def get_geographic_customer_stats(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    group_by: str = Query("state", regex="^(state|city)$"),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """
+    Get customer statistics grouped by geographic location.
+
+    Returns customer distribution across states/cities with order metrics.
+    """
+    # Customer location is in primary_address JSON field
+    if group_by == "state":
+        location_field = func.json_extract_path_text(Customer.primary_address, 'state')
+    else:  # city
+        location_field = func.json_extract_path_text(Customer.primary_address, 'city')
+
+    # Query customer stats by location
+    query = select(
+        location_field.label('location'),
+        func.count(Customer.id).label('customer_count'),
+        func.sum(Customer.total_orders).label('total_orders'),
+        func.sum(Customer.total_spent).label('total_revenue'),
+        func.avg(Customer.total_spent).label('avg_customer_value'),
+    ).where(
+        and_(
+            Customer.is_active == True,
+            location_field.isnot(None),
+            location_field != "",
+        )
+    ).group_by(location_field).order_by(
+        func.count(Customer.id).desc()
+    ).limit(limit)
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    total_customers = sum(row.customer_count for row in rows)
+
+    locations = []
+    for row in rows:
+        locations.append({
+            "location": row.location,
+            "customer_count": row.customer_count,
+            "customer_share": round((row.customer_count / total_customers * 100) if total_customers > 0 else 0, 2),
+            "total_orders": row.total_orders or 0,
+            "total_revenue": float(row.total_revenue or 0),
+            "avg_customer_value": round(float(row.avg_customer_value or 0), 2),
+        })
+
+    return {
+        "group_by": group_by,
+        "total_customers": total_customers,
+        "locations": locations,
+    }
+
+
+@router.get("/geographic/heatmap")
+async def get_geographic_heatmap_data(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    metric: str = Query("orders", regex="^(orders|revenue|customers)$"),
+    period: str = Query("this_month"),
+):
+    """
+    Get geographic data formatted for heatmap visualization.
+
+    Returns state-level data with metrics for India map visualization.
+    """
+    start_date, end_date = parse_period(period)
+
+    state_field = func.json_extract_path_text(Order.shipping_address, 'state')
+
+    # State abbreviations for mapping
+    STATE_CODES = {
+        "Andhra Pradesh": "AP", "Arunachal Pradesh": "AR", "Assam": "AS",
+        "Bihar": "BR", "Chhattisgarh": "CG", "Goa": "GA", "Gujarat": "GJ",
+        "Haryana": "HR", "Himachal Pradesh": "HP", "Jharkhand": "JH",
+        "Karnataka": "KA", "Kerala": "KL", "Madhya Pradesh": "MP",
+        "Maharashtra": "MH", "Manipur": "MN", "Meghalaya": "ML",
+        "Mizoram": "MZ", "Nagaland": "NL", "Odisha": "OD", "Punjab": "PB",
+        "Rajasthan": "RJ", "Sikkim": "SK", "Tamil Nadu": "TN",
+        "Telangana": "TS", "Tripura": "TR", "Uttar Pradesh": "UP",
+        "Uttarakhand": "UK", "West Bengal": "WB", "Delhi": "DL",
+        "Jammu and Kashmir": "JK", "Ladakh": "LA", "Chandigarh": "CH",
+        "Puducherry": "PY", "Andaman and Nicobar Islands": "AN",
+        "Dadra and Nagar Haveli and Daman and Diu": "DD", "Lakshadweep": "LD",
+    }
+
+    query = select(
+        state_field.label('state'),
+        func.count(Order.id).label('order_count'),
+        func.sum(Order.total_amount).label('total_revenue'),
+        func.count(func.distinct(Order.customer_id)).label('unique_customers'),
+    ).where(
+        and_(
+            Order.status.notin_(["CANCELLED", "DRAFT"]),
+            func.date(Order.created_at) >= start_date,
+            func.date(Order.created_at) <= end_date,
+            state_field.isnot(None),
+            state_field != "",
+        )
+    ).group_by(state_field)
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    # Calculate max value for normalization
+    if metric == "orders":
+        max_val = max((row.order_count for row in rows), default=1)
+    elif metric == "revenue":
+        max_val = max((float(row.total_revenue or 0) for row in rows), default=1)
+    else:
+        max_val = max((row.unique_customers for row in rows), default=1)
+
+    heatmap_data = []
+    for row in rows:
+        state_name = row.state
+        if metric == "orders":
+            value = row.order_count
+        elif metric == "revenue":
+            value = float(row.total_revenue or 0)
+        else:
+            value = row.unique_customers
+
+        heatmap_data.append({
+            "state": state_name,
+            "state_code": STATE_CODES.get(state_name, state_name[:2].upper()),
+            "value": value,
+            "intensity": round(value / max_val, 2) if max_val > 0 else 0,
+            "order_count": row.order_count,
+            "revenue": float(row.total_revenue or 0),
+            "customers": row.unique_customers,
+        })
+
+    return {
+        "metric": metric,
+        "period": period,
+        "max_value": max_val,
+        "data": heatmap_data,
+    }
+
+
+# ==================== PROMOTIONAL ANALYTICS ====================
+
+from app.models.promotion import Coupon
+
+
+@router.get("/promotions/performance")
+async def get_promotion_performance(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    period: str = Query("this_month"),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """
+    Get performance metrics for coupons and promotions.
+
+    Returns:
+    - Coupon usage stats
+    - Revenue impact
+    - Customer acquisition from promotions
+    """
+    start_date, end_date = parse_period(period)
+
+    # Get orders with discount codes
+    promo_query = select(
+        Order.discount_code,
+        func.count(Order.id).label('usage_count'),
+        func.sum(Order.discount_amount).label('total_discount'),
+        func.sum(Order.total_amount).label('total_revenue'),
+        func.avg(Order.total_amount).label('avg_order_value'),
+        func.count(func.distinct(Order.customer_id)).label('unique_customers'),
+    ).where(
+        and_(
+            Order.status.notin_(["CANCELLED", "DRAFT"]),
+            func.date(Order.created_at) >= start_date,
+            func.date(Order.created_at) <= end_date,
+            Order.discount_code.isnot(None),
+            Order.discount_code != "",
+        )
+    ).group_by(Order.discount_code).order_by(
+        func.count(Order.id).desc()
+    ).limit(limit)
+
+    result = await db.execute(promo_query)
+    promo_rows = result.all()
+
+    # Get coupon details for matching
+    coupon_codes = [row.discount_code for row in promo_rows if row.discount_code]
+    coupon_details = {}
+    if coupon_codes:
+        coupon_query = select(Coupon).where(Coupon.code.in_(coupon_codes))
+        coupon_result = await db.execute(coupon_query)
+        coupons = coupon_result.scalars().all()
+        coupon_details = {c.code: c for c in coupons}
+
+    promotions = []
+    total_discount_given = 0
+    total_revenue_with_promo = 0
+
+    for row in promo_rows:
+        coupon = coupon_details.get(row.discount_code)
+        discount = float(row.total_discount or 0)
+        revenue = float(row.total_revenue or 0)
+
+        total_discount_given += discount
+        total_revenue_with_promo += revenue
+
+        promotions.append({
+            "code": row.discount_code,
+            "name": coupon.name if coupon else row.discount_code,
+            "type": coupon.discount_type if coupon else "UNKNOWN",
+            "usage_count": row.usage_count,
+            "usage_limit": coupon.max_uses if coupon else None,
+            "total_discount": discount,
+            "total_revenue": revenue,
+            "avg_order_value": round(float(row.avg_order_value or 0), 2),
+            "unique_customers": row.unique_customers,
+            "roi": round((revenue / discount - 1) * 100, 2) if discount > 0 else 0,
+            "is_active": coupon.is_active if coupon else None,
+        })
+
+    # Get overall stats
+    total_orders_query = select(func.count(Order.id)).where(
+        and_(
+            Order.status.notin_(["CANCELLED", "DRAFT"]),
+            func.date(Order.created_at) >= start_date,
+            func.date(Order.created_at) <= end_date,
+        )
+    )
+    total_orders = await db.scalar(total_orders_query) or 0
+
+    promo_orders = sum(p["usage_count"] for p in promotions)
+
+    return {
+        "period": period,
+        "summary": {
+            "total_promotions_used": len(promotions),
+            "total_discount_given": total_discount_given,
+            "total_revenue_with_promotions": total_revenue_with_promo,
+            "promo_orders_count": promo_orders,
+            "total_orders_count": total_orders,
+            "promo_order_rate": round((promo_orders / total_orders * 100) if total_orders > 0 else 0, 2),
+            "avg_discount_per_order": round(total_discount_given / promo_orders, 2) if promo_orders > 0 else 0,
+        },
+        "promotions": promotions,
+    }
+
+
+@router.get("/promotions/trends")
+async def get_promotion_trends(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    coupon_code: Optional[str] = Query(None),
+    period: str = Query("this_month"),
+):
+    """
+    Get daily trends for promotion usage.
+
+    Shows usage over time for tracking campaign effectiveness.
+    """
+    start_date, end_date = parse_period(period)
+
+    conditions = [
+        Order.status.notin_(["CANCELLED", "DRAFT"]),
+        func.date(Order.created_at) >= start_date,
+        func.date(Order.created_at) <= end_date,
+    ]
+
+    if coupon_code:
+        conditions.append(Order.discount_code == coupon_code)
+    else:
+        conditions.append(Order.discount_code.isnot(None))
+        conditions.append(Order.discount_code != "")
+
+    # Daily trend query
+    trend_query = select(
+        func.date(Order.created_at).label('date'),
+        func.count(Order.id).label('order_count'),
+        func.sum(Order.discount_amount).label('total_discount'),
+        func.sum(Order.total_amount).label('total_revenue'),
+    ).where(
+        and_(*conditions)
+    ).group_by(
+        func.date(Order.created_at)
+    ).order_by(
+        func.date(Order.created_at)
+    )
+
+    result = await db.execute(trend_query)
+    rows = result.all()
+
+    daily_data = []
+    for row in rows:
+        daily_data.append({
+            "date": row.date.isoformat() if row.date else None,
+            "order_count": row.order_count,
+            "total_discount": float(row.total_discount or 0),
+            "total_revenue": float(row.total_revenue or 0),
+        })
+
+    return {
+        "period": period,
+        "coupon_code": coupon_code,
+        "total_days": len(daily_data),
+        "daily_data": daily_data,
+    }

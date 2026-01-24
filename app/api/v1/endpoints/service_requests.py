@@ -424,3 +424,88 @@ async def get_status_history(
         )
 
     return [ServiceStatusHistoryResponse.model_validate(h) for h in sr.status_history]
+
+
+# ==================== AUTO ASSIGNMENT ENDPOINTS ====================
+
+
+@router.post(
+    "/{request_id}/auto-assign",
+    response_model=ServiceRequestDetail,
+    dependencies=[Depends(require_permissions("service:assign"))]
+)
+async def auto_assign_technician(
+    request_id: uuid.UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """
+    Auto-assign the best available technician to a service request.
+
+    Selection criteria:
+    - Technician services the request's pincode
+    - Technician is ACTIVE and available
+    - Lowest current workload (current_month_jobs)
+    - Highest rating (average_rating)
+    - Higher skill level preferred
+
+    Requires: service:assign permission
+    """
+    service = ServiceRequestService(db)
+
+    try:
+        sr = await service.auto_assign_technician(
+            request_id=request_id,
+            assigned_by=current_user.id,
+        )
+
+        if not sr:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No available technician found for this service area"
+            )
+
+        return await get_service_request(sr.id, db)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.post(
+    "/bulk-auto-assign",
+    dependencies=[Depends(require_permissions("service:assign"))]
+)
+async def bulk_auto_assign_technicians(
+    db: DB,
+    current_user: CurrentUser,
+    region_id: Optional[uuid.UUID] = Query(None),
+    limit: int = Query(50, ge=1, le=100),
+):
+    """
+    Auto-assign technicians to multiple pending service requests.
+
+    Processes pending requests without technicians, prioritizing by SLA breach time.
+
+    Requires: service:assign permission
+
+    Returns:
+    - assigned: Number of successfully assigned requests
+    - failed: Number of requests where no technician was found
+    - skipped: Number of skipped requests
+    """
+    service = ServiceRequestService(db)
+
+    stats = await service.bulk_auto_assign(
+        assigned_by=current_user.id,
+        region_id=region_id,
+        limit=limit,
+    )
+
+    return {
+        "message": f"Auto-assignment completed",
+        "assigned": stats["assigned"],
+        "failed": stats["failed"],
+        "skipped": stats["skipped"],
+    }

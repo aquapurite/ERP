@@ -982,3 +982,98 @@ async def get_inventory_dashboard_stats(
     service = InventoryService(db)
     stats = await service.get_dashboard_stats(warehouse_id=warehouse_id)
     return InventoryDashboardStats(**stats)
+
+
+# ==================== STOCK ALERTS ====================
+
+@router.post(
+    "/alerts/send",
+    dependencies=[Depends(require_permissions("inventory:update"))]
+)
+async def send_stock_alerts(
+    db: DB,
+    current_user: CurrentUser,
+    warehouse_id: Optional[uuid.UUID] = Query(None, description="Filter by warehouse"),
+    manager_email: str = Query("inventory@aquapurite.com", description="Email for alerts"),
+    manager_phone: Optional[str] = Query(None, description="Phone for SMS alerts"),
+):
+    """
+    Check inventory levels and send notifications for low/out of stock items.
+
+    This endpoint can be called:
+    - Manually by inventory managers
+    - Automatically via scheduled jobs/cron
+
+    Requires: inventory:update permission
+    """
+    from app.services.notification_service import check_and_send_stock_alerts
+
+    result = await check_and_send_stock_alerts(
+        db=db,
+        warehouse_id=str(warehouse_id) if warehouse_id else None,
+        manager_email=manager_email,
+        manager_phone=manager_phone,
+    )
+
+    return {
+        "success": True,
+        "message": "Stock alert check completed",
+        "alerts_sent": result["alerts_sent"],
+        "total_items_checked": result["total_items_checked"],
+    }
+
+
+@router.get(
+    "/alerts/preview",
+    dependencies=[Depends(require_permissions("inventory:view"))]
+)
+async def preview_stock_alerts(
+    db: DB,
+    warehouse_id: Optional[uuid.UUID] = Query(None),
+):
+    """
+    Preview which items would trigger alerts without actually sending notifications.
+
+    Returns list of items that are low stock or out of stock.
+    Requires: inventory:view permission
+    """
+    from app.models.inventory import InventorySummary
+    from app.models.product import Product
+    from app.models.warehouse import Warehouse
+    from sqlalchemy.orm import selectinload
+
+    query = select(InventorySummary).options(
+        selectinload(InventorySummary.product),
+        selectinload(InventorySummary.warehouse),
+    ).where(
+        InventorySummary.available_quantity <= InventorySummary.reorder_level
+    )
+
+    if warehouse_id:
+        query = query.where(InventorySummary.warehouse_id == warehouse_id)
+
+    query = query.order_by(InventorySummary.available_quantity.asc())
+
+    result = await db.execute(query)
+    items = result.scalars().unique().all()
+
+    alerts = []
+    for item in items:
+        alert_type = "out_of_stock" if item.available_quantity == 0 else "low_stock"
+        alerts.append({
+            "product_id": str(item.product_id),
+            "product_name": item.product.name if item.product else "Unknown",
+            "product_sku": item.product.sku if item.product else "N/A",
+            "warehouse_id": str(item.warehouse_id),
+            "warehouse_name": item.warehouse.name if item.warehouse else "Unknown",
+            "current_quantity": item.available_quantity,
+            "reorder_level": item.reorder_level or 10,
+            "alert_type": alert_type,
+        })
+
+    return {
+        "total_alerts": len(alerts),
+        "out_of_stock_count": len([a for a in alerts if a["alert_type"] == "out_of_stock"]),
+        "low_stock_count": len([a for a in alerts if a["alert_type"] == "low_stock"]),
+        "items": alerts,
+    }

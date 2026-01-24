@@ -1865,6 +1865,152 @@ async def get_mega_menu(db: DB, response: Response):
     return response_items
 
 
+# ==================== Product Comparison ====================
+
+
+class ProductComparisonItem(BaseModel):
+    """Product comparison item with specifications."""
+    id: str
+    name: str
+    slug: str
+    sku: str
+    mrp: float
+    selling_price: Optional[float]
+    discount_percentage: Optional[float]
+    primary_image_url: Optional[str]
+    brand_name: Optional[str]
+    category_name: Optional[str]
+    short_description: Optional[str]
+    specifications: dict  # Key-value pairs of specifications
+    in_stock: bool
+    warranty_months: Optional[int]
+    hsn_code: Optional[str]
+    weight_kg: Optional[float]
+
+
+class ProductComparisonResponse(BaseModel):
+    """Response for product comparison."""
+    products: List[ProductComparisonItem]
+    comparison_attributes: List[str]  # List of all unique specification keys for comparison
+
+
+@router.get("/products/compare", response_model=ProductComparisonResponse)
+async def compare_products(
+    db: DB,
+    response: Response,
+    product_ids: str = Query(..., description="Comma-separated product IDs (max 4)"),
+):
+    """
+    Compare multiple products side by side.
+
+    Features:
+    - Compares up to 4 products at once
+    - Returns specifications in a unified format for easy comparison
+    - Includes all comparison attributes found across products
+
+    No authentication required. Not cached (dynamic comparisons).
+    """
+    start_time = time.time()
+
+    # Parse product IDs
+    try:
+        ids = [uuid_module.UUID(pid.strip()) for pid in product_ids.split(",") if pid.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid product ID format")
+
+    if len(ids) < 2:
+        raise HTTPException(status_code=400, detail="At least 2 products required for comparison")
+    if len(ids) > 4:
+        raise HTTPException(status_code=400, detail="Maximum 4 products can be compared at once")
+
+    # Fetch products with specifications
+    query = (
+        select(Product)
+        .options(
+            selectinload(Product.images),
+            selectinload(Product.category),
+            selectinload(Product.brand),
+        )
+        .where(
+            Product.id.in_(ids),
+            Product.is_active == True,
+        )
+    )
+    result = await db.execute(query)
+    products = result.scalars().all()
+
+    if len(products) < 2:
+        raise HTTPException(status_code=404, detail="Not enough valid products found for comparison")
+
+    # Get stock info
+    stock_query = (
+        select(
+            InventorySummary.product_id,
+            func.sum(InventorySummary.available_quantity).label('total_available')
+        )
+        .where(InventorySummary.product_id.in_([p.id for p in products]))
+        .group_by(InventorySummary.product_id)
+    )
+    stock_result = await db.execute(stock_query)
+    stock_map = {row.product_id: row.total_available or 0 for row in stock_result.all()}
+
+    # Collect all unique specification keys
+    all_spec_keys = set()
+    comparison_items = []
+
+    for p in products:
+        # Parse specifications from product
+        specs = {}
+        if p.specifications and isinstance(p.specifications, list):
+            for spec in p.specifications:
+                if isinstance(spec, dict):
+                    key = spec.get("name") or spec.get("key", "Unknown")
+                    value = spec.get("value", "N/A")
+                    specs[key] = value
+                    all_spec_keys.add(key)
+
+        # Get primary image
+        primary_image = next(
+            (img for img in (p.images or []) if img.is_primary),
+            (p.images[0] if p.images else None)
+        )
+
+        # Calculate discount percentage
+        discount_pct = None
+        if p.mrp and p.selling_price and p.mrp > p.selling_price:
+            discount_pct = round((float(p.mrp) - float(p.selling_price)) / float(p.mrp) * 100, 1)
+
+        comparison_items.append(ProductComparisonItem(
+            id=str(p.id),
+            name=p.name,
+            slug=p.slug,
+            sku=p.sku,
+            mrp=float(p.mrp) if p.mrp else 0,
+            selling_price=float(p.selling_price) if p.selling_price else None,
+            discount_percentage=discount_pct,
+            primary_image_url=primary_image.image_url if primary_image else None,
+            brand_name=p.brand.name if p.brand else None,
+            category_name=p.category.name if p.category else None,
+            short_description=p.short_description,
+            specifications=specs,
+            in_stock=stock_map.get(p.id, 0) > 0,
+            warranty_months=p.warranty_months,
+            hsn_code=p.hsn_code,
+            weight_kg=float(p.weight_kg) if p.weight_kg else None,
+        ))
+
+    # Standard attributes that are always compared
+    standard_attrs = ["Price", "Brand", "Category", "Warranty", "HSN Code", "Weight"]
+    comparison_attrs = standard_attrs + sorted(list(all_spec_keys - set(standard_attrs)))
+
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+
+    return ProductComparisonResponse(
+        products=comparison_items,
+        comparison_attributes=comparison_attrs,
+    )
+
+
 # ==================== Cache Management ====================
 
 @router.post("/cache/clear")

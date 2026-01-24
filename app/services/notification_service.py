@@ -57,6 +57,11 @@ class NotificationType(str, Enum):
     PROMOTIONAL = "promotional"
     CAMPAIGN = "campaign"
 
+    # Inventory alerts (internal notifications)
+    LOW_STOCK_ALERT = "low_stock_alert"
+    OUT_OF_STOCK_ALERT = "out_of_stock_alert"
+    REORDER_REQUIRED = "reorder_required"
+
 
 # SMS Templates
 SMS_TEMPLATES = {
@@ -103,6 +108,19 @@ SMS_TEMPLATES = {
     NotificationType.WARRANTY_EXPIRY_REMINDER: (
         "Reminder: Your warranty for {product_name} (S/N: {serial_number}) "
         "expires on {expiry_date}. Extend your warranty now!"
+    ),
+    # Inventory alerts (internal)
+    NotificationType.LOW_STOCK_ALERT: (
+        "[LOW STOCK] {product_name} (SKU: {product_sku}) in {warehouse_name}: "
+        "{current_qty} units (Reorder level: {reorder_level})"
+    ),
+    NotificationType.OUT_OF_STOCK_ALERT: (
+        "[OUT OF STOCK] {product_name} (SKU: {product_sku}) in {warehouse_name}: "
+        "Stock depleted. Immediate reorder required."
+    ),
+    NotificationType.REORDER_REQUIRED: (
+        "[REORDER] {product_count} products in {warehouse_name} need reordering. "
+        "Please review the inventory dashboard."
     ),
 }
 
@@ -399,3 +417,195 @@ async def notify_installation_scheduled(
         technician_name=technician_name,
         technician_phone=technician_phone,
     )
+
+
+# ==================== INVENTORY ALERT NOTIFICATIONS ====================
+
+
+class StockAlertItem:
+    """Stock alert item data."""
+    def __init__(
+        self,
+        product_id: str,
+        product_name: str,
+        product_sku: str,
+        warehouse_name: str,
+        current_qty: int,
+        reorder_level: int,
+    ):
+        self.product_id = product_id
+        self.product_name = product_name
+        self.product_sku = product_sku
+        self.warehouse_name = warehouse_name
+        self.current_qty = current_qty
+        self.reorder_level = reorder_level
+
+
+async def send_low_stock_alert(
+    db: AsyncSession,
+    recipient_email: str,
+    recipient_phone: Optional[str],
+    alert_item: StockAlertItem,
+) -> Dict[str, Any]:
+    """
+    Send low stock alert notification to warehouse/inventory managers.
+
+    Args:
+        db: Database session
+        recipient_email: Manager email for notification
+        recipient_phone: Manager phone for SMS alert
+        alert_item: Stock alert item details
+    """
+    service = NotificationService(db)
+
+    # Send email notification
+    result = await service.send_notification(
+        recipient_phone=recipient_phone or "",
+        recipient_email=recipient_email,
+        notification_type=NotificationType.LOW_STOCK_ALERT,
+        channel=NotificationChannel.EMAIL,
+        template_data={
+            "product_name": alert_item.product_name,
+            "product_sku": alert_item.product_sku,
+            "warehouse_name": alert_item.warehouse_name,
+            "current_qty": alert_item.current_qty,
+            "reorder_level": alert_item.reorder_level,
+        }
+    )
+
+    logger.warning(
+        f"LOW STOCK ALERT: {alert_item.product_name} ({alert_item.product_sku}) "
+        f"in {alert_item.warehouse_name}: {alert_item.current_qty} units "
+        f"(reorder level: {alert_item.reorder_level})"
+    )
+
+    return result
+
+
+async def send_out_of_stock_alert(
+    db: AsyncSession,
+    recipient_email: str,
+    recipient_phone: Optional[str],
+    alert_item: StockAlertItem,
+) -> Dict[str, Any]:
+    """
+    Send out of stock alert notification to warehouse/inventory managers.
+    """
+    service = NotificationService(db)
+
+    # Send both email and SMS for out-of-stock (critical)
+    results = []
+
+    # Email
+    email_result = await service.send_notification(
+        recipient_phone=recipient_phone or "",
+        recipient_email=recipient_email,
+        notification_type=NotificationType.OUT_OF_STOCK_ALERT,
+        channel=NotificationChannel.EMAIL,
+        template_data={
+            "product_name": alert_item.product_name,
+            "product_sku": alert_item.product_sku,
+            "warehouse_name": alert_item.warehouse_name,
+        }
+    )
+    results.append(email_result)
+
+    # SMS if phone available
+    if recipient_phone:
+        sms_result = await service.send_notification(
+            recipient_phone=recipient_phone,
+            recipient_email=recipient_email,
+            notification_type=NotificationType.OUT_OF_STOCK_ALERT,
+            channel=NotificationChannel.SMS,
+            template_data={
+                "product_name": alert_item.product_name,
+                "product_sku": alert_item.product_sku,
+                "warehouse_name": alert_item.warehouse_name,
+            }
+        )
+        results.append(sms_result)
+
+    logger.critical(
+        f"OUT OF STOCK ALERT: {alert_item.product_name} ({alert_item.product_sku}) "
+        f"in {alert_item.warehouse_name}: Stock depleted!"
+    )
+
+    return {"notifications": results, "count": len(results)}
+
+
+async def check_and_send_stock_alerts(
+    db: AsyncSession,
+    warehouse_id: Optional[str] = None,
+    manager_email: str = "inventory@aquapurite.com",
+    manager_phone: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Check inventory levels and send alerts for low/out of stock items.
+
+    This function should be called periodically (e.g., daily via cron job)
+    or after significant inventory movements.
+
+    Returns summary of alerts sent.
+    """
+    from app.services.inventory_service import InventoryService
+    from app.models.inventory import InventorySummary
+    from app.models.product import Product
+    from app.models.warehouse import Warehouse
+    from sqlalchemy import select, and_
+    from sqlalchemy.orm import joinedload
+
+    # Get low stock items
+    query = select(InventorySummary).options(
+        joinedload(InventorySummary.product),
+        joinedload(InventorySummary.warehouse),
+    ).where(
+        and_(
+            InventorySummary.available_quantity <= InventorySummary.reorder_level,
+        )
+    )
+
+    if warehouse_id:
+        query = query.where(InventorySummary.warehouse_id == warehouse_id)
+
+    result = await db.execute(query)
+    low_stock_items = result.scalars().unique().all()
+
+    alerts_sent = {"low_stock": 0, "out_of_stock": 0}
+
+    for item in low_stock_items:
+        alert_item = StockAlertItem(
+            product_id=str(item.product_id),
+            product_name=item.product.name if item.product else "Unknown",
+            product_sku=item.product.sku if item.product else "N/A",
+            warehouse_name=item.warehouse.name if item.warehouse else "Unknown",
+            current_qty=item.available_quantity,
+            reorder_level=item.reorder_level or 10,
+        )
+
+        if item.available_quantity == 0:
+            await send_out_of_stock_alert(
+                db=db,
+                recipient_email=manager_email,
+                recipient_phone=manager_phone,
+                alert_item=alert_item,
+            )
+            alerts_sent["out_of_stock"] += 1
+        else:
+            await send_low_stock_alert(
+                db=db,
+                recipient_email=manager_email,
+                recipient_phone=manager_phone,
+                alert_item=alert_item,
+            )
+            alerts_sent["low_stock"] += 1
+
+    logger.info(
+        f"Stock alerts processed: {alerts_sent['low_stock']} low stock, "
+        f"{alerts_sent['out_of_stock']} out of stock"
+    )
+
+    return {
+        "success": True,
+        "alerts_sent": alerts_sent,
+        "total_items_checked": len(low_stock_items),
+    }
