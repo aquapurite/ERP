@@ -51,6 +51,67 @@ async def list_categories(
     )
 
 
+@router.get("/roots", response_model=CategoryListResponse)
+async def get_root_categories(db: DB):
+    """
+    Get only ROOT categories (parent_id IS NULL).
+    Used for cascading dropdowns - first level selection.
+    Public endpoint.
+    """
+    service = ProductService(db)
+    categories, total = await service.get_categories(
+        parent_id=None,  # Only root categories
+        roots_only=True,  # Explicit flag for roots only
+        include_inactive=False,
+        skip=0,
+        limit=100
+    )
+
+    return CategoryListResponse(
+        items=[CategoryResponse.model_validate(c) for c in categories],
+        total=total,
+        page=1,
+        size=100,
+        pages=1,
+    )
+
+
+@router.get("/{parent_id}/children", response_model=CategoryListResponse)
+async def get_category_children(
+    parent_id: uuid.UUID,
+    db: DB,
+):
+    """
+    Get children (subcategories) of a specific parent category.
+    Used for cascading dropdowns - second level selection.
+    Public endpoint.
+    """
+    service = ProductService(db)
+
+    # Verify parent exists
+    parent = await service.get_category_by_id(parent_id)
+    if not parent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Parent category not found"
+        )
+
+    categories, total = await service.get_categories(
+        parent_id=parent_id,
+        include_inactive=False,
+        skip=0,
+        limit=100
+    )
+
+    return CategoryListResponse(
+        items=[CategoryResponse.model_validate(c) for c in categories],
+        total=total,
+        page=1,
+        size=100,
+        pages=1,
+    )
+
+
 @router.get("/tree", response_model=CategoryTreeResponse)
 async def get_category_tree(db: DB):
     """

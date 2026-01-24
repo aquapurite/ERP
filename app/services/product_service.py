@@ -31,26 +31,39 @@ class ProductService:
     async def get_categories(
         self,
         parent_id: Optional[uuid.UUID] = None,
+        roots_only: bool = False,
         include_inactive: bool = False,
         skip: int = 0,
         limit: int = 100
     ) -> Tuple[List[Category], int]:
-        """Get categories with optional parent filter."""
-        stmt = select(Category).order_by(Category.sort_order, Category.name)
+        """Get categories with optional parent filter.
 
-        if parent_id:
+        Args:
+            parent_id: Filter by parent category ID (children of this category)
+            roots_only: If True, only return ROOT categories (parent_id IS NULL)
+            include_inactive: Include inactive categories
+            skip: Pagination offset
+            limit: Pagination limit
+        """
+        stmt = select(Category).order_by(Category.sort_order, Category.name)
+        count_stmt = select(func.count(Category.id))
+
+        # Filter by parent
+        if roots_only:
+            # Only root categories (parent_id IS NULL)
+            stmt = stmt.where(Category.parent_id.is_(None))
+            count_stmt = count_stmt.where(Category.parent_id.is_(None))
+        elif parent_id:
+            # Children of specific parent
             stmt = stmt.where(Category.parent_id == parent_id)
-        elif parent_id is None:
-            # Get root categories only if parent_id is explicitly None
-            pass  # Include all
+            count_stmt = count_stmt.where(Category.parent_id == parent_id)
+        # else: include all categories (no filter)
 
         if not include_inactive:
             stmt = stmt.where(Category.is_active == True)
+            count_stmt = count_stmt.where(Category.is_active == True)
 
         # Count
-        count_stmt = select(func.count(Category.id))
-        if not include_inactive:
-            count_stmt = count_stmt.where(Category.is_active == True)
         total = (await self.db.execute(count_stmt)).scalar()
 
         # Paginate

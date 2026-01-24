@@ -2219,3 +2219,224 @@ GET    /api/v1/pricing/alerts                     # Below margin threshold
 - [G2 Omnichannel Pricing Guide](https://learn.g2.com/omnichannel-pricing)
 - [Revionics Multi-Channel Strategy](https://revionics.com/blog/multi-channel-pricing-strategy-start-the-omnichannel-journey)
 - [BigCommerce B2B Pricing](https://www.bigcommerce.com/articles/b2b-ecommerce/b2b-pricing-strategy/)
+
+---
+
+## Category Hierarchy & Cascading Filter Pattern (2026-01-24)
+
+### Overview
+
+The category system follows a **hierarchical parent-child structure**. All UI components that filter by category MUST implement **cascading dropdowns** to respect this hierarchy.
+
+### Category Hierarchy Structure
+
+```
+categories table:
+├── id (UUID) - Primary Key
+├── name (VARCHAR)
+├── slug (VARCHAR, UNIQUE)
+├── parent_id (UUID, FK → categories.id)
+│   └── NULL = Root/Parent category
+│   └── Non-NULL = Sub-category (child)
+└── children (relationship) - list of subcategories
+```
+
+**Current Category Data:**
+
+| Category | Type | Parent | Has Image |
+|----------|------|--------|-----------|
+| **Water Purifiers** | ROOT | NULL | ✅ Yes |
+| **Spare Parts** | ROOT | NULL | ✅ Yes |
+| RO+UV Water Purifiers | SUB | Water Purifiers | No |
+| UV Water Purifiers | SUB | Water Purifiers | No |
+| Spare Parts - Economical | SUB | Spare Parts | No |
+| Spare Parts - Premium | SUB | Spare Parts | No |
+
+**Visual Hierarchy:**
+```
+Water Purifiers (ROOT)
+├── RO+UV Water Purifiers
+├── UV Water Purifiers
+└── RO Water Purifiers
+
+Spare Parts (ROOT)
+├── Spare Parts - Economical
+└── Spare Parts - Premium
+```
+
+### Product Assignment Rules
+
+**CRITICAL**: Products are assigned to **LEAF categories (subcategories)**, NOT parent categories.
+
+```
+✅ CORRECT:
+Product "Aquapurite Optima" → category_id = "RO+UV Water Purifiers" (subcategory)
+
+❌ WRONG:
+Product "Aquapurite Optima" → category_id = "Water Purifiers" (parent)
+```
+
+**Why?**
+- Parent categories are for grouping/navigation
+- Subcategories are for actual product classification
+- Filtering by parent should include ALL products in its children
+
+### Cascading Filter Pattern (MANDATORY)
+
+Any UI that filters products by category MUST implement this pattern:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Step 1: Channel     │  Step 2: Parent       │  Step 3: Subcategory        │
+│  [Select Channel ▼]  │  [Select Parent ▼]    │  [Select Subcategory ▼]     │
+└─────────────────────────────────────────────────────────────────────────────┘
+         │                      │                          │
+         ▼                      ▼                          ▼
+    All channels         ROOT categories only      Children of selected parent
+    from API             (parent_id = NULL)        (parent_id = selected)
+                                                           │
+                                                           ▼
+                                              Products filtered by subcategory
+```
+
+### Implementation Requirements
+
+#### 1. Backend API - Category Endpoints
+
+```python
+# GET /api/v1/categories/roots - Parent categories only
+@router.get("/roots")
+async def get_root_categories(db: DB):
+    """Returns only ROOT categories (parent_id IS NULL)"""
+    stmt = select(Category).where(Category.parent_id.is_(None))
+    ...
+
+# GET /api/v1/categories/{parent_id}/children - Subcategories
+@router.get("/{parent_id}/children")
+async def get_subcategories(parent_id: UUID, db: DB):
+    """Returns children of a parent category"""
+    stmt = select(Category).where(Category.parent_id == parent_id)
+    ...
+```
+
+#### 2. Backend API - Products with Hierarchy
+
+```python
+# GET /api/v1/products?category_id=X&include_children=true
+# When include_children=true, fetch products from category AND all subcategories
+
+async def get_products(category_id: UUID, include_children: bool = False):
+    if include_children:
+        # Get all descendant category IDs
+        category_ids = await get_category_descendants(category_id)
+        filters.append(Product.category_id.in_(category_ids))
+    else:
+        filters.append(Product.category_id == category_id)
+```
+
+#### 3. Frontend - Cascading Dropdowns
+
+```typescript
+// State
+const [parentCategoryId, setParentCategoryId] = useState<string>('');
+const [subcategoryId, setSubcategoryId] = useState<string>('');
+
+// Fetch ROOT categories (parent_id = NULL)
+const { data: parentCategories } = useQuery({
+  queryKey: ['categories-roots'],
+  queryFn: () => categoriesApi.getRoots(),
+});
+
+// Fetch CHILDREN of selected parent
+const { data: subcategories } = useQuery({
+  queryKey: ['categories-children', parentCategoryId],
+  queryFn: () => categoriesApi.getChildren(parentCategoryId),
+  enabled: !!parentCategoryId,
+});
+
+// Fetch products in selected subcategory
+const { data: products } = useQuery({
+  queryKey: ['products', subcategoryId],
+  queryFn: () => productsApi.list({ category_id: subcategoryId }),
+  enabled: !!subcategoryId,
+});
+```
+
+#### 4. Frontend - Add Pricing Rule Dialog
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│           Add Channel Pricing                                │
+├──────────────────────────────────────────────────────────────┤
+│  Parent Category:    [Water Purifiers ▼]                     │
+│                      (Only ROOT categories)                  │
+│                                                              │
+│  Subcategory:        [RO+UV Water Purifiers ▼]               │
+│                      (Children of selected parent)           │
+│                                                              │
+│  Product:            [Aquapurite Optima ▼]                   │
+│                      (Products in subcategory - DROPDOWN)    │
+│                                                              │
+│  MRP:                [₹29,999]  (Auto-filled from product)   │
+│  Selling Price:      [₹24,999]                               │
+│  Transfer Price:     [₹18,999]                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Pages That Must Use Cascading Filters
+
+| Page | Path | Implementation |
+|------|------|----------------|
+| **Channel Pricing** | `/dashboard/channels/pricing` | Channel → Parent → Sub → Product |
+| **Product Catalog** | `/dashboard/catalog` | Parent → Sub → Products Table |
+| **Inventory** | `/dashboard/inventory` | Parent → Sub → Stock Items |
+| **Orders** | `/dashboard/orders` | Filter by category hierarchy |
+| **Reports** | Various | Category drill-down |
+
+### Anti-Patterns to AVOID
+
+```
+❌ WRONG: Single flat dropdown with ALL categories
+<Select>
+  <SelectItem value="water-purifiers">Water Purifiers</SelectItem>
+  <SelectItem value="ro-uv">RO+UV Water Purifiers</SelectItem>  <!-- Mixed! -->
+  <SelectItem value="spare-parts">Spare Parts</SelectItem>
+</Select>
+
+❌ WRONG: Search box instead of dropdown for products
+<Input placeholder="Search products..." />
+
+❌ WRONG: Filtering by parent but expecting products
+// Products are in subcategories, NOT parent categories!
+productsApi.list({ category_id: parentCategoryId }) // Returns 0 products
+
+✅ CORRECT: Cascading dropdowns
+<Select value={parentId} onChange={setParentId}>  {/* Parent only */}
+  {rootCategories.map(c => ...)}
+</Select>
+<Select value={subId} onChange={setSubId}>  {/* Children of parent */}
+  {subcategories.map(c => ...)}
+</Select>
+<Select value={productId} onChange={setProductId}>  {/* Products in sub */}
+  {products.map(p => ...)}  {/* DROPDOWN, not search */}
+</Select>
+```
+
+### Key Files for Category Hierarchy
+
+| Component | File |
+|-----------|------|
+| Category Model | `app/models/category.py` |
+| Category Service | `app/services/product_service.py` (get_category_tree, etc.) |
+| Category Endpoints | `app/api/v1/endpoints/categories.py` |
+| Product Model | `app/models/product.py` (category_id FK) |
+| Channel Pricing UI | `frontend/src/app/dashboard/channels/pricing/page.tsx` |
+
+### Checklist for Category-Based Features
+
+- [ ] Parent category dropdown shows only ROOT categories (parent_id = NULL)
+- [ ] Subcategory dropdown filters by selected parent
+- [ ] Product selection uses DROPDOWN, not search input
+- [ ] Products are fetched by subcategory, not parent category
+- [ ] MRP/price auto-populated from product master when selected
+- [ ] Backend supports `include_children` for hierarchy traversal

@@ -304,6 +304,16 @@ export const categoriesApi = {
     const { data } = await apiClient.get<PaginatedResponse<Category>>('/categories', { params });
     return data;
   },
+  // Get only ROOT categories (parent_id IS NULL) - for cascading dropdown first level
+  getRoots: async () => {
+    const { data } = await apiClient.get<PaginatedResponse<Category>>('/categories/roots');
+    return data;
+  },
+  // Get children of a parent category - for cascading dropdown second level
+  getChildren: async (parentId: string) => {
+    const { data } = await apiClient.get<PaginatedResponse<Category>>(`/categories/${parentId}/children`);
+    return data;
+  },
   getTree: async () => {
     const { data } = await apiClient.get('/categories/tree');
     return data;

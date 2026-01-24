@@ -118,10 +118,15 @@ export default function ChannelPricingPage() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [selectedChannelId, setSelectedChannelId] = useState<string>('');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  // Cascading category selection: Parent → Subcategory
+  const [parentCategoryId, setParentCategoryId] = useState<string>('');
+  const [subcategoryId, setSubcategoryId] = useState<string>('');
   const [activeTab, setActiveTab] = useState('pricing');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedPricing, setSelectedPricing] = useState<ChannelPricing | null>(null);
+  // Dialog form state - includes cascading category for product selection
+  const [dialogParentCategoryId, setDialogParentCategoryId] = useState<string>('');
+  const [dialogSubcategoryId, setDialogSubcategoryId] = useState<string>('');
   const [formData, setFormData] = useState({
     product_id: '',
     mrp: 0,
@@ -141,23 +146,71 @@ export default function ChannelPricingPage() {
     queryFn: () => channelsApi.dropdown(),
   });
 
-  // Fetch categories for dropdown
-  const { data: categoriesData } = useQuery({
-    queryKey: ['categories-dropdown'],
-    queryFn: () => categoriesApi.list({ size: 100 }),
-  });
-  const categories: Category[] = categoriesData?.items || [];
+  // ==================== CASCADING CATEGORY DROPDOWNS ====================
 
-  // Fetch products for dropdown (filtered by category if selected)
-  const { data: productsData, isLoading: productsLoading, error: productsError, isFetching: productsFetching } = useQuery({
-    queryKey: ['products-dropdown', selectedCategoryId],
+  // Step 1: Fetch ROOT categories only (parent_id IS NULL)
+  const { data: parentCategoriesData } = useQuery({
+    queryKey: ['categories-roots'],
+    queryFn: () => categoriesApi.getRoots(),
+  });
+  const parentCategories: Category[] = parentCategoriesData?.items || [];
+
+  // Step 2: Fetch CHILDREN of selected parent category (for main page filter)
+  const { data: subcategoriesData, isLoading: subcategoriesLoading } = useQuery({
+    queryKey: ['categories-children', parentCategoryId],
+    queryFn: () => categoriesApi.getChildren(parentCategoryId),
+    enabled: !!parentCategoryId,
+  });
+  const subcategories: Category[] = subcategoriesData?.items || [];
+
+  // Step 3: Fetch products filtered by subcategory (for main page)
+  const { data: productsData, isLoading: productsLoading, error: productsError } = useQuery({
+    queryKey: ['products-dropdown', subcategoryId],
     queryFn: () => productsApi.list({
       size: 100,
-      ...(selectedCategoryId ? { category_id: selectedCategoryId } : {})
+      category_id: subcategoryId,
     }),
-    placeholderData: (previousData) => previousData, // Keep showing previous products while loading new ones
+    enabled: !!subcategoryId,
   });
   const products: Product[] = productsData?.items || [];
+
+  // ==================== DIALOG CASCADING DROPDOWNS ====================
+
+  // Fetch CHILDREN of selected parent category (for dialog)
+  const { data: dialogSubcategoriesData, isLoading: dialogSubcategoriesLoading } = useQuery({
+    queryKey: ['categories-children', dialogParentCategoryId],
+    queryFn: () => categoriesApi.getChildren(dialogParentCategoryId),
+    enabled: !!dialogParentCategoryId,
+  });
+  const dialogSubcategories: Category[] = dialogSubcategoriesData?.items || [];
+
+  // Fetch products filtered by subcategory (for dialog)
+  const { data: dialogProductsData, isLoading: dialogProductsLoading } = useQuery({
+    queryKey: ['products-dropdown', dialogSubcategoryId],
+    queryFn: () => productsApi.list({
+      size: 100,
+      category_id: dialogSubcategoryId,
+    }),
+    enabled: !!dialogSubcategoryId,
+  });
+  const dialogProducts: Product[] = dialogProductsData?.items || [];
+
+  // Reset dependent dropdowns when parent changes
+  const handleParentCategoryChange = (value: string) => {
+    setParentCategoryId(value);
+    setSubcategoryId(''); // Reset subcategory when parent changes
+  };
+
+  const handleDialogParentCategoryChange = (value: string) => {
+    setDialogParentCategoryId(value);
+    setDialogSubcategoryId(''); // Reset subcategory
+    setFormData(prev => ({ ...prev, product_id: '', mrp: 0, selling_price: 0 })); // Reset product
+  };
+
+  const handleDialogSubcategoryChange = (value: string) => {
+    setDialogSubcategoryId(value);
+    setFormData(prev => ({ ...prev, product_id: '', mrp: 0, selling_price: 0 })); // Reset product
+  };
 
   // Fetch pricing for selected channel
   const { data: pricingData, isLoading } = useQuery({
@@ -282,6 +335,9 @@ export default function ChannelPricingPage() {
       return;
     }
     setSelectedPricing(null);
+    // Reset cascading category selection for dialog
+    setDialogParentCategoryId('');
+    setDialogSubcategoryId('');
     setFormData({
       product_id: '',
       mrp: 0,
@@ -582,34 +638,77 @@ export default function ChannelPricingPage() {
         </Card>
       </div>
 
-      {/* Channel and Category Selectors */}
-      <div className="flex gap-4 flex-wrap">
-        <Select value={selectedChannelId} onValueChange={setSelectedChannelId}>
-          <SelectTrigger className="w-[300px]">
-            <SelectValue placeholder="Select a channel to manage pricing" />
-          </SelectTrigger>
-          <SelectContent>
-            {channels.map((channel: Channel) => (
-              <SelectItem key={channel.id} value={channel.id}>
-                {channel.name} ({channel.code})
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      {/* Channel and Cascading Category Selectors */}
+      <div className="flex gap-4 flex-wrap items-end">
+        {/* Step 1: Channel Selection */}
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Channel</Label>
+          <Select value={selectedChannelId} onValueChange={setSelectedChannelId}>
+            <SelectTrigger className="w-[250px]">
+              <SelectValue placeholder="Select channel" />
+            </SelectTrigger>
+            <SelectContent>
+              {channels.map((channel: Channel) => (
+                <SelectItem key={channel.id} value={channel.id}>
+                  {channel.name} ({channel.code})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-        <Select value={selectedCategoryId || "all"} onValueChange={(v) => setSelectedCategoryId(v === "all" ? "" : v)}>
-          <SelectTrigger className="w-[250px]">
-            <SelectValue placeholder="All Categories" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Categories</SelectItem>
-            {categories.map((category) => (
-              <SelectItem key={category.id} value={category.id}>
-                {category.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Step 2: Parent Category Selection (ROOT categories only) */}
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Parent Category</Label>
+          <Select value={parentCategoryId || "all"} onValueChange={(v) => handleParentCategoryChange(v === "all" ? "" : v)}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="All Categories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {parentCategories.map((category) => (
+                <SelectItem key={category.id} value={category.id}>
+                  {category.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Step 3: Subcategory Selection (children of selected parent) */}
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Subcategory</Label>
+          <Select
+            value={subcategoryId || "all"}
+            onValueChange={(v) => setSubcategoryId(v === "all" ? "" : v)}
+            disabled={!parentCategoryId}
+          >
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder={parentCategoryId ? "Select subcategory" : "Select parent first"} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Subcategories</SelectItem>
+              {subcategoriesLoading ? (
+                <SelectItem value="loading" disabled>Loading...</SelectItem>
+              ) : subcategories.length === 0 ? (
+                <SelectItem value="none" disabled>No subcategories</SelectItem>
+              ) : (
+                subcategories.map((category) => (
+                  <SelectItem key={category.id} value={category.id}>
+                    {category.name}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Products count indicator */}
+        {subcategoryId && (
+          <div className="text-sm text-muted-foreground self-end pb-2">
+            {productsLoading ? 'Loading...' : `${products.length} products`}
+          </div>
+        )}
       </div>
 
       {!selectedChannelId ? (
@@ -905,44 +1004,95 @@ export default function ChannelPricingPage() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             {!selectedPricing && (
-              <div className="space-y-2">
-                <Label>Product {productsLoading ? '(Loading...)' : productsFetching ? `(${products.length} available, refreshing...)` : `(${products.length} available)`}</Label>
-                {productsError && (
-                  <p className="text-sm text-red-500">Error loading products: {String(productsError)}</p>
-                )}
-                <Select
-                  value={formData.product_id}
-                  onValueChange={(value) => {
-                    const product = productMap.get(value);
-                    setFormData({
-                      ...formData,
-                      product_id: value,
-                      mrp: product?.mrp || 0,
-                      selling_price: product?.mrp || 0,
-                    });
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select product" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {products.length === 0 ? (
-                      <SelectItem value="none" disabled>
-                        {productsLoading ? 'Loading products...' : 'No products found'}
-                      </SelectItem>
-                    ) : (
-                      products.map((product) => (
-                        <SelectItem key={product.id} value={product.id}>
-                          {product.name} ({product.sku})
+              <>
+                {/* Step 1: Parent Category Dropdown */}
+                <div className="space-y-2">
+                  <Label>Parent Category</Label>
+                  <Select
+                    value={dialogParentCategoryId}
+                    onValueChange={handleDialogParentCategoryChange}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select parent category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {parentCategories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name}
                         </SelectItem>
-                      ))
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Step 2: Subcategory Dropdown (filtered by parent) */}
+                <div className="space-y-2">
+                  <Label>Subcategory</Label>
+                  <Select
+                    value={dialogSubcategoryId}
+                    onValueChange={handleDialogSubcategoryChange}
+                    disabled={!dialogParentCategoryId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={dialogParentCategoryId ? "Select subcategory" : "Select parent first"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {dialogSubcategoriesLoading ? (
+                        <SelectItem value="loading" disabled>Loading...</SelectItem>
+                      ) : dialogSubcategories.length === 0 ? (
+                        <SelectItem value="none" disabled>No subcategories found</SelectItem>
+                      ) : (
+                        dialogSubcategories.map((category) => (
+                          <SelectItem key={category.id} value={category.id}>
+                            {category.name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Step 3: Product Dropdown (filtered by subcategory) */}
+                <div className="space-y-2">
+                  <Label>
+                    Product
+                    {dialogProductsLoading && <span className="text-muted-foreground ml-2">(Loading...)</span>}
+                    {!dialogProductsLoading && dialogSubcategoryId && (
+                      <span className="text-muted-foreground ml-2">({dialogProducts.length} available)</span>
                     )}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Category filter: {selectedCategoryId || 'All categories'}
-                </p>
-              </div>
+                  </Label>
+                  <Select
+                    value={formData.product_id}
+                    onValueChange={(value) => {
+                      const product = dialogProducts.find(p => p.id === value);
+                      setFormData({
+                        ...formData,
+                        product_id: value,
+                        mrp: product?.mrp || 0,
+                        selling_price: product?.mrp || 0,
+                      });
+                    }}
+                    disabled={!dialogSubcategoryId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={dialogSubcategoryId ? "Select product" : "Select subcategory first"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {dialogProductsLoading ? (
+                        <SelectItem value="loading" disabled>Loading products...</SelectItem>
+                      ) : dialogProducts.length === 0 ? (
+                        <SelectItem value="none" disabled>No products in this subcategory</SelectItem>
+                      ) : (
+                        dialogProducts.map((product) => (
+                          <SelectItem key={product.id} value={product.id}>
+                            {product.name} ({product.sku}) - ₹{product.mrp?.toLocaleString() || 0}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
             )}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
