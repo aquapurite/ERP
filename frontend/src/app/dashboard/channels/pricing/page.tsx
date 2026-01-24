@@ -79,6 +79,25 @@ interface Product {
   mrp: number;
 }
 
+// Merged view: Products from Master + Channel Pricing (if exists)
+interface ProductWithPricing {
+  // From Product Master (always present)
+  product_id: string;
+  product_name: string;
+  product_sku: string;
+  master_mrp: number;
+  // From Channel Pricing (may be null if not configured)
+  pricing_id?: string;
+  channel_mrp?: number;
+  selling_price?: number;
+  transfer_price?: number;
+  discount_percentage?: number;
+  max_discount_percentage?: number;
+  is_active?: boolean;
+  is_listed?: boolean;
+  has_pricing: boolean;
+}
+
 // Separate component for action cell to avoid hooks in render function
 function PricingActionsCell({
   pricing,
@@ -292,6 +311,42 @@ export default function ChannelPricingPage() {
     return map;
   }, [channels]);
 
+  // Get pricing map by product_id for quick lookup
+  const pricingMap = useMemo(() => {
+    const map = new Map<string, ChannelPricing>();
+    (pricingData?.items || []).forEach((p: ChannelPricing) => map.set(p.product_id, p));
+    return map;
+  }, [pricingData]);
+
+  // ==================== STRUCTURAL FIX ====================
+  // Merged view: Products from Master + Channel Pricing (if exists)
+  // This shows ALL products with their pricing status (configured or not)
+  const mergedProductsWithPricing = useMemo((): ProductWithPricing[] => {
+    // Only merge when we have a subcategory selected (products loaded)
+    if (!subcategoryId || products.length === 0) {
+      return [];
+    }
+
+    return products.map(product => {
+      const pricing = pricingMap.get(product.id);
+      return {
+        product_id: product.id,
+        product_name: product.name,
+        product_sku: product.sku,
+        master_mrp: product.mrp,
+        pricing_id: pricing?.id,
+        channel_mrp: pricing?.mrp,
+        selling_price: pricing?.selling_price,
+        transfer_price: pricing?.transfer_price,
+        discount_percentage: pricing?.discount_percentage,
+        max_discount_percentage: pricing?.max_discount_percentage,
+        is_active: pricing?.is_active,
+        is_listed: pricing?.is_listed,
+        has_pricing: !!pricing,
+      };
+    });
+  }, [products, pricingMap, subcategoryId]);
+
   // Calculate stats from pricing data
   const stats = useMemo(() => {
     const items = pricingData?.items || [];
@@ -344,13 +399,49 @@ export default function ChannelPricingPage() {
       return;
     }
     setSelectedPricing(null);
-    // Reset cascading category selection for dialog
-    setDialogParentCategoryId('');
-    setDialogSubcategoryId('');
+
+    // If a product is already selected in the main filter, pre-populate the dialog
+    if (selectedProductId && parentCategoryId && subcategoryId) {
+      const selectedProduct = products.find(p => p.id === selectedProductId);
+      setDialogParentCategoryId(parentCategoryId);
+      setDialogSubcategoryId(subcategoryId);
+      setFormData({
+        product_id: selectedProductId,
+        mrp: selectedProduct?.mrp || 0,
+        selling_price: selectedProduct?.mrp || 0, // Default selling price to MRP
+        transfer_price: 0,
+        discount_percentage: 0,
+        max_discount_percentage: 25,
+        is_active: true,
+        is_listed: true,
+      });
+    } else {
+      // Reset cascading category selection for dialog
+      setDialogParentCategoryId('');
+      setDialogSubcategoryId('');
+      setFormData({
+        product_id: '',
+        mrp: 0,
+        selling_price: 0,
+        transfer_price: 0,
+        discount_percentage: 0,
+        max_discount_percentage: 25,
+        is_active: true,
+        is_listed: true,
+      });
+    }
+    setIsDialogOpen(true);
+  };
+
+  // Handler to add pricing for a specific product from the table
+  const handleAddPricingForProduct = (item: ProductWithPricing) => {
+    setSelectedPricing(null);
+    setDialogParentCategoryId(parentCategoryId);
+    setDialogSubcategoryId(subcategoryId);
     setFormData({
-      product_id: '',
-      mrp: 0,
-      selling_price: 0,
+      product_id: item.product_id,
+      mrp: item.master_mrp,
+      selling_price: item.master_mrp, // Default to MRP
       transfer_price: 0,
       discount_percentage: 0,
       max_discount_percentage: 25,
@@ -360,41 +451,80 @@ export default function ChannelPricingPage() {
     setIsDialogOpen(true);
   };
 
-  // Column definitions
-  const columns: ColumnDef<ChannelPricing>[] = useMemo(() => [
+  // Handler to edit pricing for a product that already has pricing
+  const handleEditPricing = (item: ProductWithPricing) => {
+    if (!item.has_pricing || !item.pricing_id) return;
+
+    setSelectedPricing({
+      id: item.pricing_id,
+      channel_id: selectedChannelId,
+      product_id: item.product_id,
+      mrp: item.channel_mrp || item.master_mrp,
+      selling_price: item.selling_price || 0,
+      transfer_price: item.transfer_price,
+      discount_percentage: item.discount_percentage,
+      max_discount_percentage: item.max_discount_percentage,
+      is_active: item.is_active || false,
+      is_listed: item.is_listed || false,
+      created_at: '',
+      updated_at: '',
+    });
+    setDialogParentCategoryId(parentCategoryId);
+    setDialogSubcategoryId(subcategoryId);
+    setFormData({
+      product_id: item.product_id,
+      mrp: item.channel_mrp || item.master_mrp,
+      selling_price: item.selling_price || 0,
+      transfer_price: item.transfer_price || 0,
+      discount_percentage: item.discount_percentage || 0,
+      max_discount_percentage: item.max_discount_percentage || 25,
+      is_active: item.is_active || true,
+      is_listed: item.is_listed || true,
+    });
+    setIsDialogOpen(true);
+  };
+
+  // Column definitions for merged ProductWithPricing data
+  const columns: ColumnDef<ProductWithPricing>[] = useMemo(() => [
     {
-      accessorKey: 'product_id',
-      header: 'Product',
-      cell: ({ row }) => {
-        const product = productMap.get(row.original.product_id);
-        return (
-          <div>
-            <div className="font-medium">{product?.name || 'Unknown Product'}</div>
-            <div className="text-sm text-muted-foreground">{product?.sku || '-'}</div>
-          </div>
-        );
-      },
+      accessorKey: 'product_name',
+      header: 'Product (from Master)',
+      cell: ({ row }) => (
+        <div>
+          <div className="font-medium">{row.original.product_name}</div>
+          <div className="text-sm text-muted-foreground">{row.original.product_sku}</div>
+        </div>
+      ),
     },
     {
-      accessorKey: 'mrp',
-      header: 'MRP',
+      accessorKey: 'master_mrp',
+      header: 'MRP (Master)',
       cell: ({ row }) => (
-        <span className="font-mono text-sm">{formatCurrency(row.original.mrp)}</span>
+        <span className="font-mono text-sm">{formatCurrency(row.original.master_mrp)}</span>
       ),
     },
     {
       accessorKey: 'selling_price',
       header: 'Selling Price',
-      cell: ({ row }) => (
-        <span className="font-mono text-sm font-medium">{formatCurrency(row.original.selling_price)}</span>
-      ),
+      cell: ({ row }) => {
+        if (!row.original.has_pricing) {
+          return <span className="text-muted-foreground italic">Not configured</span>;
+        }
+        return (
+          <span className="font-mono text-sm font-medium">{formatCurrency(row.original.selling_price || 0)}</span>
+        );
+      },
     },
     {
       id: 'discount',
       header: 'Discount',
       cell: ({ row }) => {
-        const discount = row.original.mrp > 0
-          ? ((row.original.mrp - row.original.selling_price) / row.original.mrp) * 100
+        if (!row.original.has_pricing || !row.original.selling_price) {
+          return <span className="text-muted-foreground">-</span>;
+        }
+        const mrp = row.original.channel_mrp || row.original.master_mrp;
+        const discount = mrp > 0
+          ? ((mrp - row.original.selling_price) / mrp) * 100
           : 0;
         return (
           <span className="text-orange-600 font-medium">
@@ -407,8 +537,12 @@ export default function ChannelPricingPage() {
       id: 'margin',
       header: 'Margin %',
       cell: ({ row }) => {
-        const margin = row.original.mrp > 0
-          ? ((row.original.mrp - row.original.selling_price) / row.original.mrp) * 100
+        if (!row.original.has_pricing || !row.original.selling_price) {
+          return <span className="text-muted-foreground">-</span>;
+        }
+        const mrp = row.original.channel_mrp || row.original.master_mrp;
+        const margin = mrp > 0
+          ? ((mrp - row.original.selling_price) / mrp) * 100
           : 0;
         const color = margin >= 20 ? 'text-green-600' : margin >= 10 ? 'text-yellow-600' : 'text-red-600';
         return <span className={`font-medium ${color}`}>{margin.toFixed(1)}%</span>;
@@ -418,6 +552,9 @@ export default function ChannelPricingPage() {
       accessorKey: 'max_discount_percentage',
       header: 'Max Discount',
       cell: ({ row }) => {
+        if (!row.original.has_pricing) {
+          return <span className="text-muted-foreground">-</span>;
+        }
         const maxDiscount = row.original.max_discount_percentage || 0;
         return (
           <span className="text-sm text-muted-foreground">
@@ -427,28 +564,67 @@ export default function ChannelPricingPage() {
       },
     },
     {
-      accessorKey: 'is_active',
+      id: 'status',
       header: 'Status',
-      cell: ({ row }) => (
-        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-          row.original.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
-        }`}>
-          {row.original.is_active ? 'Active' : 'Inactive'}
-        </span>
-      ),
+      cell: ({ row }) => {
+        if (!row.original.has_pricing) {
+          return (
+            <span className="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+              Not Configured
+            </span>
+          );
+        }
+        return (
+          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+            row.original.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+          }`}>
+            {row.original.is_active ? 'Active' : 'Inactive'}
+          </span>
+        );
+      },
     },
     {
       id: 'actions',
-      cell: ({ row }) => (
-        <PricingActionsCell
-          pricing={row.original}
-          channelId={selectedChannelId}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-        />
-      ),
+      header: 'Action',
+      cell: ({ row }) => {
+        if (!row.original.has_pricing) {
+          return (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleAddPricingForProduct(row.original)}
+            >
+              <Plus className="mr-1 h-3 w-3" />
+              Add Pricing
+            </Button>
+          );
+        }
+        return (
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => handleEditPricing(row.original)}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-destructive"
+              onClick={() => {
+                if (confirm(`Remove pricing for ${row.original.product_name}?`)) {
+                  deleteMutation.mutate({ channelId: selectedChannelId, pricingId: row.original.pricing_id! });
+                }
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        );
+      },
     },
-  ], [productMap, selectedChannelId]);
+  ], [selectedChannelId, parentCategoryId, subcategoryId]);
 
   // Mutations
   const createMutation = useMutation({
@@ -748,6 +924,37 @@ export default function ChannelPricingPage() {
         )}
       </div>
 
+      {/* Selected Product Info Card - Shows Master Data */}
+      {selectedProductId && selectedChannelId && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-6">
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">Selected Product (from Master Data)</p>
+                  <p className="font-semibold text-lg">
+                    {products.find(p => p.id === selectedProductId)?.name || 'Loading...'}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    SKU: {products.find(p => p.id === selectedProductId)?.sku || '-'}
+                  </p>
+                </div>
+                <div className="border-l pl-6">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">MRP (Master)</p>
+                  <p className="font-bold text-xl text-primary">
+                    {formatCurrency(products.find(p => p.id === selectedProductId)?.mrp || 0)}
+                  </p>
+                </div>
+              </div>
+              <Button onClick={handleAddNew} size="sm">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Pricing for this Product
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {!selectedChannelId ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
@@ -778,17 +985,21 @@ export default function ChannelPricingPage() {
           </TabsList>
 
           <TabsContent value="pricing" className="space-y-4">
-            <DataTable
-              columns={columns}
-              data={pricingData?.items ?? []}
-              isLoading={isLoading}
-              manualPagination
-              pageCount={Math.ceil((pricingData?.total || 0) / pageSize)}
-              pageIndex={page}
-              pageSize={pageSize}
-              onPageChange={setPage}
-              onPageSizeChange={setPageSize}
-            />
+            {!subcategoryId ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
+                  <p className="text-lg font-medium">Select a Category & Subcategory</p>
+                  <p className="text-sm text-muted-foreground">Choose a subcategory above to view products and their pricing</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <DataTable
+                columns={columns}
+                data={mergedProductsWithPricing}
+                isLoading={isLoading || productsLoading}
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="commission" className="space-y-4">
@@ -1129,20 +1340,43 @@ export default function ChannelPricingPage() {
                 </div>
               </>
             )}
+            {/* Product Info Card - Shows when product is selected */}
+            {formData.product_id && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-600 font-medium uppercase tracking-wide mb-1">Product from Master Data</p>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="font-semibold">
+                      {dialogProducts.find(p => p.id === formData.product_id)?.name ||
+                       products.find(p => p.id === formData.product_id)?.name || 'Selected Product'}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      SKU: {dialogProducts.find(p => p.id === formData.product_id)?.sku ||
+                            products.find(p => p.id === formData.product_id)?.sku || '-'}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-muted-foreground">MRP (Master)</p>
+                    <p className="font-bold text-lg">{formatCurrency(formData.mrp)}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>MRP</Label>
+                <Label>MRP <span className="text-xs text-muted-foreground">(from Product Master)</span></Label>
                 <Input
                   type="number"
                   placeholder="0.00"
                   value={formData.mrp || ''}
-                  onChange={(e) =>
-                    setFormData({ ...formData, mrp: parseFloat(e.target.value) || 0 })
-                  }
+                  readOnly
+                  className="bg-muted cursor-not-allowed"
                 />
+                <p className="text-xs text-muted-foreground">Auto-filled from Product Master</p>
               </div>
               <div className="space-y-2">
-                <Label>Selling Price</Label>
+                <Label>Selling Price <span className="text-xs text-red-500">*</span></Label>
                 <Input
                   type="number"
                   placeholder="0.00"
