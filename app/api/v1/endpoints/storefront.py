@@ -1885,7 +1885,8 @@ async def clear_storefront_cache(secret: str = Query(..., description="Admin sec
     cleared += await cache.delete("storefront:mega-menu")
     cleared += await cache.delete("storefront:categories")
     cleared += await cache.clear_pattern("storefront:*")
-    cleared += await cache.clear_pattern("products:*")
+    cleared += await cache.clear_pattern("product:*")  # product:slug:*, product:id:*
+    cleared += await cache.clear_pattern("products:*")  # Legacy key format
     cleared += await cache.clear_pattern("categories:*")
 
     return {
@@ -1895,6 +1896,7 @@ async def clear_storefront_cache(secret: str = Query(..., description="Admin sec
             "storefront:mega-menu",
             "storefront:categories",
             "storefront:*",
+            "product:*",
             "products:*",
             "categories:*"
         ]
