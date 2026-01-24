@@ -747,3 +747,213 @@ class MarketplaceIntegration(Base):
 
     def __repr__(self) -> str:
         return f"<MarketplaceIntegration({self.marketplace_type}, active={self.is_active})>"
+
+
+class PricingRuleType(str, Enum):
+    """Pricing rule types."""
+    VOLUME_DISCOUNT = "VOLUME_DISCOUNT"       # Quantity-based discounts
+    CUSTOMER_SEGMENT = "CUSTOMER_SEGMENT"     # Customer type discounts (VIP, DEALER)
+    PROMOTIONAL = "PROMOTIONAL"               # Promo codes and campaigns
+    BUNDLE = "BUNDLE"                         # Product bundle discounts
+    TIME_BASED = "TIME_BASED"                 # Weekend, festival, etc.
+    CATEGORY = "CATEGORY"                     # Category-wide discounts
+    BRAND = "BRAND"                           # Brand-wide discounts
+
+
+class PricingRule(Base):
+    """
+    Pricing Rules Engine for dynamic pricing.
+
+    Supports volume discounts, customer segments, promotions, etc.
+    Rules are applied in priority order (lower priority = higher precedence).
+    """
+    __tablename__ = "pricing_rules"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Rule identification
+    code: Mapped[str] = mapped_column(
+        String(50),
+        unique=True,
+        nullable=False,
+        comment="Unique rule code"
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Rule type
+    rule_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        comment="VOLUME_DISCOUNT, CUSTOMER_SEGMENT, PROMOTIONAL, BUNDLE, TIME_BASED"
+    )
+
+    # Scope (what this rule applies to - NULL means all)
+    channel_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sales_channels.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        comment="NULL = applies to all channels"
+    )
+    category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("categories.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        comment="NULL = applies to all categories"
+    )
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        comment="NULL = applies to all products"
+    )
+    brand_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("brands.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        comment="NULL = applies to all brands"
+    )
+
+    # Conditions (JSONB for flexibility)
+    conditions: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        comment="Rule conditions as JSON: min_qty, max_qty, customer_segments, promo_code, etc."
+    )
+
+    # Action (discount to apply)
+    discount_type: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        comment="PERCENTAGE or FIXED_AMOUNT"
+    )
+    discount_value: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2),
+        nullable=False,
+        comment="Discount value (% or fixed amount)"
+    )
+
+    # Validity period
+    effective_from: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+    effective_to: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
+    # Priority (lower = higher priority)
+    priority: Mapped[int] = mapped_column(
+        Integer,
+        default=100,
+        comment="Lower number = higher priority"
+    )
+
+    # Combinability
+    is_combinable: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        comment="Can combine with other rules?"
+    )
+
+    # Status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Usage limits
+    max_uses: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Max total uses (NULL = unlimited)"
+    )
+    max_uses_per_customer: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Max uses per customer (NULL = unlimited)"
+    )
+    current_uses: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Audit
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True
+    )
+
+    def __repr__(self) -> str:
+        return f"<PricingRule({self.code}, type={self.rule_type}, active={self.is_active})>"
+
+
+class PricingHistory(Base):
+    """
+    Audit trail for pricing changes.
+
+    Tracks all changes to ChannelPricing and PricingRule records.
+    """
+    __tablename__ = "pricing_history"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # What changed
+    entity_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        index=True,
+        comment="CHANNEL_PRICING, PRICING_RULE, PRODUCT_PRICE"
+    )
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True
+    )
+
+    # Change details
+    field_name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        comment="Field that was changed"
+    )
+    old_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    new_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Who/when
+    changed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True
+    )
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+    # Why (optional reason for change)
+    change_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<PricingHistory({self.entity_type}:{self.entity_id}, {self.field_name})>"
