@@ -118,9 +118,10 @@ export default function ChannelPricingPage() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [selectedChannelId, setSelectedChannelId] = useState<string>('');
-  // Cascading category selection: Parent → Subcategory
+  // Cascading category selection: Parent → Subcategory → Product
   const [parentCategoryId, setParentCategoryId] = useState<string>('');
   const [subcategoryId, setSubcategoryId] = useState<string>('');
+  const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [activeTab, setActiveTab] = useState('pricing');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedPricing, setSelectedPricing] = useState<ChannelPricing | null>(null);
@@ -195,12 +196,19 @@ export default function ChannelPricingPage() {
   });
   const dialogProducts: Product[] = dialogProductsData?.items || [];
 
-  // Reset dependent dropdowns when parent changes
+  // Reset dependent dropdowns when parent changes (main filter)
   const handleParentCategoryChange = (value: string) => {
     setParentCategoryId(value);
     setSubcategoryId(''); // Reset subcategory when parent changes
+    setSelectedProductId(''); // Reset product when parent changes
   };
 
+  const handleSubcategoryChange = (value: string) => {
+    setSubcategoryId(value);
+    setSelectedProductId(''); // Reset product when subcategory changes
+  };
+
+  // Reset dependent dropdowns when parent changes (dialog)
   const handleDialogParentCategoryChange = (value: string) => {
     setDialogParentCategoryId(value);
     setDialogSubcategoryId(''); // Reset subcategory
@@ -212,12 +220,13 @@ export default function ChannelPricingPage() {
     setFormData(prev => ({ ...prev, product_id: '', mrp: 0, selling_price: 0 })); // Reset product
   };
 
-  // Fetch pricing for selected channel
+  // Fetch pricing for selected channel (filtered by product if selected)
   const { data: pricingData, isLoading } = useQuery({
-    queryKey: ['channel-pricing', selectedChannelId, page, pageSize],
+    queryKey: ['channel-pricing', selectedChannelId, selectedProductId, page, pageSize],
     queryFn: () => channelsApi.pricing.list(selectedChannelId, {
       skip: page * pageSize,
       limit: pageSize,
+      product_id: selectedProductId || undefined,
     }),
     enabled: !!selectedChannelId,
   });
@@ -680,7 +689,7 @@ export default function ChannelPricingPage() {
           <Label className="text-xs text-muted-foreground">Subcategory</Label>
           <Select
             value={subcategoryId || "all"}
-            onValueChange={(v) => setSubcategoryId(v === "all" ? "" : v)}
+            onValueChange={(v) => handleSubcategoryChange(v === "all" ? "" : v)}
             disabled={!parentCategoryId}
           >
             <SelectTrigger className="w-[220px]">
@@ -696,6 +705,34 @@ export default function ChannelPricingPage() {
                 subcategories.map((category) => (
                   <SelectItem key={category.id} value={category.id}>
                     {category.name}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Step 4: Product Selection (products in selected subcategory) */}
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Product</Label>
+          <Select
+            value={selectedProductId || "all"}
+            onValueChange={(v) => setSelectedProductId(v === "all" ? "" : v)}
+            disabled={!subcategoryId}
+          >
+            <SelectTrigger className="w-[280px]">
+              <SelectValue placeholder={subcategoryId ? "All Products" : "Select subcategory first"} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Products</SelectItem>
+              {productsLoading ? (
+                <SelectItem value="loading" disabled>Loading...</SelectItem>
+              ) : products.length === 0 ? (
+                <SelectItem value="none" disabled>No products in this subcategory</SelectItem>
+              ) : (
+                products.map((product) => (
+                  <SelectItem key={product.id} value={product.id}>
+                    {product.name} ({product.sku})
                   </SelectItem>
                 ))
               )}
@@ -744,8 +781,6 @@ export default function ChannelPricingPage() {
             <DataTable
               columns={columns}
               data={pricingData?.items ?? []}
-              searchKey="product_id"
-              searchPlaceholder="Search products..."
               isLoading={isLoading}
               manualPagination
               pageCount={Math.ceil((pricingData?.total || 0) / pageSize)}
