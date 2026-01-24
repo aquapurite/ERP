@@ -32,10 +32,18 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader } from '@/components/common';
-import { channelsApi, productsApi } from '@/lib/api';
+import { channelsApi, productsApi, categoriesApi } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
+
+interface Category {
+  id: string;
+  name: string;
+  slug: string;
+}
 
 interface ChannelPricing {
   id: string;
@@ -110,6 +118,8 @@ export default function ChannelPricingPage() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [selectedChannelId, setSelectedChannelId] = useState<string>('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  const [activeTab, setActiveTab] = useState('pricing');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedPricing, setSelectedPricing] = useState<ChannelPricing | null>(null);
   const [formData, setFormData] = useState({
@@ -118,6 +128,7 @@ export default function ChannelPricingPage() {
     selling_price: 0,
     transfer_price: 0,
     discount_percentage: 0,
+    max_discount_percentage: 25,
     is_active: true,
     is_listed: true,
   });
@@ -130,10 +141,20 @@ export default function ChannelPricingPage() {
     queryFn: () => channelsApi.dropdown(),
   });
 
-  // Fetch products for dropdown
+  // Fetch categories for dropdown
+  const { data: categoriesData } = useQuery({
+    queryKey: ['categories-dropdown'],
+    queryFn: () => categoriesApi.list({ size: 100 }),
+  });
+  const categories: Category[] = categoriesData?.items || [];
+
+  // Fetch products for dropdown (filtered by category if selected)
   const { data: productsData } = useQuery({
-    queryKey: ['products-dropdown'],
-    queryFn: () => productsApi.list({ size: 100 }),
+    queryKey: ['products-dropdown', selectedCategoryId],
+    queryFn: () => productsApi.list({
+      size: 100,
+      ...(selectedCategoryId ? { category_id: selectedCategoryId } : {})
+    }),
   });
   const products: Product[] = productsData?.items || [];
 
@@ -193,6 +214,7 @@ export default function ChannelPricingPage() {
       selling_price: pricing.selling_price,
       transfer_price: pricing.transfer_price || 0,
       discount_percentage: pricing.discount_percentage || 0,
+      max_discount_percentage: pricing.max_discount_percentage || 25,
       is_active: pricing.is_active,
       is_listed: pricing.is_listed,
     });
@@ -218,6 +240,7 @@ export default function ChannelPricingPage() {
       selling_price: 0,
       transfer_price: 0,
       discount_percentage: 0,
+      max_discount_percentage: 25,
       is_active: true,
       is_listed: true,
     });
@@ -276,6 +299,18 @@ export default function ChannelPricingPage() {
           : 0;
         const color = margin >= 20 ? 'text-green-600' : margin >= 10 ? 'text-yellow-600' : 'text-red-600';
         return <span className={`font-medium ${color}`}>{margin.toFixed(1)}%</span>;
+      },
+    },
+    {
+      accessorKey: 'max_discount_percentage',
+      header: 'Max Discount',
+      cell: ({ row }) => {
+        const maxDiscount = row.original.max_discount_percentage || 0;
+        return (
+          <span className="text-sm text-muted-foreground">
+            {maxDiscount > 0 ? `${maxDiscount}%` : '-'}
+          </span>
+        );
       },
     },
     {
@@ -360,6 +395,7 @@ export default function ChannelPricingPage() {
           selling_price: formData.selling_price,
           transfer_price: formData.transfer_price || undefined,
           discount_percentage: formData.discount_percentage || undefined,
+          max_discount_percentage: formData.max_discount_percentage || undefined,
           is_active: formData.is_active,
           is_listed: formData.is_listed,
         },
@@ -371,6 +407,7 @@ export default function ChannelPricingPage() {
         selling_price: formData.selling_price,
         transfer_price: formData.transfer_price || undefined,
         discount_percentage: formData.discount_percentage || undefined,
+        max_discount_percentage: formData.max_discount_percentage || undefined,
         is_active: formData.is_active,
         is_listed: formData.is_listed,
       });
@@ -452,8 +489,8 @@ export default function ChannelPricingPage() {
         </Card>
       </div>
 
-      {/* Channel Selector */}
-      <div className="flex gap-4">
+      {/* Channel and Category Selectors */}
+      <div className="flex gap-4 flex-wrap">
         <Select value={selectedChannelId} onValueChange={setSelectedChannelId}>
           <SelectTrigger className="w-[300px]">
             <SelectValue placeholder="Select a channel to manage pricing" />
@@ -462,6 +499,20 @@ export default function ChannelPricingPage() {
             {channels.map((channel: Channel) => (
               <SelectItem key={channel.id} value={channel.id}>
                 {channel.name} ({channel.code})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
+          <SelectTrigger className="w-[250px]">
+            <SelectValue placeholder="All Categories" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">All Categories</SelectItem>
+            {categories.map((category) => (
+              <SelectItem key={category.id} value={category.id}>
+                {category.name}
               </SelectItem>
             ))}
           </SelectContent>
@@ -477,19 +528,201 @@ export default function ChannelPricingPage() {
           </CardContent>
         </Card>
       ) : (
-        <DataTable
-          columns={columns}
-          data={pricingData?.items ?? []}
-          searchKey="product_id"
-          searchPlaceholder="Search products..."
-          isLoading={isLoading}
-          manualPagination
-          pageCount={Math.ceil((pricingData?.total || 0) / pageSize)}
-          pageIndex={page}
-          pageSize={pageSize}
-          onPageChange={setPage}
-          onPageSizeChange={setPageSize}
-        />
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <TabsList className="grid w-full grid-cols-4 lg:w-[600px]">
+            <TabsTrigger value="pricing" className="flex items-center gap-2">
+              <DollarSign className="h-4 w-4" />
+              Pricing
+            </TabsTrigger>
+            <TabsTrigger value="commission" className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4" />
+              Commission
+            </TabsTrigger>
+            <TabsTrigger value="rules" className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4" />
+              Rules
+            </TabsTrigger>
+            <TabsTrigger value="history" className="flex items-center gap-2">
+              <RefreshCw className="h-4 w-4" />
+              History
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="pricing" className="space-y-4">
+            <DataTable
+              columns={columns}
+              data={pricingData?.items ?? []}
+              searchKey="product_id"
+              searchPlaceholder="Search products..."
+              isLoading={isLoading}
+              manualPagination
+              pageCount={Math.ceil((pricingData?.total || 0) / pageSize)}
+              pageIndex={page}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
+          </TabsContent>
+
+          <TabsContent value="commission" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Commission Settings</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Default Commission %</Label>
+                      <Input type="number" placeholder="0" defaultValue="10" />
+                      <p className="text-xs text-muted-foreground">Applied to all products in this channel</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Fixed Fee per Order</Label>
+                      <Input type="number" placeholder="0" defaultValue="0" />
+                      <p className="text-xs text-muted-foreground">Additional fee per order</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Payment Gateway Fee %</Label>
+                      <Input type="number" placeholder="0" defaultValue="2" />
+                      <p className="text-xs text-muted-foreground">Deducted from order value</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Logistics Fee</Label>
+                      <Input type="number" placeholder="0" defaultValue="50" />
+                      <p className="text-xs text-muted-foreground">Per shipment charge</p>
+                    </div>
+                  </div>
+                  <div className="pt-4 border-t">
+                    <Button>Save Commission Settings</Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="rules" className="space-y-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Pricing Rules</CardTitle>
+                <Button size="sm">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Rule
+                </Button>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {/* Volume Discount Rule */}
+                  <div className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary">VOLUME_DISCOUNT</Badge>
+                        <span className="font-medium">Bulk Purchase Discount</span>
+                      </div>
+                      <Badge variant="outline" className="text-green-600">Active</Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      Quantity-based discounts for bulk orders
+                    </p>
+                    <div className="grid grid-cols-4 gap-2 text-sm">
+                      <div className="bg-muted p-2 rounded">
+                        <div className="font-medium">10+ units</div>
+                        <div className="text-muted-foreground">3% off</div>
+                      </div>
+                      <div className="bg-muted p-2 rounded">
+                        <div className="font-medium">25+ units</div>
+                        <div className="text-muted-foreground">5% off</div>
+                      </div>
+                      <div className="bg-muted p-2 rounded">
+                        <div className="font-medium">50+ units</div>
+                        <div className="text-muted-foreground">7% off</div>
+                      </div>
+                      <div className="bg-muted p-2 rounded">
+                        <div className="font-medium">100+ units</div>
+                        <div className="text-muted-foreground">10% off</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Customer Segment Rule */}
+                  <div className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary">CUSTOMER_SEGMENT</Badge>
+                        <span className="font-medium">Customer Type Pricing</span>
+                      </div>
+                      <Badge variant="outline" className="text-green-600">Active</Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      Special pricing for different customer segments
+                    </p>
+                    <div className="grid grid-cols-3 gap-2 text-sm">
+                      <div className="bg-muted p-2 rounded">
+                        <div className="font-medium">VIP Customers</div>
+                        <div className="text-muted-foreground">5% off</div>
+                      </div>
+                      <div className="bg-muted p-2 rounded">
+                        <div className="font-medium">Dealers</div>
+                        <div className="text-muted-foreground">15% off</div>
+                      </div>
+                      <div className="bg-muted p-2 rounded">
+                        <div className="font-medium">Distributors</div>
+                        <div className="text-muted-foreground">20% off</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="history" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Pricing History</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-4 text-sm border-b pb-4">
+                    <div className="w-32 font-medium">2026-01-24 10:30</div>
+                    <Badge variant="outline">PRICE_UPDATE</Badge>
+                    <div className="flex-1">
+                      <span className="font-medium">Aquapurite Blitz</span>
+                      <span className="text-muted-foreground"> - Selling price changed from </span>
+                      <span className="line-through text-red-500">₹15,999</span>
+                      <span className="text-muted-foreground"> to </span>
+                      <span className="text-green-600">₹14,999</span>
+                    </div>
+                    <div className="text-muted-foreground">by Admin</div>
+                  </div>
+                  <div className="flex items-center gap-4 text-sm border-b pb-4">
+                    <div className="w-32 font-medium">2026-01-23 15:45</div>
+                    <Badge variant="outline">RULE_ADDED</Badge>
+                    <div className="flex-1">
+                      <span className="font-medium">Volume Discount Rule</span>
+                      <span className="text-muted-foreground"> created with 4 tiers</span>
+                    </div>
+                    <div className="text-muted-foreground">by Admin</div>
+                  </div>
+                  <div className="flex items-center gap-4 text-sm border-b pb-4">
+                    <div className="w-32 font-medium">2026-01-22 09:15</div>
+                    <Badge variant="outline">BULK_IMPORT</Badge>
+                    <div className="flex-1">
+                      <span className="font-medium">12 products</span>
+                      <span className="text-muted-foreground"> pricing imported from CSV</span>
+                    </div>
+                    <div className="text-muted-foreground">by Admin</div>
+                  </div>
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Showing last 30 days of changes
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       )}
 
       {/* Add/Edit Pricing Dialog */}
@@ -581,6 +814,18 @@ export default function ChannelPricingPage() {
                   }
                 />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Max Discount % (Guard Rail)</Label>
+              <Input
+                type="number"
+                placeholder="25"
+                value={formData.max_discount_percentage || ''}
+                onChange={(e) =>
+                  setFormData({ ...formData, max_discount_percentage: parseFloat(e.target.value) || 0 })
+                }
+              />
+              <p className="text-xs text-muted-foreground">Maximum discount allowed on this product for this channel</p>
             </div>
             {formData.mrp > 0 && formData.selling_price > 0 && (
               <div className="p-3 bg-muted rounded-lg">
