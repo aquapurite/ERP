@@ -868,11 +868,22 @@ async def delete_partner(
     Delete a partner (Super Admin only).
 
     Note: This permanently deletes the partner and all associated data.
+
+    STRUCTURAL ANALYSIS (2026-01-25):
+    - All FK constraints in production are NO ACTION (not CASCADE)
+    - Must explicitly delete in correct order respecting FK chains:
+      1. partner_orders (has FK to partner_commissions via commission_id)
+      2. partner_commissions (has FK to partner_payouts via payout_id)
+      3. partner_payouts
+      4. partner_referrals
+      5. partner_training
+      6. Clear self-referential FKs (referred_by AND referred_by_id columns)
+      7. Finally delete the partner
     """
     from app.models.community_partner import (
         PartnerCommission, PartnerPayout, PartnerReferral, PartnerOrder, PartnerTraining
     )
-    from sqlalchemy import delete
+    from sqlalchemy import delete, update, text
 
     # Get partner
     result = await db.execute(
@@ -884,43 +895,97 @@ async def delete_partner(
         raise HTTPException(status_code=404, detail="Partner not found")
 
     try:
-        # Delete related records first (in correct order due to FK constraints)
-        # 1. Delete commissions
+        # ============================================================
+        # STEP 1: Clear FK references in partner_orders before deleting commissions
+        # partner_orders.commission_id -> partner_commissions.id (NO ACTION)
+        # ============================================================
         await db.execute(
-            delete(PartnerCommission).where(PartnerCommission.partner_id == partner_id)
+            text("UPDATE partner_orders SET commission_id = NULL WHERE partner_id = :pid"),
+            {"pid": str(partner_id)}
         )
 
-        # 2. Delete payouts
-        await db.execute(
-            delete(PartnerPayout).where(PartnerPayout.partner_id == partner_id)
-        )
-
-        # 3. Delete partner orders
+        # ============================================================
+        # STEP 2: Delete partner_orders (must be before partner_commissions)
+        # ============================================================
         await db.execute(
             delete(PartnerOrder).where(PartnerOrder.partner_id == partner_id)
         )
 
-        # 4. Delete training records
+        # ============================================================
+        # STEP 3: Clear FK references in partner_commissions before deleting payouts
+        # partner_commissions.payout_id -> partner_payouts.id (NO ACTION)
+        # ============================================================
         await db.execute(
-            delete(PartnerTraining).where(PartnerTraining.partner_id == partner_id)
+            text("UPDATE partner_commissions SET payout_id = NULL WHERE partner_id = :pid"),
+            {"pid": str(partner_id)}
         )
 
-        # 5. Delete referrals (where this partner is the referrer or referred)
+        # ============================================================
+        # STEP 4: Delete partner_commissions (must be before partner_payouts)
+        # ============================================================
+        await db.execute(
+            delete(PartnerCommission).where(PartnerCommission.partner_id == partner_id)
+        )
+
+        # ============================================================
+        # STEP 5: Delete partner_payouts
+        # ============================================================
+        await db.execute(
+            delete(PartnerPayout).where(PartnerPayout.partner_id == partner_id)
+        )
+
+        # ============================================================
+        # STEP 6: Clear FK references in partner_referrals before deleting
+        # partner_referrals.payout_id -> partner_payouts.id (NO ACTION)
+        # ============================================================
+        await db.execute(
+            text("""
+                UPDATE partner_referrals SET payout_id = NULL
+                WHERE referrer_id = :pid OR referred_id = :pid
+            """),
+            {"pid": str(partner_id)}
+        )
+
+        # ============================================================
+        # STEP 7: Delete partner_referrals
+        # ============================================================
         await db.execute(
             delete(PartnerReferral).where(
                 (PartnerReferral.referrer_id == partner_id) | (PartnerReferral.referred_id == partner_id)
             )
         )
 
-        # 6. Clear referred_by_id for any partners who were referred by this partner
-        from sqlalchemy import update
+        # ============================================================
+        # STEP 8: Delete partner_training
+        # ============================================================
         await db.execute(
-            update(CommunityPartner).where(CommunityPartner.referred_by_id == partner_id).values(referred_by_id=None)
+            delete(PartnerTraining).where(PartnerTraining.partner_id == partner_id)
         )
 
-        # 7. Finally delete the partner
-        await db.delete(partner)
+        # ============================================================
+        # STEP 9: Clear self-referential FK in community_partners
+        # Database has BOTH referred_by AND referred_by_id columns
+        # FK constraint is on referred_by column (not referred_by_id)
+        # ============================================================
+        await db.execute(
+            text("""
+                UPDATE community_partners
+                SET referred_by = NULL, referred_by_id = NULL
+                WHERE referred_by = :pid OR referred_by_id = :pid
+            """),
+            {"pid": str(partner_id)}
+        )
+
+        # ============================================================
+        # STEP 10: Finally delete the partner
+        # ============================================================
+        await db.execute(
+            text("DELETE FROM community_partners WHERE id = :pid"),
+            {"pid": str(partner_id)}
+        )
+
         await db.commit()
+
     except Exception as e:
         await db.rollback()
         import traceback
