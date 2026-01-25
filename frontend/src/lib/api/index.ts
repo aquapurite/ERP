@@ -5527,4 +5527,167 @@ export const uploadsApi = {
   },
 };
 
+// ==================== COMMUNITY PARTNERS API ====================
+
+export interface CommunityPartner {
+  id: string;
+  partner_code: string;
+  full_name: string;
+  phone: string;
+  email?: string;
+  address_line1?: string;
+  address_line2?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  status: string;
+  kyc_status: string;
+  tier_id?: string;
+  tier?: PartnerTier;
+  referral_code: string;
+  referred_by?: string;
+  total_orders: number;
+  total_sales: number;
+  total_commission_earned: number;
+  available_balance: number;
+  created_at: string;
+  activated_at?: string;
+  notes?: string;
+}
+
+export interface PartnerTier {
+  id: string;
+  name: string;
+  code: string;
+  commission_rate: number;
+  min_orders: number;
+  min_sales: number;
+  benefits?: string[];
+  is_active: boolean;
+}
+
+export interface PartnerCommission {
+  id: string;
+  partner_id: string;
+  order_id: string;
+  order_amount: number;
+  commission_rate: number;
+  commission_amount: number;
+  status: string;
+  approved_at?: string;
+  paid_at?: string;
+  created_at: string;
+}
+
+export interface PartnerPayout {
+  id: string;
+  partner_id: string;
+  amount: number;
+  status: string;
+  bank_reference?: string;
+  failure_reason?: string;
+  requested_at: string;
+  processed_at?: string;
+}
+
+export interface PartnerOrder {
+  id: string;
+  order_id: string;
+  order_number: string;
+  order_amount: number;
+  commission_amount: number;
+  customer_name?: string;
+  order_status: string;
+  created_at: string;
+}
+
+export interface PartnerAnalytics {
+  total_partners: number;
+  active_partners: number;
+  pending_kyc: number;
+  total_orders: number;
+  total_sales: number;
+  total_commissions_paid: number;
+  pending_payouts: number;
+  partners_by_tier: Record<string, number>;
+  partners_by_state: Record<string, number>;
+}
+
+export const partnersApi = {
+  // Admin endpoints
+  list: async (params?: { page?: number; size?: number; status?: string; kyc_status?: string; state?: string; search?: string }) => {
+    const { data } = await apiClient.get<{
+      items: CommunityPartner[];
+      total: number;
+      page: number;
+      page_size: number;
+      total_pages: number;
+    }>('/partners', { params: { ...params, page_size: params?.size } });
+    return data;
+  },
+
+  getById: async (id: string) => {
+    const { data } = await apiClient.get<CommunityPartner>(`/partners/${id}`);
+    return data;
+  },
+
+  verifyKyc: async (partnerId: string, verification: { status: 'VERIFIED' | 'REJECTED'; notes?: string }) => {
+    const { data } = await apiClient.post<CommunityPartner>(`/partners/${partnerId}/verify-kyc`, verification);
+    return data;
+  },
+
+  suspend: async (partnerId: string, reason: string) => {
+    const { data } = await apiClient.post<CommunityPartner>(`/partners/${partnerId}/suspend`, null, { params: { reason } });
+    return data;
+  },
+
+  activate: async (partnerId: string) => {
+    const { data } = await apiClient.post<CommunityPartner>(`/partners/${partnerId}/activate`);
+    return data;
+  },
+
+  getAnalytics: async () => {
+    const { data } = await apiClient.get<PartnerAnalytics>('/partners/analytics/summary');
+    return data;
+  },
+
+  // Tiers
+  getTiers: async () => {
+    const { data } = await apiClient.get<PartnerTier[]>('/partners/tiers');
+    return data;
+  },
+
+  // Commissions
+  getCommissions: async (partnerId: string, params?: { page?: number; size?: number; status?: string }) => {
+    const { data } = await apiClient.get<{
+      items: PartnerCommission[];
+      page: number;
+      page_size: number;
+    }>(`/partners/${partnerId}/commissions`, { params: { ...params, page_size: params?.size } });
+    return data;
+  },
+
+  approveCommission: async (commissionId: string) => {
+    const { data } = await apiClient.post<PartnerCommission>(`/partners/commissions/${commissionId}/approve`);
+    return data;
+  },
+
+  // Payouts
+  processPayout: async (payoutId: string, params: { reference?: string; success: boolean; failure_reason?: string }) => {
+    const { data } = await apiClient.post<PartnerPayout>(`/partners/payouts/${payoutId}/process`, null, { params });
+    return data;
+  },
+
+  // Partner orders (for admin view)
+  getPartnerOrders: async (partnerId: string, params?: { page?: number; size?: number }) => {
+    // This uses the public endpoint which works for admin too
+    const { data } = await apiClient.get<{
+      items: PartnerOrder[];
+      page: number;
+      page_size: number;
+    }>('/partners/me/orders', { params: { partner_id: partnerId, ...params, page_size: params?.size } });
+    return data;
+  },
+};
+
 export default apiClient;

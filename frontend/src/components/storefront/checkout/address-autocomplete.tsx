@@ -288,158 +288,171 @@ export default function AddressAutocomplete({
         Search Address
       </Label>
 
-      <div className="flex gap-2">
-        <Popover open={isOpen} onOpenChange={setIsOpen}>
-          <PopoverTrigger asChild>
-            <div className="relative flex-1">
-              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                id="address-search"
-                value={query}
-                onChange={(e) => handleInputChange(e.target.value)}
-                placeholder={placeholder}
-                className="pl-10 pr-10"
-                disabled={disabled || isLocating}
-                autoComplete="off"
-              />
-              {isLoading && (
-                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
-              )}
-              {!isLoading && query && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuery('');
-                    setSuggestions([]);
-                  }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-          </PopoverTrigger>
-          <PopoverContent
-            className="w-[var(--radix-popover-trigger-width)] p-0"
-            align="start"
-          >
-            <Command>
-              <CommandList>
-                <CommandEmpty>
-                  {isLoading ? 'Searching...' : 'No addresses found'}
-                </CommandEmpty>
-                <CommandGroup heading="Suggestions">
-                  {suggestions.map((suggestion) => (
-                    <CommandItem
-                      key={suggestion.place_id}
-                      value={suggestion.description}
-                      onSelect={() => handleSuggestionSelect(suggestion)}
-                      className="cursor-pointer"
-                    >
-                      <MapPin className="mr-2 h-4 w-4 text-muted-foreground" />
-                      <div className="flex flex-col">
-                        <span className="font-medium">{suggestion.main_text}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {suggestion.secondary_text}
-                        </span>
-                      </div>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </CommandList>
-            </Command>
-          </PopoverContent>
-        </Popover>
-
-        {/* Use my location button */}
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={handleUseLocation}
-          disabled={disabled || isLocating}
-          title="Use my current location"
-        >
-          {isLocating ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Navigation className="h-4 w-4" />
-          )}
-        </Button>
-
-        {/* DigiPin lookup button */}
-        <Dialog open={digiPinDialogOpen} onOpenChange={setDigiPinDialogOpen}>
-          <DialogTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              disabled={disabled}
-              title="Enter DigiPin code"
-            >
-              <QrCode className="h-4 w-4" />
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <QrCode className="h-5 w-5" />
-                Enter DigiPin
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <p className="text-sm text-muted-foreground">
-                DigiPin is India's digital addressing system. Enter your 10-character
-                DigiPin code to auto-fill your address.
-              </p>
-              <div className="space-y-2">
-                <Label htmlFor="digipin">DigiPin Code</Label>
+      <div className="flex gap-2 items-start">
+        {/* Search input with label below */}
+        <div className="flex-1">
+          <Popover open={isOpen} onOpenChange={setIsOpen}>
+            <PopoverTrigger asChild>
+              <div className="relative">
+                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  id="digipin"
-                  value={digiPinInput}
-                  onChange={(e) => setDigiPinInput(e.target.value.toUpperCase())}
-                  placeholder="e.g., 4H8J9K2M3P"
-                  maxLength={12}
-                  className="font-mono text-lg tracking-wider"
+                  id="address-search"
+                  value={query}
+                  onChange={(e) => handleInputChange(e.target.value)}
+                  placeholder={placeholder}
+                  className="pl-10 pr-10"
+                  disabled={disabled || isLocating}
+                  autoComplete="off"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Find your DigiPin at{' '}
-                  <a
-                    href="https://digipin.gov.in"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline"
-                  >
-                    digipin.gov.in
-                  </a>
-                </p>
-              </div>
-              <Button
-                onClick={handleDigiPinLookup}
-                disabled={digiPinInput.length < 10 || isLookingUpDigiPin}
-                className="w-full"
-              >
-                {isLookingUpDigiPin ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Looking up...
-                  </>
-                ) : (
-                  <>
-                    <MapPin className="mr-2 h-4 w-4" />
-                    Lookup Address
-                  </>
+                {isLoading && (
+                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
                 )}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
+                {!isLoading && query && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuery('');
+                      setSuggestions([]);
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            </PopoverTrigger>
+            <PopoverContent
+              className="w-[var(--radix-popover-trigger-width)] p-0"
+              align="start"
+            >
+              <Command>
+                <CommandList>
+                  <CommandEmpty>
+                    {isLoading ? 'Searching...' : 'No addresses found'}
+                  </CommandEmpty>
+                  <CommandGroup heading="Suggestions">
+                    {suggestions.map((suggestion) => (
+                      <CommandItem
+                        key={suggestion.place_id}
+                        value={suggestion.description}
+                        onSelect={() => handleSuggestionSelect(suggestion)}
+                        className="cursor-pointer"
+                      >
+                        <MapPin className="mr-2 h-4 w-4 text-muted-foreground" />
+                        <div className="flex flex-col">
+                          <span className="font-medium">{suggestion.main_text}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {suggestion.secondary_text}
+                          </span>
+                        </div>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+          <p className="text-xs text-muted-foreground mt-1.5">
+            Search by address, landmark, or area
+          </p>
+        </div>
 
-      <p className="text-xs text-muted-foreground">
-        Search by address, landmark, or area. You can also use your current location
-        or enter a DigiPin code.
-      </p>
+        {/* Use my location button with label below */}
+        <div className="flex flex-col items-center">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={handleUseLocation}
+            disabled={disabled || isLocating}
+            title="Use my current location"
+            className="h-10 w-10"
+          >
+            {isLocating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Navigation className="h-4 w-4" />
+            )}
+          </Button>
+          <p className="text-xs text-muted-foreground mt-1.5 text-center whitespace-nowrap">
+            Use my current location
+          </p>
+        </div>
+
+        {/* DigiPin lookup button with label below */}
+        <div className="flex flex-col items-center">
+          <Dialog open={digiPinDialogOpen} onOpenChange={setDigiPinDialogOpen}>
+            <DialogTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                disabled={disabled}
+                title="Enter DigiPin code"
+                className="h-10 w-10"
+              >
+                <QrCode className="h-4 w-4" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <QrCode className="h-5 w-5" />
+                  Enter DigiPin
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <p className="text-sm text-muted-foreground">
+                  DigiPin is India's digital addressing system. Enter your 10-character
+                  DigiPin code to auto-fill your address.
+                </p>
+                <div className="space-y-2">
+                  <Label htmlFor="digipin">DigiPin Code</Label>
+                  <Input
+                    id="digipin"
+                    value={digiPinInput}
+                    onChange={(e) => setDigiPinInput(e.target.value.toUpperCase())}
+                    placeholder="e.g., 4H8J9K2M3P"
+                    maxLength={12}
+                    className="font-mono text-lg tracking-wider"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Find your DigiPin at{' '}
+                    <a
+                      href="https://digipin.gov.in"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      digipin.gov.in
+                    </a>
+                  </p>
+                </div>
+                <Button
+                  onClick={handleDigiPinLookup}
+                  disabled={digiPinInput.length < 10 || isLookingUpDigiPin}
+                  className="w-full"
+                >
+                  {isLookingUpDigiPin ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Looking up...
+                    </>
+                  ) : (
+                    <>
+                      <MapPin className="mr-2 h-4 w-4" />
+                      Lookup Address
+                    </>
+                  )}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+          <p className="text-xs text-muted-foreground mt-1.5 text-center">
+            DigiPin
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

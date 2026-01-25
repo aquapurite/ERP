@@ -1,13 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { ShoppingCart, Heart, Star, Package } from 'lucide-react';
+import { ShoppingCart, Heart, Star, Package, GitCompareArrows, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { useCartStore } from '@/lib/storefront/cart-store';
+import { useCompareStore, useIsInCompare, useCanAddToCompare } from '@/lib/storefront/compare-store';
 import { usePrefetchProduct } from '@/lib/storefront/hooks';
 import { formatCurrency } from '@/lib/utils';
+import { toast } from 'sonner';
 
 // Common product interface that works with both server and client products
 interface BaseProduct {
@@ -50,6 +52,10 @@ export default function ProductCard({
   showAddToCart = true,
 }: ProductCardProps) {
   const addItem = useCartStore((state) => state.addItem);
+  const addToCompare = useCompareStore((state) => state.addToCompare);
+  const removeFromCompare = useCompareStore((state) => state.removeFromCompare);
+  const isInCompare = useIsInCompare(product.id);
+  const canAddMore = useCanAddToCompare();
   const prefetchProduct = usePrefetchProduct();
 
   // Prefetch product detail on hover for faster navigation
@@ -74,6 +80,34 @@ export default function ProductCard({
     if (!isOutOfStock) {
       // Convert to cart-compatible product format
       addItem(product as any, 1);
+    }
+  };
+
+  const handleCompare = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (isInCompare) {
+      removeFromCompare(product.id);
+      toast.success('Removed from compare');
+    } else {
+      if (!canAddMore) {
+        toast.error('Maximum 4 products can be compared');
+        return;
+      }
+      const added = addToCompare({
+        id: product.id,
+        name: product.name,
+        slug: product.slug,
+        image: primaryImage?.thumbnail_url || primaryImage?.image_url,
+        price: sellingPrice,
+        mrp: product.mrp,
+        category: product.category?.name,
+        brand: product.brand?.name,
+      });
+      if (added) {
+        toast.success('Added to compare');
+      }
     }
   };
 
@@ -116,19 +150,37 @@ export default function ProductCard({
             )}
           </div>
 
-          {/* Wishlist Button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute top-2 right-2 h-8 w-8 bg-background/80 hover:bg-background opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              // TODO: Add to wishlist
-            }}
-          >
-            <Heart className="h-4 w-4" />
-          </Button>
+          {/* Action Buttons */}
+          <div className="absolute top-2 right-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {/* Wishlist Button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 bg-background/80 hover:bg-background"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // TODO: Add to wishlist
+              }}
+            >
+              <Heart className="h-4 w-4" />
+            </Button>
+
+            {/* Compare Button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-8 w-8 bg-background/80 hover:bg-background ${isInCompare ? 'text-primary' : ''}`}
+              onClick={handleCompare}
+              title={isInCompare ? 'Remove from compare' : 'Add to compare'}
+            >
+              {isInCompare ? (
+                <Check className="h-4 w-4" />
+              ) : (
+                <GitCompareArrows className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
 
           {/* Quick Add to Cart */}
           {showAddToCart && !isOutOfStock && (

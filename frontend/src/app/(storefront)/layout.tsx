@@ -2,6 +2,7 @@ import { Metadata } from 'next';
 import StorefrontHeader from '@/components/storefront/layout/header';
 import StorefrontFooter from '@/components/storefront/layout/footer';
 import AnnouncementBar from '@/components/storefront/layout/announcement-bar';
+import CompareBarWrapper from '@/components/storefront/product/compare-bar-wrapper';
 import { ServiceabilityProvider } from '@/components/storefront/serviceability-provider';
 
 export const metadata: Metadata = {
@@ -38,8 +39,10 @@ export default function StorefrontLayout({
         {/* CMS Announcement Bar */}
         <AnnouncementBar />
         <StorefrontHeader />
-        <main className="flex-1">{children}</main>
+        <main className="flex-1 pb-20">{children}</main>
         <StorefrontFooter />
+        {/* Product Comparison Bar - Fixed at bottom */}
+        <CompareBarWrapper />
       </div>
     </ServiceabilityProvider>
   );

@@ -83,6 +83,53 @@ export const productsApi = {
     // Filter out the current product
     return (data.items || []).filter((p: StorefrontProduct) => p.id !== productId);
   },
+
+  // Compare products - fetches full product details with specifications
+  compare: async (productIds: string[]): Promise<{
+    products: StorefrontProduct[];
+    specifications: Record<string, string[]>;
+    comparison_attributes: string[];
+  }> => {
+    if (productIds.length === 0) {
+      return { products: [], specifications: {}, comparison_attributes: [] };
+    }
+
+    const params = new URLSearchParams();
+    params.append('product_ids', productIds.join(','));
+
+    try {
+      const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/products/compare?${params.toString()}`);
+      return data;
+    } catch (error) {
+      // Fallback: fetch products individually if compare endpoint not available
+      const products = await Promise.all(
+        productIds.map(async (id) => {
+          try {
+            const product = await productsApi.getById(id);
+            return product;
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      const validProducts = products.filter((p): p is StorefrontProduct => p !== null);
+
+      // Extract all unique specification keys
+      const allSpecs = new Set<string>();
+      validProducts.forEach((p) => {
+        p.specifications?.forEach((spec) => {
+          allSpecs.add(spec.key);
+        });
+      });
+
+      return {
+        products: validProducts,
+        specifications: {},
+        comparison_attributes: Array.from(allSpecs),
+      };
+    }
+  },
 };
 
 // Categories API - Uses public storefront endpoints
