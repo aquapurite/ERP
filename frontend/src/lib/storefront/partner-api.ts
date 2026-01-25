@@ -96,13 +96,19 @@ export interface AuthResponse {
 }
 
 export const partnerAuthApi = {
-  // Send OTP for login
+  // Direct login without OTP (temporary - for demo/testing)
+  loginDirect: async (phone: string): Promise<AuthResponse> => {
+    const { data } = await partnerClient.post(`${PARTNERS_PATH}/auth/login-direct`, { phone });
+    return data;
+  },
+
+  // Send OTP for login (disabled temporarily)
   sendOTP: async (phone: string): Promise<{ success: boolean; message: string; cooldown_seconds?: number }> => {
     const { data } = await partnerClient.post(`${PARTNERS_PATH}/auth/send-otp`, { phone });
     return data;
   },
 
-  // Verify OTP and get tokens
+  // Verify OTP and get tokens (disabled temporarily)
   verifyOTP: async (phone: string, otp: string): Promise<AuthResponse> => {
     const { data } = await partnerClient.post(`${PARTNERS_PATH}/auth/verify-otp`, { phone, otp });
     return data;

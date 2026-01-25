@@ -215,6 +215,58 @@ async def refresh_access_token(
     return tokens
 
 
+@router.post("/auth/login-direct", response_model=PartnerAuthResponse)
+async def login_direct(
+    request: SendOTPRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Direct login without OTP (temporary - for demo/testing).
+
+    Partner must be registered first. This bypasses OTP verification.
+    """
+    auth_service = PartnerAuthService(db)
+    partner = await auth_service.get_partner_by_phone(request.phone)
+
+    if not partner:
+        raise HTTPException(
+            status_code=404,
+            detail="Phone number not registered. Please register first."
+        )
+
+    if partner.status in ["BLOCKED", "SUSPENDED"]:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Partner account is {partner.status.lower()}"
+        )
+
+    # Update last login
+    partner.last_login_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    # Generate tokens
+    access_token = auth_service.create_partner_token(str(partner.id), partner.partner_code)
+    refresh_token = auth_service.create_partner_refresh_token(str(partner.id))
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "expires_in": 24 * 7 * 3600,  # 7 days
+        "partner": {
+            "id": str(partner.id),
+            "partner_code": partner.partner_code,
+            "full_name": partner.full_name,
+            "phone": partner.phone,
+            "email": partner.email,
+            "status": partner.status,
+            "kyc_status": partner.kyc_status,
+            "referral_code": partner.referral_code,
+            "tier_code": partner.tier.code if partner.tier else "BRONZE",
+        }
+    }
+
+
 @router.post("/auth/logout")
 async def logout_partner(
     partner: CommunityPartner = Depends(require_partner),
