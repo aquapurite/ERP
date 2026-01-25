@@ -410,20 +410,20 @@ class PartnerTierCreate(BaseModel):
     """Schema for creating a partner tier."""
     code: str = Field(..., min_length=2, max_length=20)
     name: str = Field(..., min_length=2, max_length=100)
-    min_orders: int = Field(0, ge=0)
-    min_revenue: float = Field(0.0, ge=0)
-    commission_rate: float = Field(..., ge=0, le=100)
-    bonus_rate: float = Field(0.0, ge=0, le=100)
+    min_monthly_sales: int = Field(0, ge=0)
+    min_monthly_value: float = Field(0.0, ge=0)
+    commission_percentage: float = Field(..., ge=0, le=100)
+    bonus_percentage: float = Field(0.0, ge=0, le=100)
     is_active: bool = True
 
 
 class PartnerTierUpdate(BaseModel):
     """Schema for updating a partner tier."""
     name: Optional[str] = None
-    min_orders: Optional[int] = None
-    min_revenue: Optional[float] = None
-    commission_rate: Optional[float] = None
-    bonus_rate: Optional[float] = None
+    min_monthly_sales: Optional[int] = None
+    min_monthly_value: Optional[float] = None
+    commission_percentage: Optional[float] = None
+    bonus_percentage: Optional[float] = None
     is_active: Optional[bool] = None
 
 
@@ -454,10 +454,10 @@ async def create_tier(
         code=data.code.upper(),
         name=data.name,
         level=max_level + 1,
-        min_orders=data.min_orders,
-        min_revenue=data.min_revenue,
-        commission_rate=data.commission_rate,
-        bonus_rate=data.bonus_rate,
+        min_monthly_sales=data.min_monthly_sales,
+        min_monthly_value=data.min_monthly_value,
+        commission_percentage=data.commission_percentage,
+        bonus_percentage=data.bonus_percentage,
         is_active=data.is_active,
     )
 

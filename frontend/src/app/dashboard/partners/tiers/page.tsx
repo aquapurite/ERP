@@ -29,11 +29,11 @@ interface PartnerTier {
   id: string;
   code: string;
   name: string;
-  min_orders: number;
-  min_revenue: number;
-  commission_rate: number;
-  bonus_rate: number;
-  benefits?: Record<string, unknown>;
+  level: number;
+  min_monthly_sales: number;
+  min_monthly_value: number;
+  commission_percentage: number;
+  bonus_percentage: number;
   is_active: boolean;
   created_at: string;
 }
@@ -46,10 +46,10 @@ export default function PartnerTiersPage() {
   const [formData, setFormData] = useState({
     code: '',
     name: '',
-    min_orders: 0,
-    min_revenue: 0,
-    commission_rate: 10,
-    bonus_rate: 0,
+    min_monthly_sales: 0,
+    min_monthly_value: 0,
+    commission_percentage: 10,
+    bonus_percentage: 0,
     is_active: true,
   });
 
@@ -75,10 +75,10 @@ export default function PartnerTiersPage() {
     setFormData({
       code: '',
       name: '',
-      min_orders: 0,
-      min_revenue: 0,
-      commission_rate: 10,
-      bonus_rate: 0,
+      min_monthly_sales: 0,
+      min_monthly_value: 0,
+      commission_percentage: 10,
+      bonus_percentage: 0,
       is_active: true,
     });
     setIsDialogOpen(true);
@@ -89,10 +89,10 @@ export default function PartnerTiersPage() {
     setFormData({
       code: tier.code,
       name: tier.name,
-      min_orders: tier.min_orders,
-      min_revenue: tier.min_revenue,
-      commission_rate: tier.commission_rate,
-      bonus_rate: tier.bonus_rate,
+      min_monthly_sales: tier.min_monthly_sales,
+      min_monthly_value: tier.min_monthly_value,
+      commission_percentage: tier.commission_percentage,
+      bonus_percentage: tier.bonus_percentage,
       is_active: tier.is_active,
     });
     setIsDialogOpen(true);
@@ -170,8 +170,8 @@ export default function PartnerTiersPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Tier</TableHead>
-                    <TableHead>Min Orders</TableHead>
-                    <TableHead>Min Revenue</TableHead>
+                    <TableHead>Min Monthly Sales</TableHead>
+                    <TableHead>Min Monthly Value</TableHead>
                     <TableHead>Commission %</TableHead>
                     <TableHead>Bonus %</TableHead>
                     <TableHead>Status</TableHead>
@@ -189,12 +189,12 @@ export default function PartnerTiersPage() {
                           <span className="font-medium">{tier.name}</span>
                         </div>
                       </TableCell>
-                      <TableCell>{tier.min_orders}</TableCell>
-                      <TableCell>{formatCurrency(tier.min_revenue)}</TableCell>
+                      <TableCell>{tier.min_monthly_sales}</TableCell>
+                      <TableCell>{formatCurrency(tier.min_monthly_value)}</TableCell>
                       <TableCell className="font-bold text-green-600">
-                        {tier.commission_rate}%
+                        {tier.commission_percentage}%
                       </TableCell>
-                      <TableCell>{tier.bonus_rate}%</TableCell>
+                      <TableCell>{tier.bonus_percentage}%</TableCell>
                       <TableCell>
                         <Badge variant={tier.is_active ? 'default' : 'secondary'}>
                           {tier.is_active ? 'Active' : 'Inactive'}
@@ -251,44 +251,44 @@ export default function PartnerTiersPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="min_orders">Min Orders</Label>
+                <Label htmlFor="min_monthly_sales">Min Monthly Sales</Label>
                 <Input
-                  id="min_orders"
+                  id="min_monthly_sales"
                   type="number"
-                  value={formData.min_orders}
-                  onChange={(e) => setFormData({ ...formData, min_orders: parseInt(e.target.value) || 0 })}
+                  value={formData.min_monthly_sales}
+                  onChange={(e) => setFormData({ ...formData, min_monthly_sales: parseInt(e.target.value) || 0 })}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="min_revenue">Min Revenue (INR)</Label>
+                <Label htmlFor="min_monthly_value">Min Monthly Value (INR)</Label>
                 <Input
-                  id="min_revenue"
+                  id="min_monthly_value"
                   type="number"
-                  value={formData.min_revenue}
-                  onChange={(e) => setFormData({ ...formData, min_revenue: parseInt(e.target.value) || 0 })}
+                  value={formData.min_monthly_value}
+                  onChange={(e) => setFormData({ ...formData, min_monthly_value: parseInt(e.target.value) || 0 })}
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="commission_rate">Commission Rate (%)</Label>
+                <Label htmlFor="commission_percentage">Commission Rate (%)</Label>
                 <Input
-                  id="commission_rate"
+                  id="commission_percentage"
                   type="number"
                   step="0.5"
-                  value={formData.commission_rate}
-                  onChange={(e) => setFormData({ ...formData, commission_rate: parseFloat(e.target.value) || 0 })}
+                  value={formData.commission_percentage}
+                  onChange={(e) => setFormData({ ...formData, commission_percentage: parseFloat(e.target.value) || 0 })}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="bonus_rate">Bonus Rate (%)</Label>
+                <Label htmlFor="bonus_percentage">Bonus Rate (%)</Label>
                 <Input
-                  id="bonus_rate"
+                  id="bonus_percentage"
                   type="number"
                   step="0.5"
-                  value={formData.bonus_rate}
-                  onChange={(e) => setFormData({ ...formData, bonus_rate: parseFloat(e.target.value) || 0 })}
+                  value={formData.bonus_percentage}
+                  onChange={(e) => setFormData({ ...formData, bonus_percentage: parseFloat(e.target.value) || 0 })}
                 />
               </div>
             </div>
