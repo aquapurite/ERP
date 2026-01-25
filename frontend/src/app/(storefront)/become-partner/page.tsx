@@ -91,24 +91,25 @@ export default function BecomePartnerPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // Fetch CMS content on mount
+  // Fetch CMS content on mount (using public storefront endpoint)
   useEffect(() => {
     const fetchContent = async () => {
       try {
+        // Use the public storefront settings endpoint (no auth required)
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/cms/settings?group=partner_page&limit=50`
+          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/storefront/settings?group=partner_page`
         );
 
         if (response.ok) {
+          // Response is a flat key-value object: {partner_page_hero_title: "...", ...}
           const data = await response.json();
-          const items = data.items || data.data?.items || [];
 
-          if (items.length > 0) {
+          if (Object.keys(data).length > 0) {
             const newContent = { ...defaultContent };
-            items.forEach((setting: { setting_key: string; setting_value?: string }) => {
-              const key = setting.setting_key.replace('partner_page_', '') as keyof PageContent;
-              if (key in defaultContent && setting.setting_value) {
-                newContent[key] = setting.setting_value;
+            Object.entries(data).forEach(([settingKey, settingValue]) => {
+              const key = settingKey.replace('partner_page_', '') as keyof PageContent;
+              if (key in defaultContent && settingValue) {
+                newContent[key] = settingValue as string;
               }
             });
             setContent(newContent);
