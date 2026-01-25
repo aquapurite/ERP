@@ -194,6 +194,14 @@ class PartnerService:
             self.db.add(referral)
             await self.db.commit()
 
+        # Re-fetch partner with tier relationship loaded for response serialization
+        result = await self.db.execute(
+            select(CommunityPartner)
+            .options(selectinload(CommunityPartner.tier))
+            .where(CommunityPartner.id == partner.id)
+        )
+        partner = result.scalar_one()
+
         return partner
 
     # ========================================================================
@@ -236,7 +244,14 @@ class PartnerService:
         partner.status = "KYC_SUBMITTED"
 
         await self.db.commit()
-        await self.db.refresh(partner)
+
+        # Re-fetch with tier loaded for response serialization
+        result = await self.db.execute(
+            select(CommunityPartner)
+            .options(selectinload(CommunityPartner.tier))
+            .where(CommunityPartner.id == partner_id)
+        )
+        partner = result.scalar_one()
 
         return partner
 
@@ -268,7 +283,14 @@ class PartnerService:
             partner.kyc_rejection_reason = verification.kyc_rejection_reason
 
         await self.db.commit()
-        await self.db.refresh(partner)
+
+        # Re-fetch with tier loaded for response serialization
+        result = await self.db.execute(
+            select(CommunityPartner)
+            .options(selectinload(CommunityPartner.tier))
+            .where(CommunityPartner.id == partner_id)
+        )
+        partner = result.scalar_one()
 
         return partner
 
@@ -370,7 +392,14 @@ class PartnerService:
 
         partner.updated_at = datetime.now(timezone.utc)
         await self.db.commit()
-        await self.db.refresh(partner)
+
+        # Re-fetch with tier loaded for response serialization
+        result = await self.db.execute(
+            select(CommunityPartner)
+            .options(selectinload(CommunityPartner.tier))
+            .where(CommunityPartner.id == partner_id)
+        )
+        partner = result.scalar_one()
 
         return partner
 
