@@ -869,7 +869,10 @@ async def delete_partner(
 
     Note: This permanently deletes the partner and all associated data.
     """
-    from app.models.community_partner import PartnerCommission, PartnerPayout, PartnerReferral, PartnerOrder
+    from app.models.community_partner import (
+        PartnerCommission, PartnerPayout, PartnerReferral, PartnerOrder, PartnerTraining
+    )
+    from sqlalchemy import delete
 
     # Get partner
     result = await db.execute(
@@ -884,27 +887,32 @@ async def delete_partner(
         # Delete related records first (in correct order due to FK constraints)
         # 1. Delete commissions
         await db.execute(
-            PartnerCommission.__table__.delete().where(PartnerCommission.partner_id == partner_id)
+            delete(PartnerCommission).where(PartnerCommission.partner_id == partner_id)
         )
 
         # 2. Delete payouts
         await db.execute(
-            PartnerPayout.__table__.delete().where(PartnerPayout.partner_id == partner_id)
+            delete(PartnerPayout).where(PartnerPayout.partner_id == partner_id)
         )
 
         # 3. Delete partner orders
         await db.execute(
-            PartnerOrder.__table__.delete().where(PartnerOrder.partner_id == partner_id)
+            delete(PartnerOrder).where(PartnerOrder.partner_id == partner_id)
         )
 
-        # 4. Delete referrals (where this partner is the referrer or referred)
+        # 4. Delete training records
         await db.execute(
-            PartnerReferral.__table__.delete().where(
+            delete(PartnerTraining).where(PartnerTraining.partner_id == partner_id)
+        )
+
+        # 5. Delete referrals (where this partner is the referrer or referred)
+        await db.execute(
+            delete(PartnerReferral).where(
                 (PartnerReferral.referrer_id == partner_id) | (PartnerReferral.referred_id == partner_id)
             )
         )
 
-        # 5. Finally delete the partner
+        # 6. Finally delete the partner
         await db.delete(partner)
         await db.commit()
     except Exception as e:
