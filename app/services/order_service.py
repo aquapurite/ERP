@@ -8,6 +8,7 @@ import logging
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.models.customer import Customer, CustomerAddress
 from app.models.order import (
@@ -396,71 +397,86 @@ class OrderService:
 
         # Create order - use string values for VARCHAR columns (per CLAUDE.md standards)
         from app.core.enum_utils import get_enum_value
-        order = Order(
-            order_number=order_number,
-            customer_id=data.customer_id,
-            channel_id=data.channel_id,  # Sales channel for pricing
-            source=get_enum_value(data.source),  # Convert enum to string
-            status="NEW",  # VARCHAR column - use string directly
-            subtotal=subtotal,
-            tax_amount=tax_amount,
-            discount_amount=Decimal("0.00"),
-            shipping_amount=Decimal("0.00"),
-            total_amount=total_amount,
-            discount_code=data.discount_code,
-            payment_method=get_enum_value(data.payment_method),  # Convert enum to string
-            payment_status="PENDING",  # VARCHAR column - use string directly
-            shipping_address=shipping_address,
-            billing_address=billing_address,
-            customer_notes=data.customer_notes,
-            internal_notes=data.internal_notes,
-            region_id=data.region_id,
-            created_by=created_by,
-        )
-        self.db.add(order)
-        await self.db.flush()
 
-        # Create order items
-        for item in items_data:
-            order_item = OrderItem(
+        try:
+            order = Order(
+                order_number=order_number,
+                customer_id=data.customer_id,
+                channel_id=data.channel_id,  # Sales channel for pricing
+                source=get_enum_value(data.source),  # Convert enum to string
+                status="NEW",  # VARCHAR column - use string directly
+                subtotal=subtotal,
+                tax_amount=tax_amount,
+                discount_amount=Decimal("0.00"),
+                shipping_amount=Decimal("0.00"),
+                total_amount=total_amount,
+                discount_code=data.discount_code,
+                payment_method=get_enum_value(data.payment_method),  # Convert enum to string
+                payment_status="PENDING",  # VARCHAR column - use string directly
+                shipping_address=shipping_address,
+                billing_address=billing_address,
+                customer_notes=data.customer_notes,
+                internal_notes=data.internal_notes,
+                region_id=data.region_id,
+                created_by=created_by,
+            )
+            self.db.add(order)
+            await self.db.flush()
+
+            # Create order items
+            for item in items_data:
+                order_item = OrderItem(
+                    order_id=order.id,
+                    product_id=item["product"].id,
+                    variant_id=item["variant"].id if item["variant"] else None,
+                    product_name=item["product"].name,
+                    product_sku=item["product"].sku,
+                    variant_name=item["variant"].name if item["variant"] else None,
+                    quantity=item["quantity"],
+                    unit_price=item["unit_price"],
+                    unit_mrp=item["unit_mrp"],
+                    tax_rate=item["tax_rate"],
+                    tax_amount=item["tax_amount"],
+                    total_amount=item["total_amount"],
+                    hsn_code=item["product"].hsn_code,
+                    warranty_months=item["product"].warranty_months,
+                )
+                self.db.add(order_item)
+
+            # Create initial status history - use string value for VARCHAR column
+            status_history = OrderStatusHistory(
                 order_id=order.id,
-                product_id=item["product"].id,
-                variant_id=item["variant"].id if item["variant"] else None,
-                product_name=item["product"].name,
-                product_sku=item["product"].sku,
-                variant_name=item["variant"].name if item["variant"] else None,
-                quantity=item["quantity"],
-                unit_price=item["unit_price"],
-                unit_mrp=item["unit_mrp"],
-                tax_rate=item["tax_rate"],
-                tax_amount=item["tax_amount"],
-                total_amount=item["total_amount"],
-                hsn_code=item["product"].hsn_code,
-                warranty_months=item["product"].warranty_months,
+                from_status=None,
+                to_status="NEW",  # VARCHAR column - use string directly
+                changed_by=created_by,
+                notes="Order created",
             )
-            self.db.add(order_item)
+            self.db.add(status_history)
 
-        # Create initial status history - use string value for VARCHAR column
-        status_history = OrderStatusHistory(
-            order_id=order.id,
-            from_status=None,
-            to_status="NEW",  # VARCHAR column - use string directly
-            changed_by=created_by,
-            notes="Order created",
-        )
-        self.db.add(status_history)
+            # Handle Community Partner attribution if partner_code provided
+            if data.partner_code:
+                await self._attribute_order_to_partner(
+                    order=order,
+                    partner_code=data.partner_code,
+                    order_amount=total_amount,
+                    customer_id=data.customer_id
+                )
 
-        # Handle Community Partner attribution if partner_code provided
-        if data.partner_code:
-            await self._attribute_order_to_partner(
-                order=order,
-                partner_code=data.partner_code,
-                order_amount=total_amount,
-                customer_id=data.customer_id
-            )
+            await self.db.commit()
+            return await self.get_order_by_id(order.id, include_all=True)
 
-        await self.db.commit()
-        return await self.get_order_by_id(order.id, include_all=True)
+        except IntegrityError as e:
+            await self.db.rollback()
+            logger.error(f"Database integrity error creating order: {e}")
+            raise ValueError(f"Order creation failed: Invalid data reference")
+        except SQLAlchemyError as e:
+            await self.db.rollback()
+            logger.error(f"Database error creating order: {e}")
+            raise ValueError(f"Order creation failed: Database error")
+        except Exception as e:
+            await self.db.rollback()
+            logger.error(f"Unexpected error creating order: {e}")
+            raise
 
     async def update_order_status(
         self,

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional, List
 from decimal import Decimal
 from uuid import UUID
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 
 from app.models.channel import ChannelType, ChannelStatus, PricingRuleType
 
@@ -167,18 +167,44 @@ class ChannelPricingCreate(BaseModel):
     effective_from: Optional[datetime] = None
     effective_to: Optional[datetime] = None
 
+    @model_validator(mode='after')
+    def validate_prices(self):
+        """Validate selling_price <= mrp and effective_from < effective_to."""
+        if self.selling_price > self.mrp:
+            raise ValueError('Selling price cannot exceed MRP')
+        if self.transfer_price and self.transfer_price > self.mrp:
+            raise ValueError('Transfer price cannot exceed MRP')
+        if self.effective_from and self.effective_to:
+            if self.effective_from >= self.effective_to:
+                raise ValueError('Effective from date must be before effective to date')
+        return self
+
 
 class ChannelPricingUpdate(BaseModel):
     """Schema for updating ChannelPricing."""
-    mrp: Optional[Decimal] = None
-    selling_price: Optional[Decimal] = None
-    transfer_price: Optional[Decimal] = None
-    discount_percentage: Optional[Decimal] = None
-    max_discount_percentage: Optional[Decimal] = None
+    mrp: Optional[Decimal] = Field(None, gt=0)
+    selling_price: Optional[Decimal] = Field(None, gt=0)
+    transfer_price: Optional[Decimal] = Field(None, gt=0)
+    discount_percentage: Optional[Decimal] = Field(None, ge=0, le=100)
+    max_discount_percentage: Optional[Decimal] = Field(None, ge=0, le=100)
     is_active: Optional[bool] = None
     is_listed: Optional[bool] = None
     effective_from: Optional[datetime] = None
     effective_to: Optional[datetime] = None
+
+    @model_validator(mode='after')
+    def validate_prices(self):
+        """Validate prices when both mrp and selling_price are provided."""
+        if self.mrp is not None and self.selling_price is not None:
+            if self.selling_price > self.mrp:
+                raise ValueError('Selling price cannot exceed MRP')
+        if self.mrp is not None and self.transfer_price is not None:
+            if self.transfer_price > self.mrp:
+                raise ValueError('Transfer price cannot exceed MRP')
+        if self.effective_from and self.effective_to:
+            if self.effective_from >= self.effective_to:
+                raise ValueError('Effective from date must be before effective to date')
+        return self
 
 
 class ChannelPricingResponse(ChannelPricingBase):

@@ -4,7 +4,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 from decimal import Decimal
 
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 
@@ -104,6 +104,11 @@ class Order(Base):
     Tracks orders from creation to delivery.
     """
     __tablename__ = "orders"
+    __table_args__ = (
+        Index('ix_order_status_created', 'status', 'created_at'),
+        Index('ix_order_customer_created', 'customer_id', 'created_at'),
+        Index('ix_order_payment_status', 'payment_status', 'created_at'),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

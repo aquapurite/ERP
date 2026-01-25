@@ -4,7 +4,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Optional, List
 from decimal import Decimal
 
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 
@@ -41,6 +41,10 @@ class Product(Base):
     Includes pricing, warranty, and relationship to variants.
     """
     __tablename__ = "products"
+    __table_args__ = (
+        Index('ix_product_category_active_status', 'category_id', 'is_active', 'status'),
+        Index('ix_product_item_type_active', 'item_type', 'is_active'),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

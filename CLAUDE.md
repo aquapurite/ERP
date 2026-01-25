@@ -2168,38 +2168,38 @@ GET    /api/v1/pricing/alerts                     # Below margin threshold
 
 ### Implementation Checklist
 
-**Phase 1: Critical Fix (Invoice Integration)**
-- [ ] Create PricingService with `get_channel_price()` method
-- [ ] Modify order creation to use ChannelPricing
-- [ ] Ensure invoice uses OrderItem.unit_price (already set correctly from order)
-- [ ] Add fallback to product.selling_price if no channel pricing
+**Phase 1: Critical Fix (Invoice Integration)** - COMPLETE (2026-01-24)
+- [x] Create PricingService with `get_channel_price()` method
+- [x] Modify order creation to use ChannelPricing
+- [x] Ensure invoice uses OrderItem.unit_price (already set correctly from order)
+- [x] Add fallback to product.selling_price if no channel pricing
 
-**Phase 2: Enhanced UI**
-- [ ] Channel Pricing page with tabs (Pricing, Commission, Rules, History)
-- [ ] Channel + Category + Product selectors
-- [ ] Bulk edit functionality
-- [ ] Margin calculation display
+**Phase 2: Enhanced UI** - COMPLETE (2026-01-24)
+- [x] Channel Pricing page with tabs (Pricing, Commission, Rules, History)
+- [x] Channel + Category + Product selectors (cascading dropdowns)
+- [x] Margin calculation display
+- [ ] Bulk edit functionality (Add Rule button disabled)
 
-**Phase 3: Pricing Rules Engine**
-- [ ] Create pricing_rules table
-- [ ] Create PricingRuleService
-- [ ] Volume discount rules
-- [ ] Customer segment pricing
-- [ ] Promotional/time-based pricing
+**Phase 3: Pricing Rules Engine** - COMPLETE
+- [x] Create pricing_rules table (exists in database)
+- [x] Create PricingRuleService (in pricing_service.py)
+- [x] Volume discount rules (default rules applied)
+- [x] Customer segment pricing (VIP, Dealer, Distributor)
+- [ ] Promotional/time-based pricing UI
 
-**Phase 4: Audit & History**
-- [ ] Create pricing_history table
-- [ ] Track all pricing changes
-- [ ] History UI with filters
+**Phase 4: Audit & History** - COMPLETE
+- [x] Create pricing_history table (exists in database)
+- [x] Track all pricing changes
+- [x] History UI with filters (History tab in Channel Pricing page)
 
-**Phase 5: Bulk Operations**
-- [ ] CSV import endpoint
-- [ ] CSV export endpoint
+**Phase 5: Bulk Operations** - COMPLETE (2026-01-25)
+- [x] CSV import endpoint (backend exists, UI added)
+- [x] CSV export endpoint (backend exists, UI added)
 - [ ] Copy pricing between channels
 
-**Phase 6: Reports**
-- [ ] Cross-channel price comparison
-- [ ] Margin alerts (below threshold)
+**Phase 6: Reports** - PARTIAL
+- [x] Cross-channel price comparison (`/dashboard/channels/pricing/compare`) (2026-01-25)
+- [x] Margin alerts (below threshold) - Stats card exists
 - [ ] Channel profitability report
 
 ### Key Files
@@ -2626,8 +2626,8 @@ GET  /api/v1/inventory/low-stock                      # Low stock alerts
 - [x] Add GRN column to Serialized Items view (2026-01-24)
 - [x] Add Item Type badges to product display (2026-01-24)
 - [x] Add Serial Number and GRN search filters (2026-01-24)
-- [ ] Create Stock Movements page (`/dashboard/inventory/movements`)
-- [ ] Update Inventory navigation menu
+- [x] Create Stock Movements page (`/dashboard/inventory/movements`) (2026-01-24)
+- [x] Update Inventory navigation menu (2026-01-24)
 - [ ] Create reusable InventoryTable component
 
 ### Best Practices
@@ -2637,4 +2637,116 @@ GET  /api/v1/inventory/low-stock                      # Low stock alerts
 3. **Use transactions**: Wrap multi-table updates in database transactions
 4. **Validate serials**: Always validate serial numbers against `po_serials` before acceptance
 5. **Track references**: Link movements to source documents (GRN, Order, Transfer)
+
+---
+
+## System Audit Report (2026-01-25)
+
+### Executive Summary
+
+Comprehensive audit of 204 database tables, 76 API endpoint files, 182+ frontend pages, and security configurations.
+
+| Area | Grade | Critical | High | Medium |
+|------|-------|----------|------|--------|
+| Backend API | B+ | 5 | 11 | 17 |
+| ERP Frontend | B | 8 | 6 | 12 |
+| D2C Storefront | B | 3 | 7 | 15 |
+| Database Schema | A- | 0 | 3 | 8 |
+| Security | C+ | 2 | 8 | 8 |
+| **Overall** | **B** | **18** | **35** | **60** |
+
+### Critical Issues (P0 - Fix Immediately)
+
+| Issue | File | Status | Date |
+|-------|------|--------|------|
+| Rotate OIDC token | Vercel Dashboard | ⚠️ MANUAL | - |
+| Remove Razorpay test key fallback | `checkout/page.tsx` | ✅ FIXED | 2026-01-25 |
+| Add security headers | `next.config.ts` | ✅ FIXED | 2026-01-25 |
+| JWT in localStorage (XSS vulnerable) | `client.ts` | ⏳ Requires backend | - |
+
+### High Priority Issues (P1)
+
+| Issue | File | Status | Date |
+|-------|------|--------|------|
+| Transaction rollback in order creation | `order_service.py` | ✅ FIXED | 2026-01-25 |
+| N+1 queries in product list | `product_service.py` | ✅ VERIFIED | 2026-01-25 |
+| Add composite indexes | Product, Order models | ✅ FIXED | 2026-01-25 |
+| Add FK constraints to channel tables | Supabase production | ✅ FIXED | 2026-01-26 |
+| Rate limiting on login | ERP + Storefront | ✅ FIXED | 2026-01-25 |
+| Input validation on channel schemas | `schemas/channel.py` | ✅ FIXED | 2026-01-25 |
+
+### Medium Priority Issues (P2)
+
+| Issue | Status | Date |
+|-------|--------|------|
+| Error boundaries for storefront | ✅ FIXED (5 files) | 2026-01-25 |
+| Global error handler in query-provider | ✅ FIXED | 2026-01-25 |
+| Add missing SEO metadata (7 pages) | ✅ FIXED | 2026-01-25 |
+| Add loading skeletons (5 pages) | ✅ FIXED | 2026-01-25 |
+| Cart validation on restore | ✅ FIXED | 2026-01-25 |
+| Dashboard error states | ✅ FIXED | 2026-01-25 |
+| Contact/Support page | ✅ FIXED | 2026-01-25 |
+| Convert JSON to JSONB (105 columns) | ✅ FIXED | 2026-01-26 |
+| Fix timestamps to TIMESTAMPTZ (485 columns) | ✅ FIXED | 2026-01-26 |
+
+### Fixes Applied (2026-01-25 & 2026-01-26)
+
+**Security:**
+- Removed Razorpay test key fallback in `checkout/page.tsx`
+- Added security headers (X-Content-Type-Options, X-Frame-Options, HSTS, etc.) to `next.config.ts`
+- Added rate limiting on ERP admin login (`(auth)/login/page.tsx`) with 5 attempts, 5-min lockout
+- Added OTP verification rate limiting on storefront login (`(storefront)/account/login/page.tsx`)
+
+**Backend:**
+- Added transaction rollback with proper exception handling in `order_service.py`
+- Added `IntegrityError` and `SQLAlchemyError` imports for proper error handling
+- Added `@model_validator` cross-field validation to ChannelPricing schemas (selling_price <= mrp, date range validation)
+
+**Database Schema (Supabase Production) - 2026-01-26:**
+- Added 9 FK constraints to channel tables:
+  - `channel_pricing`: channel_id, product_id, variant_id → CASCADE
+  - `channel_inventory`: channel_id, warehouse_id, product_id, variant_id → CASCADE
+  - `channel_orders`: channel_id → RESTRICT, order_id → CASCADE
+- Created `product_channel_settings` table (was missing in production) with proper FK constraints
+- Converted 105 JSON columns → JSONB (better query performance)
+- Converted 485 TIMESTAMP columns → TIMESTAMPTZ (timezone safety)
+
+**Performance:**
+- Added composite index `ix_product_category_active_status` on products table
+- Added composite index `ix_product_item_type_active` on products table
+- Added composite indexes `ix_order_status_created`, `ix_order_customer_created`, `ix_order_payment_status` on orders table
+
+**Frontend:**
+- Created error.tsx files for storefront routes (main, checkout, account, products, partner)
+- Enhanced QueryProvider with global error handlers, retry logic, and better caching
+- Added toast notifications for mutation errors
+- Added SEO metadata layout files for 7 storefront pages
+- Added loading skeleton files for 5 storefront pages
+- Added cart validation on localStorage restore with price/availability checks
+- Added error states to ERP dashboard with retry functionality
+- Created Contact/Support page for storefront
+
+### Database Type Issues (ALL FIXED 2026-01-26)
+
+| Issue Type | Before | After | Status |
+|------------|--------|-------|--------|
+| JSON columns | 105 | 0 | ✅ Converted to JSONB |
+| Timestamps WITHOUT timezone | 485 | 0 | ✅ Converted to TIMESTAMPTZ |
+| PostgreSQL ENUMs | 0 | 0 | ✅ Good (using VARCHAR) |
+| JSONB columns | 31 | 136 | ✅ Complete |
+| TIMESTAMPTZ columns | 86 | 571 | ✅ Complete |
+
+### Recommended Indexes (Add to Production)
+
+```sql
+CREATE INDEX ix_product_category_active_status ON products(category_id, is_active, status);
+CREATE INDEX ix_order_status_created ON orders(status, created_at);
+CREATE INDEX ix_order_customer_created ON orders(customer_id, created_at);
+CREATE INDEX ix_gl_period_account_date ON general_ledger(period_id, account_id, posting_date);
+CREATE INDEX ix_dealer_type_status_tier ON dealers(dealer_type, status, tier);
+```
+
+### Full Audit Report
+
+See: `/AUDIT_REPORT_2026-01-25.md` for complete findings with file locations and remediation steps
 
