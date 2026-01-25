@@ -1149,13 +1149,20 @@ async def bulk_update_site_settings(
             # Create new setting if it doesn't exist
             # Determine setting type and group from key
             setting_type = "url" if "url" in key.lower() or "link" in key.lower() else "text"
-            setting_group = "social" if any(s in key.lower() for s in ["facebook", "twitter", "instagram", "youtube", "linkedin"]) else "general"
-            if "phone" in key.lower() or "email" in key.lower() or "address" in key.lower():
+
+            # Determine setting_group from key prefix
+            if key.startswith("partner_page_"):
+                setting_group = "partner_page"
+            elif any(s in key.lower() for s in ["facebook", "twitter", "instagram", "youtube", "linkedin"]):
+                setting_group = "social"
+            elif "phone" in key.lower() or "email" in key.lower() or "address" in key.lower():
                 setting_group = "contact"
             elif "footer" in key.lower() or "copyright" in key.lower():
                 setting_group = "footer"
             elif "newsletter" in key.lower():
                 setting_group = "newsletter"
+            else:
+                setting_group = "general"
 
             new_setting = CMSSiteSetting(
                 setting_key=key,
