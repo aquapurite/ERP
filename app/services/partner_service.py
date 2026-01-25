@@ -126,10 +126,10 @@ class PartnerService:
 
         # Handle referral
         referred_by_id = None
-        if data.referral_code:
+        if data.referred_by_code:
             referrer = await self.db.execute(
                 select(CommunityPartner).where(
-                    CommunityPartner.referral_code == data.referral_code
+                    CommunityPartner.referral_code == data.referred_by_code
                 )
             )
             referrer_partner = referrer.scalar_one_or_none()
