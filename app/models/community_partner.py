@@ -90,7 +90,7 @@ class CommunityPartner(Base):
     __tablename__ = "community_partners"
     __table_args__ = (
         Index('ix_community_partners_referral_code', 'referral_code'),
-        Index('ix_community_partners_mobile', 'mobile'),
+        Index('ix_community_partners_phone', 'phone'),
         Index('ix_community_partners_status', 'status'),
     )
 
@@ -119,7 +119,7 @@ class CommunityPartner(Base):
 
     # Personal Information
     full_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    mobile: Mapped[str] = mapped_column(
+    phone: Mapped[str] = mapped_column(
         String(15),
         unique=True,
         nullable=False,

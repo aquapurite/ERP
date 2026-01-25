@@ -297,6 +297,9 @@ class D2COrderCreate(BaseModel):
     # Optional
     notes: Optional[str] = Field(None, description="Order notes")
 
+    # Community Partner Attribution
+    partner_code: Optional[str] = Field(None, description="Partner referral code for attribution")
+
 
 class D2COrderResponse(BaseModel):
     """Simple response for D2C order."""

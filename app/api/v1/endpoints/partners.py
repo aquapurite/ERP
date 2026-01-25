@@ -3,6 +3,7 @@ Community Partner API Endpoints
 
 Endpoints for the Meesho-style Community Sales Channel:
 - Partner registration (public)
+- OTP-based authentication
 - KYC submission
 - Profile management
 - Commission tracking
@@ -10,15 +11,23 @@ Endpoints for the Meesho-style Community Sales Channel:
 - Admin management
 """
 
+import uuid
 from typing import Optional
 from uuid import UUID
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, Field
 
 from app.api.deps import get_db, get_current_user
 from app.models.user import User
+from app.models.community_partner import CommunityPartner, PartnerTier, PartnerCommission, PartnerPayout, PartnerOrder
+from app.models.order import Order
 from app.services.partner_service import PartnerService
+from app.services.partner_auth_service import PartnerAuthService
 from app.schemas.community_partner import (
     CommunityPartnerCreate,
     CommunityPartnerUpdate,
@@ -41,10 +50,82 @@ from app.schemas.community_partner import (
 
 
 router = APIRouter(prefix="/partners", tags=["Community Partners"])
+security = HTTPBearer(auto_error=False)
 
 
 # ============================================================================
-# Public Endpoints (Partner App)
+# Pydantic Schemas for Auth
+# ============================================================================
+
+class SendOTPRequest(BaseModel):
+    """Request to send OTP"""
+    phone: str = Field(..., pattern=r"^\+?[1-9]\d{9,14}$", description="Phone number")
+
+
+class VerifyOTPRequest(BaseModel):
+    """Request to verify OTP"""
+    phone: str = Field(..., pattern=r"^\+?[1-9]\d{9,14}$")
+    otp: str = Field(..., min_length=4, max_length=6)
+
+
+class PartnerAuthResponse(BaseModel):
+    """Authentication response"""
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    partner: dict
+
+
+class RefreshTokenRequest(BaseModel):
+    """Refresh token request"""
+    refresh_token: str
+
+
+# ============================================================================
+# Authentication Dependency
+# ============================================================================
+
+async def get_current_partner(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> Optional[CommunityPartner]:
+    """Get current authenticated partner from JWT token."""
+    if not credentials:
+        return None
+
+    auth_service = PartnerAuthService(db)
+    partner = await auth_service.get_current_partner_from_token(credentials.credentials)
+    return partner
+
+
+async def require_partner(
+    partner: Optional[CommunityPartner] = Depends(get_current_partner),
+) -> CommunityPartner:
+    """Require authenticated partner."""
+    if not partner:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return partner
+
+
+async def require_active_partner(
+    partner: CommunityPartner = Depends(require_partner),
+) -> CommunityPartner:
+    """Require authenticated and active partner."""
+    if partner.status in ["BLOCKED", "SUSPENDED"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Partner account is {partner.status.lower()}",
+        )
+    return partner
+
+
+# ============================================================================
+# Public Endpoints - Registration & Authentication
 # ============================================================================
 
 @router.post("/register", response_model=CommunityPartnerResponse, status_code=status.HTTP_201_CREATED)
@@ -58,7 +139,7 @@ async def register_partner(
     Public endpoint - no authentication required.
 
     Steps:
-    1. Submit basic details (name, phone, email, address)
+    1. Submit basic details (name, mobile, email, address)
     2. Optionally provide referral code
     3. System generates partner code and referral code
     4. Partner starts in PENDING_KYC status
@@ -71,59 +152,79 @@ async def register_partner(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/login/otp")
+@router.post("/auth/send-otp")
 async def send_login_otp(
-    phone: str = Query(..., pattern=r"^\+?[1-9]\d{9,14}$"),
+    request: SendOTPRequest,
     db: AsyncSession = Depends(get_db)
 ):
     """
     Send OTP for partner login.
-    Returns success if partner exists.
+
+    Phone number must be registered first via /partners/register.
     """
-    service = PartnerService(db)
-    partner = await service.get_partner_by_phone(phone)
+    auth_service = PartnerAuthService(db)
+    success, message, cooldown = await auth_service.send_otp(request.phone)
 
-    if not partner:
-        raise HTTPException(status_code=404, detail="Partner not found. Please register first.")
+    if not success:
+        raise HTTPException(
+            status_code=400 if cooldown else 404,
+            detail=message
+        )
 
-    # TODO: Integrate with SMS gateway to send OTP
-    # For now, return success
     return {
-        "message": "OTP sent successfully",
-        "phone": phone,
-        "partner_code": partner.partner_code
+        "success": True,
+        "message": message,
+        "expires_in_seconds": 600,  # 10 minutes
+        "resend_in_seconds": cooldown,
     }
 
 
-@router.post("/login/verify")
+@router.post("/auth/verify-otp", response_model=PartnerAuthResponse)
 async def verify_login_otp(
-    phone: str = Query(...),
-    otp: str = Query(..., min_length=4, max_length=6),
+    request: VerifyOTPRequest,
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Verify OTP and return partner session.
+    Verify OTP and return JWT tokens.
+
+    Returns access_token and refresh_token for authenticated API calls.
     """
-    service = PartnerService(db)
-    partner = await service.get_partner_by_phone(phone)
+    auth_service = PartnerAuthService(db)
+    success, message, auth_data = await auth_service.verify_otp(request.phone, request.otp)
 
-    if not partner:
-        raise HTTPException(status_code=404, detail="Partner not found")
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
 
-    # TODO: Verify OTP with SMS gateway
-    # For demo, accept any 4-6 digit OTP
-    if len(otp) < 4:
-        raise HTTPException(status_code=400, detail="Invalid OTP")
+    return auth_data
 
-    # Return partner details (in production, return JWT token)
-    return {
-        "partner_id": str(partner.id),
-        "partner_code": partner.partner_code,
-        "name": partner.full_name,
-        "status": partner.status,
-        "kyc_status": partner.kyc_status,
-        # "token": generate_jwt_token(partner)  # TODO
-    }
+
+@router.post("/auth/refresh")
+async def refresh_access_token(
+    request: RefreshTokenRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Refresh access token using refresh token.
+    """
+    auth_service = PartnerAuthService(db)
+    success, message, tokens = await auth_service.refresh_token(request.refresh_token)
+
+    if not success:
+        raise HTTPException(status_code=401, detail=message)
+
+    return tokens
+
+
+@router.post("/auth/logout")
+async def logout_partner(
+    partner: CommunityPartner = Depends(require_partner),
+):
+    """
+    Logout partner.
+
+    Note: JWT tokens are stateless, so this is mainly for client-side cleanup.
+    """
+    return {"message": "Logged out successfully"}
 
 
 # ============================================================================
@@ -132,25 +233,19 @@ async def verify_login_otp(
 
 @router.get("/me", response_model=CommunityPartnerResponse)
 async def get_my_profile(
-    partner_id: UUID = Query(..., description="Partner ID from login"),
+    partner: CommunityPartner = Depends(require_partner),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get current partner's profile.
     """
-    service = PartnerService(db)
-    partner = await service.get_partner_by_id(partner_id)
-
-    if not partner:
-        raise HTTPException(status_code=404, detail="Partner not found")
-
     return partner
 
 
 @router.put("/me", response_model=CommunityPartnerResponse)
 async def update_my_profile(
-    partner_id: UUID,
     data: CommunityPartnerUpdate,
+    partner: CommunityPartner = Depends(require_partner),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -158,16 +253,16 @@ async def update_my_profile(
     """
     service = PartnerService(db)
     try:
-        partner = await service.update_partner(partner_id, data)
-        return partner
+        updated = await service.update_partner(partner.id, data)
+        return updated
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/me/kyc", response_model=CommunityPartnerResponse)
 async def submit_kyc(
-    partner_id: UUID,
     data: KYCSubmission,
+    partner: CommunityPartner = Depends(require_partner),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -181,8 +276,8 @@ async def submit_kyc(
     """
     service = PartnerService(db)
     try:
-        partner = await service.submit_kyc(partner_id, data)
-        return partner
+        updated = await service.submit_kyc(partner.id, data)
+        return updated
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -193,20 +288,20 @@ async def submit_kyc(
 
 @router.get("/me/commissions", response_model=CommissionSummary)
 async def get_my_commission_summary(
-    partner_id: UUID,
+    partner: CommunityPartner = Depends(require_partner),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get commission summary for current partner.
     """
     service = PartnerService(db)
-    summary = await service.get_commission_summary(partner_id)
+    summary = await service.get_commission_summary(partner.id)
     return summary
 
 
 @router.get("/me/commission-history")
 async def get_commission_history(
-    partner_id: UUID,
+    partner: CommunityPartner = Depends(require_partner),
     status: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -215,10 +310,7 @@ async def get_commission_history(
     """
     Get commission transaction history.
     """
-    from sqlalchemy import select
-    from app.models.community_partner import PartnerCommission
-
-    query = select(PartnerCommission).where(PartnerCommission.partner_id == partner_id)
+    query = select(PartnerCommission).where(PartnerCommission.partner_id == partner.id)
 
     if status:
         query = query.where(PartnerCommission.status == status)
@@ -242,8 +334,8 @@ async def get_commission_history(
 
 @router.post("/me/payouts", response_model=PartnerPayoutResponse)
 async def request_payout(
-    partner_id: UUID,
     request: PayoutRequest,
+    partner: CommunityPartner = Depends(require_active_partner),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -251,7 +343,7 @@ async def request_payout(
     """
     service = PartnerService(db)
     try:
-        payout = await service.create_payout(partner_id, request)
+        payout = await service.create_payout(partner.id, request)
         return payout
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -259,7 +351,7 @@ async def request_payout(
 
 @router.get("/me/payouts")
 async def get_my_payouts(
-    partner_id: UUID,
+    partner: CommunityPartner = Depends(require_partner),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db)
@@ -267,10 +359,7 @@ async def get_my_payouts(
     """
     Get payout history.
     """
-    from sqlalchemy import select
-    from app.models.community_partner import PartnerPayout
-
-    query = select(PartnerPayout).where(PartnerPayout.partner_id == partner_id)
+    query = select(PartnerPayout).where(PartnerPayout.partner_id == partner.id)
     query = query.order_by(PartnerPayout.created_at.desc())
     query = query.offset((page - 1) * page_size).limit(page_size)
 
@@ -290,14 +379,14 @@ async def get_my_payouts(
 
 @router.get("/me/tier-progress")
 async def get_tier_progress(
-    partner_id: UUID,
+    partner: CommunityPartner = Depends(require_partner),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get progress towards next tier.
     """
     service = PartnerService(db)
-    progress = await service.get_tier_progress(partner_id)
+    progress = await service.get_tier_progress(partner.id)
     return progress
 
 
@@ -308,13 +397,10 @@ async def get_all_tiers(
     """
     Get all partner tiers with benefits.
     """
-    from sqlalchemy import select
-    from app.models.community_partner import PartnerTier
-
     result = await db.execute(
         select(PartnerTier)
         .where(PartnerTier.is_active == True)
-        .order_by(PartnerTier.commission_rate.asc())
+        .order_by(PartnerTier.level.asc())
     )
     tiers = result.scalars().all()
     return tiers
@@ -326,35 +412,28 @@ async def get_all_tiers(
 
 @router.get("/me/referrals")
 async def get_my_referrals(
-    partner_id: UUID,
+    partner: CommunityPartner = Depends(require_partner),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get referral summary and list of referred partners.
     """
-    from sqlalchemy import select, func
-    from app.models.community_partner import PartnerReferral, CommunityPartner
-
-    service = PartnerService(db)
-    partner = await service.get_partner_by_id(partner_id)
-
-    if not partner:
-        raise HTTPException(status_code=404, detail="Partner not found")
+    from app.models.community_partner import PartnerReferral
 
     # Get referrals
     referrals_result = await db.execute(
         select(PartnerReferral, CommunityPartner)
         .join(CommunityPartner, CommunityPartner.id == PartnerReferral.referred_id)
-        .where(PartnerReferral.referrer_id == partner_id)
+        .where(PartnerReferral.referrer_id == partner.id)
         .order_by(PartnerReferral.created_at.desc())
     )
     referrals = referrals_result.fetchall()
 
     # Count qualified
-    qualified_count = sum(1 for r in referrals if r[0].is_qualified)
+    qualified_count = sum(1 for r in referrals if r[0].referred_qualified)
 
     # Total bonus earned
-    total_bonus = sum(r[0].referral_bonus for r in referrals)
+    total_bonus = sum(r[0].bonus_amount for r in referrals)
 
     return {
         "referral_code": partner.referral_code,
@@ -366,12 +445,30 @@ async def get_my_referrals(
             {
                 "name": r[1].full_name,
                 "registered_at": r[0].created_at,
-                "is_qualified": r[0].is_qualified,
-                "qualified_at": r[0].qualified_at,
-                "bonus": float(r[0].referral_bonus),
+                "is_qualified": r[0].referred_qualified,
+                "qualified_at": r[0].qualification_date,
+                "bonus": float(r[0].bonus_amount),
             }
             for r in referrals
         ]
+    }
+
+
+@router.get("/me/referral-link/{product_slug}")
+async def get_referral_link(
+    product_slug: str,
+    partner: CommunityPartner = Depends(require_partner),
+):
+    """
+    Generate referral link for a product.
+    """
+    base_url = "https://www.aquapurite.com"
+    referral_link = f"{base_url}/products/{product_slug}?ref={partner.referral_code}"
+
+    return {
+        "referral_link": referral_link,
+        "referral_code": partner.referral_code,
+        "product_slug": product_slug,
     }
 
 
@@ -381,7 +478,7 @@ async def get_my_referrals(
 
 @router.get("/me/orders")
 async def get_my_orders(
-    partner_id: UUID,
+    partner: CommunityPartner = Depends(require_partner),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db)
@@ -389,14 +486,10 @@ async def get_my_orders(
     """
     Get orders attributed to this partner.
     """
-    from sqlalchemy import select
-    from app.models.community_partner import PartnerOrder
-    from app.models.order import Order
-
     query = (
         select(PartnerOrder, Order)
         .join(Order, Order.id == PartnerOrder.order_id)
-        .where(PartnerOrder.partner_id == partner_id)
+        .where(PartnerOrder.partner_id == partner.id)
         .order_by(PartnerOrder.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
@@ -411,8 +504,7 @@ async def get_my_orders(
                 "id": str(po.id),
                 "order_id": str(po.order_id),
                 "order_number": o.order_number,
-                "order_amount": float(po.order_amount),
-                "commission_amount": float(po.commission_amount) if po.commission_id else 0,
+                "order_amount": float(o.grand_total),
                 "customer_name": o.customer_name,
                 "order_status": o.status,
                 "created_at": po.created_at,
@@ -425,12 +517,60 @@ async def get_my_orders(
 
 
 # ============================================================================
+# Products for Sharing
+# ============================================================================
+
+@router.get("/me/products")
+async def get_products_for_sharing(
+    partner: CommunityPartner = Depends(require_partner),
+    category_id: Optional[UUID] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get active products for partner to share.
+    """
+    from app.models.product import Product
+
+    query = select(Product).where(Product.is_active == True)
+
+    if category_id:
+        query = query.where(Product.category_id == category_id)
+
+    query = query.order_by(Product.name.asc())
+    query = query.offset((page - 1) * page_size).limit(page_size)
+
+    result = await db.execute(query)
+    products = result.scalars().all()
+
+    base_url = "https://www.aquapurite.com"
+
+    return {
+        "items": [
+            {
+                "id": str(p.id),
+                "name": p.name,
+                "slug": p.slug,
+                "mrp": float(p.mrp) if p.mrp else 0,
+                "selling_price": float(p.selling_price) if p.selling_price else 0,
+                "image_url": p.thumbnail_url,
+                "referral_link": f"{base_url}/products/{p.slug}?ref={partner.referral_code}",
+            }
+            for p in products
+        ],
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+# ============================================================================
 # Dashboard Endpoint
 # ============================================================================
 
 @router.get("/me/dashboard")
 async def get_partner_dashboard(
-    partner_id: UUID,
+    partner: CommunityPartner = Depends(require_partner),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -438,22 +578,14 @@ async def get_partner_dashboard(
     """
     service = PartnerService(db)
 
-    partner = await service.get_partner_by_id(partner_id)
-    if not partner:
-        raise HTTPException(status_code=404, detail="Partner not found")
-
-    commission_summary = await service.get_commission_summary(partner_id)
-    tier_progress = await service.get_tier_progress(partner_id)
+    commission_summary = await service.get_commission_summary(partner.id)
+    tier_progress = await service.get_tier_progress(partner.id)
 
     # Recent orders (last 5)
-    from sqlalchemy import select
-    from app.models.community_partner import PartnerOrder
-    from app.models.order import Order
-
     orders_result = await db.execute(
         select(PartnerOrder, Order)
         .join(Order, Order.id == PartnerOrder.order_id)
-        .where(PartnerOrder.partner_id == partner_id)
+        .where(PartnerOrder.partner_id == partner.id)
         .order_by(PartnerOrder.created_at.desc())
         .limit(5)
     )
@@ -461,7 +593,7 @@ async def get_partner_dashboard(
         {
             "order_id": str(po.order_id),
             "order_number": o.order_number,
-            "amount": float(po.order_amount),
+            "amount": float(o.grand_total),
             "status": o.status,
             "date": po.created_at.isoformat(),
         }
@@ -474,6 +606,7 @@ async def get_partner_dashboard(
         "tier_progress": tier_progress,
         "recent_orders": recent_orders,
         "referral_code": partner.referral_code,
+        "wallet_balance": float(partner.wallet_balance),
     }
 
 
@@ -596,7 +729,6 @@ async def activate_partner(
         raise HTTPException(status_code=400, detail="Partner KYC is not verified")
 
     partner.status = "ACTIVE"
-    from datetime import datetime, timezone
     partner.activated_at = datetime.now(timezone.utc)
 
     await db.commit()
@@ -634,9 +766,6 @@ async def get_partner_commissions(
     """
     Get commission history for a partner (Admin only).
     """
-    from sqlalchemy import select
-    from app.models.community_partner import PartnerCommission
-
     query = select(PartnerCommission).where(PartnerCommission.partner_id == partner_id)
 
     if status:

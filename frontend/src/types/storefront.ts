@@ -157,6 +157,7 @@ export interface D2COrderRequest {
   coupon_code?: string;
   total_amount: number;
   notes?: string;
+  partner_code?: string; // Community partner referral code for attribution
 }
 
 export interface D2COrderResponse {

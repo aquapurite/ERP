@@ -11,7 +11,16 @@ import type { NextRequest } from 'next/server';
  * Routing Rules:
  * - aquapurite.com: Serve storefront, block /dashboard access
  * - aquapurite.org: Redirect / to /dashboard, block storefront routes
+ *
+ * Referral Tracking:
+ * - Detects ?ref=PARTNER_CODE in URL
+ * - Stores partner code in cookie (7 days)
+ * - Used during checkout for partner attribution
  */
+
+// Cookie name for referral tracking
+const REFERRAL_COOKIE_NAME = 'partner_ref';
+const REFERRAL_COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days in seconds
 
 // Storefront routes (served on aquapurite.com)
 const STOREFRONT_ROUTES = [
@@ -46,13 +55,30 @@ const SKIP_PATHS = [
 ];
 
 export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const { pathname, searchParams } = request.nextUrl;
   const hostname = request.headers.get('host') || '';
 
   // Skip static assets and API routes
   if (SKIP_PATHS.some(path => pathname.startsWith(path))) {
     return NextResponse.next();
   }
+
+  // Handle referral tracking
+  const refCode = searchParams.get('ref');
+  let response: NextResponse | null = null;
+
+  // Helper to set referral cookie on response
+  const setReferralCookie = (res: NextResponse) => {
+    if (refCode) {
+      res.cookies.set(REFERRAL_COOKIE_NAME, refCode, {
+        maxAge: REFERRAL_COOKIE_MAX_AGE,
+        path: '/',
+        httpOnly: false, // Allow JS access for checkout
+        sameSite: 'lax',
+      });
+    }
+    return res;
+  };
 
   // Determine which domain we're on
   const isStorefrontDomain =
@@ -83,8 +109,9 @@ export function middleware(request: NextRequest) {
       const dashboardUrl = new URL(pathname, 'https://www.aquapurite.org');
       return NextResponse.redirect(dashboardUrl);
     }
-    // Allow storefront routes
-    return NextResponse.next();
+    // Allow storefront routes (with referral tracking)
+    response = NextResponse.next();
+    return setReferralCookie(response);
   }
 
   // DASHBOARD DOMAIN (aquapurite.org)
@@ -106,7 +133,12 @@ export function middleware(request: NextRequest) {
   }
 
   // Default: allow all routes (for other domains/preview deployments)
-  return NextResponse.next();
+  // With referral tracking for storefront routes
+  response = NextResponse.next();
+  if (isStorefrontRoute || pathname.startsWith('/products')) {
+    return setReferralCookie(response);
+  }
+  return response;
 }
 
 export const config = {

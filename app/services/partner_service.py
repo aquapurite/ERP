@@ -147,7 +147,6 @@ class PartnerService:
             full_name=data.full_name,
             phone=data.phone,
             email=data.email,
-            whatsapp_number=data.whatsapp_number or data.phone,
             address_line1=data.address_line1,
             address_line2=data.address_line2,
             city=data.city,
@@ -799,3 +798,77 @@ class PartnerService:
             "tier_distribution": tier_distribution,
             "top_partners": top_partners,
         }
+
+    # ========================================================================
+    # Order Attribution
+    # ========================================================================
+
+    async def create_partner_order(
+        self,
+        partner_code: str,
+        order_id: uuid.UUID,
+        order_amount: float,
+    ) -> Optional[PartnerOrder]:
+        """
+        Create a partner order record for attribution.
+        Called when an order is placed with a partner referral code.
+
+        Args:
+            partner_code: Partner's referral code or partner code
+            order_id: UUID of the order
+            order_amount: Order total amount
+
+        Returns:
+            PartnerOrder record if partner found, None otherwise
+        """
+        # Find partner by referral code or partner code
+        result = await self.db.execute(
+            select(CommunityPartner)
+            .options(selectinload(CommunityPartner.tier))
+            .where(
+                or_(
+                    CommunityPartner.partner_code == partner_code,
+                    CommunityPartner.referral_code == partner_code,
+                )
+            )
+        )
+        partner = result.scalar_one_or_none()
+
+        if not partner:
+            return None
+
+        if partner.status != "ACTIVE":
+            return None
+
+        # Create partner order record
+        partner_order = PartnerOrder(
+            partner_id=partner.id,
+            order_id=order_id,
+            order_amount=Decimal(str(order_amount)),
+            status="PENDING",  # Will become COMPLETED when order is delivered
+        )
+
+        self.db.add(partner_order)
+
+        # Update partner stats
+        partner.total_orders = (partner.total_orders or 0) + 1
+        partner.total_sales = (partner.total_sales or Decimal("0")) + Decimal(str(order_amount))
+
+        await self.db.commit()
+        await self.db.refresh(partner_order)
+
+        return partner_order
+
+    async def get_partner_by_code(self, partner_code: str) -> Optional[CommunityPartner]:
+        """Get partner by partner code or referral code."""
+        result = await self.db.execute(
+            select(CommunityPartner)
+            .options(selectinload(CommunityPartner.tier))
+            .where(
+                or_(
+                    CommunityPartner.partner_code == partner_code,
+                    CommunityPartner.referral_code == partner_code,
+                )
+            )
+        )
+        return result.scalar_one_or_none()

@@ -630,6 +630,21 @@ async def create_d2c_order(
         order_number = order.order_number
         order_total = order.total_amount
 
+        # Handle partner attribution if partner_code provided
+        if data.partner_code:
+            try:
+                from app.services.partner_service import PartnerService
+                partner_service = PartnerService(db)
+                await partner_service.create_partner_order(
+                    partner_code=data.partner_code,
+                    order_id=order_id,
+                    order_amount=float(order_total),
+                )
+            except Exception as partner_error:
+                # Log but don't fail order - partner attribution is optional
+                import logging
+                logging.warning(f"Failed to attribute order {order_id} to partner {data.partner_code}: {partner_error}")
+
         # Auto-confirm and allocate COD orders
         if payment_method == PaymentMethod.COD:
             try:

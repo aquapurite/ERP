@@ -32,7 +32,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { useCartStore, useCartSummary } from '@/lib/storefront/cart-store';
+import { useCartStore, useCartSummary, getPartnerReferralCode, clearPartnerReferralCode } from '@/lib/storefront/cart-store';
 import { ordersApi, paymentsApi, inventoryApi, couponsApi, companyApi, addressApi, CouponValidationResponse, ActiveCoupon } from '@/lib/storefront/api';
 import { useAuthStore, useIsAuthenticated } from '@/lib/storefront/auth-store';
 import { formatCurrency } from '@/lib/utils';
@@ -341,6 +341,9 @@ export default function CheckoutPage() {
     setLoading(true);
 
     try {
+      // Get partner referral code from cookie (set by middleware)
+      const partnerCode = getPartnerReferralCode();
+
       const orderData: D2COrderRequest = {
         customer_name: formData.full_name,
         customer_phone: formData.phone,
@@ -361,6 +364,7 @@ export default function CheckoutPage() {
         discount_amount: discountAmount,
         coupon_code: appliedCoupon?.valid ? appliedCoupon.code : undefined,
         total_amount: finalTotal,
+        partner_code: partnerCode || undefined, // Partner referral attribution
       };
 
       if (paymentMethod === 'RAZORPAY') {
@@ -415,6 +419,7 @@ export default function CheckoutPage() {
                   console.warn('Failed to mark cart as converted:', err);
                 });
                 clearCart();
+                clearPartnerReferralCode(); // Clear partner attribution cookie
                 // Use window.location for more reliable redirect
                 window.location.href = `/order-success?order=${order.order_number}`;
               } else {
@@ -448,6 +453,7 @@ export default function CheckoutPage() {
         // Mark cart as converted
         await markAsConverted(order.id);
         clearCart();
+        clearPartnerReferralCode(); // Clear partner attribution cookie
         router.push(`/order-success?order=${order.order_number}`);
       }
     } catch (error: any) {

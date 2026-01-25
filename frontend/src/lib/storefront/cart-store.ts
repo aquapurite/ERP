@@ -5,6 +5,28 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { StorefrontProduct, ProductVariant, CartItem } from '@/types/storefront';
 import { abandonedCartApi, CartSyncRequest, RecoveredCartResponse } from './api';
 
+// Cookie name for partner referral (must match middleware.ts)
+const REFERRAL_COOKIE_NAME = 'partner_ref';
+
+// Get partner referral code from cookie
+export const getPartnerReferralCode = (): string | null => {
+  if (typeof document === 'undefined') return null;
+  const cookies = document.cookie.split(';');
+  for (const cookie of cookies) {
+    const [name, value] = cookie.trim().split('=');
+    if (name === REFERRAL_COOKIE_NAME) {
+      return decodeURIComponent(value);
+    }
+  }
+  return null;
+};
+
+// Clear partner referral cookie (after order placed)
+export const clearPartnerReferralCode = (): void => {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${REFERRAL_COOKIE_NAME}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+};
+
 // Generate a unique session ID for cart tracking
 const generateSessionId = (): string => {
   return `sess_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;

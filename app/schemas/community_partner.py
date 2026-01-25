@@ -118,7 +118,7 @@ class CommunityPartnerBase(BaseModel):
     """Base schema for community partner"""
     # Basic Info
     full_name: str = Field(..., min_length=2, max_length=200)
-    phone: str = Field(..., pattern=r"^\+?[1-9]\d{9,14}$")
+    phone: str = Field(..., pattern=r"^\+?[1-9]\d{9,14}$", description="Phone number")
     email: Optional[str] = Field(None, max_length=255)
     whatsapp_number: Optional[str] = Field(None, pattern=r"^\+?[1-9]\d{9,14}$")
 
