@@ -912,12 +912,20 @@ async def delete_partner(
             )
         )
 
-        # 6. Finally delete the partner
+        # 6. Clear referred_by_id for any partners who were referred by this partner
+        from sqlalchemy import update
+        await db.execute(
+            update(CommunityPartner).where(CommunityPartner.referred_by_id == partner_id).values(referred_by_id=None)
+        )
+
+        # 7. Finally delete the partner
         await db.delete(partner)
         await db.commit()
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to delete partner: {str(e)}")
+        import traceback
+        error_detail = f"Failed to delete partner: {str(e)}\n{traceback.format_exc()}"
+        raise HTTPException(status_code=500, detail=error_detail)
 
 
 @router.post("/{partner_id}/verify-kyc", response_model=CommunityPartnerResponse)
