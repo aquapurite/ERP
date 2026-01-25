@@ -84,7 +84,7 @@ export interface PartnerRegistrationRequest {
   email?: string;
   city?: string;
   pincode?: string;
-  referral_code?: string;
+  referred_by_code?: string; // Code of the referring partner
 }
 
 export interface AuthResponse {

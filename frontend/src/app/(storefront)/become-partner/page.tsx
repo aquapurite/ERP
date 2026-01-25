@@ -36,16 +36,19 @@ const benefits = [
     icon: Wallet,
     title: 'Earn Commission',
     description: '10-15% commission on every successful sale',
+    href: '#registration', // Scroll to registration form
   },
   {
     icon: Share2,
     title: 'Easy Sharing',
     description: 'Share products via WhatsApp, social media, and more',
+    href: '/partner/products', // Link to partner products (after login)
   },
   {
     icon: TrendingUp,
     title: 'Grow Together',
     description: 'Tier upgrades with higher commission rates',
+    href: '/partner', // Link to partner dashboard (shows tier progress)
   },
 ];
 
@@ -95,7 +98,7 @@ export default function BecomePartnerPage() {
         email: formData.email || undefined,
         city: formData.city || undefined,
         pincode: formData.pincode || undefined,
-        referral_code: formData.referral_code || undefined,
+        referred_by_code: formData.referral_code || undefined, // Backend expects referred_by_code
       });
 
       if (response.success) {
@@ -156,20 +159,22 @@ export default function BecomePartnerPage() {
         {/* Benefits */}
         <div className="grid md:grid-cols-3 gap-6 mb-12">
           {benefits.map((benefit) => (
-            <Card key={benefit.title} className="text-center">
-              <CardContent className="pt-6">
-                <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
-                  <benefit.icon className="h-6 w-6 text-primary" />
-                </div>
-                <h3 className="font-semibold mb-2">{benefit.title}</h3>
-                <p className="text-sm text-muted-foreground">{benefit.description}</p>
-              </CardContent>
-            </Card>
+            <Link key={benefit.title} href={benefit.href}>
+              <Card className="text-center h-full cursor-pointer hover:shadow-lg hover:border-primary/50 transition-all duration-200">
+                <CardContent className="pt-6">
+                  <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+                    <benefit.icon className="h-6 w-6 text-primary" />
+                  </div>
+                  <h3 className="font-semibold mb-2">{benefit.title}</h3>
+                  <p className="text-sm text-muted-foreground">{benefit.description}</p>
+                </CardContent>
+              </Card>
+            </Link>
           ))}
         </div>
 
         {/* Registration Form */}
-        <Card className="max-w-md mx-auto">
+        <Card id="registration" className="max-w-md mx-auto scroll-mt-20">
           <CardHeader>
             <CardTitle>Partner Registration</CardTitle>
             <CardDescription>Fill in your details to get started</CardDescription>
