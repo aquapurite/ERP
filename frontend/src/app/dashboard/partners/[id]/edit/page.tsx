@@ -42,11 +42,9 @@ const partnerFormSchema = z.object({
   phone: z.string().min(10, 'Enter valid phone number'),
   email: z.string().email('Enter valid email').optional().or(z.literal('')),
   city: z.string().optional(),
-  district: z.string().optional(),
   state: z.string().optional(),
   pincode: z.string().optional(),
   status: z.string(),
-  partner_type: z.string(),
 });
 
 type PartnerFormValues = z.infer<typeof partnerFormSchema>;
@@ -56,11 +54,6 @@ const statusOptions = [
   { value: 'ACTIVE', label: 'Active' },
   { value: 'SUSPENDED', label: 'Suspended' },
   { value: 'BLOCKED', label: 'Blocked' },
-];
-
-const partnerTypeOptions = [
-  { value: 'INDIVIDUAL', label: 'Individual' },
-  { value: 'BUSINESS', label: 'Business' },
 ];
 
 export default function EditPartnerPage() {
@@ -82,11 +75,9 @@ export default function EditPartnerPage() {
       phone: '',
       email: '',
       city: '',
-      district: '',
       state: '',
       pincode: '',
       status: 'PENDING_KYC',
-      partner_type: 'INDIVIDUAL',
     },
   });
 
@@ -98,11 +89,9 @@ export default function EditPartnerPage() {
         phone: partner.phone || '',
         email: partner.email || '',
         city: partner.city || '',
-        district: partner.district || '',
         state: partner.state || '',
         pincode: partner.pincode || '',
         status: partner.status || 'PENDING_KYC',
-        partner_type: partner.partner_type || 'INDIVIDUAL',
       });
     }
   }, [partner, form]);
@@ -206,31 +195,6 @@ export default function EditPartnerPage() {
                   </FormItem>
                 )}
               />
-
-              <FormField
-                control={form.control}
-                name="partner_type"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Partner Type</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select type" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {partnerTypeOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
             </CardContent>
           </Card>
 
@@ -248,20 +212,6 @@ export default function EditPartnerPage() {
                     <FormLabel>City</FormLabel>
                     <FormControl>
                       <Input placeholder="Enter city" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="district"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>District</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Enter district" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
