@@ -5532,38 +5532,91 @@ export const uploadsApi = {
 export interface CommunityPartner {
   id: string;
   partner_code: string;
+  referral_code: string;
+  status: string;
+  tier_id?: string;
+
+  // Basic Info
   full_name: string;
   phone: string;
   email?: string;
+
+  // Address
   address_line1?: string;
   address_line2?: string;
   city?: string;
+  district?: string;
   state?: string;
   pincode?: string;
-  status: string;
+
+  // Profile
+  profile_photo_url?: string;
+  date_of_birth?: string;
+  gender?: string;
+  partner_type?: string;
+  occupation?: string;
+
+  // KYC Status
   kyc_status: string;
-  tier_id?: string;
-  tier?: PartnerTier;
-  referral_code: string;
-  referred_by?: string;
-  total_orders: number;
-  total_sales: number;
+  kyc_verified_at?: string;
+  kyc_rejection_reason?: string;
+  aadhaar_verified: boolean;
+  pan_verified: boolean;
+  bank_verified: boolean;
+
+  // Performance Metrics (match backend field names)
+  total_sales_count: number;
+  total_sales_value: number;
   total_commission_earned: number;
-  available_balance: number;
+  total_commission_paid: number;
+  current_month_sales: number;
+  current_month_value: number;
+  wallet_balance: number;
+
+  // Training
+  training_completed: boolean;
+
+  // Timestamps
+  registered_at?: string;
   created_at: string;
+  updated_at: string;
   activated_at?: string;
-  notes?: string;
+  last_login_at?: string;
+
+  // Related
+  tier?: PartnerTier;
 }
 
 export interface PartnerTier {
   id: string;
   name: string;
   code: string;
-  commission_rate: number;
-  min_orders: number;
-  min_sales: number;
-  benefits?: string[];
+  level: number;
+  description?: string;
+
+  // Requirements (match backend field names)
+  min_monthly_sales: number;
+  min_monthly_value: number;
+  max_monthly_sales?: number;
+
+  // Commission & Bonuses
+  commission_percentage: number;
+  bonus_percentage: number;
+  milestone_bonus: number;
+  referral_bonus: number;
+
+  // Display
+  badge_color?: string;
+  badge_icon_url?: string;
+  benefits?: Record<string, unknown>;
+
+  // Flags
   is_active: boolean;
+  is_default: boolean;
+
+  // Timestamps
+  created_at: string;
+  updated_at: string;
 }
 
 export interface PartnerCommission {

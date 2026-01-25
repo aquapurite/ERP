@@ -211,14 +211,14 @@ export default function PartnersListPage() {
       ),
     },
     {
-      accessorKey: 'total_orders',
+      accessorKey: 'total_sales_count',
       header: 'Orders',
-      cell: ({ row }) => row.original.total_orders || 0,
+      cell: ({ row }) => row.original.total_sales_count || 0,
     },
     {
-      accessorKey: 'total_sales',
+      accessorKey: 'total_sales_value',
       header: 'Sales',
-      cell: ({ row }) => formatCurrency(row.original.total_sales || 0),
+      cell: ({ row }) => formatCurrency(row.original.total_sales_value || 0),
     },
     {
       accessorKey: 'created_at',

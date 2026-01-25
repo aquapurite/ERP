@@ -43,8 +43,8 @@ interface Partner {
   city?: string;
   status: string;
   kyc_status: string;
-  total_orders: number;
-  total_sales: number;
+  total_sales_count: number;
+  total_sales_value: number;
   total_commission_earned: number;
   created_at: string;
 }
@@ -290,8 +290,8 @@ export default function PartnersPage() {
                           {partner.kyc_status.replace(/_/g, ' ')}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">{partner.total_orders}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(partner.total_sales)}</TableCell>
+                      <TableCell className="text-right">{partner.total_sales_count}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(partner.total_sales_value)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(partner.total_commission_earned)}</TableCell>
                       <TableCell>
                         <Button variant="ghost" size="sm" asChild>

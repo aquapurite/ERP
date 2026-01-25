@@ -42,8 +42,10 @@ const partnerFormSchema = z.object({
   phone: z.string().min(10, 'Enter valid phone number'),
   email: z.string().email('Enter valid email').optional().or(z.literal('')),
   city: z.string().optional(),
+  district: z.string().optional(),
   state: z.string().optional(),
   pincode: z.string().optional(),
+  partner_type: z.string().optional(),
   status: z.string(),
 });
 
@@ -75,8 +77,10 @@ export default function EditPartnerPage() {
       phone: '',
       email: '',
       city: '',
+      district: '',
       state: '',
       pincode: '',
+      partner_type: 'INDIVIDUAL',
       status: 'PENDING_KYC',
     },
   });
@@ -89,8 +93,10 @@ export default function EditPartnerPage() {
         phone: partner.phone || '',
         email: partner.email || '',
         city: partner.city || '',
+        district: partner.district || '',
         state: partner.state || '',
         pincode: partner.pincode || '',
+        partner_type: partner.partner_type || 'INDIVIDUAL',
         status: partner.status || 'PENDING_KYC',
       });
     }
@@ -220,6 +226,20 @@ export default function EditPartnerPage() {
 
               <FormField
                 control={form.control}
+                name="district"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>District</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter district" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
                 name="state"
                 render={({ field }) => (
                   <FormItem>
@@ -241,6 +261,37 @@ export default function EditPartnerPage() {
                     <FormControl>
                       <Input placeholder="Enter pincode" {...field} />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Partner Type</CardTitle>
+              <CardDescription>Type of partner account</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <FormField
+                control={form.control}
+                name="partner_type"
+                render={({ field }) => (
+                  <FormItem className="max-w-sm">
+                    <FormLabel>Partner Type</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="INDIVIDUAL">Individual</SelectItem>
+                        <SelectItem value="BUSINESS">Business</SelectItem>
+                        <SelectItem value="INFLUENCER">Influencer</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}

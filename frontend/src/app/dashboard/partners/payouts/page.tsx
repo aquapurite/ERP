@@ -179,7 +179,7 @@ export default function PayoutsPage() {
                 <SelectContent>
                   {partnersData?.items?.map((partner) => (
                     <SelectItem key={partner.id} value={partner.id}>
-                      {partner.full_name} ({partner.partner_code}) - Balance: {formatCurrency(partner.available_balance)}
+                      {partner.full_name} ({partner.partner_code}) - Balance: {formatCurrency(partner.wallet_balance)}
                     </SelectItem>
                   ))}
                 </SelectContent>

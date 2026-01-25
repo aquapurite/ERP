@@ -124,7 +124,7 @@ export default function PartnerOrdersPage() {
                 <SelectContent>
                   {partnersData?.items?.map((partner) => (
                     <SelectItem key={partner.id} value={partner.id}>
-                      {partner.full_name} ({partner.partner_code}) - {partner.total_orders} orders
+                      {partner.full_name} ({partner.partner_code}) - {partner.total_sales_count} orders
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -147,13 +147,13 @@ export default function PartnerOrdersPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">Total Orders</div>
-              <div className="text-lg font-bold">{selectedPartner.total_orders}</div>
+              <div className="text-lg font-bold">{selectedPartner.total_sales_count}</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">Total Sales</div>
-              <div className="text-lg font-bold">{formatCurrency(selectedPartner.total_sales)}</div>
+              <div className="text-lg font-bold">{formatCurrency(selectedPartner.total_sales_value)}</div>
             </CardContent>
           </Card>
           <Card>
