@@ -75,6 +75,9 @@ import {
   Menu,
   Star,
   LayoutGrid,
+  Share2,
+  Wallet,
+  Trophy,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -167,6 +170,22 @@ export const navigation: NavItem[] = [
       { title: 'Customer 360', href: '/dashboard/crm/customer-360', icon: Target, permissions: ['CRM_VIEW'] },
       { title: 'Leads', href: '/dashboard/crm/leads', icon: UserPlus, permissions: ['CRM_VIEW'] },
       { title: 'Call Center', href: '/dashboard/crm/call-center', icon: Phone, permissions: ['CRM_VIEW'] },
+    ],
+  },
+
+  // ==================== 4.5 COMMUNITY PARTNERS (Meesho-style) ====================
+  {
+    title: 'Community Partners',
+    icon: Share2,
+    permissions: [],
+    badge: 'NEW',
+    children: [
+      { title: 'Partner Dashboard', href: '/dashboard/partners', icon: BarChart3, permissions: [] },
+      { title: 'All Partners', href: '/dashboard/partners/list', icon: UsersRound, permissions: [] },
+      { title: 'Partner Tiers', href: '/dashboard/partners/tiers', icon: Trophy, permissions: [] },
+      { title: 'Commissions', href: '/dashboard/partners/commissions', icon: Wallet, permissions: [] },
+      { title: 'Payouts', href: '/dashboard/partners/payouts', icon: Banknote, permissions: [] },
+      { title: 'Partner Orders', href: '/dashboard/partners/orders', icon: ShoppingCart, permissions: [] },
     ],
   },
 
@@ -357,21 +376,36 @@ export const navigation: NavItem[] = [
   },
 
   // ==================== 14. D2C CONTENT (CMS) ====================
+  // Organized by: Overview → Layout → Homepage → Content → SEO → Settings
   {
     title: 'D2C Content',
     icon: Globe,
     permissions: ['CMS_VIEW'],
     children: [
-      { title: 'Site Settings', href: '/dashboard/cms/settings', icon: Settings, permissions: ['CMS_VIEW'] },
-      { title: 'Navigation', href: '/dashboard/cms/navigation', icon: Menu, permissions: ['CMS_VIEW'] },
+      // Overview
+      { title: 'CMS Overview', href: '/dashboard/cms', icon: Globe, permissions: ['CMS_VIEW'] },
+
+      // -------- LAYOUT & NAVIGATION --------
+      { title: '── Layout ──', href: '#', permissions: ['CMS_VIEW'] },
+      { title: 'Header Navigation', href: '/dashboard/cms/navigation', icon: Menu, permissions: ['CMS_VIEW'] },
       { title: 'Mega Menu', href: '/dashboard/cms/mega-menu', icon: LayoutGrid, permissions: ['CMS_VIEW'] },
       { title: 'Feature Bars', href: '/dashboard/cms/feature-bars', icon: Star, permissions: ['CMS_VIEW'] },
+
+      // -------- HOMEPAGE CONTENT --------
+      { title: '── Homepage ──', href: '#', permissions: ['CMS_VIEW'] },
       { title: 'Hero Banners', href: '/dashboard/cms/banners', icon: Image, permissions: ['CMS_VIEW'] },
       { title: 'USPs/Features', href: '/dashboard/cms/usps', icon: Award, permissions: ['CMS_VIEW'] },
       { title: 'Testimonials', href: '/dashboard/cms/testimonials', icon: MessageSquare, permissions: ['CMS_VIEW'] },
       { title: 'Announcements', href: '/dashboard/cms/announcements', icon: Bell, permissions: ['CMS_VIEW'] },
+
+      // -------- PAGES & SEO --------
+      { title: '── Pages & SEO ──', href: '#', permissions: ['CMS_VIEW'] },
       { title: 'Static Pages', href: '/dashboard/cms/pages', icon: FileText, permissions: ['CMS_VIEW'] },
       { title: 'SEO Settings', href: '/dashboard/cms/seo', icon: Search, permissions: ['CMS_VIEW'] },
+
+      // -------- SETTINGS --------
+      { title: '── Settings ──', href: '#', permissions: ['CMS_VIEW'] },
+      { title: 'Site Settings', href: '/dashboard/cms/settings', icon: Settings, permissions: ['CMS_VIEW'] },
     ],
   },
 
