@@ -77,10 +77,12 @@ class PartnerTierBase(BaseModel):
     """Base schema for partner tiers"""
     name: str = Field(..., min_length=1, max_length=50)
     code: str = Field(..., min_length=1, max_length=20)
-    min_orders: int = Field(default=0, ge=0)
-    min_revenue: Decimal = Field(default=Decimal("0"), ge=0)
-    commission_rate: Decimal = Field(..., ge=0, le=100, description="Commission % (0-100)")
-    bonus_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    # Field names match model: min_monthly_sales, min_monthly_value
+    min_monthly_sales: int = Field(default=0, ge=0)
+    min_monthly_value: Decimal = Field(default=Decimal("0"), ge=0)
+    # Field names match model: commission_percentage, bonus_percentage
+    commission_percentage: Decimal = Field(..., ge=0, le=100, description="Commission % (0-100)")
+    bonus_percentage: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     benefits: Optional[dict] = None
     is_active: bool = True
 
@@ -93,10 +95,10 @@ class PartnerTierCreate(PartnerTierBase):
 class PartnerTierUpdate(BaseModel):
     """Schema for updating a partner tier"""
     name: Optional[str] = Field(None, min_length=1, max_length=50)
-    min_orders: Optional[int] = Field(None, ge=0)
-    min_revenue: Optional[Decimal] = Field(None, ge=0)
-    commission_rate: Optional[Decimal] = Field(None, ge=0, le=100)
-    bonus_rate: Optional[Decimal] = Field(None, ge=0, le=100)
+    min_monthly_sales: Optional[int] = Field(None, ge=0)
+    min_monthly_value: Optional[Decimal] = Field(None, ge=0)
+    commission_percentage: Optional[Decimal] = Field(None, ge=0, le=100)
+    bonus_percentage: Optional[Decimal] = Field(None, ge=0, le=100)
     benefits: Optional[dict] = None
     is_active: Optional[bool] = None
 
@@ -104,6 +106,14 @@ class PartnerTierUpdate(BaseModel):
 class PartnerTierResponse(PartnerTierBase):
     """Schema for partner tier response"""
     id: UUID
+    level: int = 1
+    description: Optional[str] = None
+    badge_color: Optional[str] = None
+    badge_icon_url: Optional[str] = None
+    max_monthly_sales: Optional[int] = None
+    milestone_bonus: Decimal = Decimal("0")
+    referral_bonus: Decimal = Decimal("0")
+    is_default: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -120,20 +130,21 @@ class CommunityPartnerBase(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=200)
     phone: str = Field(..., pattern=r"^\+?[1-9]\d{9,14}$", description="Phone number")
     email: Optional[str] = Field(None, max_length=255)
-    whatsapp_number: Optional[str] = Field(None, pattern=r"^\+?[1-9]\d{9,14}$")
 
-    # Address
-    address_line1: Optional[str] = Field(None, max_length=500)
-    address_line2: Optional[str] = Field(None, max_length=500)
+    # Address (match model field names)
+    address_line1: Optional[str] = Field(None, max_length=255)
+    address_line2: Optional[str] = Field(None, max_length=255)
     city: Optional[str] = Field(None, max_length=100)
+    district: Optional[str] = Field(None, max_length=100)
     state: Optional[str] = Field(None, max_length=100)
-    pincode: Optional[str] = Field(None, pattern=r"^\d{6}$")
+    pincode: Optional[str] = Field(None, max_length=10)
 
     # Profile
     profile_photo_url: Optional[str] = None
     date_of_birth: Optional[date] = None
     gender: Optional[str] = Field(None, max_length=20)
-    language_preference: str = Field(default="hi", max_length=10)
+    partner_type: str = Field(default="INDIVIDUAL", max_length=50)
+    occupation: Optional[str] = Field(None, max_length=100)
 
 
 class CommunityPartnerCreate(CommunityPartnerBase):
@@ -142,14 +153,14 @@ class CommunityPartnerCreate(CommunityPartnerBase):
     aadhaar_number: Optional[str] = Field(None, pattern=r"^\d{12}$")
     pan_number: Optional[str] = Field(None, pattern=r"^[A-Z]{5}[0-9]{4}[A-Z]{1}$")
 
-    # Bank Details
+    # Bank Details (match model field names)
     bank_account_number: Optional[str] = Field(None, max_length=20)
     bank_ifsc: Optional[str] = Field(None, pattern=r"^[A-Z]{4}0[A-Z0-9]{6}$")
-    bank_account_name: Optional[str] = Field(None, max_length=200)
+    bank_account_holder_name: Optional[str] = Field(None, max_length=200)
     bank_name: Optional[str] = Field(None, max_length=200)
 
-    # Referral
-    referral_code: Optional[str] = Field(None, max_length=20)
+    # Referral - the code used to register (referred_by_code in model)
+    referred_by_code: Optional[str] = Field(None, max_length=20)
 
     @field_validator('aadhaar_number')
     @classmethod
@@ -163,14 +174,15 @@ class CommunityPartnerUpdate(BaseModel):
     """Schema for updating partner profile"""
     full_name: Optional[str] = Field(None, min_length=2, max_length=200)
     email: Optional[str] = Field(None, max_length=255)
-    whatsapp_number: Optional[str] = None
     address_line1: Optional[str] = None
     address_line2: Optional[str] = None
     city: Optional[str] = None
+    district: Optional[str] = None
     state: Optional[str] = None
     pincode: Optional[str] = None
     profile_photo_url: Optional[str] = None
-    language_preference: Optional[str] = None
+    partner_type: Optional[str] = None
+    occupation: Optional[str] = None
 
 
 class KYCSubmission(BaseModel):
@@ -201,26 +213,36 @@ class CommunityPartnerResponse(CommunityPartnerBase):
     """Schema for partner response"""
     id: UUID
     partner_code: str
+    referral_code: str
     status: str
     tier_id: Optional[UUID] = None
 
     # KYC Status
     kyc_status: str
-    kyc_submitted_at: Optional[datetime] = None
     kyc_verified_at: Optional[datetime] = None
     kyc_rejection_reason: Optional[str] = None
+    aadhaar_verified: bool = False
+    pan_verified: bool = False
+    bank_verified: bool = False
 
-    # Performance Metrics
-    total_orders: int = 0
-    total_sales: Decimal = Decimal("0")
+    # Performance Metrics (match model field names)
+    total_sales_count: int = 0
+    total_sales_value: Decimal = Decimal("0")
     total_commission_earned: Decimal = Decimal("0")
     total_commission_paid: Decimal = Decimal("0")
-    average_rating: Optional[Decimal] = None
+    current_month_sales: int = 0
+    current_month_value: Decimal = Decimal("0")
+    wallet_balance: Decimal = Decimal("0")
+
+    # Training
+    training_completed: bool = False
 
     # Timestamps
+    registered_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     activated_at: Optional[datetime] = None
+    last_login_at: Optional[datetime] = None
 
     # Related
     tier: Optional[PartnerTierResponse] = None
@@ -250,18 +272,28 @@ class PartnerCommissionBase(BaseModel):
     bonus_amount: Decimal = Field(default=Decimal("0"), ge=0)
     tds_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     tds_amount: Decimal = Field(default=Decimal("0"), ge=0)
-    net_amount: Decimal = Field(..., ge=0)
+    # Match model field name: net_earnings (not net_amount)
+    net_earnings: Decimal = Field(..., ge=0)
+    total_earnings: Decimal = Field(default=Decimal("0"), ge=0)
 
 
 class PartnerCommissionResponse(PartnerCommissionBase):
     """Schema for commission response"""
     id: UUID
     partner_id: UUID
+    order_number: str
+    order_date: datetime
+    order_items_count: int = 1
+    tier_id: Optional[UUID] = None
+    tier_code: Optional[str] = None
     status: str
     payout_id: Optional[UUID] = None
     created_at: datetime
+    updated_at: datetime
     approved_at: Optional[datetime] = None
     paid_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+    cancellation_reason: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -298,14 +330,27 @@ class PartnerPayoutResponse(BaseModel):
     payout_number: str
     gross_amount: Decimal
     tds_amount: Decimal
+    other_deductions: Decimal = Decimal("0")
     net_amount: Decimal
     status: str
     payout_method: str
-    payout_reference: Optional[str] = None
+    # Bank details snapshot
+    bank_account_number: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    bank_name: Optional[str] = None
+    upi_id: Optional[str] = None
+    # Payment gateway
+    payment_gateway: Optional[str] = None
+    gateway_transaction_id: Optional[str] = None
+    # Timestamps
     created_at: datetime
+    updated_at: datetime
+    initiated_at: Optional[datetime] = None
     processed_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    failed_at: Optional[datetime] = None
     failure_reason: Optional[str] = None
+    retry_count: int = 0
+    notes: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

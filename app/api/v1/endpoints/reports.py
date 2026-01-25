@@ -1176,7 +1176,7 @@ async def get_geographic_heatmap_data(
 
 # ==================== PROMOTIONAL ANALYTICS ====================
 
-from app.models.promotion import Coupon
+from app.models.coupon import Coupon
 
 
 @router.get("/promotions/performance")
