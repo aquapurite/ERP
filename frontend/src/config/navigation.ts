@@ -401,6 +401,7 @@ export const navigation: NavItem[] = [
       // -------- PAGES & SEO --------
       { title: '── Pages & SEO ──', href: '#', permissions: ['CMS_VIEW'] },
       { title: 'Static Pages', href: '/dashboard/cms/pages', icon: FileText, permissions: ['CMS_VIEW'] },
+      { title: 'Partner Page', href: '/dashboard/cms/partner-content', icon: Users, permissions: ['CMS_VIEW'] },
       { title: 'SEO Settings', href: '/dashboard/cms/seo', icon: Search, permissions: ['CMS_VIEW'] },
 
       // -------- SETTINGS --------

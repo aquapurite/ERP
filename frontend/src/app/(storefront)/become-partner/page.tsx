@@ -1,7 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { partnerAuthApi } from '@/lib/storefront/partner-api';
 import { Button } from '@/components/ui/button';
@@ -31,29 +30,53 @@ import {
   TrendingUp,
 } from 'lucide-react';
 
-const benefits = [
-  {
-    icon: Wallet,
-    title: 'Earn Commission',
-    description: '10-15% commission on every successful sale',
-    href: '#registration', // Scroll to registration form
-  },
-  {
-    icon: Share2,
-    title: 'Easy Sharing',
-    description: 'Share products via WhatsApp, social media, and more',
-    href: '/partner/products', // Link to partner products (after login)
-  },
-  {
-    icon: TrendingUp,
-    title: 'Grow Together',
-    description: 'Tier upgrades with higher commission rates',
-    href: '/partner', // Link to partner dashboard (shows tier progress)
-  },
-];
+// Icon mapping for dynamic icons from CMS
+const iconMap: Record<string, React.ElementType> = {
+  Wallet,
+  Share2,
+  TrendingUp,
+};
+
+// Default content (used as fallback if CMS settings not configured)
+const defaultContent = {
+  hero_title: 'Become an AQUAPURITE Partner',
+  hero_subtitle: 'Join our community of partners and earn by sharing our products. Zero investment, unlimited earning potential!',
+  benefit_1_title: 'Earn Commission',
+  benefit_1_description: '10-15% commission on every successful sale',
+  benefit_1_icon: 'Wallet',
+  benefit_2_title: 'Easy Sharing',
+  benefit_2_description: 'Share products via WhatsApp, social media, and more',
+  benefit_2_icon: 'Share2',
+  benefit_3_title: 'Grow Together',
+  benefit_3_description: 'Tier upgrades with higher commission rates',
+  benefit_3_icon: 'TrendingUp',
+  form_title: 'Partner Registration',
+  form_subtitle: 'Fill in your details to get started',
+  success_title: 'Registration Successful!',
+  success_message: 'Your partner application has been submitted. You can now login with your mobile number.',
+};
+
+interface PageContent {
+  hero_title: string;
+  hero_subtitle: string;
+  benefit_1_title: string;
+  benefit_1_description: string;
+  benefit_1_icon: string;
+  benefit_2_title: string;
+  benefit_2_description: string;
+  benefit_2_icon: string;
+  benefit_3_title: string;
+  benefit_3_description: string;
+  benefit_3_icon: string;
+  form_title: string;
+  form_subtitle: string;
+  success_title: string;
+  success_message: string;
+}
 
 export default function BecomePartnerPage() {
-  const router = useRouter();
+  const [content, setContent] = useState<PageContent>(defaultContent);
+  const [contentLoading, setContentLoading] = useState(true);
 
   const [formData, setFormData] = useState({
     full_name: '',
@@ -67,6 +90,40 @@ export default function BecomePartnerPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Fetch CMS content on mount
+  useEffect(() => {
+    const fetchContent = async () => {
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/cms/settings?group=partner_page&limit=50`
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          const items = data.items || data.data?.items || [];
+
+          if (items.length > 0) {
+            const newContent = { ...defaultContent };
+            items.forEach((setting: { setting_key: string; setting_value?: string }) => {
+              const key = setting.setting_key.replace('partner_page_', '') as keyof PageContent;
+              if (key in defaultContent && setting.setting_value) {
+                newContent[key] = setting.setting_value;
+              }
+            });
+            setContent(newContent);
+          }
+        }
+      } catch (err) {
+        // Use default content on error
+        console.log('Using default content');
+      } finally {
+        setContentLoading(false);
+      }
+    };
+
+    fetchContent();
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -98,7 +155,7 @@ export default function BecomePartnerPage() {
         email: formData.email || undefined,
         city: formData.city || undefined,
         pincode: formData.pincode || undefined,
-        referred_by_code: formData.referral_code || undefined, // Backend expects referred_by_code
+        referred_by_code: formData.referral_code || undefined,
       });
 
       if (response.success) {
@@ -118,6 +175,28 @@ export default function BecomePartnerPage() {
     }
   };
 
+  // Build benefits array from content
+  const benefits = [
+    {
+      icon: iconMap[content.benefit_1_icon] || Wallet,
+      title: content.benefit_1_title,
+      description: content.benefit_1_description,
+      href: '#registration',
+    },
+    {
+      icon: iconMap[content.benefit_2_icon] || Share2,
+      title: content.benefit_2_title,
+      description: content.benefit_2_description,
+      href: '/partner/products',
+    },
+    {
+      icon: iconMap[content.benefit_3_icon] || TrendingUp,
+      title: content.benefit_3_title,
+      description: content.benefit_3_description,
+      href: '/partner',
+    },
+  ];
+
   if (success) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center py-12 px-4">
@@ -126,9 +205,9 @@ export default function BecomePartnerPage() {
             <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
               <CheckCircle className="h-8 w-8 text-green-600" />
             </div>
-            <h2 className="text-2xl font-bold mb-2">Registration Successful!</h2>
+            <h2 className="text-2xl font-bold mb-2">{content.success_title}</h2>
             <p className="text-muted-foreground mb-6">
-              Your partner application has been submitted. You can now login with your mobile number.
+              {content.success_message}
             </p>
             <Button asChild className="w-full">
               <Link href="/partner/login">
@@ -148,11 +227,18 @@ export default function BecomePartnerPage() {
         {/* Header */}
         <div className="text-center mb-12">
           <h1 className="text-3xl md:text-4xl font-bold mb-4">
-            Become an AQUAPURITE Partner
+            {contentLoading ? (
+              <span className="animate-pulse bg-muted rounded h-10 w-96 inline-block" />
+            ) : (
+              content.hero_title
+            )}
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Join our community of partners and earn by sharing our products. Zero investment,
-            unlimited earning potential!
+            {contentLoading ? (
+              <span className="animate-pulse bg-muted rounded h-6 w-full inline-block" />
+            ) : (
+              content.hero_subtitle
+            )}
           </p>
         </div>
 
@@ -176,8 +262,8 @@ export default function BecomePartnerPage() {
         {/* Registration Form */}
         <Card id="registration" className="max-w-md mx-auto scroll-mt-20">
           <CardHeader>
-            <CardTitle>Partner Registration</CardTitle>
-            <CardDescription>Fill in your details to get started</CardDescription>
+            <CardTitle>{content.form_title}</CardTitle>
+            <CardDescription>{content.form_subtitle}</CardDescription>
           </CardHeader>
 
           <form onSubmit={handleSubmit}>
