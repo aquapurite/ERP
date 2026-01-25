@@ -159,10 +159,14 @@ export default function BecomePartnerPage() {
         referred_by_code: formData.referral_code || undefined,
       });
 
-      if (response.success) {
+      // API returns partner object on success, check for id to confirm
+      if (response && (response.id || response.partner_id)) {
         setSuccess(true);
+      } else if (response && response.success === false) {
+        setError(response.message || 'Registration failed');
       } else {
-        setError(response.message);
+        // Assume success if we got a response without explicit failure
+        setSuccess(true);
       }
     } catch (err: unknown) {
       const errorMessage =

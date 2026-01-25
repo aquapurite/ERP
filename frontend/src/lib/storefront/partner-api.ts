@@ -109,7 +109,8 @@ export const partnerAuthApi = {
   },
 
   // Register new partner
-  register: async (request: PartnerRegistrationRequest): Promise<{ success: boolean; message: string; partner_id?: string }> => {
+  // API returns CommunityPartnerResponse on success, or throws error
+  register: async (request: PartnerRegistrationRequest): Promise<{ id?: string; partner_id?: string; success?: boolean; message?: string }> => {
     const { data } = await partnerClient.post(`${PARTNERS_PATH}/register`, request);
     return data;
   },
