@@ -406,6 +406,125 @@ async def get_all_tiers(
     return tiers
 
 
+class PartnerTierCreate(BaseModel):
+    """Schema for creating a partner tier."""
+    code: str = Field(..., min_length=2, max_length=20)
+    name: str = Field(..., min_length=2, max_length=100)
+    min_orders: int = Field(0, ge=0)
+    min_revenue: float = Field(0.0, ge=0)
+    commission_rate: float = Field(..., ge=0, le=100)
+    bonus_rate: float = Field(0.0, ge=0, le=100)
+    is_active: bool = True
+
+
+class PartnerTierUpdate(BaseModel):
+    """Schema for updating a partner tier."""
+    name: Optional[str] = None
+    min_orders: Optional[int] = None
+    min_revenue: Optional[float] = None
+    commission_rate: Optional[float] = None
+    bonus_rate: Optional[float] = None
+    is_active: Optional[bool] = None
+
+
+@router.post("/tiers", response_model=PartnerTierResponse, status_code=status.HTTP_201_CREATED)
+async def create_tier(
+    data: PartnerTierCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Create a new partner tier (Admin only).
+    """
+    # Check if code already exists
+    existing = await db.execute(
+        select(PartnerTier).where(PartnerTier.code == data.code.upper())
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail=f"Tier with code '{data.code}' already exists")
+
+    # Get the next level
+    max_level_result = await db.execute(
+        select(PartnerTier.level).order_by(PartnerTier.level.desc()).limit(1)
+    )
+    max_level = max_level_result.scalar_one_or_none() or 0
+
+    tier = PartnerTier(
+        id=uuid.uuid4(),
+        code=data.code.upper(),
+        name=data.name,
+        level=max_level + 1,
+        min_orders=data.min_orders,
+        min_revenue=data.min_revenue,
+        commission_rate=data.commission_rate,
+        bonus_rate=data.bonus_rate,
+        is_active=data.is_active,
+    )
+
+    db.add(tier)
+    await db.commit()
+    await db.refresh(tier)
+
+    return tier
+
+
+@router.put("/tiers/{tier_id}", response_model=PartnerTierResponse)
+async def update_tier(
+    tier_id: UUID,
+    data: PartnerTierUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Update a partner tier (Admin only).
+    """
+    result = await db.execute(select(PartnerTier).where(PartnerTier.id == tier_id))
+    tier = result.scalar_one_or_none()
+
+    if not tier:
+        raise HTTPException(status_code=404, detail="Tier not found")
+
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(tier, field, value)
+
+    await db.commit()
+    await db.refresh(tier)
+
+    return tier
+
+
+@router.delete("/tiers/{tier_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_tier(
+    tier_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Delete a partner tier (Admin only).
+
+    Note: Tiers with assigned partners cannot be deleted.
+    """
+    result = await db.execute(select(PartnerTier).where(PartnerTier.id == tier_id))
+    tier = result.scalar_one_or_none()
+
+    if not tier:
+        raise HTTPException(status_code=404, detail="Tier not found")
+
+    # Check if any partners are assigned to this tier
+    partners_count_result = await db.execute(
+        select(CommunityPartner).where(CommunityPartner.tier_id == tier_id).limit(1)
+    )
+    if partners_count_result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete tier with assigned partners. Reassign partners first."
+        )
+
+    await db.delete(tier)
+    await db.commit()
+
+
 # ============================================================================
 # Referral Endpoints
 # ============================================================================
