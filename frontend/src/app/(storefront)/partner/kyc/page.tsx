@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { usePartnerStore } from '@/lib/storefront/partner-store';
 import { partnerKYCApi, BankDetails } from '@/lib/storefront/partner-api';
+import { uploadsApi } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Progress } from '@/components/ui/progress';
 import {
   Dialog,
   DialogContent,
@@ -27,6 +29,8 @@ import {
   CreditCard,
   User,
   Building2,
+  FileImage,
+  X,
 } from 'lucide-react';
 
 const statusColors: Record<string, { bg: string; icon: React.ReactNode }> = {
@@ -69,7 +73,10 @@ export default function PartnerKYCPage() {
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [uploadType, setUploadType] = useState<'AADHAAR' | 'PAN' | 'BANK_PROOF'>('AADHAAR');
   const [documentNumber, setDocumentNumber] = useState('');
-  const [documentUrl, setDocumentUrl] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const fetchKYCStatus = async () => {
@@ -89,27 +96,90 @@ export default function PartnerKYCPage() {
     fetchKYCStatus();
   }, []);
 
+  // Handle file selection
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
+      if (!allowedTypes.includes(file.type)) {
+        setError('Please upload a valid image (JPG, PNG) or PDF file');
+        return;
+      }
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setError('File size must be less than 5MB');
+        return;
+      }
+      setSelectedFile(file);
+      setError(null);
+      // Create preview for images
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setPreviewUrl(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setPreviewUrl(null);
+      }
+    }
+  };
+
+  // Clear selected file
+  const clearSelectedFile = () => {
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleUploadDocument = async () => {
-    if (!documentUrl) {
-      setError('Please provide document URL');
+    // Validate mobile number exists
+    if (!partner?.phone) {
+      setError('Mobile number is required. Please update your profile first.');
+      return;
+    }
+
+    if (!selectedFile) {
+      setError('Please select a document to upload');
+      return;
+    }
+
+    // Validate document number for Aadhaar and PAN
+    if (uploadType === 'AADHAAR' && !documentNumber) {
+      setError('Please enter your Aadhaar number');
+      return;
+    }
+    if (uploadType === 'PAN' && !documentNumber) {
+      setError('Please enter your PAN number');
       return;
     }
 
     setError(null);
     setIsSubmitting(true);
+    setUploadProgress(0);
 
     try {
+      // Step 1: Upload file to storage
+      const uploadResponse = await uploadsApi.uploadImage(selectedFile, 'documents');
+      setUploadProgress(50);
+
+      // Step 2: Submit document details with URL
       const response = await partnerKYCApi.uploadDocument({
         document_type: uploadType,
         document_number: documentNumber || undefined,
-        document_url: documentUrl,
+        document_url: uploadResponse.url,
       });
+
+      setUploadProgress(100);
 
       if (response.success) {
         setSuccess('Document uploaded successfully!');
         setShowUploadDialog(false);
         setDocumentNumber('');
-        setDocumentUrl('');
+        clearSelectedFile();
 
         // Refresh KYC status
         const status = await partnerKYCApi.getKYCStatus();
@@ -126,6 +196,7 @@ export default function PartnerKYCPage() {
       setError(errorMessage);
     } finally {
       setIsSubmitting(false);
+      setUploadProgress(0);
     }
   };
 
@@ -361,12 +432,19 @@ export default function PartnerKYCPage() {
       </Card>
 
       {/* Document Upload Dialog */}
-      <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
-        <DialogContent>
+      <Dialog open={showUploadDialog} onOpenChange={(open) => {
+        setShowUploadDialog(open);
+        if (!open) {
+          clearSelectedFile();
+          setDocumentNumber('');
+          setError(null);
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Upload {uploadType}</DialogTitle>
+            <DialogTitle>Upload {uploadType === 'AADHAAR' ? 'Aadhaar Card' : uploadType === 'PAN' ? 'PAN Card' : 'Bank Proof'}</DialogTitle>
             <DialogDescription>
-              Upload a clear image or PDF of your {uploadType.toLowerCase()} card
+              Upload a clear image (JPG, PNG) or PDF of your document
             </DialogDescription>
           </DialogHeader>
 
@@ -378,10 +456,20 @@ export default function PartnerKYCPage() {
               </Alert>
             )}
 
+            {/* Mobile Number Check */}
+            {!partner?.phone && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Mobile number is required. Please update your profile first.
+                </AlertDescription>
+              </Alert>
+            )}
+
             {uploadType !== 'BANK_PROOF' && (
               <div className="space-y-2">
                 <Label htmlFor="docNumber">
-                  {uploadType === 'AADHAAR' ? 'Aadhaar Number' : 'PAN Number'}
+                  {uploadType === 'AADHAAR' ? 'Aadhaar Number *' : 'PAN Number *'}
                 </Label>
                 <Input
                   id="docNumber"
@@ -390,36 +478,110 @@ export default function PartnerKYCPage() {
                   }
                   value={documentNumber}
                   onChange={(e) => setDocumentNumber(e.target.value)}
+                  maxLength={uploadType === 'AADHAAR' ? 14 : 10}
                 />
               </div>
             )}
 
+            {/* File Upload Area */}
             <div className="space-y-2">
-              <Label htmlFor="docUrl">Document URL</Label>
-              <Input
-                id="docUrl"
-                placeholder="https://..."
-                value={documentUrl}
-                onChange={(e) => setDocumentUrl(e.target.value)}
+              <Label>Upload Document *</Label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/jpg,application/pdf"
+                onChange={handleFileSelect}
+                className="hidden"
+                id="document-upload"
               />
-              <p className="text-sm text-muted-foreground">
-                Upload your document to a cloud storage and paste the URL here
-              </p>
+
+              {!selectedFile ? (
+                <label
+                  htmlFor="document-upload"
+                  className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer bg-muted/50 hover:bg-muted transition-colors"
+                >
+                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                    <Upload className="w-8 h-8 mb-2 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      <span className="font-semibold">Click to upload</span> or drag and drop
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      JPG, PNG or PDF (max 5MB)
+                    </p>
+                  </div>
+                </label>
+              ) : (
+                <div className="relative border rounded-lg p-4">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute top-2 right-2 h-6 w-6"
+                    onClick={clearSelectedFile}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+
+                  {previewUrl ? (
+                    <div className="flex items-center gap-4">
+                      <img
+                        src={previewUrl}
+                        alt="Preview"
+                        className="w-20 h-20 object-cover rounded"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{selectedFile.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {(selectedFile.size / 1024).toFixed(1)} KB
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-primary/10 rounded">
+                        <FileImage className="h-6 w-6 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{selectedFile.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {(selectedFile.size / 1024).toFixed(1)} KB • PDF
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
+
+            {/* Upload Progress */}
+            {isSubmitting && uploadProgress > 0 && (
+              <div className="space-y-2">
+                <Progress value={uploadProgress} className="h-2" />
+                <p className="text-xs text-center text-muted-foreground">
+                  Uploading... {uploadProgress}%
+                </p>
+              </div>
+            )}
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowUploadDialog(false)}>
+            <Button variant="outline" onClick={() => setShowUploadDialog(false)} disabled={isSubmitting}>
               Cancel
             </Button>
-            <Button onClick={handleUploadDocument} disabled={isSubmitting}>
+            <Button
+              onClick={handleUploadDocument}
+              disabled={isSubmitting || !selectedFile || !partner?.phone}
+            >
               {isSubmitting ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   Uploading...
                 </>
               ) : (
-                'Upload Document'
+                <>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload Document
+                </>
               )}
             </Button>
           </DialogFooter>
