@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Eye, CheckCircle, XCircle, Ban, UserCheck } from 'lucide-react';
+import { MoreHorizontal, Eye, CheckCircle, XCircle, Ban, UserCheck, Pencil, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
@@ -94,6 +94,15 @@ export default function PartnersListPage() {
     reason: '',
   });
 
+  // Delete Dialog
+  const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean;
+    partner: CommunityPartner | null;
+  }>({
+    open: false,
+    partner: null,
+  });
+
   const { data, isLoading } = useQuery({
     queryKey: ['partners', page, pageSize, statusFilter, kycStatusFilter, search],
     queryFn: () =>
@@ -140,6 +149,18 @@ export default function PartnersListPage() {
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to activate partner');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (partnerId: string) => partnersApi.delete(partnerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['partners'] });
+      toast.success('Partner deleted successfully');
+      setDeleteDialog({ open: false, partner: null });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to delete partner');
     },
   });
 
@@ -221,6 +242,22 @@ export default function PartnersListPage() {
                 <Eye className="mr-2 h-4 w-4" />
                 View Details
               </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href={`/dashboard/partners/${row.original.id}/edit`}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit Partner
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => setDeleteDialog({
+                open: true,
+                partner: row.original,
+              })}
+              className="text-red-600"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete Partner
             </DropdownMenuItem>
 
             {row.original.kyc_status === 'SUBMITTED' && (
@@ -408,6 +445,34 @@ export default function PartnersListPage() {
               disabled={!suspendDialog.reason}
             >
               Suspend Partner
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialog.open} onOpenChange={(open) => setDeleteDialog({ ...deleteDialog, open })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Partner</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {deleteDialog.partner?.full_name} ({deleteDialog.partner?.partner_code})?
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialog({ ...deleteDialog, open: false })}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (deleteDialog.partner) {
+                  deleteMutation.mutate(deleteDialog.partner.id);
+                }
+              }}
+            >
+              Delete Partner
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -838,6 +838,51 @@ async def get_partner(
     return partner
 
 
+@router.put("/{partner_id}", response_model=CommunityPartnerResponse)
+async def update_partner_admin(
+    partner_id: UUID,
+    data: CommunityPartnerUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Update partner details (Admin only).
+    """
+    service = PartnerService(db)
+    try:
+        partner = await service.update_partner(partner_id, data)
+        if not partner:
+            raise HTTPException(status_code=404, detail="Partner not found")
+        return partner
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/{partner_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_partner(
+    partner_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Delete a partner (Super Admin only).
+
+    Note: This permanently deletes the partner and all associated data.
+    """
+    # Get partner
+    result = await db.execute(
+        select(CommunityPartner).where(CommunityPartner.id == partner_id)
+    )
+    partner = result.scalar_one_or_none()
+
+    if not partner:
+        raise HTTPException(status_code=404, detail="Partner not found")
+
+    # Delete partner
+    await db.delete(partner)
+    await db.commit()
+
+
 @router.post("/{partner_id}/verify-kyc", response_model=CommunityPartnerResponse)
 async def verify_partner_kyc(
     partner_id: UUID,

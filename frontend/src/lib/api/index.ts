@@ -5631,6 +5631,15 @@ export const partnersApi = {
     return data;
   },
 
+  update: async (partnerId: string, updateData: Partial<CommunityPartner>) => {
+    const { data } = await apiClient.put<CommunityPartner>(`/partners/${partnerId}`, updateData);
+    return data;
+  },
+
+  delete: async (partnerId: string) => {
+    await apiClient.delete(`/partners/${partnerId}`);
+  },
+
   verifyKyc: async (partnerId: string, verification: { status: 'VERIFIED' | 'REJECTED'; notes?: string }) => {
     const { data } = await apiClient.post<CommunityPartner>(`/partners/${partnerId}/verify-kyc`, verification);
     return data;
