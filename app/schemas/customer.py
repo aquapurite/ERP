@@ -49,23 +49,23 @@ class AddressUpdate(BaseModel):
 class AddressResponse(BaseModel):
     """Address response schema."""
     id: uuid.UUID
-    address_type: str  # VARCHAR in DB
+    address_type: Optional[str] = None  # VARCHAR in DB
     contact_name: Optional[str] = None
     contact_phone: Optional[str] = None
-    address_line1: str
+    address_line1: Optional[str] = None
     address_line2: Optional[str] = None
     landmark: Optional[str] = None
-    city: str
-    state: str
-    pincode: str
-    country: str
+    city: Optional[str] = None
+    state: Optional[str] = None
+    pincode: Optional[str] = None
+    country: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
-    is_default: bool
-    is_active: bool
-    full_address: str
-    created_at: datetime
-    updated_at: datetime
+    is_default: bool = False
+    is_active: bool = True
+    full_address: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -122,26 +122,26 @@ class CustomerUpdate(BaseModel):
 class CustomerResponse(BaseModel):
     """Customer response schema."""
     id: uuid.UUID
-    customer_code: str
-    first_name: str
+    customer_code: Optional[str] = None
+    first_name: Optional[str] = None
     last_name: Optional[str] = None
-    full_name: str
+    full_name: Optional[str] = None
     email: Optional[str] = None
-    phone: str
+    phone: Optional[str] = None
     alternate_phone: Optional[str] = None
-    customer_type: str  # VARCHAR in DB
-    source: str
+    customer_type: Optional[str] = None  # VARCHAR in DB
+    source: Optional[str] = None
     company_name: Optional[str] = None
     gst_number: Optional[str] = None
     date_of_birth: Optional[date] = None
     anniversary_date: Optional[date] = None
-    is_active: bool
-    is_verified: bool
+    is_active: bool = True
+    is_verified: bool = False
     notes: Optional[str] = None
     gl_account_id: Optional[uuid.UUID] = None  # Linked GL account
     addresses: List[AddressResponse] = []
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     # Frontend compatibility alias
     @computed_field
