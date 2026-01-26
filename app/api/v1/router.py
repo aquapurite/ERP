@@ -100,8 +100,9 @@ from app.api.v1.endpoints import (
     portal,
     # D2C Customer Authentication
     d2c_auth,
-    # Product Reviews
+    # Product Reviews & Q&A
     reviews,
+    questions,
     # Coupons
     coupons,
     # Returns & Refunds
@@ -464,6 +465,12 @@ api_router.include_router(
 api_router.include_router(
     reviews.router,
     tags=["Product Reviews"]
+)
+
+# ==================== Product Q&A ====================
+api_router.include_router(
+    questions.router,
+    tags=["Product Q&A"]
 )
 
 # ==================== Coupons ====================

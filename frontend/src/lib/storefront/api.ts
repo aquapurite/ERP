@@ -774,11 +774,12 @@ export const reviewsApi = {
 };
 
 // Product Q&A API
-// NOTE: Backend endpoint not yet implemented. Using mock data for now.
-// When backend is ready, update these methods to call actual API endpoints:
+// Backend endpoints:
 // - GET /api/v1/questions/product/{product_id} - Get questions for product
-// - POST /api/v1/questions - Create a new question
-// - POST /api/v1/questions/{id}/vote - Vote on a question/answer
+// - POST /api/v1/questions - Create a new question (authenticated)
+// - POST /api/v1/questions/{question_id}/answers - Answer a question (authenticated)
+// - POST /api/v1/questions/{question_id}/helpful - Vote question helpful (authenticated)
+// - POST /api/v1/questions/answers/{answer_id}/helpful - Vote answer helpful (authenticated)
 
 export interface ProductQuestion {
   id: string;
@@ -795,6 +796,7 @@ export interface ProductAnswer {
   answer_text: string;
   answered_by: string;
   is_seller_answer: boolean;
+  is_verified_buyer: boolean;
   helpful_count: number;
   created_at: string;
 }
@@ -807,73 +809,18 @@ export const questionsApi = {
     page: number;
     size: number;
   }> => {
-    // TODO: Replace with actual API call when backend endpoint is ready
-    // const { data } = await storefrontClient.get(`${API_PATH}/questions/product/${productId}`, { params });
-    // return data;
-
-    // Mock data for now
-    const mockQuestions: ProductQuestion[] = [
-      {
-        id: '1',
-        question_text: 'Is this water purifier suitable for borewell water with high TDS?',
-        asked_by: 'Rahul M.',
-        answers: [
-          {
-            id: 'a1',
-            answer_text: 'Yes, this purifier can handle TDS levels up to 2000 ppm. It uses RO+UV+UF technology which is perfect for borewell water with high TDS.',
-            answered_by: 'AQUAPURITE Support',
-            is_seller_answer: true,
-            helpful_count: 45,
-            created_at: '2025-12-15T10:30:00Z',
-          },
-          {
-            id: 'a2',
-            answer_text: 'I have borewell water with TDS around 800 ppm and this works great! Water tastes much better now.',
-            answered_by: 'Verified Buyer',
-            is_seller_answer: false,
-            helpful_count: 12,
-            created_at: '2025-12-20T14:45:00Z',
-          },
-        ],
-        answer_count: 2,
-        helpful_count: 23,
-        created_at: '2025-12-10T08:00:00Z',
-      },
-      {
-        id: '2',
-        question_text: 'What is the warranty period and does it cover the filters?',
-        asked_by: 'Priya S.',
-        answers: [
-          {
-            id: 'a3',
-            answer_text: 'The purifier comes with a 1-year comprehensive warranty. The filters are covered for the first 6 months. After that, filter replacements are available at affordable prices.',
-            answered_by: 'AQUAPURITE Support',
-            is_seller_answer: true,
-            helpful_count: 67,
-            created_at: '2025-11-25T16:20:00Z',
-          },
-        ],
-        answer_count: 1,
-        helpful_count: 34,
-        created_at: '2025-11-20T09:15:00Z',
-      },
-      {
-        id: '3',
-        question_text: 'How often do the filters need to be changed?',
-        asked_by: 'Amit K.',
-        answers: [],
-        answer_count: 0,
-        helpful_count: 8,
-        created_at: '2026-01-05T11:00:00Z',
-      },
-    ];
-
-    return {
-      items: mockQuestions,
-      total: mockQuestions.length,
-      page: params?.page || 1,
-      size: params?.size || 10,
-    };
+    try {
+      const { data } = await storefrontClient.get(`${API_PATH}/questions/product/${productId}`, { params });
+      return data;
+    } catch (error) {
+      // Return empty list if endpoint fails or product has no questions
+      return {
+        items: [],
+        total: 0,
+        page: params?.page || 1,
+        size: params?.size || 10,
+      };
+    }
   },
 
   // Create a new question
@@ -883,27 +830,27 @@ export const questionsApi = {
       throw new Error('Authentication required to ask a question');
     }
 
-    // TODO: Replace with actual API call when backend endpoint is ready
-    // const response = await storefrontClient.post(
-    //   `${API_PATH}/questions`,
-    //   data,
-    //   { headers: { Authorization: `Bearer ${token}` } }
-    // );
-    // return response.data;
+    const response = await storefrontClient.post(
+      `${API_PATH}/questions`,
+      data,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data;
+  },
 
-    // Mock response - simulate API delay and return new question
-    await new Promise((resolve) => setTimeout(resolve, 500));
+  // Create an answer to a question
+  createAnswer: async (questionId: string, answerText: string): Promise<ProductAnswer> => {
+    const token = useAuthStore.getState().accessToken;
+    if (!token) {
+      throw new Error('Authentication required to answer a question');
+    }
 
-    const customer = useAuthStore.getState().customer;
-    return {
-      id: `q-${Date.now()}`,
-      question_text: data.question_text,
-      asked_by: customer?.first_name || 'You',
-      answers: [],
-      answer_count: 0,
-      helpful_count: 0,
-      created_at: new Date().toISOString(),
-    };
+    const response = await storefrontClient.post(
+      `${API_PATH}/questions/${questionId}/answers`,
+      { answer_text: answerText },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data;
   },
 
   // Vote on a question or answer
@@ -913,16 +860,17 @@ export const questionsApi = {
       throw new Error('Authentication required to vote');
     }
 
-    // TODO: Replace with actual API call when backend endpoint is ready
-    // const response = await storefrontClient.post(
-    //   `${API_PATH}/questions/${type}/${id}/vote`,
-    //   { is_helpful: true },
-    //   { headers: { Authorization: `Bearer ${token}` } }
-    // );
-    // return response.data;
+    // Use the correct endpoint based on type
+    const endpoint = type === 'question'
+      ? `${API_PATH}/questions/${id}/helpful`
+      : `${API_PATH}/questions/answers/${id}/helpful`;
 
-    // Mock response
-    return { helpful_count: 1 };
+    const response = await storefrontClient.post(
+      endpoint,
+      {},
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data;
   },
 };
 

@@ -1127,6 +1127,52 @@ async def approve_commission(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.get("/{partner_id}/payouts")
+async def get_partner_payouts(
+    partner_id: UUID,
+    status: Optional[str] = Query(None, description="Filter by payout status"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get payout history for a specific partner (Admin only).
+
+    Used by ERP admin panel to view partner's payout history.
+    """
+    from sqlalchemy import func
+
+    # Count total payouts
+    count_query = select(func.count(PartnerPayout.id)).where(
+        PartnerPayout.partner_id == partner_id
+    )
+    if status:
+        count_query = count_query.where(PartnerPayout.status == status)
+
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Fetch payouts
+    query = select(PartnerPayout).where(PartnerPayout.partner_id == partner_id)
+
+    if status:
+        query = query.where(PartnerPayout.status == status)
+
+    query = query.order_by(PartnerPayout.created_at.desc())
+    query = query.offset((page - 1) * page_size).limit(page_size)
+
+    result = await db.execute(query)
+    payouts = result.scalars().all()
+
+    return {
+        "items": [PartnerPayoutResponse.model_validate(p) for p in payouts],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
 @router.post("/payouts/{payout_id}/process")
 async def process_payout(
     payout_id: UUID,

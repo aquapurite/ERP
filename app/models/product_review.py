@@ -182,3 +182,253 @@ class ReviewHelpful(Base):
         # Each customer can only vote once per review
         {'sqlite_autoincrement': True},
     )
+
+
+class ProductQuestion(Base):
+    """
+    Customer question about a product.
+    Questions can be answered by sellers, verified buyers, or community members.
+    """
+    __tablename__ = "product_questions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Foreign Keys
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("customers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Question Content
+    question_text: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="The question text"
+    )
+
+    # Display name (anonymized or full name)
+    asked_by: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        comment="Display name of the person who asked"
+    )
+
+    # Moderation
+    is_approved: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+        comment="Admin approval status"
+    )
+
+    # Helpful votes
+    helpful_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+        comment="Number of users who found this helpful"
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+    # Relationships
+    product: Mapped["Product"] = relationship("Product", back_populates="questions")
+    customer: Mapped["Customer"] = relationship("Customer")
+    answers: Mapped[list["ProductAnswer"]] = relationship(
+        "ProductAnswer",
+        back_populates="question",
+        cascade="all, delete-orphan",
+        order_by="ProductAnswer.helpful_count.desc()"
+    )
+
+    @property
+    def answer_count(self) -> int:
+        return len(self.answers) if self.answers else 0
+
+    def __repr__(self) -> str:
+        return f"<ProductQuestion(product_id={self.product_id}, question={self.question_text[:50]}...)>"
+
+
+class ProductAnswer(Base):
+    """
+    Answer to a product question.
+    Can be from seller (official response) or community members.
+    """
+    __tablename__ = "product_answers"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Foreign Keys
+    question_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("product_questions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("customers.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Customer who answered (null for seller answers)"
+    )
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Admin/Staff user who answered (for seller answers)"
+    )
+
+    # Answer Content
+    answer_text: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="The answer text"
+    )
+
+    # Display name
+    answered_by: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        comment="Display name of the person who answered"
+    )
+
+    # Is this an official seller/brand response?
+    is_seller_answer: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        comment="True if this is an official seller/brand response"
+    )
+
+    # Is this from a verified buyer?
+    is_verified_buyer: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        comment="True if answerer has purchased this product"
+    )
+
+    # Moderation
+    is_approved: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+        comment="Admin approval status"
+    )
+
+    # Helpful votes
+    helpful_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+        comment="Number of users who found this helpful"
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+    # Relationships
+    question: Mapped["ProductQuestion"] = relationship("ProductQuestion", back_populates="answers")
+    customer: Mapped[Optional["Customer"]] = relationship("Customer")
+
+    def __repr__(self) -> str:
+        return f"<ProductAnswer(question_id={self.question_id}, is_seller={self.is_seller_answer})>"
+
+
+class QuestionHelpful(Base):
+    """
+    Tracks which users found a question helpful.
+    Prevents duplicate votes.
+    """
+    __tablename__ = "question_helpful"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    question_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("product_questions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("customers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+
+class AnswerHelpful(Base):
+    """
+    Tracks which users found an answer helpful.
+    Prevents duplicate votes.
+    """
+    __tablename__ = "answer_helpful"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    answer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("product_answers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("customers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )

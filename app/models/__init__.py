@@ -457,8 +457,15 @@ from app.models.abandoned_cart import (
 )
 # Wishlist
 from app.models.wishlist import WishlistItem
-# Product Reviews
-from app.models.product_review import ProductReview
+# Product Reviews & Q&A
+from app.models.product_review import (
+    ProductReview,
+    ReviewHelpful,
+    ProductQuestion,
+    ProductAnswer,
+    QuestionHelpful,
+    AnswerHelpful,
+)
 # Return Orders & Refunds
 from app.models.return_order import (
     ReturnOrder,
@@ -875,8 +882,13 @@ __all__ = [
     "RecoveryStatus",
     # Wishlist
     "WishlistItem",
-    # Product Reviews
+    # Product Reviews & Q&A
     "ProductReview",
+    "ReviewHelpful",
+    "ProductQuestion",
+    "ProductAnswer",
+    "QuestionHelpful",
+    "AnswerHelpful",
     # Return Orders & Refunds
     "ReturnOrder",
     "ReturnItem",
