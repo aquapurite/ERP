@@ -11,6 +11,12 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str
 
+    # Database Connection Pool Settings
+    DB_POOL_SIZE: int = 10  # Base number of connections in pool
+    DB_MAX_OVERFLOW: int = 20  # Extra connections allowed beyond pool_size
+    DB_POOL_TIMEOUT: int = 30  # Seconds to wait for connection from pool
+    DB_POOL_RECYCLE: int = 1800  # Recycle connections after 30 minutes
+
     # JWT Settings
     SECRET_KEY: str
     ALGORITHM: str = "HS256"

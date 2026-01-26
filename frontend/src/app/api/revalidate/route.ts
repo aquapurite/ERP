@@ -26,8 +26,15 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { secret, type, value } = body;
 
-    // Validate secret
-    const validSecret = process.env.REVALIDATE_SECRET || 'aquapurite-revalidate-2026';
+    // Validate secret - MUST be set in environment
+    const validSecret = process.env.REVALIDATE_SECRET;
+    if (!validSecret) {
+      console.error('[Revalidate] REVALIDATE_SECRET environment variable not configured');
+      return NextResponse.json(
+        { success: false, message: 'Server configuration error' },
+        { status: 500 }
+      );
+    }
     if (secret !== validSecret) {
       return NextResponse.json(
         { success: false, message: 'Invalid secret' },
@@ -94,8 +101,15 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const { secret, items } = body;
 
-    // Validate secret
-    const validSecret = process.env.REVALIDATE_SECRET || 'aquapurite-revalidate-2026';
+    // Validate secret - MUST be set in environment
+    const validSecret = process.env.REVALIDATE_SECRET;
+    if (!validSecret) {
+      console.error('[Revalidate] REVALIDATE_SECRET environment variable not configured');
+      return NextResponse.json(
+        { success: false, message: 'Server configuration error' },
+        { status: 500 }
+      );
+    }
     if (secret !== validSecret) {
       return NextResponse.json(
         { success: false, message: 'Invalid secret' },

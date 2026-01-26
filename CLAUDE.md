@@ -2816,6 +2816,15 @@ Comprehensive audit of 204 database tables, 76 API endpoint files, 182+ frontend
 - Added permission checks (`channel:view`) to:
   - GET /api/v1/channels/stats
   - GET /api/v1/channels/inventory/stats
+- Enhanced database connection pooling with configurable settings:
+  - Added `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT`, `DB_POOL_RECYCLE` env vars
+  - Added `pool_timeout` and `pool_recycle` to SQLAlchemy engine
+- Enhanced health check endpoint (`/health`) with database connectivity validation:
+  - Returns `checks.database: connected` or error details
+  - Returns 503 status if database is unreachable
+- Fixed `/api/revalidate` endpoint security:
+  - Removed hardcoded secret fallback
+  - Now requires `REVALIDATE_SECRET` environment variable to be set
 
 ### Database Type Issues (ALL FIXED 2026-01-26)
 

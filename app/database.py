@@ -60,9 +60,11 @@ else:
         database_url,
         echo=settings.DEBUG,
         future=True,
-        pool_pre_ping=True,
-        pool_size=10,
-        max_overflow=20,
+        pool_pre_ping=True,  # Check connection health before use
+        pool_size=settings.DB_POOL_SIZE,  # Base pool size (default: 10)
+        max_overflow=settings.DB_MAX_OVERFLOW,  # Extra connections beyond pool_size (default: 20)
+        pool_timeout=settings.DB_POOL_TIMEOUT,  # Seconds to wait for connection (default: 30)
+        pool_recycle=settings.DB_POOL_RECYCLE,  # Recycle connections after N seconds (default: 1800)
         connect_args={
             "prepare_threshold": None,  # Disable prepared statements to avoid DuplicatePreparedStatement errors
         },

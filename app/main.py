@@ -247,12 +247,35 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Health check endpoint
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """Health check endpoint."""
-    return {
+    """Health check endpoint with database validation."""
+    from sqlalchemy import text
+    from datetime import datetime
+
+    health_status = {
         "status": "healthy",
         "app": settings.APP_NAME,
         "version": settings.APP_VERSION,
+        "timestamp": datetime.utcnow().isoformat(),
+        "checks": {
+            "database": "unknown"
+        }
     }
+
+    # Check database connectivity
+    try:
+        async with async_session_factory() as session:
+            result = await session.execute(text("SELECT 1"))
+            result.scalar()
+            health_status["checks"]["database"] = "connected"
+    except Exception as e:
+        health_status["status"] = "unhealthy"
+        health_status["checks"]["database"] = f"error: {str(e)}"
+
+    # Return 503 if unhealthy
+    if health_status["status"] == "unhealthy":
+        return JSONResponse(status_code=503, content=health_status)
+
+    return health_status
 
 
 @app.get("/", tags=["Root"])
