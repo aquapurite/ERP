@@ -33,178 +33,164 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { formatDate, formatCurrency } from '@/lib/utils';
+import { customersApi } from '@/lib/api';
 
+// Types matching backend Customer360Response
 interface CustomerAddress {
   id: string;
-  label: string;
-  address_line1: string;
+  address_type?: string;
+  contact_name?: string;
+  contact_phone?: string;
+  address_line1?: string;
   address_line2?: string;
-  city: string;
-  state: string;
-  pincode: string;
+  landmark?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
   is_default: boolean;
 }
 
-interface CustomerProduct {
+interface CustomerProfile {
   id: string;
-  product_name: string;
-  serial_number: string;
-  purchase_date: string;
-  warranty_end_date: string;
-  amc_status: 'ACTIVE' | 'EXPIRED' | 'NONE';
-  amc_plan?: string;
-  installation_date?: string;
-  last_service_date?: string;
+  customer_code?: string;
+  first_name?: string;
+  last_name?: string;
+  full_name?: string;
+  name?: string; // computed field from backend
+  email?: string;
+  phone?: string;
+  alternate_phone?: string;
+  customer_type?: string;
+  source?: string;
+  company_name?: string;
+  gst_number?: string;
+  date_of_birth?: string;
+  anniversary_date?: string;
+  is_active: boolean;
+  is_verified: boolean;
+  addresses: CustomerAddress[];
+  created_at?: string;
 }
 
-interface CustomerOrder {
+interface Customer360Stats {
+  total_orders: number;
+  total_order_value: number;
+  delivered_orders: number;
+  pending_orders: number;
+  total_installations: number;
+  completed_installations: number;
+  total_service_requests: number;
+  open_service_requests: number;
+  total_calls: number;
+  active_amc_contracts: number;
+  average_rating?: number;
+  customer_since_days: number;
+}
+
+interface Customer360Order {
   id: string;
   order_number: string;
-  order_date: string;
   status: string;
   total_amount: number;
+  payment_status?: string;
   items_count: number;
-  payment_status: string;
+  created_at?: string;
 }
 
-interface CustomerServiceRequest {
+interface Customer360ServiceRequest {
   id: string;
   ticket_number: string;
-  created_at: string;
-  type: string;
-  product_name: string;
+  service_type: string;
   status: string;
-  assigned_technician?: string;
-  resolved_at?: string;
-  rating?: number;
+  priority?: string;
+  title?: string;
+  franchisee_name?: string;
+  technician_name?: string;
+  scheduled_date?: string;
+  completed_at?: string;
+  customer_rating?: number;
+  created_at?: string;
 }
 
-interface CustomerAMC {
+interface Customer360AMC {
   id: string;
   contract_number: string;
-  product_name: string;
-  serial_number: string;
   plan_name: string;
+  status: string;
   start_date: string;
   end_date: string;
-  status: 'ACTIVE' | 'EXPIRED' | 'PENDING';
-  visits_used: number;
-  visits_total: number;
+  total_services: number;
+  services_used: number;
+  services_remaining: number;
+  next_service_due?: string;
 }
 
-interface CustomerInteraction {
+interface Customer360Call {
   id: string;
-  type: 'CALL' | 'EMAIL' | 'CHAT' | 'VISIT' | 'SMS';
-  date: string;
-  summary: string;
-  agent?: string;
+  call_id?: string;
+  call_type: string;
+  category: string;
+  status: string;
   outcome?: string;
+  duration_seconds?: number;
+  agent_name?: string;
+  call_start_time?: string;
+  sentiment?: string;
 }
 
-interface CustomerPayment {
+interface Customer360Payment {
   id: string;
-  date: string;
-  reference: string;
-  type: 'ORDER' | 'AMC' | 'SERVICE' | 'REFUND';
+  order_number?: string;
   amount: number;
-  method: string;
-  status: 'SUCCESS' | 'PENDING' | 'FAILED';
+  method?: string;
+  status: string;
+  transaction_id?: string;
+  gateway?: string;
+  completed_at?: string;
+  created_at?: string;
 }
 
-interface Customer360 {
+interface Customer360Installation {
   id: string;
-  name: string;
-  phone: string;
-  email?: string;
-  customer_type: 'INDIVIDUAL' | 'BUSINESS' | 'DEALER';
-  is_active: boolean;
-  created_at: string;
-  date_of_birth?: string;
-  anniversary?: string;
-  gstin?: string;
-  addresses: CustomerAddress[];
-  // Stats
-  total_orders: number;
-  total_spent: number;
-  products_owned: number;
-  active_amc: number;
-  service_requests: number;
-  avg_rating: number;
-  loyalty_points: number;
-  lifetime_value: number;
-  last_purchase_date?: string;
-  last_service_date?: string;
-  // Related data
-  products: CustomerProduct[];
-  orders: CustomerOrder[];
-  service_requests_list: CustomerServiceRequest[];
-  amc_contracts: CustomerAMC[];
-  interactions: CustomerInteraction[];
-  payments: CustomerPayment[];
+  installation_number: string;
+  status: string;
+  product_name?: string;
+  installation_pincode?: string;
+  franchisee_name?: string;
+  scheduled_date?: string;
+  completed_at?: string;
+  customer_rating?: number;
+  warranty_end_date?: string;
+  created_at?: string;
 }
 
-const customer360Api = {
-  get: async (id: string): Promise<Customer360> => {
-    return {
-      id,
-      name: 'Priya Sharma',
-      phone: '+91 98765 43210',
-      email: 'priya.sharma@email.com',
-      customer_type: 'INDIVIDUAL',
-      is_active: true,
-      created_at: '2022-06-15',
-      date_of_birth: '1985-03-20',
-      anniversary: '2010-11-25',
-      addresses: [
-        { id: '1', label: 'Home', address_line1: '123, Green Valley Apartments', address_line2: 'Near City Mall', city: 'Mumbai', state: 'Maharashtra', pincode: '400001', is_default: true },
-        { id: '2', label: 'Office', address_line1: '456, Tech Park, Floor 5', city: 'Mumbai', state: 'Maharashtra', pincode: '400051', is_default: false },
-      ],
-      total_orders: 8,
-      total_spent: 125680,
-      products_owned: 3,
-      active_amc: 2,
-      service_requests: 5,
-      avg_rating: 4.8,
-      loyalty_points: 2560,
-      lifetime_value: 156780,
-      last_purchase_date: '2024-01-15',
-      last_service_date: '2024-02-20',
-      products: [
-        { id: '1', product_name: 'AquaPure RO Elite', serial_number: 'AP-RO-002-67890', purchase_date: '2023-06-20', warranty_end_date: '2024-06-19', amc_status: 'ACTIVE', amc_plan: 'Premium Care', installation_date: '2023-06-22', last_service_date: '2024-02-15' },
-        { id: '2', product_name: 'AquaPure UV Compact', serial_number: 'AP-UV-001-12345', purchase_date: '2022-08-10', warranty_end_date: '2023-08-09', amc_status: 'ACTIVE', amc_plan: 'Standard Care', installation_date: '2022-08-12', last_service_date: '2024-01-20' },
-        { id: '3', product_name: 'Voltage Stabilizer 5KVA', serial_number: 'VS-5K-001-55555', purchase_date: '2024-01-15', warranty_end_date: '2026-01-14', amc_status: 'NONE', installation_date: '2024-01-16' },
-      ],
-      orders: [
-        { id: '1', order_number: 'ORD-2024-0156', order_date: '2024-01-15', status: 'DELIVERED', total_amount: 45890, items_count: 2, payment_status: 'PAID' },
-        { id: '2', order_number: 'ORD-2023-0892', order_date: '2023-06-20', status: 'DELIVERED', total_amount: 32500, items_count: 1, payment_status: 'PAID' },
-        { id: '3', order_number: 'ORD-2022-0543', order_date: '2022-08-10', status: 'DELIVERED', total_amount: 18990, items_count: 1, payment_status: 'PAID' },
-        { id: '4', order_number: 'ORD-2024-0189', order_date: '2024-02-01', status: 'PROCESSING', total_amount: 8500, items_count: 3, payment_status: 'PAID' },
-      ],
-      service_requests_list: [
-        { id: '1', ticket_number: 'SR-2024-0234', created_at: '2024-02-15', type: 'PREVENTIVE_MAINTENANCE', product_name: 'AquaPure RO Elite', status: 'COMPLETED', assigned_technician: 'Rajesh Kumar', resolved_at: '2024-02-15', rating: 5 },
-        { id: '2', ticket_number: 'SR-2024-0189', created_at: '2024-01-20', type: 'PREVENTIVE_MAINTENANCE', product_name: 'AquaPure UV Compact', status: 'COMPLETED', assigned_technician: 'Suresh Singh', resolved_at: '2024-01-20', rating: 5 },
-        { id: '3', ticket_number: 'SR-2023-0876', created_at: '2023-11-10', type: 'REPAIR', product_name: 'AquaPure UV Compact', status: 'COMPLETED', assigned_technician: 'Amit Verma', resolved_at: '2023-11-11', rating: 4 },
-        { id: '4', ticket_number: 'SR-2023-0654', created_at: '2023-08-25', type: 'INSTALLATION', product_name: 'AquaPure RO Elite', status: 'COMPLETED', assigned_technician: 'Rajesh Kumar', resolved_at: '2023-08-25', rating: 5 },
-      ],
-      amc_contracts: [
-        { id: '1', contract_number: 'AMC-2024-0156', product_name: 'AquaPure RO Elite', serial_number: 'AP-RO-002-67890', plan_name: 'Premium Care', start_date: '2024-01-01', end_date: '2024-12-31', status: 'ACTIVE', visits_used: 1, visits_total: 6 },
-        { id: '2', contract_number: 'AMC-2023-0892', product_name: 'AquaPure UV Compact', serial_number: 'AP-UV-001-12345', plan_name: 'Standard Care', start_date: '2023-09-01', end_date: '2024-08-31', status: 'ACTIVE', visits_used: 2, visits_total: 4 },
-      ],
-      interactions: [
-        { id: '1', type: 'CALL', date: '2024-02-20', summary: 'Customer called regarding scheduled service visit', agent: 'Anjali', outcome: 'Confirmed appointment' },
-        { id: '2', type: 'EMAIL', date: '2024-02-15', summary: 'Service completion confirmation sent', agent: 'System' },
-        { id: '3', type: 'SMS', date: '2024-02-14', summary: 'Service reminder for tomorrow', agent: 'System' },
-        { id: '4', type: 'CALL', date: '2024-01-18', summary: 'Customer inquiry about AMC renewal', agent: 'Priyanka', outcome: 'Shared renewal options' },
-      ],
-      payments: [
-        { id: '1', date: '2024-01-15', reference: 'PAY-2024-0156', type: 'ORDER', amount: 45890, method: 'Credit Card', status: 'SUCCESS' },
-        { id: '2', date: '2024-01-01', reference: 'PAY-2024-0001', type: 'AMC', amount: 7999, method: 'UPI', status: 'SUCCESS' },
-        { id: '3', date: '2023-09-01', reference: 'PAY-2023-0892', type: 'AMC', amount: 4999, method: 'Net Banking', status: 'SUCCESS' },
-        { id: '4', date: '2023-06-20', reference: 'PAY-2023-0654', type: 'ORDER', amount: 32500, method: 'Debit Card', status: 'SUCCESS' },
-      ],
-    };
-  },
-};
+interface Customer360Timeline {
+  event_type: string;
+  event_id: string;
+  title: string;
+  description?: string;
+  status: string;
+  timestamp: string;
+  metadata?: Record<string, unknown>;
+}
+
+interface Customer360Response {
+  customer: CustomerProfile;
+  stats: Customer360Stats;
+  timeline: Customer360Timeline[];
+  orders: Customer360Order[];
+  recent_order_history: { from_status?: string; to_status: string; notes?: string; changed_by?: string; created_at?: string }[];
+  shipments: { id: string; shipment_number: string; order_number?: string; status: string; awb_number?: string; transporter_name?: string; delivered_to?: string; delivered_at?: string; created_at?: string }[];
+  recent_shipment_tracking: { status: string; location?: string; city?: string; remarks?: string; event_time?: string }[];
+  installations: Customer360Installation[];
+  service_requests: Customer360ServiceRequest[];
+  recent_service_history: { from_status?: string; to_status: string; notes?: string; changed_by?: string; created_at?: string }[];
+  calls: Customer360Call[];
+  payments: Customer360Payment[];
+  amc_contracts: Customer360AMC[];
+  lead?: { id: string; lead_number: string; status: string; source: string; converted_at?: string };
+  lead_activities: { activity_type: string; subject: string; outcome?: string; old_status?: string; new_status?: string; activity_date: string }[];
+}
 
 const statusColors: Record<string, string> = {
   DELIVERED: 'bg-green-100 text-green-800',
@@ -223,14 +209,6 @@ const statusColors: Record<string, string> = {
   PAID: 'bg-green-100 text-green-800',
 };
 
-const interactionTypeIcons: Record<string, React.ReactNode> = {
-  CALL: <Phone className="h-4 w-4" />,
-  EMAIL: <Mail className="h-4 w-4" />,
-  CHAT: <MessageSquare className="h-4 w-4" />,
-  VISIT: <Home className="h-4 w-4" />,
-  SMS: <MessageSquare className="h-4 w-4" />,
-};
-
 export default function Customer360Page() {
   const params = useParams();
   const router = useRouter();
@@ -238,20 +216,30 @@ export default function Customer360Page() {
   const initialTab = searchParams.get('tab') || 'overview';
   const [activeTab, setActiveTab] = useState(initialTab);
 
-  const { data: customer, isLoading } = useQuery({
+  const { data: response, isLoading, error } = useQuery<Customer360Response>({
     queryKey: ['customer-360', params.id],
-    queryFn: () => customer360Api.get(params.id as string),
+    queryFn: () => customersApi.get360View(params.id as string),
   });
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-96">Loading...</div>;
   }
 
-  if (!customer) {
-    return <div className="flex items-center justify-center h-96">Customer not found</div>;
+  if (error || !response) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 gap-4">
+        <p className="text-muted-foreground">Customer not found or failed to load</p>
+        <Button variant="outline" onClick={() => router.back()}>
+          <ArrowLeft className="mr-2 h-4 w-4" />Go Back
+        </Button>
+      </div>
+    );
   }
 
-  const initials = customer.name?.split(' ')?.map(n => n?.[0] ?? '')?.join('')?.toUpperCase() || 'NA';
+  const customer = response.customer;
+  const stats = response.stats;
+  const customerName = customer.name || customer.full_name || `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'Unknown';
+  const initials = customerName?.split(' ')?.map(n => n?.[0] ?? '')?.join('')?.toUpperCase() || 'NA';
 
   return (
     <div className="space-y-6">
@@ -266,14 +254,15 @@ export default function Customer360Page() {
           </Avatar>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold">{customer.name}</h1>
+              <h1 className="text-2xl font-bold">{customerName}</h1>
               <Badge className={customer.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
                 {customer.is_active ? 'Active' : 'Inactive'}
               </Badge>
-              <Badge variant="outline">{customer.customer_type}</Badge>
+              <Badge variant="outline">{customer.customer_type || 'INDIVIDUAL'}</Badge>
+              {customer.customer_code && <Badge variant="secondary">{customer.customer_code}</Badge>}
             </div>
             <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
-              <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{customer.phone}</span>
+              <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{customer.phone || 'N/A'}</span>
               {customer.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{customer.email}</span>}
               <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />Customer since {formatDate(customer.created_at)}</span>
             </div>
@@ -300,9 +289,9 @@ export default function Customer360Page() {
           <CardContent className="pt-4">
             <div className="flex items-center gap-2">
               <IndianRupee className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Lifetime Value</span>
+              <span className="text-sm text-muted-foreground">Total Order Value</span>
             </div>
-            <div className="text-2xl font-bold mt-1">{formatCurrency(customer.lifetime_value)}</div>
+            <div className="text-2xl font-bold mt-1">{formatCurrency(stats.total_order_value)}</div>
           </CardContent>
         </Card>
         <Card>
@@ -311,16 +300,16 @@ export default function Customer360Page() {
               <ShoppingBag className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Total Orders</span>
             </div>
-            <div className="text-2xl font-bold mt-1">{customer.total_orders}</div>
+            <div className="text-2xl font-bold mt-1">{stats.total_orders}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
             <div className="flex items-center gap-2">
               <Package className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Products</span>
+              <span className="text-sm text-muted-foreground">Installations</span>
             </div>
-            <div className="text-2xl font-bold mt-1">{customer.products_owned}</div>
+            <div className="text-2xl font-bold mt-1">{stats.total_installations}</div>
           </CardContent>
         </Card>
         <Card>
@@ -329,7 +318,7 @@ export default function Customer360Page() {
               <Shield className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Active AMC</span>
             </div>
-            <div className="text-2xl font-bold mt-1">{customer.active_amc}</div>
+            <div className="text-2xl font-bold mt-1">{stats.active_amc_contracts}</div>
           </CardContent>
         </Card>
         <Card>
@@ -338,16 +327,16 @@ export default function Customer360Page() {
               <Star className="h-4 w-4 text-yellow-500" />
               <span className="text-sm text-muted-foreground">Avg Rating</span>
             </div>
-            <div className="text-2xl font-bold mt-1">{customer.avg_rating}/5</div>
+            <div className="text-2xl font-bold mt-1">{stats.average_rating ? `${stats.average_rating}/5` : 'N/A'}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
             <div className="flex items-center gap-2">
-              <Heart className="h-4 w-4 text-red-500" />
-              <span className="text-sm text-muted-foreground">Loyalty Points</span>
+              <Wrench className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Service Requests</span>
             </div>
-            <div className="text-2xl font-bold mt-1">{(customer.loyalty_points ?? 0).toLocaleString()}</div>
+            <div className="text-2xl font-bold mt-1">{stats.total_service_requests}</div>
           </CardContent>
         </Card>
       </div>
@@ -356,12 +345,13 @@ export default function Customer360Page() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="products">Products ({customer.products?.length ?? 0})</TabsTrigger>
-          <TabsTrigger value="orders">Orders ({customer.orders?.length ?? 0})</TabsTrigger>
-          <TabsTrigger value="services">Services ({customer.service_requests_list?.length ?? 0})</TabsTrigger>
-          <TabsTrigger value="amc">AMC ({customer.amc_contracts?.length ?? 0})</TabsTrigger>
-          <TabsTrigger value="interactions">Interactions</TabsTrigger>
-          <TabsTrigger value="payments">Payments</TabsTrigger>
+          <TabsTrigger value="timeline">Timeline ({response.timeline?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="orders">Orders ({response.orders?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="installations">Installations ({response.installations?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="services">Services ({response.service_requests?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="amc">AMC ({response.amc_contracts?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="calls">Calls ({response.calls?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="payments">Payments ({response.payments?.length ?? 0})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4 mt-4">
@@ -374,15 +364,25 @@ export default function Customer360Page() {
               <CardContent className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Phone</span>
-                  <span className="font-medium">{customer.phone}</span>
+                  <span className="font-medium">{customer.phone || '-'}</span>
                 </div>
+                {customer.alternate_phone && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Alt Phone</span>
+                    <span className="font-medium">{customer.alternate_phone}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Email</span>
                   <span className="font-medium">{customer.email || '-'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Customer Type</span>
-                  <Badge variant="outline">{customer.customer_type}</Badge>
+                  <Badge variant="outline">{customer.customer_type || 'INDIVIDUAL'}</Badge>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Source</span>
+                  <span className="font-medium">{customer.source || '-'}</span>
                 </div>
                 {customer.date_of_birth && (
                   <div className="flex justify-between">
@@ -390,16 +390,22 @@ export default function Customer360Page() {
                     <span className="font-medium">{formatDate(customer.date_of_birth)}</span>
                   </div>
                 )}
-                {customer.anniversary && (
+                {customer.anniversary_date && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Anniversary</span>
-                    <span className="font-medium">{formatDate(customer.anniversary)}</span>
+                    <span className="font-medium">{formatDate(customer.anniversary_date)}</span>
                   </div>
                 )}
-                {customer.gstin && (
+                {customer.gst_number && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">GSTIN</span>
-                    <span className="font-mono text-sm">{customer.gstin}</span>
+                    <span className="font-mono text-sm">{customer.gst_number}</span>
+                  </div>
+                )}
+                {customer.company_name && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Company</span>
+                    <span className="font-medium">{customer.company_name}</span>
                   </div>
                 )}
               </CardContent>
@@ -411,20 +417,30 @@ export default function Customer360Page() {
                 <CardTitle className="text-base">Addresses</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {(customer.addresses ?? []).map((addr) => (
-                  <div key={addr.id} className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      {addr.label === 'Home' ? <Home className="h-4 w-4" /> : <Building2 className="h-4 w-4" />}
-                      <span className="font-medium">{addr.label}</span>
-                      {addr.is_default && <Badge variant="outline" className="text-xs">Default</Badge>}
+                {(customer.addresses ?? []).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No addresses on file</p>
+                ) : (
+                  (customer.addresses ?? []).map((addr) => (
+                    <div key={addr.id} className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        {addr.address_type === 'HOME' ? <Home className="h-4 w-4" /> : <Building2 className="h-4 w-4" />}
+                        <span className="font-medium">{addr.address_type || 'Address'}</span>
+                        {addr.is_default && <Badge variant="outline" className="text-xs">Default</Badge>}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {addr.address_line1}
+                        {addr.address_line2 && `, ${addr.address_line2}`}
+                        {addr.landmark && ` (${addr.landmark})`}
+                        <br />{addr.city}, {addr.state} - {addr.pincode}
+                      </p>
+                      {addr.contact_name && (
+                        <p className="text-xs text-muted-foreground">
+                          Contact: {addr.contact_name} {addr.contact_phone && `- ${addr.contact_phone}`}
+                        </p>
+                      )}
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      {addr.address_line1}
-                      {addr.address_line2 && `, ${addr.address_line2}`}
-                      <br />{addr.city}, {addr.state} - {addr.pincode}
-                    </p>
-                  </div>
-                ))}
+                  ))
+                )}
               </CardContent>
             </Card>
 
@@ -435,103 +451,111 @@ export default function Customer360Page() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Last Purchase</span>
-                  <span className="font-medium">{customer.last_purchase_date ? formatDate(customer.last_purchase_date) : 'N/A'}</span>
+                  <span className="text-muted-foreground">Customer For</span>
+                  <span className="font-medium">{stats.customer_since_days} days</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Last Service</span>
-                  <span className="font-medium">{customer.last_service_date ? formatDate(customer.last_service_date) : 'N/A'}</span>
+                  <span className="text-muted-foreground">Delivered Orders</span>
+                  <span className="font-medium">{stats.delivered_orders} / {stats.total_orders}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Pending Orders</span>
+                  <span className="font-medium">{stats.pending_orders}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Total Spent</span>
-                  <span className="font-medium">{formatCurrency(customer.total_spent)}</span>
+                  <span className="font-medium">{formatCurrency(stats.total_order_value)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Avg Order Value</span>
-                  <span className="font-medium">{formatCurrency(customer.total_spent / (customer.total_orders || 1))}</span>
+                  <span className="font-medium">{formatCurrency(stats.total_order_value / (stats.total_orders || 1))}</span>
                 </div>
                 <Separator />
                 <div>
                   <div className="flex justify-between text-sm mb-1">
                     <span>Service Satisfaction</span>
-                    <span>{customer.avg_rating * 20}%</span>
+                    <span>{stats.average_rating ? `${(stats.average_rating * 20).toFixed(0)}%` : 'N/A'}</span>
                   </div>
-                  <Progress value={customer.avg_rating * 20} />
+                  <Progress value={stats.average_rating ? stats.average_rating * 20 : 0} />
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Recent Activity */}
+          {/* Recent Activity from Timeline */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Recent Activity</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {(customer.interactions ?? []).slice(0, 5).map((interaction) => (
-                  <div key={interaction.id} className="flex items-start gap-3">
+                {(response.timeline ?? []).slice(0, 5).map((event, index) => (
+                  <div key={`${event.event_id}-${index}`} className="flex items-start gap-3">
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
-                      {interactionTypeIcons[interaction.type]}
+                      {event.event_type === 'ORDER' && <ShoppingBag className="h-4 w-4" />}
+                      {event.event_type === 'SHIPMENT' && <Truck className="h-4 w-4" />}
+                      {event.event_type === 'INSTALLATION' && <Package className="h-4 w-4" />}
+                      {event.event_type === 'SERVICE' && <Wrench className="h-4 w-4" />}
+                      {event.event_type === 'CALL' && <Phone className="h-4 w-4" />}
+                      {event.event_type === 'PAYMENT' && <CreditCard className="h-4 w-4" />}
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
-                        <span className="font-medium text-sm">{interaction.type}</span>
-                        <span className="text-xs text-muted-foreground">{formatDate(interaction.date)}</span>
+                        <span className="font-medium text-sm">{event.title}</span>
+                        <span className="text-xs text-muted-foreground">{formatDate(event.timestamp)}</span>
                       </div>
-                      <p className="text-sm text-muted-foreground">{interaction.summary}</p>
-                      {interaction.agent && <p className="text-xs text-muted-foreground">By: {interaction.agent}</p>}
+                      {event.description && <p className="text-sm text-muted-foreground">{event.description}</p>}
+                      <Badge className={statusColors[event.status] || 'bg-gray-100 text-gray-800'} variant="secondary">
+                        {event.status?.replace(/_/g, ' ')}
+                      </Badge>
                     </div>
                   </div>
                 ))}
+                {(response.timeline ?? []).length === 0 && (
+                  <p className="text-sm text-muted-foreground">No recent activity</p>
+                )}
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="products" className="mt-4">
+        <TabsContent value="timeline" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle>Registered Products</CardTitle>
-              <CardDescription>All products owned by this customer</CardDescription>
+              <CardTitle>Customer Journey Timeline</CardTitle>
+              <CardDescription>Chronological view of all interactions</CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Product</TableHead>
-                    <TableHead>Serial Number</TableHead>
-                    <TableHead>Purchase Date</TableHead>
-                    <TableHead>Warranty</TableHead>
-                    <TableHead>AMC Status</TableHead>
-                    <TableHead>Last Service</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(customer.products ?? []).map((product) => (
-                    <TableRow key={product.id}>
-                      <TableCell className="font-medium">{product.product_name}</TableCell>
-                      <TableCell className="font-mono text-sm">{product.serial_number}</TableCell>
-                      <TableCell>{formatDate(product.purchase_date)}</TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          <div>Till {formatDate(product.warranty_end_date)}</div>
-                          {new Date(product.warranty_end_date) < new Date() && (
-                            <Badge className="bg-red-100 text-red-800 text-xs">Expired</Badge>
-                          )}
+              <div className="space-y-4">
+                {(response.timeline ?? []).map((event, index) => (
+                  <div key={`${event.event_id}-${index}`} className="flex items-start gap-4 p-4 border rounded-lg">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                      {event.event_type === 'ORDER' && <ShoppingBag className="h-5 w-5" />}
+                      {event.event_type === 'SHIPMENT' && <Truck className="h-5 w-5" />}
+                      {event.event_type === 'INSTALLATION' && <Package className="h-5 w-5" />}
+                      {event.event_type === 'SERVICE' && <Wrench className="h-5 w-5" />}
+                      {event.event_type === 'CALL' && <Phone className="h-5 w-5" />}
+                      {event.event_type === 'PAYMENT' && <CreditCard className="h-5 w-5" />}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">{event.event_type}</Badge>
+                          <span className="font-medium">{event.title}</span>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={statusColors[product.amc_status]}>
-                          {product.amc_status}
-                        </Badge>
-                        {product.amc_plan && <div className="text-xs text-muted-foreground mt-1">{product.amc_plan}</div>}
-                      </TableCell>
-                      <TableCell>{product.last_service_date ? formatDate(product.last_service_date) : '-'}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                        <span className="text-sm text-muted-foreground">{formatDate(event.timestamp)}</span>
+                      </div>
+                      {event.description && <p className="mt-1 text-sm text-muted-foreground">{event.description}</p>}
+                      <Badge className={statusColors[event.status] || 'bg-gray-100 text-gray-800'} variant="secondary">
+                        {event.status?.replace(/_/g, ' ')}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+                {(response.timeline ?? []).length === 0 && (
+                  <p className="text-center text-muted-foreground py-8">No timeline events found</p>
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -555,25 +579,100 @@ export default function Customer360Page() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(customer.orders ?? []).map((order) => (
+                  {(response.orders ?? []).map((order) => (
                     <TableRow key={order.id}>
                       <TableCell className="font-mono font-medium">{order.order_number}</TableCell>
-                      <TableCell>{formatDate(order.order_date)}</TableCell>
+                      <TableCell>{formatDate(order.created_at)}</TableCell>
                       <TableCell>{order.items_count} items</TableCell>
                       <TableCell className="font-medium">{formatCurrency(order.total_amount)}</TableCell>
                       <TableCell>
-                        <Badge className={statusColors[order.payment_status]}>{order.payment_status}</Badge>
+                        <Badge className={statusColors[order.payment_status || 'PENDING'] || 'bg-gray-100 text-gray-800'}>
+                          {order.payment_status || 'PENDING'}
+                        </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge className={statusColors[order.status]}>{order.status}</Badge>
+                        <Badge className={statusColors[order.status] || 'bg-gray-100 text-gray-800'}>
+                          {order.status?.replace(/_/g, ' ')}
+                        </Badge>
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="sm" onClick={() => router.push(`/orders/${order.id}`)}>
+                        <Button variant="ghost" size="sm" onClick={() => router.push(`/dashboard/orders/${order.id}`)}>
                           View
                         </Button>
                       </TableCell>
                     </TableRow>
                   ))}
+                  {(response.orders ?? []).length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                        No orders found
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="installations" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Installations</CardTitle>
+              <CardDescription>Products installed for this customer</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Installation #</TableHead>
+                    <TableHead>Product</TableHead>
+                    <TableHead>Scheduled</TableHead>
+                    <TableHead>Completed</TableHead>
+                    <TableHead>Warranty Until</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Rating</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(response.installations ?? []).map((inst) => (
+                    <TableRow key={inst.id}>
+                      <TableCell className="font-mono font-medium">{inst.installation_number}</TableCell>
+                      <TableCell>{inst.product_name || '-'}</TableCell>
+                      <TableCell>{inst.scheduled_date ? formatDate(inst.scheduled_date) : '-'}</TableCell>
+                      <TableCell>{inst.completed_at ? formatDate(inst.completed_at) : '-'}</TableCell>
+                      <TableCell>
+                        {inst.warranty_end_date ? (
+                          <div className="text-sm">
+                            <div>{formatDate(inst.warranty_end_date)}</div>
+                            {new Date(inst.warranty_end_date) < new Date() && (
+                              <Badge className="bg-red-100 text-red-800 text-xs">Expired</Badge>
+                            )}
+                          </div>
+                        ) : '-'}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={statusColors[inst.status] || 'bg-gray-100 text-gray-800'}>
+                          {inst.status?.replace(/_/g, ' ')}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {inst.customer_rating ? (
+                          <div className="flex items-center gap-1">
+                            <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                            <span>{inst.customer_rating}/5</span>
+                          </div>
+                        ) : '-'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {(response.installations ?? []).length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                        No installations found
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -583,7 +682,7 @@ export default function Customer360Page() {
         <TabsContent value="services" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle>Service History</CardTitle>
+              <CardTitle>Service Requests</CardTitle>
             </CardHeader>
             <CardContent>
               <Table>
@@ -592,35 +691,44 @@ export default function Customer360Page() {
                     <TableHead>Ticket #</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Type</TableHead>
-                    <TableHead>Product</TableHead>
+                    <TableHead>Title</TableHead>
                     <TableHead>Technician</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Rating</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(customer.service_requests_list ?? []).map((sr) => (
+                  {(response.service_requests ?? []).map((sr) => (
                     <TableRow key={sr.id}>
                       <TableCell className="font-mono font-medium">{sr.ticket_number}</TableCell>
                       <TableCell>{formatDate(sr.created_at)}</TableCell>
                       <TableCell>
-                        <Badge variant="outline">{sr.type.replace(/_/g, ' ')}</Badge>
+                        <Badge variant="outline">{sr.service_type?.replace(/_/g, ' ')}</Badge>
                       </TableCell>
-                      <TableCell>{sr.product_name}</TableCell>
-                      <TableCell>{sr.assigned_technician || '-'}</TableCell>
+                      <TableCell>{sr.title || '-'}</TableCell>
+                      <TableCell>{sr.technician_name || sr.franchisee_name || '-'}</TableCell>
                       <TableCell>
-                        <Badge className={statusColors[sr.status]}>{sr.status}</Badge>
+                        <Badge className={statusColors[sr.status] || 'bg-gray-100 text-gray-800'}>
+                          {sr.status?.replace(/_/g, ' ')}
+                        </Badge>
                       </TableCell>
                       <TableCell>
-                        {sr.rating ? (
+                        {sr.customer_rating ? (
                           <div className="flex items-center gap-1">
                             <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                            <span>{sr.rating}/5</span>
+                            <span>{sr.customer_rating}/5</span>
                           </div>
                         ) : '-'}
                       </TableCell>
                     </TableRow>
                   ))}
+                  {(response.service_requests ?? []).length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                        No service requests found
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -637,22 +745,18 @@ export default function Customer360Page() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Contract #</TableHead>
-                    <TableHead>Product</TableHead>
                     <TableHead>Plan</TableHead>
                     <TableHead>Validity</TableHead>
-                    <TableHead>Visits Used</TableHead>
+                    <TableHead>Services Used</TableHead>
+                    <TableHead>Next Service Due</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(customer.amc_contracts ?? []).map((amc) => (
+                  {(response.amc_contracts ?? []).map((amc) => (
                     <TableRow key={amc.id}>
                       <TableCell className="font-mono font-medium">{amc.contract_number}</TableCell>
-                      <TableCell>
-                        <div>{amc.product_name}</div>
-                        <div className="text-xs text-muted-foreground font-mono">{amc.serial_number}</div>
-                      </TableCell>
                       <TableCell>{amc.plan_name}</TableCell>
                       <TableCell>
                         <div>{formatDate(amc.start_date)}</div>
@@ -660,12 +764,16 @@ export default function Customer360Page() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <Progress value={(amc.visits_used / amc.visits_total) * 100} className="w-16 h-2" />
-                          <span className="text-sm">{amc.visits_used}/{amc.visits_total}</span>
+                          <Progress value={amc.total_services > 0 ? (amc.services_used / amc.total_services) * 100 : 0} className="w-16 h-2" />
+                          <span className="text-sm">{amc.services_used}/{amc.total_services}</span>
                         </div>
+                        <div className="text-xs text-muted-foreground">{amc.services_remaining} remaining</div>
                       </TableCell>
+                      <TableCell>{amc.next_service_due ? formatDate(amc.next_service_due) : '-'}</TableCell>
                       <TableCell>
-                        <Badge className={statusColors[amc.status]}>{amc.status}</Badge>
+                        <Badge className={statusColors[amc.status] || 'bg-gray-100 text-gray-800'}>
+                          {amc.status?.replace(/_/g, ' ')}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <Button variant="ghost" size="sm" onClick={() => router.push(`/dashboard/service/amc/${amc.id}`)}>
@@ -674,43 +782,71 @@ export default function Customer360Page() {
                       </TableCell>
                     </TableRow>
                   ))}
+                  {(response.amc_contracts ?? []).length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                        No AMC contracts found
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="interactions" className="mt-4">
+        <TabsContent value="calls" className="mt-4">
           <Card>
             <CardHeader>
-              <CardTitle>Communication History</CardTitle>
-              <CardDescription>All interactions with this customer</CardDescription>
+              <CardTitle>Call History</CardTitle>
+              <CardDescription>All calls with this customer</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {(customer.interactions ?? []).map((interaction) => (
-                  <div key={interaction.id} className="flex items-start gap-4 p-4 border rounded-lg">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-                      {interactionTypeIcons[interaction.type]}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline">{interaction.type}</Badge>
-                          {interaction.agent && <span className="text-sm text-muted-foreground">by {interaction.agent}</span>}
-                        </div>
-                        <span className="text-sm text-muted-foreground">{formatDate(interaction.date)}</span>
-                      </div>
-                      <p className="mt-2">{interaction.summary}</p>
-                      {interaction.outcome && (
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          <span className="font-medium">Outcome:</span> {interaction.outcome}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Call ID</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Duration</TableHead>
+                    <TableHead>Agent</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Outcome</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(response.calls ?? []).map((call) => (
+                    <TableRow key={call.id}>
+                      <TableCell className="font-mono">{call.call_id || '-'}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{call.call_type?.replace(/_/g, ' ')}</Badge>
+                      </TableCell>
+                      <TableCell>{call.category?.replace(/_/g, ' ')}</TableCell>
+                      <TableCell>
+                        {call.duration_seconds ? (
+                          <span>{Math.floor(call.duration_seconds / 60)}m {call.duration_seconds % 60}s</span>
+                        ) : '-'}
+                      </TableCell>
+                      <TableCell>{call.agent_name || '-'}</TableCell>
+                      <TableCell>{call.call_start_time ? formatDate(call.call_start_time) : '-'}</TableCell>
+                      <TableCell>
+                        <Badge className={statusColors[call.status] || 'bg-gray-100 text-gray-800'}>
+                          {call.status?.replace(/_/g, ' ')}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{call.outcome?.replace(/_/g, ' ') || '-'}</TableCell>
+                    </TableRow>
+                  ))}
+                  {(response.calls ?? []).length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                        No call history found
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>
@@ -725,30 +861,39 @@ export default function Customer360Page() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Date</TableHead>
-                    <TableHead>Reference</TableHead>
-                    <TableHead>Type</TableHead>
+                    <TableHead>Transaction ID</TableHead>
+                    <TableHead>Order #</TableHead>
                     <TableHead>Method</TableHead>
+                    <TableHead>Gateway</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(customer.payments ?? []).map((payment) => (
+                  {(response.payments ?? []).map((payment) => (
                     <TableRow key={payment.id}>
-                      <TableCell>{formatDate(payment.date)}</TableCell>
-                      <TableCell className="font-mono">{payment.reference}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{payment.type}</Badge>
+                      <TableCell>{formatDate(payment.created_at)}</TableCell>
+                      <TableCell className="font-mono">{payment.transaction_id || '-'}</TableCell>
+                      <TableCell className="font-mono">{payment.order_number || '-'}</TableCell>
+                      <TableCell>{payment.method?.replace(/_/g, ' ') || '-'}</TableCell>
+                      <TableCell>{payment.gateway || '-'}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatCurrency(payment.amount)}
                       </TableCell>
-                      <TableCell>{payment.method}</TableCell>
-                      <TableCell className={`text-right font-medium ${payment.type === 'REFUND' ? 'text-red-600' : ''}`}>
-                        {payment.type === 'REFUND' ? '-' : ''}{formatCurrency(payment.amount)}
-                      </TableCell>
                       <TableCell>
-                        <Badge className={statusColors[payment.status]}>{payment.status}</Badge>
+                        <Badge className={statusColors[payment.status] || 'bg-gray-100 text-gray-800'}>
+                          {payment.status?.replace(/_/g, ' ')}
+                        </Badge>
                       </TableCell>
                     </TableRow>
                   ))}
+                  {(response.payments ?? []).length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                        No payment history found
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
