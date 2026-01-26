@@ -1,6 +1,6 @@
 """Service Request Service for managing service operations."""
 from typing import Optional, List, Tuple
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 import uuid
 
 from sqlalchemy import select, func, and_, or_, update, case
@@ -135,7 +135,7 @@ class ServiceRequestService:
             ServicePriority.CRITICAL: 4,
         }
         priority = data.get("priority", ServicePriority.NORMAL)
-        sla_breach_at = datetime.utcnow() + timedelta(hours=sla_hours.get(priority, 48))
+        sla_breach_at = datetime.now(timezone.utc) + timedelta(hours=sla_hours.get(priority, 48))
 
         service_request = ServiceRequest(
             ticket_number=ticket_number,
@@ -192,7 +192,7 @@ class ServiceRequestService:
         service_request.status = new_status
 
         # Update timestamps based on status
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if new_status == ServiceStatus.IN_PROGRESS and not service_request.started_at:
             service_request.started_at = now
         elif new_status == ServiceStatus.COMPLETED:
@@ -237,7 +237,7 @@ class ServiceRequestService:
             raise ValueError("Technician not available")
 
         service_request.technician_id = technician_id
-        service_request.assigned_at = datetime.utcnow()
+        service_request.assigned_at = datetime.now(timezone.utc)
         service_request.assigned_by = assigned_by
 
         if scheduled_date:
@@ -306,7 +306,7 @@ class ServiceRequestService:
         service_request.images_after = completion_data.get("images_after")
         service_request.customer_signature_url = completion_data.get("customer_signature_url")
         service_request.status = ServiceStatus.COMPLETED.value
-        service_request.completed_at = datetime.utcnow()
+        service_request.completed_at = datetime.now(timezone.utc)
 
         # Update technician job history
         if service_request.technician_id:
@@ -319,7 +319,7 @@ class ServiceRequestService:
             job_result = await self.db.execute(job_query)
             job = job_result.scalar_one_or_none()
             if job:
-                job.completed_at = datetime.utcnow()
+                job.completed_at = datetime.now(timezone.utc)
                 job.status = "COMPLETED"  # UPPERCASE per coding standards
                 if job.started_at:
                     job.time_taken_minutes = int((job.completed_at - job.started_at).total_seconds() / 60)
@@ -329,7 +329,7 @@ class ServiceRequestService:
             if technician:
                 technician.total_jobs_completed += 1
                 technician.current_month_jobs += 1
-                technician.last_job_date = datetime.utcnow()
+                technician.last_job_date = datetime.now(timezone.utc)
                 technician.is_available = True
 
         # Create status history
@@ -359,7 +359,7 @@ class ServiceRequestService:
 
         service_request.customer_rating = rating
         service_request.customer_feedback = feedback
-        service_request.feedback_date = datetime.utcnow()
+        service_request.feedback_date = datetime.now(timezone.utc)
 
         # Update technician rating
         if service_request.technician_id:
@@ -411,7 +411,7 @@ class ServiceRequestService:
         in_progress = await self._count_by_status(ServiceStatus.IN_PROGRESS, base_conditions)
 
         # Completed today
-        today = datetime.utcnow().date()
+        today = datetime.now(timezone.utc).date()
         completed_query = select(func.count()).select_from(ServiceRequest).where(
             and_(
                 ServiceRequest.status == ServiceStatus.COMPLETED,
@@ -473,7 +473,7 @@ class ServiceRequestService:
 
     async def _generate_ticket_number(self) -> str:
         """Generate unique ticket number."""
-        date_part = datetime.utcnow().strftime("%Y%m%d")
+        date_part = datetime.now(timezone.utc).strftime("%Y%m%d")
         query = select(func.count()).select_from(ServiceRequest).where(
             ServiceRequest.ticket_number.like(f"SR-{date_part}%")
         )

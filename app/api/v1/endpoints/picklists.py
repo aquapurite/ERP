@@ -2,7 +2,7 @@
 from typing import Optional
 import uuid
 from math import ceil
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 from sqlalchemy import select, func, and_, or_
@@ -37,7 +37,7 @@ router = APIRouter()
 
 def generate_picklist_number() -> str:
     """Generate unique picklist number."""
-    from datetime import datetime
+    from datetime import datetime, timezone
     import random
     date_str = datetime.now().strftime("%Y%m%d")
     random_suffix = random.randint(1000, 9999)
@@ -288,7 +288,7 @@ async def assign_picklist(
         )
 
     picklist.assigned_to = data.assigned_to
-    picklist.assigned_at = datetime.utcnow()
+    picklist.assigned_at = datetime.now(timezone.utc)
     picklist.status = PicklistStatus.ASSIGNED.value
 
     await db.commit()
@@ -325,10 +325,10 @@ async def start_picking(
         )
 
     picklist.status = PicklistStatus.IN_PROGRESS.value
-    picklist.started_at = datetime.utcnow()
+    picklist.started_at = datetime.now(timezone.utc)
     if not picklist.assigned_to:
         picklist.assigned_to = current_user.id
-        picklist.assigned_at = datetime.utcnow()
+        picklist.assigned_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(picklist)
@@ -397,7 +397,7 @@ async def scan_pick_item(
     # Update picked quantity
     item.quantity_picked += data.quantity
     item.picked_by = current_user.id
-    item.picked_at = datetime.utcnow()
+    item.picked_at = datetime.now(timezone.utc)
 
     if item.quantity_picked >= item.quantity_required:
         item.is_picked = True
@@ -454,7 +454,7 @@ async def confirm_pick_item(
     # Update item
     item.quantity_picked = data.quantity_picked
     item.picked_by = current_user.id
-    item.picked_at = datetime.utcnow()
+    item.picked_at = datetime.now(timezone.utc)
     item.notes = data.notes
 
     if data.serial_numbers:
@@ -526,7 +526,7 @@ async def mark_item_short(
     item.is_short = True
     item.short_reason = data.reason
     item.picked_by = current_user.id
-    item.picked_at = datetime.utcnow()
+    item.picked_at = datetime.now(timezone.utc)
 
     # Mark as complete if all quantity either picked or short
     if item.quantity_picked + item.quantity_short >= item.quantity_required:
@@ -589,7 +589,7 @@ async def complete_picklist(
 
     # Update picklist
     picklist.status = PicklistStatus.COMPLETED.value
-    picklist.completed_at = datetime.utcnow()
+    picklist.completed_at = datetime.now(timezone.utc)
     picklist.picked_quantity = total_picked
     if notes:
         picklist.notes = notes
@@ -646,7 +646,7 @@ async def cancel_picklist(
         )
 
     picklist.status = PicklistStatus.CANCELLED.value
-    picklist.cancelled_at = datetime.utcnow()
+    picklist.cancelled_at = datetime.now(timezone.utc)
     picklist.cancellation_reason = reason
 
     await db.commit()

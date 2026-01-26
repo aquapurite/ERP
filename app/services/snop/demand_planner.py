@@ -9,7 +9,7 @@ Multi-level demand aggregation and forecasting:
 """
 
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import List, Dict, Optional, Tuple, Any
 from collections import defaultdict
@@ -670,7 +670,7 @@ class DemandPlannerService:
             raise ValueError(f"Forecast must be in DRAFT status to submit for review")
 
         forecast.status = ForecastStatus.PENDING_REVIEW.value
-        forecast.submitted_at = datetime.utcnow()
+        forecast.submitted_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(forecast)
@@ -693,7 +693,7 @@ class DemandPlannerService:
 
         forecast.status = ForecastStatus.APPROVED.value
         forecast.approved_by_id = user_id
-        forecast.approved_at = datetime.utcnow()
+        forecast.approved_at = datetime.now(timezone.utc)
         if comments:
             forecast.notes = (forecast.notes or "") + f"\n[Approval Comment]: {comments}"
 
@@ -715,7 +715,7 @@ class DemandPlannerService:
 
         forecast.status = ForecastStatus.REJECTED.value
         forecast.reviewed_by_id = user_id
-        forecast.reviewed_at = datetime.utcnow()
+        forecast.reviewed_at = datetime.now(timezone.utc)
         forecast.notes = (forecast.notes or "") + f"\n[Rejection Reason]: {reason}"
 
         await self.db.commit()
@@ -736,7 +736,7 @@ class DemandPlannerService:
 
         forecast.status = ForecastStatus.ADJUSTMENT_REQUESTED.value
         forecast.reviewed_by_id = user_id
-        forecast.reviewed_at = datetime.utcnow()
+        forecast.reviewed_at = datetime.now(timezone.utc)
         forecast.notes = (forecast.notes or "") + f"\n[Adjustment Requested]: {reason}"
 
         await self.db.commit()
@@ -803,7 +803,7 @@ class DemandPlannerService:
 
         adjustment.status = ForecastStatus.APPROVED.value
         adjustment.approved_by_id = user_id
-        adjustment.approved_at = datetime.utcnow()
+        adjustment.approved_at = datetime.now(timezone.utc)
 
         # Update the forecast data
         forecast = await self.get_forecast(adjustment.forecast_id)

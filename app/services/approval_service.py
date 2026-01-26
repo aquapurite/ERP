@@ -3,7 +3,7 @@ Approval Workflow Service.
 
 Handles creation and management of approval requests across modules.
 """
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID
@@ -81,7 +81,7 @@ class ApprovalService:
         # Calculate due date based on priority (1=1 day, 5=3 days, 10=7 days)
         days_map = {1: 1, 2: 1, 3: 2, 4: 2, 5: 3, 6: 4, 7: 5, 8: 5, 9: 6, 10: 7}
         due_days = days_map.get(priority, 3)
-        due_date = datetime.utcnow() + timedelta(days=due_days)
+        due_date = datetime.now(timezone.utc) + timedelta(days=due_days)
 
         approval = ApprovalRequest(
             request_number=request_number,
@@ -95,7 +95,7 @@ class ApprovalService:
             title=title,
             description=description,
             requested_by=requested_by,
-            requested_at=datetime.utcnow(),
+            requested_at=datetime.now(timezone.utc),
             due_date=due_date,
             extra_info=extra_info,
         )

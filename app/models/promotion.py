@@ -445,7 +445,7 @@ class Promotion(Base):
     @property
     def is_active(self) -> bool:
         """Check if promotion is currently active."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         return (
             self.status == PromotionStatus.ACTIVE and
             self.start_date <= now <= self.end_date and

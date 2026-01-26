@@ -1,5 +1,5 @@
 """API endpoints for Notifications module."""
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from uuid import UUID
 import re
@@ -157,7 +157,7 @@ async def mark_notifications_read(
     current_user: User = Depends(get_current_user),
 ):
     """Mark specific notifications as read."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     result = await db.execute(
         select(Notification)
@@ -182,7 +182,7 @@ async def mark_all_read(
     current_user: User = Depends(get_current_user),
 ):
     """Mark all notifications as read for current user."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     result = await db.execute(
         select(Notification)
@@ -330,7 +330,7 @@ async def list_announcements(
     current_user: User = Depends(get_current_user),
 ):
     """List announcements for current user."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     query = select(Announcement)
 
@@ -384,7 +384,7 @@ async def get_active_announcements(
     current_user: User = Depends(get_current_user),
 ):
     """Get active, non-dismissed announcements for current user (for dashboard)."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Get dismissed announcement IDs
     dismissal_result = await db.execute(

@@ -1,7 +1,7 @@
 """API endpoints for Billing & E-Invoice module (GST Compliant)."""
 from typing import Optional, List
 from uuid import UUID
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -434,9 +434,9 @@ async def generate_einvoice_irn(
 
         # Update invoice with E-Invoice details
         invoice.irn = irn_result.get("irn")
-        invoice.irn_generated_at = datetime.utcnow()
+        invoice.irn_generated_at = datetime.now(timezone.utc)
         invoice.ack_number = irn_result.get("ack_number")
-        invoice.ack_date = datetime.fromisoformat(irn_result["ack_date"]) if irn_result.get("ack_date") else datetime.utcnow()
+        invoice.ack_date = datetime.fromisoformat(irn_result["ack_date"]) if irn_result.get("ack_date") else datetime.now(timezone.utc)
         invoice.signed_qr_code = irn_result.get("signed_qr_code")
         invoice.signed_invoice_data = irn_result.get("signed_invoice")
         invoice.status = InvoiceStatus.IRN_GENERATED.value
@@ -509,7 +509,7 @@ async def cancel_einvoice_irn(
 
     # Check 24 hour window
     if invoice.irn_generated_at:
-        hours_elapsed = (datetime.utcnow() - invoice.irn_generated_at).total_seconds() / 3600
+        hours_elapsed = (datetime.now(timezone.utc) - invoice.irn_generated_at).total_seconds() / 3600
         if hours_elapsed > 24:
             raise HTTPException(
                 status_code=400,
@@ -545,7 +545,7 @@ async def cancel_einvoice_irn(
         )
 
         # Update invoice status
-        invoice.irn_cancelled_at = datetime.utcnow()
+        invoice.irn_cancelled_at = datetime.now(timezone.utc)
         invoice.irn_cancel_reason = cancel_request.reason
         invoice.status = InvoiceStatus.IRN_CANCELLED.value
 
@@ -1180,7 +1180,7 @@ async def cancel_eway_bill(
 
     # Check 24 hour window
     if ewb.generated_at:
-        hours_elapsed = (datetime.utcnow() - ewb.generated_at).total_seconds() / 3600
+        hours_elapsed = (datetime.now(timezone.utc) - ewb.generated_at).total_seconds() / 3600
         if hours_elapsed > 24:
             raise HTTPException(
                 status_code=400,

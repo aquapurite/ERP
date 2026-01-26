@@ -1,6 +1,6 @@
 """Service for managing picklists and warehouse picking operations."""
 from typing import List, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 from math import ceil
 import uuid
 
@@ -26,7 +26,7 @@ class PicklistService:
 
     async def generate_picklist_number(self) -> str:
         """Generate unique picklist number: PL-YYYYMMDD-XXXX"""
-        today = datetime.utcnow().strftime("%Y%m%d")
+        today = datetime.now(timezone.utc).strftime("%Y%m%d")
         prefix = f"PL-{today}-"
 
         stmt = select(func.count(Picklist.id)).where(
@@ -210,7 +210,7 @@ class PicklistService:
             raise ValueError(f"Cannot assign picker to picklist in {picklist.status} status")
 
         picklist.assigned_to = assigned_to
-        picklist.assigned_at = datetime.utcnow()
+        picklist.assigned_at = datetime.now(timezone.utc)
         picklist.status = PicklistStatus.ASSIGNED.value
 
         await self.db.commit()
@@ -227,7 +227,7 @@ class PicklistService:
             raise ValueError(f"Cannot start picking for picklist in {picklist.status} status")
 
         picklist.status = PicklistStatus.IN_PROGRESS.value
-        picklist.started_at = datetime.utcnow()
+        picklist.started_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(picklist)
@@ -254,7 +254,7 @@ class PicklistService:
 
         item.quantity_picked += quantity_picked
         item.picked_by = picked_by
-        item.picked_at = datetime.utcnow()
+        item.picked_at = datetime.now(timezone.utc)
         item.notes = notes
 
         if serial_numbers:
@@ -323,7 +323,7 @@ class PicklistService:
         else:
             picklist.status = PicklistStatus.PARTIALLY_PICKED.value
 
-        picklist.completed_at = datetime.utcnow()
+        picklist.completed_at = datetime.now(timezone.utc)
         if notes:
             picklist.notes = (picklist.notes or "") + "\n" + notes
 
@@ -335,7 +335,7 @@ class PicklistService:
                 order = result.scalar_one_or_none()
                 if order:
                     order.status = OrderStatus.PICKED.value
-                    order.picked_at = datetime.utcnow()
+                    order.picked_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(picklist)
@@ -355,7 +355,7 @@ class PicklistService:
             raise ValueError(f"Cannot cancel picklist in {picklist.status} status")
 
         picklist.status = PicklistStatus.CANCELLED.value
-        picklist.cancelled_at = datetime.utcnow()
+        picklist.cancelled_at = datetime.now(timezone.utc)
         picklist.cancellation_reason = reason
 
         # Revert order statuses

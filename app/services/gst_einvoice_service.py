@@ -16,7 +16,7 @@ import httpx
 import json
 import base64
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional, Dict, Any, List
 from uuid import UUID
@@ -156,7 +156,7 @@ class GSTEInvoiceService:
         Token is valid for 6 hours.
         """
         # Check if we have a valid token
-        if self._auth_token and self._token_expiry and datetime.utcnow() < self._token_expiry:
+        if self._auth_token and self._token_expiry and datetime.now(timezone.utc) < self._token_expiry:
             return self._auth_token
 
         company = await self._get_company()
@@ -191,7 +191,7 @@ class GSTEInvoiceService:
                     self._auth_token = result["Data"]["AuthToken"]
                     self._sek = base64.b64decode(result["Data"]["Sek"])
                     # Token valid for 6 hours, refresh at 5.5 hours
-                    self._token_expiry = datetime.utcnow() + timedelta(hours=5, minutes=30)
+                    self._token_expiry = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
                     return self._auth_token
                 else:
                     raise GSTEInvoiceError(
@@ -364,7 +364,7 @@ class GSTEInvoiceService:
                     invoice.ack_date = datetime.strptime(
                         decrypted_data["AckDt"], "%Y-%m-%d %H:%M:%S"
                     )
-                    invoice.irn_generated_at = datetime.utcnow()
+                    invoice.irn_generated_at = datetime.now(timezone.utc)
                     invoice.signed_qr_code = decrypted_data.get("SignedQRCode")
                     invoice.signed_invoice_data = decrypted_data.get("SignedInvoice")
                     invoice.status = "IRN_GENERATED"
@@ -421,7 +421,7 @@ class GSTEInvoiceService:
 
         # Check 24-hour window
         if invoice.irn_generated_at:
-            hours_elapsed = (datetime.utcnow() - invoice.irn_generated_at).total_seconds() / 3600
+            hours_elapsed = (datetime.now(timezone.utc) - invoice.irn_generated_at).total_seconds() / 3600
             if hours_elapsed > 24:
                 raise GSTEInvoiceError("IRN can only be cancelled within 24 hours of generation")
 
@@ -458,7 +458,7 @@ class GSTEInvoiceService:
                 if result.get("Status") == 1:
                     decrypted_data = self._decrypt_response(result["Data"], self._sek)
 
-                    invoice.irn_cancelled_at = datetime.utcnow()
+                    invoice.irn_cancelled_at = datetime.now(timezone.utc)
                     invoice.irn_cancel_reason = cancel_remarks or reason
                     invoice.status = "IRN_CANCELLED"
 

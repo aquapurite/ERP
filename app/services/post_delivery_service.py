@@ -8,7 +8,7 @@ This service handles the complete automation flow after a shipment is delivered:
 4. Auto-assign technician/franchisee based on region/pincode
 5. Trigger customer notifications
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 from uuid import uuid4, UUID
 from sqlalchemy import select, and_
@@ -117,10 +117,10 @@ class PostDeliveryService:
         # Also update Installation with the assigned franchisee/technician
         if assignment.get("franchisee_id"):
             installation.franchisee_id = assignment["franchisee_id"]  # Already a string (VARCHAR in production)
-            installation.assigned_at = datetime.utcnow()
+            installation.assigned_at = datetime.now(timezone.utc)
         elif assignment.get("technician_id"):
             installation.technician_id = UUID(assignment["technician_id"])
-            installation.assigned_at = datetime.utcnow()
+            installation.assigned_at = datetime.now(timezone.utc)
 
         # 9. Queue customer notifications
         notifications = await self._queue_notifications(
@@ -161,7 +161,7 @@ class PostDeliveryService:
     ) -> None:
         """Update shipment with POD details."""
         shipment.status = ShipmentStatus.DELIVERED.value
-        shipment.delivered_at = datetime.utcnow()
+        shipment.delivered_at = datetime.now(timezone.utc)
         shipment.pod_signature_url = pod_data.get("signature_url")
         shipment.pod_image_url = pod_data.get("image_url")
         shipment.delivered_to = pod_data.get("received_by")
@@ -175,7 +175,7 @@ class PostDeliveryService:
     async def _update_order_status(self, order: Order) -> None:
         """Update order status to DELIVERED."""
         order.status = OrderStatus.DELIVERED.value
-        order.delivered_at = datetime.utcnow()
+        order.delivered_at = datetime.now(timezone.utc)
 
     async def _get_customer(self, customer_id) -> Customer:
         """Get customer by ID."""
@@ -242,7 +242,7 @@ class PostDeliveryService:
     ) -> Installation:
         """Create Installation record for delivered products."""
         # Generate installation number
-        inst_number = f"INST-{datetime.utcnow().strftime('%Y%m%d')}-{str(uuid4())[:8].upper()}"
+        inst_number = f"INST-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{str(uuid4())[:8].upper()}"
 
         # Build address JSON - delivery_address is already a dict
         address_json = delivery_address or {}
@@ -264,7 +264,7 @@ class PostDeliveryService:
             installation_address=address_json,
             installation_pincode=pincode,
             installation_city=city,
-            preferred_date=(datetime.utcnow() + timedelta(days=2)).date(),  # Default: 2 days from delivery
+            preferred_date=(datetime.now(timezone.utc) + timedelta(days=2)).date(),  # Default: 2 days from delivery
             customer_signature_url=pod_data.get("signature_url"),
             notes=f"Auto-created after delivery. POD received by: {pod_data.get('received_by', 'N/A')}",
         )
@@ -283,7 +283,7 @@ class PostDeliveryService:
     ) -> ServiceRequest:
         """Create ServiceRequest for installation."""
         # Generate service request number
-        sr_number = f"SR-{datetime.utcnow().strftime('%Y%m%d')}-{str(uuid4())[:8].upper()}"
+        sr_number = f"SR-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{str(uuid4())[:8].upper()}"
 
         # Get primary product
         primary_item = order.items[0] if order.items else None
@@ -371,7 +371,7 @@ class PostDeliveryService:
         if technician:
             service_request.technician_id = technician.id
             service_request.status = ServiceStatus.ASSIGNED.value
-            service_request.assigned_at = datetime.utcnow()
+            service_request.assigned_at = datetime.now(timezone.utc)
             assignment["technician_id"] = str(technician.id)
             assignment["assigned_to"] = "technician"
             return assignment
@@ -383,7 +383,7 @@ class PostDeliveryService:
             franchisee_uuid = UUID(str(franchisee.id)) if isinstance(franchisee.id, str) else franchisee.id
             service_request.franchisee_id = franchisee_uuid
             service_request.status = ServiceStatus.ASSIGNED.value
-            service_request.assigned_at = datetime.utcnow()
+            service_request.assigned_at = datetime.now(timezone.utc)
             assignment["franchisee_id"] = str(franchisee.id)
             assignment["serviceability_id"] = str(serviceability.id)
             assignment["assigned_to"] = "franchisee"
@@ -491,7 +491,7 @@ class PostDeliveryService:
     async def _increment_franchisee_load(self, serviceability: FranchiseeServiceability) -> None:
         """Increment the current_load counter for the serviceability record."""
         serviceability.current_load = (serviceability.current_load or 0) + 1
-        serviceability.updated_at = datetime.utcnow()
+        serviceability.updated_at = datetime.now(timezone.utc)
 
     async def _queue_notifications(
         self,

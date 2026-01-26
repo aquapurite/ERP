@@ -2,7 +2,7 @@
 from typing import Optional
 import uuid
 from math import ceil
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 from sqlalchemy import select, func, and_, or_
@@ -1009,7 +1009,7 @@ async def execute_putaway(
 
     # Increment bin item count
     bin.current_items += 1
-    bin.last_activity_at = datetime.utcnow()
+    bin.last_activity_at = datetime.now(timezone.utc)
 
     await db.commit()
 
@@ -1082,10 +1082,10 @@ async def move_inventory(
 
     # Update counts
     from_bin.current_items = max(0, from_bin.current_items - 1)
-    from_bin.last_activity_at = datetime.utcnow()
+    from_bin.last_activity_at = datetime.now(timezone.utc)
 
     to_bin.current_items += 1
-    to_bin.last_activity_at = datetime.utcnow()
+    to_bin.last_activity_at = datetime.now(timezone.utc)
 
     # Update stock item
     stock_item.bin_id = to_bin.id

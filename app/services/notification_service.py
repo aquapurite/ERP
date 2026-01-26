@@ -11,7 +11,7 @@ This is a placeholder implementation that logs notifications.
 In production, integrate with actual providers.
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from enum import Enum
 from uuid import uuid4
@@ -178,7 +178,7 @@ class NotificationService:
         # Log the notification (in production, send via actual provider)
         log_entry = {
             "notification_id": notification_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "channel": channel.value,
             "type": notification_type.value,
             "recipient_phone": recipient_phone,

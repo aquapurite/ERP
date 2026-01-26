@@ -10,7 +10,7 @@ Orchestrates all S&OP components:
 """
 
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import List, Dict, Optional, Tuple, Any
 import math
@@ -595,7 +595,7 @@ class SNOPService:
             scenario.stockout_probability = stockout_probability
             scenario.service_level_pct = service_level * 100
             scenario.status = ScenarioStatus.COMPLETED.value
-            scenario.completed_at = datetime.utcnow()
+            scenario.completed_at = datetime.now(timezone.utc)
 
         except Exception as e:
             scenario.status = ScenarioStatus.FAILED.value
@@ -669,7 +669,7 @@ class SNOPService:
             select(SNOPMeeting)
             .where(
                 and_(
-                    SNOPMeeting.meeting_date >= datetime.utcnow(),
+                    SNOPMeeting.meeting_date >= datetime.now(timezone.utc),
                     SNOPMeeting.is_completed == False
                 )
             )

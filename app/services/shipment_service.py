@@ -1,6 +1,6 @@
 """Service for managing shipments and delivery tracking."""
 from typing import List, Optional, Tuple
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from math import ceil
 import uuid
 
@@ -25,7 +25,7 @@ class ShipmentService:
 
     async def generate_shipment_number(self) -> str:
         """Generate unique shipment number: SH-YYYYMMDD-XXXX"""
-        today = datetime.utcnow().strftime("%Y%m%d")
+        today = datetime.now(timezone.utc).strftime("%Y%m%d")
         prefix = f"SH-{today}-"
 
         stmt = select(func.count(Shipment.id)).where(
@@ -250,7 +250,7 @@ class ShipmentService:
             )
 
         shipment.status = ShipmentStatus.PACKED.value
-        shipment.packed_at = datetime.utcnow()
+        shipment.packed_at = datetime.now(timezone.utc)
         shipment.packed_by = packed_by
 
         # Add tracking entry
@@ -269,7 +269,7 @@ class ShipmentService:
         order = result.scalar_one_or_none()
         if order:
             order.status = OrderStatus.PACKED.value
-            order.packed_at = datetime.utcnow()
+            order.packed_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(shipment)
@@ -344,7 +344,7 @@ class ShipmentService:
             state=data.state,
             pincode=data.pincode,
             remarks=data.remarks,
-            event_time=data.event_time or datetime.utcnow(),
+            event_time=data.event_time or datetime.now(timezone.utc),
             source=data.source,
             updated_by=updated_by,
         )
@@ -412,7 +412,7 @@ class ShipmentService:
         if shipment.status != ShipmentStatus.OUT_FOR_DELIVERY:
             raise ValueError(f"Cannot mark as delivered from {shipment.status} status")
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         shipment.status = ShipmentStatus.DELIVERED.value
         shipment.delivered_at = now
@@ -499,7 +499,7 @@ class ShipmentService:
 
         shipment.status = ShipmentStatus.RTO_INITIATED.value
         shipment.rto_reason = reason
-        shipment.rto_initiated_at = datetime.utcnow()
+        shipment.rto_initiated_at = datetime.now(timezone.utc)
 
         # Add tracking
         tracking = ShipmentTracking(
@@ -535,7 +535,7 @@ class ShipmentService:
             raise ValueError(f"Cannot complete RTO from {shipment.status} status")
 
         shipment.status = ShipmentStatus.RTO_DELIVERED.value
-        shipment.rto_delivered_at = datetime.utcnow()
+        shipment.rto_delivered_at = datetime.now(timezone.utc)
 
         # Add tracking
         tracking = ShipmentTracking(
@@ -573,7 +573,7 @@ class ShipmentService:
             raise ValueError(f"Cannot cancel shipment in {shipment.status} status")
 
         shipment.status = ShipmentStatus.CANCELLED.value
-        shipment.cancelled_at = datetime.utcnow()
+        shipment.cancelled_at = datetime.now(timezone.utc)
         shipment.cancellation_reason = reason
 
         # Add tracking
@@ -634,7 +634,7 @@ class ShipmentService:
 
         # Generate AWB number (internal format until transporter assigns real one)
         awb_prefix = "AQ"
-        today = datetime.utcnow().strftime("%Y%m%d")
+        today = datetime.now(timezone.utc).strftime("%Y%m%d")
         import random
         awb_number = f"{awb_prefix}{today}{random.randint(100000, 999999)}"
 

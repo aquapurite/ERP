@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 import uuid
 
@@ -103,7 +103,7 @@ class AuthService:
         expires_in = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
 
         # Update last login time
-        user.last_login_at = datetime.utcnow()
+        user.last_login_at = datetime.now(timezone.utc)
         await self.db.commit()
 
         return access_token, refresh_token, expires_in

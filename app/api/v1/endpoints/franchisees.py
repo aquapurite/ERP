@@ -11,7 +11,7 @@ This module provides APIs for:
 - Compliance audits
 - Dashboard and analytics
 """
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List
 from uuid import UUID, uuid4
 from decimal import Decimal
@@ -68,14 +68,14 @@ def generate_franchisee_code(franchisee_type: FranchiseeType) -> str:
         FranchiseeType.DEALER: "DLR",
         FranchiseeType.DISTRIBUTOR: "DST",
     }.get(franchisee_type, "FRN")
-    timestamp = datetime.utcnow().strftime("%Y%m%d")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d")
     unique = str(uuid4())[:4].upper()
     return f"{prefix}-{timestamp}-{unique}"
 
 
 def generate_contract_number() -> str:
     """Generate unique contract number."""
-    timestamp = datetime.utcnow().strftime("%Y%m%d")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d")
     unique = str(uuid4())[:6].upper()
     return f"CON-{timestamp}-{unique}"
 
@@ -83,14 +83,14 @@ def generate_contract_number() -> str:
 def generate_training_code(training_type: TrainingType) -> str:
     """Generate unique training code."""
     prefix = training_type.value[:3].upper()
-    timestamp = datetime.utcnow().strftime("%Y%m%d")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d")
     unique = str(uuid4())[:4].upper()
     return f"TRN-{prefix}-{timestamp}-{unique}"
 
 
 def generate_ticket_number() -> str:
     """Generate unique ticket number."""
-    timestamp = datetime.utcnow().strftime("%Y%m%d")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d")
     unique = str(uuid4())[:6].upper()
     return f"TKT-{timestamp}-{unique}"
 
@@ -98,7 +98,7 @@ def generate_ticket_number() -> str:
 def generate_audit_number(audit_type: AuditType) -> str:
     """Generate unique audit number."""
     prefix = audit_type.value[:3].upper()
-    timestamp = datetime.utcnow().strftime("%Y%m%d")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d")
     unique = str(uuid4())[:4].upper()
     return f"AUD-{prefix}-{timestamp}-{unique}"
 
@@ -418,7 +418,7 @@ async def update_franchisee_status(
         franchisee.termination_date = date.today()
 
     if data.reason:
-        franchisee.notes = f"{franchisee.notes or ''}\n[{datetime.utcnow()}] Status changed to {data.status.value}: {data.reason}"
+        franchisee.notes = f"{franchisee.notes or ''}\n[{datetime.now(timezone.utc)}] Status changed to {data.status.value}: {data.reason}"
 
     await db.commit()
     await db.refresh(franchisee)
@@ -461,7 +461,7 @@ async def approve_franchisee(
     if data.commission_rate:
         franchisee.commission_rate = data.commission_rate
     if data.notes:
-        franchisee.notes = f"{franchisee.notes or ''}\n[{datetime.utcnow()}] Approved: {data.notes}"
+        franchisee.notes = f"{franchisee.notes or ''}\n[{datetime.now(timezone.utc)}] Approved: {data.notes}"
 
     await db.commit()
     await db.refresh(franchisee)
@@ -559,10 +559,10 @@ async def approve_contract(
 
     contract.status = ContractStatus.ACTIVE.value
     contract.approved_by_id = str(current_user.id)
-    contract.approved_at = datetime.utcnow()
+    contract.approved_at = datetime.now(timezone.utc)
 
     if data.notes:
-        contract.notes = f"{contract.notes or ''}\n[{datetime.utcnow()}] Approved: {data.notes}"
+        contract.notes = f"{contract.notes or ''}\n[{datetime.now(timezone.utc)}] Approved: {data.notes}"
 
     await db.commit()
     await db.refresh(contract)
@@ -589,7 +589,7 @@ async def terminate_contract(
 
     contract.status = ContractStatus.TERMINATED.value
     contract.terminated_by_id = str(current_user.id)
-    contract.terminated_at = datetime.utcnow()
+    contract.terminated_at = datetime.now(timezone.utc)
     contract.termination_reason = data.reason
 
     await db.commit()
@@ -783,7 +783,7 @@ async def complete_training(
 
     training.attended = data.attended
     training.attendance_percentage = data.attendance_percentage
-    training.completed_at = datetime.utcnow()
+    training.completed_at = datetime.now(timezone.utc)
 
     if training.has_assessment and data.assessment_score is not None:
         training.assessment_score = data.assessment_score
@@ -855,7 +855,7 @@ async def create_support_ticket(
         id=str(uuid4()),
         ticket_number=generate_ticket_number(),
         status=SupportTicketStatus.OPEN,
-        sla_due_at=datetime.utcnow() + timedelta(hours=sla_hours),
+        sla_due_at=datetime.now(timezone.utc) + timedelta(hours=sla_hours),
         **ticket_data
     )
     db.add(ticket)
@@ -931,11 +931,11 @@ async def assign_support_ticket(
         raise HTTPException(status_code=404, detail="Ticket not found")
 
     ticket.assigned_to_id = str(data.assigned_to_id)
-    ticket.assigned_at = datetime.utcnow()
+    ticket.assigned_at = datetime.now(timezone.utc)
     ticket.status = SupportTicketStatus.IN_PROGRESS.value
 
     if not ticket.first_response_at:
-        ticket.first_response_at = datetime.utcnow()
+        ticket.first_response_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(ticket)
@@ -960,7 +960,7 @@ async def resolve_support_ticket(
     ticket.status = SupportTicketStatus.RESOLVED.value
     ticket.resolution = data.resolution
     ticket.resolved_by_id = str(current_user.id)
-    ticket.resolved_at = datetime.utcnow()
+    ticket.resolved_at = datetime.now(timezone.utc)
 
     # Calculate resolution time
     resolution_time = (ticket.resolved_at - ticket.created_at).total_seconds() / 3600
@@ -989,7 +989,7 @@ async def escalate_support_ticket(
     ticket.status = SupportTicketStatus.ESCALATED.value
     ticket.is_escalated = True
     ticket.escalated_to_id = str(data.escalated_to_id)
-    ticket.escalated_at = datetime.utcnow()
+    ticket.escalated_at = datetime.now(timezone.utc)
     ticket.escalation_reason = data.reason
 
     await db.commit()
@@ -1012,7 +1012,7 @@ async def close_support_ticket(
         raise HTTPException(status_code=404, detail="Ticket not found")
 
     ticket.status = SupportTicketStatus.CLOSED.value
-    ticket.closed_at = datetime.utcnow()
+    ticket.closed_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(ticket)
@@ -1194,7 +1194,7 @@ async def complete_audit(
     audit.report_url = data.report_url
     audit.evidence_urls = data.evidence_urls
 
-    audit.completed_at = datetime.utcnow()
+    audit.completed_at = datetime.now(timezone.utc)
 
     # Update franchisee compliance score
     franchisee_query = select(Franchisee).where(Franchisee.id == audit.franchisee_id)
@@ -1229,7 +1229,7 @@ async def close_audit(
         raise HTTPException(status_code=404, detail="Audit not found")
 
     audit.status = AuditStatus.CLOSED.value
-    audit.closed_at = datetime.utcnow()
+    audit.closed_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(audit)
@@ -1294,7 +1294,7 @@ async def add_serviceability(
             existing.max_daily_capacity = max_daily_capacity
             existing.expected_response_hours = expected_response_hours
             existing.expected_completion_hours = expected_completion_hours
-            existing.updated_at = datetime.utcnow()
+            existing.updated_at = datetime.now(timezone.utc)
             skipped.append({"pincode": pincode, "action": "updated"})
         else:
             # Create new record
@@ -1405,7 +1405,7 @@ async def remove_serviceability(
     else:
         serviceability.is_active = False
         serviceability.effective_to = date.today()
-        serviceability.updated_at = datetime.utcnow()
+        serviceability.updated_at = datetime.now(timezone.utc)
         action = "deactivated"
 
     await db.commit()
@@ -1457,7 +1457,7 @@ async def update_serviceability(
     if is_active is not None:
         serviceability.is_active = is_active
 
-    serviceability.updated_at = datetime.utcnow()
+    serviceability.updated_at = datetime.now(timezone.utc)
 
     await db.commit()
 
@@ -1611,7 +1611,7 @@ async def bulk_import_serviceability(
                 existing.is_active = True
                 existing.service_types = item.get("service_types", ["INSTALLATION"])
                 existing.priority = item.get("priority", 1)
-                existing.updated_at = datetime.utcnow()
+                existing.updated_at = datetime.now(timezone.utc)
                 updated_count += 1
             else:
                 serviceability = FranchiseeServiceability(
@@ -1671,7 +1671,7 @@ async def reset_daily_load(
     for r in records:
         if r.current_load > 0:
             r.current_load = 0
-            r.updated_at = datetime.utcnow()
+            r.updated_at = datetime.now(timezone.utc)
             reset_count += 1
 
     await db.commit()

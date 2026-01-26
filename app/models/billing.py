@@ -1024,7 +1024,7 @@ class EWayBill(Base):
         if self.status != EWayBillStatus.GENERATED:
             return False
         if self.valid_until:
-            return datetime.utcnow() < self.valid_until
+            return datetime.now(timezone.utc) < self.valid_until
         return True
 
     def __repr__(self) -> str:

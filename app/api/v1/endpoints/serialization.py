@@ -9,7 +9,7 @@ Endpoints for:
 - Exporting serials as CSV
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -698,7 +698,7 @@ async def lookup_serial(
     # For now, return basic info
     warranty_status = None
     if serial.warranty_end_date:
-        if serial.warranty_end_date > datetime.utcnow():
+        if serial.warranty_end_date > datetime.now(timezone.utc):
             warranty_status = "ACTIVE"  # UPPERCASE per coding standards
         else:
             warranty_status = "EXPIRED"  # UPPERCASE per coding standards
@@ -806,7 +806,7 @@ async def reset_sequence(
 
     old_serial = sequence.last_serial
     sequence.last_serial = new_last_serial
-    sequence.updated_at = datetime.utcnow()
+    sequence.updated_at = datetime.now(timezone.utc)
     await db.commit()
 
     return {

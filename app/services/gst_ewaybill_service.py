@@ -20,7 +20,7 @@ E-Way Bill is mandatory for:
 import httpx
 import json
 import base64
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional, Dict, Any, List
 from uuid import UUID
@@ -171,7 +171,7 @@ class GSTEWayBillService:
         Returns auth token for subsequent API calls.
         """
         # Check if token is still valid
-        if self._auth_token and self._token_expiry and datetime.utcnow() < self._token_expiry:
+        if self._auth_token and self._token_expiry and datetime.now(timezone.utc) < self._token_expiry:
             return self._auth_token
 
         company = await self._get_company()
@@ -206,7 +206,7 @@ class GSTEWayBillService:
                 if result.get("status") == 1:
                     self._auth_token = result.get("authToken")
                     # Token valid for 6 hours, but refresh after 5 hours
-                    self._token_expiry = datetime.utcnow() + timedelta(hours=5)
+                    self._token_expiry = datetime.now(timezone.utc) + timedelta(hours=5)
                     return self._auth_token
                 else:
                     raise GSTEWayBillError(
@@ -363,10 +363,10 @@ class GSTEWayBillService:
 
                     # Update E-Way Bill record
                     ewb.eway_bill_number = str(ewb_data.get("ewayBillNo"))
-                    ewb.generated_at = datetime.utcnow()
+                    ewb.generated_at = datetime.now(timezone.utc)
                     ewb.valid_from = datetime.strptime(
                         ewb_data.get("ewayBillDate"), "%d/%m/%Y %H:%M:%S"
-                    ) if ewb_data.get("ewayBillDate") else datetime.utcnow()
+                    ) if ewb_data.get("ewayBillDate") else datetime.now(timezone.utc)
                     ewb.valid_until = datetime.strptime(
                         ewb_data.get("validUpto"), "%d/%m/%Y %H:%M:%S"
                     ) if ewb_data.get("validUpto") else None
@@ -442,7 +442,7 @@ class GSTEWayBillService:
             raise GSTEWayBillError("Cannot update cancelled E-Way Bill")
 
         # Check if validity has expired
-        if ewb.valid_until and datetime.utcnow() > ewb.valid_until:
+        if ewb.valid_until and datetime.now(timezone.utc) > ewb.valid_until:
             raise GSTEWayBillError("E-Way Bill validity has expired. Please extend validity first.")
 
         payload = {
@@ -539,7 +539,7 @@ class GSTEWayBillService:
 
         # Check 24-hour window
         if ewb.generated_at:
-            hours_elapsed = (datetime.utcnow() - ewb.generated_at).total_seconds() / 3600
+            hours_elapsed = (datetime.now(timezone.utc) - ewb.generated_at).total_seconds() / 3600
             if hours_elapsed > 24:
                 raise GSTEWayBillError("E-Way Bill can only be cancelled within 24 hours")
 
@@ -569,7 +569,7 @@ class GSTEWayBillService:
 
                 if result.get("status") == 1:
                     ewb.status = EWayBillStatus.CANCELLED.value
-                    ewb.cancelled_at = datetime.utcnow()
+                    ewb.cancelled_at = datetime.now(timezone.utc)
                     ewb.cancel_reason = remarks or reason_code
 
                     await self.db.commit()
@@ -635,7 +635,7 @@ class GSTEWayBillService:
 
         # Check extension window (8 hours before or after expiry)
         if ewb.valid_until:
-            hours_from_expiry = (ewb.valid_until - datetime.utcnow()).total_seconds() / 3600
+            hours_from_expiry = (ewb.valid_until - datetime.now(timezone.utc)).total_seconds() / 3600
             if hours_from_expiry < -8 or hours_from_expiry > 8:
                 raise GSTEWayBillError(
                     "E-Way Bill can only be extended 8 hours before or after expiry"

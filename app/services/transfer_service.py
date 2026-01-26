@@ -1,6 +1,6 @@
 """Stock Transfer Service for warehouse-to-warehouse movements."""
 from typing import Optional, List, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from sqlalchemy import select, func, and_, or_
@@ -202,7 +202,7 @@ class TransferService:
 
         transfer.status = TransferStatus.APPROVED.value
         transfer.approved_by = approved_by
-        transfer.approved_at = datetime.utcnow()
+        transfer.approved_at = datetime.now(timezone.utc)
         if notes:
             transfer.internal_notes = notes
 
@@ -226,7 +226,7 @@ class TransferService:
 
         transfer.status = TransferStatus.REJECTED.value
         transfer.approved_by = rejected_by
-        transfer.approved_at = datetime.utcnow()
+        transfer.approved_at = datetime.now(timezone.utc)
         transfer.rejection_reason = reason
 
         await self.db.commit()
@@ -276,7 +276,7 @@ class TransferService:
             # Update stock items
             for stock_item in stock_items:
                 stock_item.status = StockItemStatus.IN_TRANSIT.value
-                stock_item.last_movement_date = datetime.utcnow()
+                stock_item.last_movement_date = datetime.now(timezone.utc)
 
                 # Create serial tracking
                 serial_record = StockTransferSerial(
@@ -310,7 +310,7 @@ class TransferService:
 
         # Update transfer
         transfer.status = TransferStatus.IN_TRANSIT.value
-        transfer.dispatch_date = datetime.utcnow()
+        transfer.dispatch_date = datetime.now(timezone.utc)
         transfer.dispatched_by = dispatched_by
         transfer.vehicle_number = vehicle_number
         transfer.driver_name = driver_name
@@ -368,13 +368,13 @@ class TransferService:
 
                     for i, serial in enumerate(serials):
                         serial.is_received = True
-                        serial.received_at = datetime.utcnow()
+                        serial.received_at = datetime.now(timezone.utc)
 
                         # Update the stock item
                         stock_item = await self.db.get(StockItem, serial.stock_item_id)
                         if stock_item:
                             stock_item.warehouse_id = transfer.to_warehouse_id
-                            stock_item.last_movement_date = datetime.utcnow()
+                            stock_item.last_movement_date = datetime.now(timezone.utc)
 
                             if i < damaged_qty:
                                 serial.is_damaged = True
@@ -429,7 +429,7 @@ class TransferService:
 
         if all_received:
             transfer.status = TransferStatus.RECEIVED.value
-            transfer.received_date = datetime.utcnow()
+            transfer.received_date = datetime.now(timezone.utc)
         else:
             transfer.status = TransferStatus.PARTIALLY_RECEIVED.value
 
@@ -454,7 +454,7 @@ class TransferService:
         transfer.status = TransferStatus.CANCELLED.value
         transfer.rejection_reason = reason
         transfer.approved_by = cancelled_by
-        transfer.approved_at = datetime.utcnow()
+        transfer.approved_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(transfer)
@@ -462,7 +462,7 @@ class TransferService:
 
     async def _generate_transfer_number(self) -> str:
         """Generate unique transfer number."""
-        date_part = datetime.utcnow().strftime("%Y%m%d")
+        date_part = datetime.now(timezone.utc).strftime("%Y%m%d")
         query = select(func.count()).select_from(StockTransfer).where(
             StockTransfer.transfer_number.like(f"TRF-{date_part}%")
         )

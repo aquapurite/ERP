@@ -1,5 +1,5 @@
 """API endpoints for Campaign Management module."""
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Optional, List
 from uuid import UUID
 from decimal import Decimal
@@ -141,7 +141,7 @@ async def update_template(
     for field, value in update_data.items():
         setattr(template, field, value)
 
-    template.updated_at = datetime.utcnow()
+    template.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(template)
     return template
@@ -165,7 +165,7 @@ async def delete_template(
         raise HTTPException(status_code=400, detail="Cannot delete system templates")
 
     template.is_active = False
-    template.updated_at = datetime.utcnow()
+    template.updated_at = datetime.now(timezone.utc)
     await db.commit()
 
 
@@ -192,7 +192,7 @@ async def create_segment(
     # Calculate estimated size for manual list
     if data.segment_type == AudienceType.MANUAL_LIST and data.customer_ids:
         segment.estimated_size = len(data.customer_ids)
-        segment.last_calculated_at = datetime.utcnow()
+        segment.last_calculated_at = datetime.now(timezone.utc)
 
     db.add(segment)
     await db.commit()
@@ -266,7 +266,7 @@ async def update_segment(
     for field, value in update_data.items():
         setattr(segment, field, value)
 
-    segment.updated_at = datetime.utcnow()
+    segment.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(segment)
     return segment
@@ -305,7 +305,7 @@ async def calculate_segment_size(
         )
         segment.estimated_size = count_result.scalar() or 0
 
-    segment.last_calculated_at = datetime.utcnow()
+    segment.last_calculated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(segment)
     return segment
@@ -321,7 +321,7 @@ async def create_campaign(
 ):
     """Create a new campaign."""
     # Generate campaign code
-    today = datetime.utcnow().strftime("%Y%m%d")
+    today = datetime.now(timezone.utc).strftime("%Y%m%d")
     count_result = await db.execute(
         select(func.count(Campaign.id)).where(
             Campaign.campaign_code.like(f"CAMP-{today}%")
@@ -465,7 +465,7 @@ async def update_campaign(
     for field, value in update_data.items():
         setattr(campaign, field, value)
 
-    campaign.updated_at = datetime.utcnow()
+    campaign.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(campaign)
     return campaign
@@ -489,7 +489,7 @@ async def delete_campaign(
         raise HTTPException(status_code=400, detail="Cannot delete running campaign. Pause it first.")
 
     campaign.status = CampaignStatus.CANCELLED.value
-    campaign.updated_at = datetime.utcnow()
+    campaign.updated_at = datetime.now(timezone.utc)
     await db.commit()
 
 
@@ -513,12 +513,12 @@ async def schedule_campaign(
     if campaign.status != CampaignStatus.DRAFT:
         raise HTTPException(status_code=400, detail="Only draft campaigns can be scheduled")
 
-    if data.scheduled_at <= datetime.utcnow():
+    if data.scheduled_at <= datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Scheduled time must be in the future")
 
     campaign.scheduled_at = data.scheduled_at
     campaign.status = CampaignStatus.SCHEDULED.value
-    campaign.updated_at = datetime.utcnow()
+    campaign.updated_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(campaign)
@@ -543,8 +543,8 @@ async def start_campaign(
         raise HTTPException(status_code=400, detail="Can only start draft or scheduled campaigns")
 
     campaign.status = CampaignStatus.RUNNING.value
-    campaign.started_at = datetime.utcnow()
-    campaign.updated_at = datetime.utcnow()
+    campaign.started_at = datetime.now(timezone.utc)
+    campaign.updated_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(campaign)
@@ -569,7 +569,7 @@ async def pause_campaign(
         raise HTTPException(status_code=400, detail="Can only pause running campaigns")
 
     campaign.status = CampaignStatus.PAUSED.value
-    campaign.updated_at = datetime.utcnow()
+    campaign.updated_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(campaign)
@@ -594,7 +594,7 @@ async def resume_campaign(
         raise HTTPException(status_code=400, detail="Can only resume paused campaigns")
 
     campaign.status = CampaignStatus.RUNNING.value
-    campaign.updated_at = datetime.utcnow()
+    campaign.updated_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(campaign)
@@ -619,8 +619,8 @@ async def complete_campaign(
         raise HTTPException(status_code=400, detail="Can only complete running or paused campaigns")
 
     campaign.status = CampaignStatus.COMPLETED.value
-    campaign.completed_at = datetime.utcnow()
-    campaign.updated_at = datetime.utcnow()
+    campaign.completed_at = datetime.now(timezone.utc)
+    campaign.updated_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(campaign)
@@ -764,7 +764,7 @@ async def update_automation(
     for field, value in update_data.items():
         setattr(automation, field, value)
 
-    automation.updated_at = datetime.utcnow()
+    automation.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(automation)
     return automation
@@ -785,7 +785,7 @@ async def delete_automation(
         raise HTTPException(status_code=404, detail="Automation not found")
 
     automation.is_active = False
-    automation.updated_at = datetime.utcnow()
+    automation.updated_at = datetime.now(timezone.utc)
     await db.commit()
 
 

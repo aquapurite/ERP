@@ -20,7 +20,7 @@ import httpx
 import json
 import hmac
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional, Dict, Any, List
 from uuid import UUID
@@ -82,7 +82,7 @@ class AmazonSPAPI:
 
     async def _get_access_token(self) -> str:
         """Get access token using refresh token."""
-        if self._access_token and self._token_expiry and datetime.utcnow() < self._token_expiry:
+        if self._access_token and self._token_expiry and datetime.now(timezone.utc) < self._token_expiry:
             return self._access_token
 
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -99,7 +99,7 @@ class AmazonSPAPI:
             data = response.json()
 
             self._access_token = data["access_token"]
-            self._token_expiry = datetime.utcnow() + timedelta(seconds=data.get("expires_in", 3600) - 60)
+            self._token_expiry = datetime.now(timezone.utc) + timedelta(seconds=data.get("expires_in", 3600) - 60)
 
             return self._access_token
 
@@ -207,7 +207,7 @@ class FlipkartAPI:
 
     async def _get_access_token(self) -> str:
         """Get access token using client credentials."""
-        if self._access_token and self._token_expiry and datetime.utcnow() < self._token_expiry:
+        if self._access_token and self._token_expiry and datetime.now(timezone.utc) < self._token_expiry:
             return self._access_token
 
         import base64
@@ -231,7 +231,7 @@ class FlipkartAPI:
             data = response.json()
 
             self._access_token = data["access_token"]
-            self._token_expiry = datetime.utcnow() + timedelta(seconds=data.get("expires_in", 86400) - 60)
+            self._token_expiry = datetime.now(timezone.utc) + timedelta(seconds=data.get("expires_in", 86400) - 60)
 
             return self._access_token
 
@@ -302,7 +302,7 @@ class FlipkartAPI:
             "orderItemId": order_item_id,
             "trackingId": tracking_id,
             "courier": courier,
-            "dispatchDate": datetime.utcnow().strftime("%Y-%m-%d")
+            "dispatchDate": datetime.now(timezone.utc).strftime("%Y-%m-%d")
         }
         return await self._make_request("POST", "/v2/shipments/dispatch", body=body)
 
@@ -383,7 +383,7 @@ class MarketplaceService:
         Returns count of new/updated orders.
         """
         if not from_date:
-            from_date = datetime.utcnow() - timedelta(days=7)
+            from_date = datetime.now(timezone.utc) - timedelta(days=7)
 
         orders = []
         if marketplace == MarketplaceType.AMAZON:
@@ -407,7 +407,7 @@ class MarketplaceService:
             "total_orders": len(orders),
             "new_orders": new_count,
             "updated_orders": updated_count,
-            "sync_date": datetime.utcnow().isoformat()
+            "sync_date": datetime.now(timezone.utc).isoformat()
         }
 
     async def sync_inventory(
@@ -440,7 +440,7 @@ class MarketplaceService:
         return {
             "marketplace": marketplace.value,
             "products_updated": len(products),
-            "sync_date": datetime.utcnow().isoformat()
+            "sync_date": datetime.now(timezone.utc).isoformat()
         }
 
     async def update_shipment(

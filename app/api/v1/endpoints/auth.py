@@ -1,5 +1,5 @@
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, status, Request
 from sqlalchemy import select
@@ -175,7 +175,7 @@ async def forgot_password(
 
     # Generate reset token
     reset_token = secrets.token_urlsafe(32)
-    expires_at = datetime.utcnow() + timedelta(hours=1)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
 
     # Store token (in production, store in database or Redis)
     password_reset_tokens[reset_token] = {
@@ -231,7 +231,7 @@ async def reset_password(
             detail="Invalid or expired reset token"
         )
 
-    if datetime.utcnow() > token_data["expires_at"]:
+    if datetime.now(timezone.utc) > token_data["expires_at"]:
         # Remove expired token
         del password_reset_tokens[data.token]
         raise HTTPException(

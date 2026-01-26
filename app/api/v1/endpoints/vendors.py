@@ -2,7 +2,7 @@
 from typing import Optional, List
 import uuid
 from uuid import UUID
-from datetime import date
+from datetime import date, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -381,9 +381,9 @@ async def verify_vendor(
     # TODO: Add actual GSTIN verification via GST Portal API
     # TODO: Add bank account verification via penny drop
 
-    from datetime import datetime
+    from datetime import date, timezonetime
     vendor.is_verified = True
-    vendor.verified_at = datetime.utcnow()
+    vendor.verified_at = datetime.now(timezone.utc)
     vendor.verified_by = current_user.id
     vendor.status = VendorStatus.ACTIVE.value
 

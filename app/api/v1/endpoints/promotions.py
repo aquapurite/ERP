@@ -1,7 +1,7 @@
 """API endpoints for Promotions, Coupons, Loyalty & Referral programs."""
 from typing import Optional, List
 from uuid import UUID
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -759,7 +759,7 @@ async def convert_customer_referral(
         # This depends on reward type - simplified here
 
     referral.is_converted = True
-    referral.converted_at = datetime.utcnow()
+    referral.converted_at = datetime.now(timezone.utc)
     referral.order_id = order_id
     referral.order_value = order_value
 

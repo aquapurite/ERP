@@ -1,5 +1,5 @@
 """Lead Management API endpoints."""
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List
 from uuid import UUID
 from decimal import Decimal
@@ -37,7 +37,7 @@ router = APIRouter()
 
 async def generate_lead_number(db: AsyncSession) -> str:
     """Generate unique lead number."""
-    today = datetime.utcnow().strftime("%Y%m%d")
+    today = datetime.now(timezone.utc).strftime("%Y%m%d")
     prefix = f"LEAD-{today}-"
 
     result = await db.execute(
@@ -178,7 +178,7 @@ async def create_lead(
         assigned_id = await auto_assign_lead(lead, db)
         if assigned_id:
             lead.assigned_to_id = assigned_id
-            lead.assigned_at = datetime.utcnow()
+            lead.assigned_at = datetime.now(timezone.utc)
             lead.assigned_by_id = current_user.id
 
     # Create initial activity
@@ -248,7 +248,7 @@ async def list_leads(
         query = query.where(
             and_(
                 Lead.next_follow_up_date.isnot(None),
-                Lead.next_follow_up_date <= datetime.utcnow()
+                Lead.next_follow_up_date <= datetime.now(timezone.utc)
             )
         )
 
@@ -367,7 +367,7 @@ async def assign_lead(
 
     # Update assignment
     lead.assigned_to_id = assign_in.assigned_to_id
-    lead.assigned_at = datetime.utcnow()
+    lead.assigned_at = datetime.now(timezone.utc)
     lead.assigned_by_id = current_user.id
 
     # Log activity
@@ -531,7 +531,7 @@ async def get_lead_assignment_stats(
         raise HTTPException(status_code=400, detail="Company ID required")
 
     service = LeadAssignmentService(db, company_id)
-    start_date = datetime.utcnow() - timedelta(days=days)
+    start_date = datetime.now(timezone.utc) - timedelta(days=days)
 
     stats = await service.get_assignment_stats(start_date=start_date)
 
@@ -633,7 +633,7 @@ async def qualify_lead(
         raise HTTPException(status_code=404, detail="Lead not found")
 
     lead.is_qualified = qualify_in.is_qualified
-    lead.qualification_date = datetime.utcnow() if qualify_in.is_qualified else None
+    lead.qualification_date = datetime.now(timezone.utc) if qualify_in.is_qualified else None
     lead.qualified_by_id = current_user.id if qualify_in.is_qualified else None
 
     if qualify_in.score is not None:
@@ -696,7 +696,7 @@ async def convert_lead(
             lead.converted_customer_id = existing_customer.id
         else:
             # Generate customer code
-            today = datetime.utcnow().strftime("%Y%m%d")
+            today = datetime.now(timezone.utc).strftime("%Y%m%d")
             cust_count_result = await db.execute(
                 select(func.count(Customer.id)).where(Customer.customer_code.like(f"CUST-{today}%"))
             )
@@ -719,7 +719,7 @@ async def convert_lead(
 
     # Update lead status
     lead.status = LeadStatus.WON.value
-    lead.converted_at = datetime.utcnow()
+    lead.converted_at = datetime.now(timezone.utc)
     lead.converted_by_id = current_user.id
     lead.actual_value = lead.estimated_value
 
@@ -766,7 +766,7 @@ async def mark_lead_lost(
     lead.lost_reason = lost_in.lost_reason
     lead.lost_reason_details = lost_in.lost_reason_details
     lead.lost_to_competitor = lost_in.lost_to_competitor
-    lead.lost_at = datetime.utcnow()
+    lead.lost_at = datetime.now(timezone.utc)
 
     # Log activity
     activity = LeadActivity(
@@ -813,7 +813,7 @@ async def add_lead_activity(
     db.add(activity)
 
     # Update lead contact tracking
-    lead.last_contacted_at = datetime.utcnow()
+    lead.last_contacted_at = datetime.now(timezone.utc)
     lead.contact_attempts += 1
 
     # Update follow-up
@@ -912,7 +912,7 @@ async def get_lead_dashboard(
         select(func.count(Lead.id)).where(
             and_(
                 Lead.next_follow_up_date.isnot(None),
-                Lead.next_follow_up_date > datetime.utcnow(),
+                Lead.next_follow_up_date > datetime.now(timezone.utc),
                 Lead.status.notin_([LeadStatus.WON, LeadStatus.LOST, LeadStatus.DISQUALIFIED])
             )
         )
@@ -924,7 +924,7 @@ async def get_lead_dashboard(
         select(func.count(Lead.id)).where(
             and_(
                 Lead.next_follow_up_date.isnot(None),
-                Lead.next_follow_up_date <= datetime.utcnow(),
+                Lead.next_follow_up_date <= datetime.now(timezone.utc),
                 Lead.status.notin_([LeadStatus.WON, LeadStatus.LOST, LeadStatus.DISQUALIFIED])
             )
         )

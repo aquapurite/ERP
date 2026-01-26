@@ -1,7 +1,7 @@
 """API endpoints for Dealer/Distributor management."""
 from typing import Optional, List
 from uuid import UUID
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -245,7 +245,7 @@ async def approve_dealer(
 
     dealer.status = DealerStatus.ACTIVE.value
     dealer.approved_by = current_user.id
-    dealer.approved_at = datetime.utcnow()
+    dealer.approved_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(dealer)
@@ -662,7 +662,7 @@ async def apply_scheme_to_dealer(
         benefit_type=application_in.benefit_type,
         status="APPROVED",
         approved_by=current_user.id,
-        approved_at=datetime.utcnow(),
+        approved_at=datetime.now(timezone.utc),
         created_by=current_user.id,
     )
 

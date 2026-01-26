@@ -2,7 +2,7 @@
 from typing import Optional
 import uuid
 from math import ceil
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 from sqlalchemy import select, func, and_, or_
@@ -41,7 +41,7 @@ router = APIRouter()
 
 def generate_manifest_number() -> str:
     """Generate unique manifest number."""
-    from datetime import datetime
+    from datetime import datetime, timezone
     import random
     date_str = datetime.now().strftime("%Y%m%d")
     random_suffix = random.randint(1000, 9999)
@@ -190,7 +190,7 @@ async def create_manifest(
         transporter_id=data.transporter_id,
         status=ManifestStatus.DRAFT,
         business_type=data.business_type,
-        manifest_date=data.manifest_date or datetime.utcnow(),
+        manifest_date=data.manifest_date or datetime.now(timezone.utc),
         vehicle_number=data.vehicle_number,
         driver_name=data.driver_name,
         driver_phone=data.driver_phone,
@@ -512,7 +512,7 @@ async def scan_shipment_for_handover(
 
     # Mark as scanned
     item.is_scanned = True
-    item.scanned_at = datetime.utcnow()
+    item.scanned_at = datetime.now(timezone.utc)
     item.scanned_by = current_user.id
 
     manifest.scanned_shipments += 1
@@ -572,7 +572,7 @@ async def confirm_manifest(
 
     # Update manifest
     manifest.status = ManifestStatus.CONFIRMED.value
-    manifest.confirmed_at = datetime.utcnow()
+    manifest.confirmed_at = datetime.now(timezone.utc)
     manifest.confirmed_by = current_user.id
 
     if data.vehicle_number:
@@ -632,7 +632,7 @@ async def complete_handover(
             detail="Manifest must be confirmed before handover"
         )
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     shipped_count = 0
 
     # Update all items and shipments
@@ -733,7 +733,7 @@ async def cancel_manifest(
         await db.delete(item)
 
     manifest.status = ManifestStatus.CANCELLED.value
-    manifest.cancelled_at = datetime.utcnow()
+    manifest.cancelled_at = datetime.now(timezone.utc)
     manifest.cancellation_reason = data.reason
     manifest.total_shipments = 0
     manifest.scanned_shipments = 0
@@ -783,6 +783,6 @@ async def get_manifest_print_data(
         company_address="Plot 36-A KH No 181, Najafgarh, Delhi - 110043",
         company_phone="+91-9311939076",
         company_gstin="07ABDCA6170C1Z5",
-        print_date=datetime.utcnow(),
+        print_date=datetime.now(timezone.utc),
         print_url=None,
     )

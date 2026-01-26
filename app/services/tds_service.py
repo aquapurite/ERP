@@ -17,7 +17,7 @@ TDS Sections covered:
 - 192: Salary
 """
 
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from decimal import Decimal
 from typing import Optional, Dict, Any, List
 from uuid import UUID
@@ -391,7 +391,7 @@ class TDSService:
             "challans": [],
 
             # Certificate date
-            "certificate_date": datetime.utcnow().strftime("%Y-%m-%d"),
+            "certificate_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         }
 
         # Group by section

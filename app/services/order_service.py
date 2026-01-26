@@ -1,5 +1,5 @@
 from typing import List, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from math import ceil
 import uuid
@@ -33,7 +33,7 @@ class OrderService:
 
     async def generate_order_number(self) -> str:
         """Generate unique order number: ORD-YYYYMMDD-XXXX"""
-        today = datetime.utcnow().strftime("%Y%m%d")
+        today = datetime.now(timezone.utc).strftime("%Y%m%d")
         prefix = f"ORD-{today}-"
 
         # Get count of orders today
@@ -46,7 +46,7 @@ class OrderService:
 
     async def generate_invoice_number(self) -> str:
         """Generate unique invoice number: INV-YYYYMMDD-XXXX"""
-        today = datetime.utcnow().strftime("%Y%m%d")
+        today = datetime.now(timezone.utc).strftime("%Y%m%d")
         prefix = f"INV-{today}-"
 
         stmt = select(func.count(Invoice.id)).where(
@@ -495,13 +495,13 @@ class OrderService:
 
         # Update timestamps based on status
         if new_status == OrderStatus.CONFIRMED:
-            order.confirmed_at = datetime.utcnow()
+            order.confirmed_at = datetime.now(timezone.utc)
         elif new_status == OrderStatus.DELIVERED:
-            order.delivered_at = datetime.utcnow()
+            order.delivered_at = datetime.now(timezone.utc)
             # Calculate partner commission on delivery
             await self.calculate_partner_commission(order_id)
         elif new_status == OrderStatus.CANCELLED:
-            order.cancelled_at = datetime.utcnow()
+            order.cancelled_at = datetime.now(timezone.utc)
 
         # Create status history
         status_history = OrderStatusHistory(
@@ -541,7 +541,7 @@ class OrderService:
             gateway=gateway,
             reference_number=reference_number,
             notes=notes,
-            completed_at=datetime.utcnow(),
+            completed_at=datetime.now(timezone.utc),
         )
         self.db.add(payment)
 
@@ -612,7 +612,7 @@ class OrderService:
             cgst_amount=cgst,
             sgst_amount=sgst,
             igst_amount=igst,
-            invoice_date=datetime.utcnow(),
+            invoice_date=datetime.now(timezone.utc),
         )
         self.db.add(invoice)
         await self.db.commit()
@@ -671,7 +671,7 @@ class OrderService:
         region_id: Optional[uuid.UUID] = None
     ) -> dict:
         """Get order statistics."""
-        from datetime import datetime, timedelta
+        from datetime import datetime, timezone, timedelta
         from sqlalchemy import or_
 
         base_filter = []
@@ -722,7 +722,7 @@ class OrderService:
         avg_order_value = (await self.db.execute(avg_stmt)).scalar() or Decimal("0.00")
 
         # Calculate month-over-month change
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         this_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         last_month_start = (this_month_start - timedelta(days=1)).replace(day=1)
 
@@ -844,7 +844,7 @@ class OrderService:
         # Update partner order count (commission calculated on delivery)
         partner.total_orders = (partner.total_orders or 0) + 1
         partner.total_sales = (partner.total_sales or Decimal("0")) + order_amount
-        partner.last_active_at = datetime.utcnow()
+        partner.last_active_at = datetime.now(timezone.utc)
 
         logger.info(f"Order {order.order_number} attributed to partner {partner.partner_code}")
 
@@ -901,7 +901,7 @@ class OrderService:
 
         # Check total commission this FY
         fy_start = datetime(
-            datetime.utcnow().year if datetime.utcnow().month >= 4 else datetime.utcnow().year - 1,
+            datetime.now(timezone.utc).year if datetime.now(timezone.utc).month >= 4 else datetime.now(timezone.utc).year - 1,
             4, 1
         )
         fy_total_result = await self.db.execute(

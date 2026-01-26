@@ -1,7 +1,7 @@
 """API endpoints for Accounting & Finance module."""
 from typing import Optional, List
 from uuid import UUID
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -497,7 +497,7 @@ async def close_financial_period(
     # TODO: Generate closing entries (transfer P&L to Retained Earnings)
 
     period.status = PeriodStatus.CLOSED.value
-    period.closed_at = datetime.utcnow()
+    period.closed_at = datetime.now(timezone.utc)
     period.closed_by = current_user.id
 
     await db.commit()
@@ -1411,7 +1411,7 @@ async def update_journal_entry(
         journal.total_debit = total_debit
         journal.total_credit = total_credit
 
-    journal.updated_at = datetime.utcnow()
+    journal.updated_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(journal)
@@ -1525,7 +1525,7 @@ async def submit_journal_for_approval(
     # Update journal for submission
     journal.status = JournalStatus.PENDING_APPROVAL.value
     journal.submitted_by = current_user.id
-    journal.submitted_at = datetime.utcnow()
+    journal.submitted_at = datetime.now(timezone.utc)
     journal.approval_level = approval_level
 
     await db.commit()
@@ -1596,7 +1596,7 @@ async def approve_journal_entry(
     # Update journal for approval
     journal.status = JournalStatus.APPROVED.value
     journal.approved_by = current_user.id
-    journal.approved_at = datetime.utcnow()
+    journal.approved_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(journal)
@@ -1638,7 +1638,7 @@ async def approve_journal_entry(
         # Update journal to POSTED
         journal.status = JournalStatus.POSTED.value
         journal.posted_by = current_user.id
-        journal.posted_at = datetime.utcnow()
+        journal.posted_at = datetime.now(timezone.utc)
 
         await db.commit()
         await db.refresh(journal)
@@ -1711,7 +1711,7 @@ async def reject_journal_entry(
     # Update journal for rejection
     journal.status = JournalStatus.REJECTED.value
     journal.approved_by = current_user.id  # Record who rejected
-    journal.approved_at = datetime.utcnow()
+    journal.approved_at = datetime.now(timezone.utc)
     journal.rejection_reason = request.reason
 
     await db.commit()
@@ -1781,7 +1781,7 @@ async def resubmit_rejected_journal(
     approval_level = _get_approval_level(journal.total_debit)
     journal.status = JournalStatus.PENDING_APPROVAL.value
     journal.submitted_by = current_user.id
-    journal.submitted_at = datetime.utcnow()
+    journal.submitted_at = datetime.now(timezone.utc)
     journal.approval_level = approval_level
     journal.approved_by = None
     journal.approved_at = None
@@ -1870,7 +1870,7 @@ async def post_journal_entry(
     # Update journal status
     journal.status = JournalStatus.POSTED.value
     journal.posted_by = current_user.id
-    journal.posted_at = datetime.utcnow()
+    journal.posted_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(journal)
@@ -1946,7 +1946,7 @@ async def reverse_journal_entry(
         reversal_of_id=original.id,
         status=JournalStatus.APPROVED,
         approved_by=current_user.id,
-        approved_at=datetime.utcnow(),
+        approved_at=datetime.now(timezone.utc),
         created_by=current_user.id,
     )
 

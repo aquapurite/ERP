@@ -13,7 +13,7 @@ Usage:
 import json
 import hashlib
 from typing import Any, Optional, Dict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from abc import ABC, abstractmethod
 import asyncio
 
@@ -55,7 +55,7 @@ class InMemoryCache(CacheBackend):
         async with self._lock:
             if key in self._cache:
                 value, expires_at = self._cache[key]
-                if expires_at > datetime.utcnow():
+                if expires_at > datetime.now(timezone.utc):
                     return value
                 else:
                     del self._cache[key]
@@ -63,7 +63,7 @@ class InMemoryCache(CacheBackend):
 
     async def set(self, key: str, value: Any, ttl: int = 3600) -> bool:
         async with self._lock:
-            expires_at = datetime.utcnow() + timedelta(seconds=ttl)
+            expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl)
             self._cache[key] = (value, expires_at)
             return True
 

@@ -17,7 +17,7 @@ Supports multiple bank statement formats:
 
 import csv
 import io
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Optional, Dict, Any, List, Tuple
 from uuid import UUID
@@ -540,7 +540,7 @@ class BankImportService:
 
         # Mark as reconciled
         bank_txn.is_reconciled = True
-        bank_txn.reconciled_at = datetime.utcnow()
+        bank_txn.reconciled_at = datetime.now(timezone.utc)
         bank_txn.matched_journal_entry_id = journal_entry_id
 
         await self.db.commit()

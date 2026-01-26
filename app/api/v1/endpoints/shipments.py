@@ -2,7 +2,7 @@
 from typing import Optional
 import uuid
 from math import ceil
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 from sqlalchemy import select, func, and_, or_
@@ -44,7 +44,7 @@ router = APIRouter()
 
 def generate_shipment_number() -> str:
     """Generate unique shipment number."""
-    from datetime import datetime
+    from datetime import datetime, timezone
     import random
     date_str = datetime.now().strftime("%Y%m%d")
     random_suffix = random.randint(10000, 99999)
@@ -244,7 +244,7 @@ async def create_shipment(
         shipment_id=shipment.id,
         status=ShipmentStatus.CREATED,
         remarks="Shipment created",
-        event_time=datetime.utcnow(),
+        event_time=datetime.now(timezone.utc),
         source="SYSTEM",
         updated_by=current_user.id,
     )
@@ -347,7 +347,7 @@ async def pack_shipment(
 
     # Update shipment
     shipment.status = ShipmentStatus.PACKED.value
-    shipment.packed_at = datetime.utcnow()
+    shipment.packed_at = datetime.now(timezone.utc)
     shipment.packaging_type = data.packaging_type
     shipment.no_of_boxes = data.no_of_boxes
     shipment.weight_kg = data.weight_kg
@@ -372,7 +372,7 @@ async def pack_shipment(
         shipment_id=shipment.id,
         status=ShipmentStatus.PACKED,
         remarks=data.notes or "Shipment packed",
-        event_time=datetime.utcnow(),
+        event_time=datetime.now(timezone.utc),
         source="SYSTEM",
         updated_by=current_user.id,
     )
@@ -444,7 +444,7 @@ async def generate_awb(
         shipment_id=shipment.id,
         status=ShipmentStatus.READY_FOR_PICKUP,
         remarks=f"AWB generated: {awb_number}",
-        event_time=datetime.utcnow(),
+        event_time=datetime.now(timezone.utc),
         source="SYSTEM",
         updated_by=current_user.id,
     )
@@ -483,7 +483,7 @@ async def update_tracking(
 
     # Mark shipped if transitioning to shipped
     if data.status == ShipmentStatus.SHIPPED and not shipment.shipped_at:
-        shipment.shipped_at = datetime.utcnow()
+        shipment.shipped_at = datetime.now(timezone.utc)
 
     # Add tracking entry
     tracking = ShipmentTracking(
@@ -495,7 +495,7 @@ async def update_tracking(
         state=data.state,
         pincode=data.pincode,
         remarks=data.remarks,
-        event_time=data.event_time or datetime.utcnow(),
+        event_time=data.event_time or datetime.now(timezone.utc),
         source=data.source,
         updated_by=current_user.id,
     )
@@ -547,7 +547,7 @@ async def mark_delivered(
         )
 
     # Update shipment
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     shipment.status = ShipmentStatus.DELIVERED.value
     shipment.delivered_at = now
     shipment.actual_delivery_date = now.date()
@@ -700,14 +700,14 @@ async def initiate_rto(
 
     shipment.status = ShipmentStatus.RTO_INITIATED.value
     shipment.rto_reason = data.reason
-    shipment.rto_initiated_at = datetime.utcnow()
+    shipment.rto_initiated_at = datetime.now(timezone.utc)
 
     # Add tracking
     tracking = ShipmentTracking(
         shipment_id=shipment.id,
         status=ShipmentStatus.RTO_INITIATED,
         remarks=f"RTO initiated: {data.reason}",
-        event_time=datetime.utcnow(),
+        event_time=datetime.now(timezone.utc),
         source="SYSTEM",
         updated_by=current_user.id,
     )
@@ -755,7 +755,7 @@ async def cancel_shipment(
         )
 
     shipment.status = ShipmentStatus.CANCELLED.value
-    shipment.cancelled_at = datetime.utcnow()
+    shipment.cancelled_at = datetime.now(timezone.utc)
     shipment.cancellation_reason = data.reason
 
     # Add tracking
@@ -763,7 +763,7 @@ async def cancel_shipment(
         shipment_id=shipment.id,
         status=ShipmentStatus.CANCELLED,
         remarks=f"Cancelled: {data.reason}",
-        event_time=datetime.utcnow(),
+        event_time=datetime.now(timezone.utc),
         source="SYSTEM",
         updated_by=current_user.id,
     )
@@ -1548,7 +1548,7 @@ async def upload_pod_file(
         pod_signature_url = f"/static/pod/{sig_filename}"
     
     # Update shipment with delivery info
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     shipment.status = ShipmentStatus.DELIVERED.value
     shipment.delivered_at = now
     shipment.actual_delivery_date = now.date()

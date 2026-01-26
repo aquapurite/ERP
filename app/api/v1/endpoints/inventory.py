@@ -2,7 +2,7 @@
 from typing import Optional, List
 import uuid
 from math import ceil
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends, Body
 from sqlalchemy import select, func, and_
@@ -789,7 +789,7 @@ async def delete_stock_item(
 
     # Soft delete - mark as DISPOSED
     item.status = StockItemStatus.DISPOSED.value
-    item.notes = f"Deleted by user on {datetime.utcnow().isoformat()}"
+    item.notes = f"Deleted by user on {datetime.now(timezone.utc).isoformat()}"
 
     await db.commit()
     return None

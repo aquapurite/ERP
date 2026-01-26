@@ -15,7 +15,7 @@ Supports:
 - Assignment history tracking
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List
 from uuid import UUID
 from enum import Enum
@@ -109,7 +109,7 @@ class LeadAssignmentService:
         - leads_this_week: Leads assigned this week
         - conversion_rate: Recent conversion rate
         """
-        today = datetime.utcnow().date()
+        today = datetime.now(timezone.utc).date()
         week_start = today - timedelta(days=today.weekday())
 
         # Open leads (not converted/closed)
@@ -172,7 +172,7 @@ class LeadAssignmentService:
 
         # Find agent with oldest last assignment
         agent_with_oldest_assignment = None
-        oldest_assignment_time = datetime.utcnow()
+        oldest_assignment_time = datetime.now(timezone.utc)
 
         for agent in agents:
             # Get last assigned lead for this agent
@@ -328,7 +328,7 @@ class LeadAssignmentService:
 
         # Update lead
         lead.assigned_to = agent.id
-        lead.assigned_at = datetime.utcnow()
+        lead.assigned_at = datetime.now(timezone.utc)
         lead.assigned_by = user_id
         lead.assignment_strategy = strategy.value
 
@@ -408,7 +408,7 @@ class LeadAssignmentService:
 
         # Update assignment
         lead.assigned_to = new_agent_id
-        lead.assigned_at = datetime.utcnow()
+        lead.assigned_at = datetime.now(timezone.utc)
         lead.assigned_by = user_id
         lead.reassignment_count = (lead.reassignment_count or 0) + 1
         lead.last_reassignment_reason = reason
@@ -421,7 +421,7 @@ class LeadAssignmentService:
             lead.assignment_history.append({
                 "from_agent": str(previous_agent_id) if previous_agent_id else None,
                 "to_agent": str(new_agent_id),
-                "at": datetime.utcnow().isoformat(),
+                "at": datetime.now(timezone.utc).isoformat(),
                 "by": str(user_id) if user_id else None,
                 "reason": reason
             })
@@ -491,9 +491,9 @@ class LeadAssignmentService:
         Returns distribution of leads among agents.
         """
         if not start_date:
-            start_date = datetime.utcnow() - timedelta(days=30)
+            start_date = datetime.now(timezone.utc) - timedelta(days=30)
         if not end_date:
-            end_date = datetime.utcnow()
+            end_date = datetime.now(timezone.utc)
 
         # Get assignments per agent
         query = select(

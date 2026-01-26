@@ -34,7 +34,7 @@ class ManifestService:
 
     async def generate_manifest_number(self) -> str:
         """Generate unique manifest number: MF-YYYYMMDD-XXXX"""
-        today = datetime.utcnow().strftime("%Y%m%d")
+        today = datetime.now(timezone.utc).strftime("%Y%m%d")
         prefix = f"MF-{today}-"
 
         stmt = select(func.count(Manifest.id)).where(
@@ -124,7 +124,7 @@ class ManifestService:
             warehouse_id=data.warehouse_id,
             transporter_id=data.transporter_id,
             business_type=data.business_type,
-            manifest_date=data.manifest_date or datetime.utcnow(),
+            manifest_date=data.manifest_date or datetime.now(timezone.utc),
             vehicle_number=data.vehicle_number,
             driver_name=data.driver_name,
             driver_phone=data.driver_phone,
@@ -294,7 +294,7 @@ class ManifestService:
 
         # Mark as scanned
         item.is_scanned = True
-        item.scanned_at = datetime.utcnow()
+        item.scanned_at = datetime.now(timezone.utc)
         item.scanned_by = scanned_by
 
         # Update manifest counters
@@ -439,7 +439,7 @@ class ManifestService:
             raise ValueError(f"Cannot complete handover. {manifest.total_shipments - manifest.scanned_shipments} shipments not scanned")
 
         manifest.status = ManifestStatus.HANDED_OVER.value
-        manifest.handover_at = datetime.utcnow()
+        manifest.handover_at = datetime.now(timezone.utc)
         manifest.handover_by = handover_by
 
         if remarks:
@@ -448,7 +448,7 @@ class ManifestService:
         # Update shipments and orders
         for item in manifest.items:
             item.is_handed_over = True
-            item.handed_over_at = datetime.utcnow()
+            item.handed_over_at = datetime.now(timezone.utc)
 
             # Update shipment
             stmt = select(Shipment).where(Shipment.id == item.shipment_id)
@@ -456,7 +456,7 @@ class ManifestService:
             shipment = result.scalar_one_or_none()
             if shipment:
                 shipment.status = ShipmentStatus.PICKED_UP.value
-                shipment.shipped_at = datetime.utcnow()
+                shipment.shipped_at = datetime.now(timezone.utc)
 
                 # Update order
                 order_stmt = select(Order).where(Order.id == shipment.order_id)
@@ -464,7 +464,7 @@ class ManifestService:
                 order = order_result.scalar_one_or_none()
                 if order:
                     order.status = OrderStatus.SHIPPED.value
-                    order.shipped_at = datetime.utcnow()
+                    order.shipped_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(manifest)
@@ -484,7 +484,7 @@ class ManifestService:
             raise ValueError(f"Cannot cancel manifest in {manifest.status} status")
 
         manifest.status = ManifestStatus.CANCELLED.value
-        manifest.cancelled_at = datetime.utcnow()
+        manifest.cancelled_at = datetime.now(timezone.utc)
         manifest.cancellation_reason = reason
 
         # Revert shipments

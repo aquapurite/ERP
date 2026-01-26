@@ -1,5 +1,5 @@
 """API endpoints for Escalation Management module."""
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List
 from uuid import UUID
 from decimal import Decimal
@@ -121,7 +121,7 @@ async def update_escalation_matrix(
     for field, value in update_data.items():
         setattr(matrix, field, value)
 
-    matrix.updated_at = datetime.utcnow()
+    matrix.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(matrix)
     return matrix
@@ -142,7 +142,7 @@ async def delete_escalation_matrix(
         raise HTTPException(status_code=404, detail="Escalation matrix not found")
 
     matrix.is_active = False
-    matrix.updated_at = datetime.utcnow()
+    matrix.updated_at = datetime.now(timezone.utc)
     await db.commit()
 
 
@@ -156,7 +156,7 @@ async def create_escalation(
 ):
     """Create a new escalation."""
     # Generate escalation number
-    today = datetime.utcnow().strftime("%Y%m%d")
+    today = datetime.now(timezone.utc).strftime("%Y%m%d")
     count_result = await db.execute(
         select(func.count(Escalation.id)).where(
             Escalation.escalation_number.like(f"ESC-{today}%")
@@ -184,7 +184,7 @@ async def create_escalation(
     sla_config = sla_result.scalar_one_or_none()
 
     # Calculate SLA due dates
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     response_due_at = None
     resolution_due_at = None
 
@@ -410,7 +410,7 @@ async def update_escalation(
     for field, value in update_data.items():
         setattr(escalation, field, value)
 
-    escalation.updated_at = datetime.utcnow()
+    escalation.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(escalation)
     return escalation
@@ -438,12 +438,12 @@ async def assign_escalation(
 
     old_status = escalation.status
     escalation.assigned_to_id = data.assigned_to_id
-    escalation.assigned_at = datetime.utcnow()
+    escalation.assigned_at = datetime.now(timezone.utc)
 
     if escalation.status == EscalationStatus.NEW:
         escalation.status = EscalationStatus.ASSIGNED.value
 
-    escalation.updated_at = datetime.utcnow()
+    escalation.updated_at = datetime.now(timezone.utc)
 
     # Create history entry
     history = EscalationHistory(
@@ -482,13 +482,13 @@ async def acknowledge_escalation(
         raise HTTPException(status_code=400, detail="Escalation already acknowledged")
 
     old_status = escalation.status
-    escalation.acknowledged_at = datetime.utcnow()
-    escalation.first_response_at = escalation.first_response_at or datetime.utcnow()
+    escalation.acknowledged_at = datetime.now(timezone.utc)
+    escalation.first_response_at = escalation.first_response_at or datetime.now(timezone.utc)
     escalation.status = EscalationStatus.ACKNOWLEDGED.value
-    escalation.updated_at = datetime.utcnow()
+    escalation.updated_at = datetime.now(timezone.utc)
 
     # Check response SLA
-    if escalation.response_due_at and datetime.utcnow() > escalation.response_due_at:
+    if escalation.response_due_at and datetime.now(timezone.utc) > escalation.response_due_at:
         escalation.is_response_sla_breached = True
 
     # Create history entry
@@ -545,9 +545,9 @@ async def escalate_to_next_level(
 
     if data.assign_to_id:
         escalation.assigned_to_id = data.assign_to_id
-        escalation.assigned_at = datetime.utcnow()
+        escalation.assigned_at = datetime.now(timezone.utc)
 
-    escalation.updated_at = datetime.utcnow()
+    escalation.updated_at = datetime.now(timezone.utc)
 
     # Create history entry
     history = EscalationHistory(
@@ -597,7 +597,7 @@ async def de_escalate(
 
     escalation.current_level = level_order[current_idx - 1]
     escalation.status = EscalationStatus.IN_PROGRESS.value
-    escalation.updated_at = datetime.utcnow()
+    escalation.updated_at = datetime.now(timezone.utc)
 
     # Create history entry
     history = EscalationHistory(
@@ -637,7 +637,7 @@ async def resolve_escalation(
         raise HTTPException(status_code=400, detail="Escalation already resolved")
 
     old_status = escalation.status
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     escalation.status = EscalationStatus.RESOLVED.value
     escalation.resolved_at = now
@@ -689,10 +689,10 @@ async def reopen_escalation(
 
     escalation.status = EscalationStatus.REOPENED.value
     escalation.reopen_count = (escalation.reopen_count or 0) + 1
-    escalation.last_reopened_at = datetime.utcnow()
+    escalation.last_reopened_at = datetime.now(timezone.utc)
     escalation.resolved_at = None
     escalation.resolution_notes = None
-    escalation.updated_at = datetime.utcnow()
+    escalation.updated_at = datetime.now(timezone.utc)
 
     # Create history entry
     history = EscalationHistory(
@@ -732,8 +732,8 @@ async def close_escalation(
     old_status = escalation.status
 
     escalation.status = EscalationStatus.CLOSED.value
-    escalation.closed_at = datetime.utcnow()
-    escalation.updated_at = datetime.utcnow()
+    escalation.closed_at = datetime.now(timezone.utc)
+    escalation.updated_at = datetime.now(timezone.utc)
 
     # Create history entry
     history = EscalationHistory(
@@ -771,7 +771,7 @@ async def submit_feedback(
     escalation.customer_satisfied = data.satisfied
     escalation.satisfaction_rating = data.rating
     escalation.customer_feedback = data.feedback
-    escalation.updated_at = datetime.utcnow()
+    escalation.updated_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(escalation)
@@ -1009,7 +1009,7 @@ async def get_escalation_dashboard(
     pending_acknowledgment = pending_ack_result.scalar() or 0
 
     # Overdue response
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     overdue_response_result = await db.execute(
         select(func.count(Escalation.id)).where(
             and_(
@@ -1069,7 +1069,7 @@ async def get_aging_report(
     """Get escalation aging report."""
     start_datetime = datetime.combine(start_date, datetime.min.time())
     end_datetime = datetime.combine(end_date, datetime.max.time())
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Get open escalations in date range
     result = await db.execute(

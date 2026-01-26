@@ -36,7 +36,7 @@ Same spare part item can have TWO series:
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Tuple
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -430,7 +430,7 @@ class SerializationService:
         # Update sequence
         sequence.last_serial = end_serial
         sequence.total_generated += quantity
-        sequence.updated_at = datetime.utcnow()
+        sequence.updated_at = datetime.now(timezone.utc)
 
         return start_serial, end_serial
 
@@ -503,7 +503,7 @@ class SerializationService:
         # Update sequence
         sequence.last_serial = end_serial
         sequence.total_generated += quantity
-        sequence.updated_at = datetime.utcnow()
+        sequence.updated_at = datetime.now(timezone.utc)
 
         return start_serial, end_serial
 
@@ -718,9 +718,9 @@ class SerializationService:
         serial.status = SerialStatus.RECEIVED.value
         serial.grn_id = grn_id
         serial.grn_item_id = grn_item_id
-        serial.received_at = datetime.utcnow()
+        serial.received_at = datetime.now(timezone.utc)
         serial.received_by = user_id
-        serial.updated_at = datetime.utcnow()
+        serial.updated_at = datetime.now(timezone.utc)
 
         await self.db.commit()
 
@@ -765,8 +765,8 @@ class SerializationService:
 
         serial.status = SerialStatus.ASSIGNED.value
         serial.stock_item_id = stock_item_id
-        serial.assigned_at = datetime.utcnow()
-        serial.updated_at = datetime.utcnow()
+        serial.assigned_at = datetime.now(timezone.utc)
+        serial.updated_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         return serial
@@ -792,7 +792,7 @@ class SerializationService:
                 f"Serial must be in ASSIGNED or RECEIVED status to sell. Current: {serial.status}"
             )
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         serial.status = SerialStatus.SOLD.value
         serial.order_id = order_id
         serial.order_item_id = order_item_id
@@ -1054,7 +1054,7 @@ class SerializationService:
         count = 0
         for serial in serials:
             serial.status = SerialStatus.SENT_TO_VENDOR.value
-            serial.updated_at = datetime.utcnow()
+            serial.updated_at = datetime.now(timezone.utc)
             count += 1
 
         await self.db.commit()
@@ -1084,7 +1084,7 @@ class SerializationService:
         for serial in serials:
             serial.status = SerialStatus.CANCELLED.value
             serial.notes = reason
-            serial.updated_at = datetime.utcnow()
+            serial.updated_at = datetime.now(timezone.utc)
             count += 1
 
         await self.db.commit()

@@ -249,13 +249,13 @@ async def global_exception_handler(request: Request, exc: Exception):
 async def health_check():
     """Health check endpoint with database validation."""
     from sqlalchemy import text
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     health_status = {
         "status": "healthy",
         "app": settings.APP_NAME,
         "version": settings.APP_VERSION,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "checks": {
             "database": "unknown"
         }

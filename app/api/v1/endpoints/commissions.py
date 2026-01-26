@@ -1,7 +1,7 @@
 """API endpoints for Commission & Incentive management."""
 from typing import Optional, List
 from uuid import UUID
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -440,7 +440,7 @@ async def approve_commission_transaction(
 
     transaction.status = CommissionStatus.APPROVED.value
     transaction.approved_by = current_user.id
-    transaction.approved_at = datetime.utcnow()
+    transaction.approved_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(transaction)
@@ -534,7 +534,7 @@ async def create_commission_payout(
 
         transaction.status = CommissionStatus.PAID.value
         transaction.payout_id = payout.id
-        transaction.paid_at = datetime.utcnow()
+        transaction.paid_at = datetime.now(timezone.utc)
 
     # Update earner
     earner.pending_amount -= gross_amount
@@ -628,7 +628,7 @@ async def process_commission_payout(
     payout.payment_reference = payment_reference
     payout.payment_date = payment_date
     payout.processed_by = current_user.id
-    payout.processed_at = datetime.utcnow()
+    payout.processed_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(payout)
@@ -729,7 +729,7 @@ async def convert_affiliate_referral(
                 commission_amount = plan.default_rate
 
     referral.is_converted = True
-    referral.converted_at = datetime.utcnow()
+    referral.converted_at = datetime.now(timezone.utc)
     referral.order_id = order_id
     referral.order_value = order_value
     referral.commission_amount = commission_amount

@@ -18,7 +18,7 @@ from app.schemas.technician import (
     TechnicianListResponse,
     TechnicianLocationUpdate,
 )
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 router = APIRouter(tags=["Technicians"])
@@ -251,7 +251,7 @@ async def update_technician_location(
 
     technician.current_location_lat = data.latitude
     technician.current_location_lng = data.longitude
-    technician.location_updated_at = datetime.utcnow()
+    technician.location_updated_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(technician)
@@ -393,7 +393,7 @@ async def get_performance_dashboard(
     skill_distribution = {row.skill_level or "UNKNOWN": row.count for row in skill_result.all()}
 
     # Jobs completed today
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     jobs_today_query = select(func.count()).select_from(TechnicianJobHistory).where(
         func.date(TechnicianJobHistory.completed_at) == today
     )

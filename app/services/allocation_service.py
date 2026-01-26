@@ -18,7 +18,7 @@ Priority-Based Flow:
 """
 import uuid
 from typing import Optional, List, Dict, Any, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 import json
 
@@ -980,7 +980,7 @@ class AllocationService:
         await self.db.refresh(order)
 
         order.warehouse_id = warehouse_id
-        order.allocated_at = datetime.utcnow()
+        order.allocated_at = datetime.now(timezone.utc)
         # Update status to ALLOCATED for orders in NEW or CONFIRMED status
         # Use string values for comparison (database column is VARCHAR)
         new_status = OrderStatus.NEW.value if hasattr(OrderStatus.NEW, 'value') else "NEW"
@@ -991,7 +991,7 @@ class AllocationService:
             order.status = allocated_status
             # Also mark as confirmed if it wasn't
             if not order.confirmed_at:
-                order.confirmed_at = datetime.utcnow()
+                order.confirmed_at = datetime.now(timezone.utc)
 
         # Consume channel inventory for D2C and marketplace orders
         # This is critical for preventing overselling in D2C channels

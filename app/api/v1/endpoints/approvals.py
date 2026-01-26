@@ -8,7 +8,7 @@ Provides:
 - Escalation and Reassignment
 - Bulk approval actions
 """
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from decimal import Decimal
 from typing import Optional, List
 from uuid import UUID
@@ -102,7 +102,7 @@ async def _create_approval_request(
     # Calculate due date based on priority (1=1 day, 5=3 days, 10=7 days)
     days_map = {1: 1, 2: 1, 3: 2, 4: 2, 5: 3, 6: 4, 7: 5, 8: 5, 9: 6, 10: 7}
     due_days = days_map.get(priority, 3)
-    due_date = datetime.utcnow() + timedelta(days=due_days)
+    due_date = datetime.now(timezone.utc) + timedelta(days=due_days)
 
     approval = ApprovalRequest(
         request_number=request_number,
@@ -116,7 +116,7 @@ async def _create_approval_request(
         title=title,
         description=description,
         requested_by=requested_by,
-        requested_at=datetime.utcnow(),
+        requested_at=datetime.now(timezone.utc),
         due_date=due_date,
         extra_info=extra_info,
     )
@@ -242,7 +242,7 @@ async def get_approval_dashboard(
         select(func.count(ApprovalRequest.id))
         .where(
             ApprovalRequest.status == ApprovalStatus.PENDING,
-            ApprovalRequest.due_date < datetime.utcnow(),
+            ApprovalRequest.due_date < datetime.now(timezone.utc),
         )
     )
     total_overdue = overdue_result.scalar() or 0
@@ -313,7 +313,7 @@ async def get_approval_dashboard(
             ApprovalRequest.status == ApprovalStatus.PENDING,
             or_(
                 ApprovalRequest.priority <= 3,
-                ApprovalRequest.due_date < datetime.utcnow(),
+                ApprovalRequest.due_date < datetime.now(timezone.utc),
             )
         )
         .order_by(ApprovalRequest.priority, ApprovalRequest.requested_at)
@@ -331,7 +331,7 @@ async def get_approval_dashboard(
             title=a.title,
             requester_name=_get_user_name(a.requester) if a.requester else None,
             requested_at=a.requested_at,
-            is_overdue=a.due_date < datetime.utcnow() if a.due_date else False,
+            is_overdue=a.due_date < datetime.now(timezone.utc) if a.due_date else False,
         )
         for a in urgent_result.scalars().all()
     ]
@@ -408,7 +408,7 @@ async def list_approvals(
             title=a.title,
             requester_name=_get_user_name(a.requester) if a.requester else None,
             requested_at=a.requested_at,
-            is_overdue=a.due_date < datetime.utcnow() if a.due_date and a.status == ApprovalStatus.PENDING else False,
+            is_overdue=a.due_date < datetime.now(timezone.utc) if a.due_date and a.status == ApprovalStatus.PENDING else False,
         )
         for a in approvals
     ]
@@ -481,7 +481,7 @@ async def list_pending_approvals(
         entity_type_str = a.entity_type.value if hasattr(a.entity_type, 'value') else a.entity_type
         mapped_type = entity_type_map.get(entity_type_str, entity_type_str)
         level_num = a.approval_level[-1] if a.approval_level else "1"
-        is_overdue = a.due_date < datetime.utcnow() if a.due_date else False
+        is_overdue = a.due_date < datetime.now(timezone.utc) if a.due_date else False
 
         items.append({
             "id": str(a.id),
@@ -555,7 +555,7 @@ async def get_approval_stats(
         select(func.count(ApprovalRequest.id))
         .where(
             ApprovalRequest.status == ApprovalStatus.PENDING,
-            ApprovalRequest.due_date < datetime.utcnow(),
+            ApprovalRequest.due_date < datetime.now(timezone.utc),
         )
     )
     total_overdue = overdue_result.scalar() or 0
@@ -755,7 +755,7 @@ async def submit_po_for_approval(
     po.status = POStatus.PENDING_APPROVAL.value
     po.approval_request_id = approval.id
     po.approval_level = approval.approval_level
-    po.submitted_for_approval_at = datetime.utcnow()
+    po.submitted_for_approval_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(approval)
@@ -815,7 +815,7 @@ async def approve_request(
     old_status = approval.status
     approval.status = ApprovalStatus.APPROVED.value
     approval.approved_by = current_user.id
-    approval.approved_at = datetime.utcnow()
+    approval.approved_at = datetime.now(timezone.utc)
     # Accept either 'comments' or 'notes' from frontend
     approval.approval_comments = request.comments or request.notes
 
@@ -839,7 +839,7 @@ async def approve_request(
         if po:
             po.status = POStatus.APPROVED.value
             po.approved_by = current_user.id
-            po.approved_at = datetime.utcnow()
+            po.approved_at = datetime.now(timezone.utc)
     elif approval.entity_type == ApprovalEntityType.PURCHASE_REQUISITION:
         pr_result = await db.execute(
             select(PurchaseRequisition).where(PurchaseRequisition.id == approval.entity_id)
@@ -848,7 +848,7 @@ async def approve_request(
         if pr:
             pr.status = RequisitionStatus.APPROVED.value
             pr.approved_by = current_user.id
-            pr.approved_at = datetime.utcnow()
+            pr.approved_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(approval)
@@ -898,7 +898,7 @@ async def reject_request(
     old_status = approval.status
     approval.status = ApprovalStatus.REJECTED.value
     approval.rejected_by = current_user.id
-    approval.rejected_at = datetime.utcnow()
+    approval.rejected_at = datetime.now(timezone.utc)
     approval.rejection_reason = request.reason
 
     # Create history entry
@@ -970,7 +970,7 @@ async def escalate_request(
     # Update approval
     old_status = approval.status
     approval.status = ApprovalStatus.ESCALATED.value
-    approval.escalated_at = datetime.utcnow()
+    approval.escalated_at = datetime.now(timezone.utc)
     approval.escalated_to = request.escalate_to
     approval.escalation_reason = request.reason
 
@@ -1027,7 +1027,7 @@ async def bulk_approve(
             # Approve
             approval.status = ApprovalStatus.APPROVED.value
             approval.approved_by = current_user.id
-            approval.approved_at = datetime.utcnow()
+            approval.approved_at = datetime.now(timezone.utc)
             approval.approval_comments = request.comments
 
             # Update entity
@@ -1039,7 +1039,7 @@ async def bulk_approve(
                 if po:
                     po.status = POStatus.APPROVED.value
                     po.approved_by = current_user.id
-                    po.approved_at = datetime.utcnow()
+                    po.approved_at = datetime.now(timezone.utc)
 
             # History
             history = ApprovalHistory(

@@ -2,7 +2,7 @@
 from typing import Optional
 import uuid
 from math import ceil
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 from sqlalchemy import select, func, and_, or_
@@ -400,7 +400,7 @@ async def schedule_installation(
             raise HTTPException(status_code=404, detail="Technician not found or not active")
 
         installation.technician_id = data.technician_id
-        installation.assigned_at = datetime.utcnow()
+        installation.assigned_at = datetime.now(timezone.utc)
 
     if data.notes:
         installation.notes = f"{installation.notes or ''}\n[Scheduled] {data.notes}".strip()
@@ -443,7 +443,7 @@ async def assign_technician(
         raise HTTPException(status_code=404, detail="Technician not found or not active")
 
     installation.technician_id = data.technician_id
-    installation.assigned_at = datetime.utcnow()
+    installation.assigned_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(installation)
@@ -476,7 +476,7 @@ async def start_installation(
         )
 
     installation.status = InstallationStatus.IN_PROGRESS.value
-    installation.started_at = datetime.utcnow()
+    installation.started_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(installation)
@@ -506,7 +506,7 @@ async def complete_installation(
     if installation.status == InstallationStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Installation already completed")
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     today = date.today()
 
     # Update installation details

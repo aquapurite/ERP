@@ -10,7 +10,7 @@ Provides APIs for customers to:
 - Manage addresses
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List
 from uuid import UUID
 from decimal import Decimal
@@ -115,7 +115,7 @@ class CustomerPortalService:
         if pincode and hasattr(customer, 'pincode'):
             customer.pincode = pincode
 
-        customer.updated_at = datetime.utcnow()
+        customer.updated_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(customer)
@@ -438,7 +438,7 @@ class CustomerPortalService:
             select(func.count(ServiceRequest.id))
         )
         count = (count_result.scalar() or 0) + 1
-        ticket_number = f"SR{datetime.utcnow().strftime('%Y%m')}{count:05d}"
+        ticket_number = f"SR{datetime.now(timezone.utc).strftime('%Y%m')}{count:05d}"
 
         # Get customer company_id
         cust_result = await self.db.execute(
@@ -536,10 +536,10 @@ class CustomerPortalService:
         sr.comments.append({
             "by": "CUSTOMER",
             "comment": comment,
-            "at": datetime.utcnow().isoformat()
+            "at": datetime.now(timezone.utc).isoformat()
         })
 
-        sr.updated_at = datetime.utcnow()
+        sr.updated_at = datetime.now(timezone.utc)
 
         await self.db.commit()
 
@@ -574,7 +574,7 @@ class CustomerPortalService:
 
         sr.feedback_rating = rating
         sr.feedback_comments = comments
-        sr.feedback_date = datetime.utcnow()
+        sr.feedback_date = datetime.now(timezone.utc)
 
         await self.db.commit()
 

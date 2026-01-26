@@ -1,6 +1,6 @@
 """Inventory Service for stock management operations."""
 from typing import Optional, List, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from sqlalchemy import select, func, and_, or_, update
@@ -335,7 +335,7 @@ class InventoryService:
         for item in items:
             item.status = StockItemStatus.ALLOCATED.value
             item.order_id = order_id
-            item.allocated_at = datetime.utcnow()
+            item.allocated_at = datetime.now(timezone.utc)
 
         # Update inventory summary
         await self._update_inventory_summary(
@@ -426,9 +426,9 @@ class InventoryService:
             summary.in_transit_quantity += in_transit_change
 
             if quantity_change > 0:
-                summary.last_stock_in_date = datetime.utcnow()
+                summary.last_stock_in_date = datetime.now(timezone.utc)
             elif quantity_change < 0:
-                summary.last_stock_out_date = datetime.utcnow()
+                summary.last_stock_out_date = datetime.now(timezone.utc)
         else:
             # Create new
             summary = InventorySummary(
@@ -443,7 +443,7 @@ class InventoryService:
                 in_transit_quantity=max(0, in_transit_change),
             )
             if quantity_change > 0:
-                summary.last_stock_in_date = datetime.utcnow()
+                summary.last_stock_in_date = datetime.now(timezone.utc)
             self.db.add(summary)
 
     # ==================== STOCK MOVEMENT METHODS ====================
@@ -554,7 +554,7 @@ class InventoryService:
 
     async def _generate_movement_number(self) -> str:
         """Generate unique movement number."""
-        date_part = datetime.utcnow().strftime("%Y%m%d")
+        date_part = datetime.now(timezone.utc).strftime("%Y%m%d")
         query = select(func.count()).select_from(StockMovement).where(
             StockMovement.movement_number.like(f"MOV-{date_part}%")
         )

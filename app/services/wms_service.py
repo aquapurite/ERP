@@ -1,6 +1,6 @@
 """Service for Warehouse Management System operations."""
 from typing import List, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from sqlalchemy import select, func, and_, or_
@@ -413,7 +413,7 @@ class WMSService:
 
         # Update bin counts
         bin.current_items += 1
-        bin.last_activity_at = datetime.utcnow()
+        bin.last_activity_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(stock_item)
@@ -455,12 +455,12 @@ class WMSService:
             from_bin.current_items = max(0, from_bin.current_items - 1)
 
         to_bin.current_items += 1
-        to_bin.last_activity_at = datetime.utcnow()
+        to_bin.last_activity_at = datetime.now(timezone.utc)
 
         # Update stock item
         stock_item.bin_id = to_bin_id
         stock_item.rack_location = to_bin.bin_code
-        stock_item.last_movement_date = datetime.utcnow()
+        stock_item.last_movement_date = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(stock_item)

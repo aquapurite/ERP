@@ -1,7 +1,7 @@
 """API endpoints for Call Center CRM module."""
 from typing import Optional, List
 from uuid import UUID
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -44,7 +44,7 @@ router = APIRouter()
 
 async def generate_call_id(db: AsyncSession) -> str:
     """Generate unique call ID."""
-    today = datetime.utcnow()
+    today = datetime.now(timezone.utc)
     prefix = f"CALL-{today.strftime('%Y%m%d')}"
 
     # Get count for today
@@ -176,7 +176,7 @@ async def log_call(
         customer_email=call_in.customer_email or (customer.email if customer else None),
         customer_address=call_in.customer_address,
         agent_id=current_user.id,
-        call_start_time=call_in.call_start_time or datetime.utcnow(),
+        call_start_time=call_in.call_start_time or datetime.now(timezone.utc),
         priority=call_in.priority,
         call_reason=call_in.call_reason,
         product_id=call_in.product_id,
@@ -361,7 +361,7 @@ async def complete_call(
         raise HTTPException(status_code=400, detail="Call already completed")
 
     # Calculate duration
-    end_time = datetime.utcnow()
+    end_time = datetime.now(timezone.utc)
     duration = int((end_time - call.call_start_time).total_seconds())
 
     # Update call
@@ -527,7 +527,7 @@ async def list_callbacks(
     total = count_result.scalar() or 0
 
     # Get summary counts
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     today = now.date()
 
     scheduled_count_result = await db.execute(
@@ -633,7 +633,7 @@ async def complete_callback(
         raise HTTPException(status_code=400, detail="Callback already completed")
 
     callback.status = CallbackStatus.COMPLETED.value
-    callback.completed_at = datetime.utcnow()
+    callback.completed_at = datetime.now(timezone.utc)
     callback.completed_call_id = request.completed_call_id
     callback.completion_notes = request.completion_notes
 
@@ -780,7 +780,7 @@ async def acknowledge_qa_review(
         raise HTTPException(status_code=403, detail="Only the call agent can acknowledge")
 
     review.acknowledged_by_agent = True
-    review.acknowledged_at = datetime.utcnow()
+    review.acknowledged_at = datetime.now(timezone.utc)
     review.agent_comments = request.comments
 
     await db.commit()
@@ -799,7 +799,7 @@ async def get_agent_dashboard(
 ):
     """Get agent dashboard metrics."""
     target_agent_id = agent_id or current_user.id
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     today_start = datetime.combine(today, datetime.min.time())
     today_end = datetime.combine(today, datetime.max.time())
 
@@ -845,7 +845,7 @@ async def get_agent_dashboard(
     pending_callbacks = callbacks_result.scalar() or 0
 
     # Overdue callbacks
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     overdue_result = await db.execute(
         select(func.count(CallbackSchedule.id)).where(
             and_(
@@ -883,10 +883,10 @@ async def get_call_center_dashboard(
     current_user: User = Depends(get_current_user),
 ):
     """Get overall call center dashboard."""
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     today_start = datetime.combine(today, datetime.min.time())
     today_end = datetime.combine(today, datetime.max.time())
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Today's calls
     calls_result = await db.execute(

@@ -1,7 +1,7 @@
 from typing import Optional, List
 import uuid
 from math import ceil
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends
@@ -382,7 +382,7 @@ async def approve_order(
                 # Update order with warehouse
                 order.warehouse_id = allocation_decision.warehouse_id
                 order.status = OrderStatus.ALLOCATED
-                order.allocated_at = datetime.utcnow()
+                order.allocated_at = datetime.now(timezone.utc)
 
                 # Add status history
                 from app.models.order import OrderStatusHistory
@@ -655,7 +655,7 @@ async def create_d2c_order(
                 allocated_status = OrderStatus.ALLOCATED.value if hasattr(OrderStatus.ALLOCATED, 'value') else "ALLOCATED"
 
                 order.status = confirmed_status
-                order.confirmed_at = datetime.utcnow()
+                order.confirmed_at = datetime.now(timezone.utc)
 
                 status_history = OrderStatusHistory(
                     order_id=order_id,  # Use stored value
@@ -704,7 +704,7 @@ async def create_d2c_order(
 
                     order.warehouse_id = allocation_decision.warehouse_id
                     order.status = allocated_status
-                    order.allocated_at = datetime.utcnow()
+                    order.allocated_at = datetime.now(timezone.utc)
 
                     status_history = OrderStatusHistory(
                         order_id=order_id,  # Use stored value to avoid lazy loading
