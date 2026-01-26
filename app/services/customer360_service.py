@@ -1,7 +1,7 @@
 """
 Customer 360 Service - Aggregates complete customer journey data.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from uuid import UUID
 
@@ -361,7 +361,7 @@ class Customer360Service:
                 to_status=get_enum_value(h.to_status),
                 notes=h.notes,
                 changed_by=str(h.changed_by) if h.changed_by else None,
-                created_at=datetime.utcnow(),  # No created_at in model, use current time
+                created_at=datetime.now(timezone.utc),  # No created_at in model, use current time
             )
             for h in histories
         ]
@@ -402,7 +402,7 @@ class Customer360Service:
         avg_rating = sum(ratings) / len(ratings) if ratings else None
 
         # Customer age in days
-        customer_since_days = (datetime.utcnow() - customer.created_at).days
+        customer_since_days = (datetime.now(timezone.utc) - customer.created_at).days
 
         return Customer360Stats(
             total_orders=len(orders),
@@ -473,7 +473,7 @@ class Customer360Service:
         # Add service requests
         for sr in service_requests:
             # Use assigned_at as the timestamp since ServiceRequest doesn't have created_at
-            sr_timestamp = sr.assigned_at or sr.scheduled_date or datetime.utcnow()
+            sr_timestamp = sr.assigned_at or sr.scheduled_date or datetime.now(timezone.utc)
             events.append(Customer360Timeline(
                 event_type="SERVICE",
                 event_id=sr.id,
@@ -560,7 +560,7 @@ class Customer360Service:
     def _map_service_request(self, sr: ServiceRequest) -> Customer360ServiceRequestSummary:
         """Map ServiceRequest to summary schema."""
         # Use assigned_at as created_at since ServiceRequest doesn't have created_at
-        sr_created = sr.assigned_at or datetime.utcnow()
+        sr_created = sr.assigned_at or datetime.now(timezone.utc)
         return Customer360ServiceRequestSummary(
             id=sr.id,
             ticket_number=sr.ticket_number,
