@@ -1,7 +1,7 @@
 """Audit Logs API endpoints."""
 from typing import Optional
 from uuid import UUID
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy import select, func, desc, and_
@@ -140,7 +140,7 @@ async def get_audit_stats(
     """Get audit log statistics for the specified number of days."""
     from datetime import timedelta
 
-    start_date = datetime.now() - timedelta(days=days)
+    start_date = datetime.now(timezone.utc) - timedelta(days=days)
 
     # Total logs in period
     total_query = select(func.count()).select_from(AuditLog).where(

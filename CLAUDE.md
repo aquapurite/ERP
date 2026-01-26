@@ -699,6 +699,48 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/dashboard/your-page
 
 ---
 
+## Rule 11: Timezone-Aware Datetime (CRITICAL)
+
+### Problem This Solves
+PostgreSQL TIMESTAMPTZ columns return timezone-aware datetimes, but Python's `datetime.utcnow()` and `datetime.now()` return timezone-naive datetimes. Mixing these causes `TypeError: can't subtract offset-naive and offset-aware datetimes`.
+
+### Rule
+**NEVER use `datetime.utcnow()` or `datetime.now()`. ALWAYS use `datetime.now(timezone.utc)`.**
+
+```python
+# ❌ BAD - Timezone-naive datetime
+from datetime import datetime
+
+created_at = datetime.utcnow()  # Returns naive datetime
+now = datetime.now()  # Returns naive datetime
+
+# Comparison with DB timestamp fails:
+days_since = (datetime.utcnow() - customer.created_at).days  # TypeError!
+
+# ✅ GOOD - Timezone-aware datetime
+from datetime import datetime, timezone
+
+created_at = datetime.now(timezone.utc)  # Returns aware datetime
+now = datetime.now(timezone.utc)
+
+# Comparison works:
+days_since = (datetime.now(timezone.utc) - customer.created_at).days  # Works!
+```
+
+### Exception
+Using `datetime.now().strftime()` or `.year`/`.month` for display/formatting is OK since you're extracting strings/integers, not comparing with DB timestamps.
+
+### Checklist
+- [ ] Import includes `timezone`: `from datetime import datetime, timezone`
+- [ ] All `datetime.utcnow()` replaced with `datetime.now(timezone.utc)`
+- [ ] All `datetime.now()` (without args) replaced with `datetime.now(timezone.utc)`
+- [ ] Test any code that compares Python datetime with database timestamps
+
+### Files Fixed (2026-01-26)
+Fixed 66 files across the codebase. This issue was systemic.
+
+---
+
 ## Quick Reference: Common Mistakes to Avoid
 
 | Mistake | Impact | Prevention |
@@ -710,6 +752,7 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/dashboard/your-page
 | UUID not converted to string | Serialization error | Use str() or let Pydantic handle |
 | Alias in wrong direction | API confusion | Document aliases, minimize use |
 | Transform fields in frontend | Hidden bugs | Use backend names directly |
+| **datetime.utcnow() or datetime.now()** | **TypeError on comparison** | **Use datetime.now(timezone.utc)** |
 
 ---
 

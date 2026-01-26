@@ -1,5 +1,5 @@
 """API endpoints for Fixed Assets module."""
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Optional, List
 from uuid import UUID
 from decimal import Decimal
@@ -735,7 +735,7 @@ async def run_depreciation(
             accumulated_depreciation=new_accumulated,
             is_posted=False,
             processed_by=current_user.id,
-            processed_at=datetime.now(),
+            processed_at=datetime.now(timezone.utc),
         )
 
         db.add(entry)
@@ -973,7 +973,7 @@ async def approve_transfer(
 
     transfer.status = TransferStatus.IN_TRANSIT.value
     transfer.approved_by = current_user.id
-    transfer.approved_at = datetime.now()
+    transfer.approved_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(transfer)
@@ -1029,7 +1029,7 @@ async def complete_transfer(
     asset.location_details = transfer.to_location_details
 
     transfer.status = TransferStatus.COMPLETED.value
-    transfer.completed_at = datetime.now()
+    transfer.completed_at = datetime.now(timezone.utc)
     transfer.received_by = current_user.id
 
     await db.commit()

@@ -9,7 +9,7 @@ Statistical algorithms for predictive analytics:
 No external AI APIs - all computations done locally.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import List, Dict, Optional, Tuple
 from uuid import UUID
@@ -644,7 +644,7 @@ class InsightsService:
             last_sale = last_sale_map.get(product_id)
 
             if last_sale:
-                days_since_sale = (datetime.now() - last_sale).days
+                days_since_sale = (datetime.now(timezone.utc) - last_sale).days
             else:
                 days_since_sale = 365  # Never sold
 
@@ -708,7 +708,7 @@ class InsightsService:
         # Calculate RFM scores
         customers_data = []
         for row in rows:
-            days_since_order = (datetime.now() - row.last_order_date).days if row.last_order_date else 365
+            days_since_order = (datetime.now(timezone.utc) - row.last_order_date).days if row.last_order_date else 365
 
             customers_data.append({
                 "id": str(row.id),

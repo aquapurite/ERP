@@ -139,7 +139,7 @@ class InvoiceService:
     ) -> str:
         """Generate unique invoice number from sequence."""
         # Get current financial year
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         if now.month >= 4:
             financial_year = f"{now.year}-{str(now.year + 1)[2:]}"
         else:

@@ -9,7 +9,7 @@ This service handles automatic journal entry creation for business events:
 - Payment Made → Debit AP, Credit Cash/Bank
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
 

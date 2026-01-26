@@ -532,7 +532,7 @@ class DemandPlannerService:
 
     async def generate_forecast_code(self) -> str:
         """Generate unique forecast code."""
-        today = datetime.now()
+        today = datetime.now(timezone.utc)
         prefix = f"FC{today.strftime('%Y%m%d')}"
 
         # Get count of forecasts created today

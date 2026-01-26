@@ -10,7 +10,7 @@ Predicts service needs for installed water purifiers:
 Uses installation history, service patterns, and component lifecycle data.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import List, Dict, Optional, Tuple
 from uuid import UUID

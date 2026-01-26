@@ -112,7 +112,7 @@ async def create_payment_order(
             """),
             {
                 "razorpay_order_id": payment_order.razorpay_order_id,
-                "updated_at": datetime.now(),
+                "updated_at": datetime.now(timezone.utc),
                 "order_id": data.order_id
             }
         )

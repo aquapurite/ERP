@@ -10,7 +10,7 @@ Predicts customer payment behavior:
 Uses customer payment history and behavioral patterns.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import List, Dict, Optional, Tuple
 from uuid import UUID

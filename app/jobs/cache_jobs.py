@@ -7,7 +7,7 @@ and warming popular pincode caches.
 
 import logging
 from typing import List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ async def refresh_serviceability_cache():
     global _serviceability_cache, _cache_last_updated
 
     logger.info("Starting serviceability cache refresh...")
-    start_time = datetime.now()
+    start_time = datetime.now(timezone.utc)
 
     try:
         # Import here to avoid circular imports
@@ -129,9 +129,9 @@ async def refresh_serviceability_cache():
 
             # Always update in-memory cache as fallback
             _serviceability_cache = cache_data
-            _cache_last_updated = datetime.now()
+            _cache_last_updated = datetime.now(timezone.utc)
 
-            elapsed = (datetime.now() - start_time).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
             logger.info(
                 f"Serviceability cache refresh completed: "
                 f"{len(cache_data)} pincodes in {elapsed:.2f}s"
@@ -150,7 +150,7 @@ async def warm_popular_pincodes():
     always have fresh data available instantly.
     """
     logger.info("Starting popular pincodes cache warming...")
-    start_time = datetime.now()
+    start_time = datetime.now(timezone.utc)
     warmed_count = 0
 
     try:
@@ -213,7 +213,7 @@ async def warm_popular_pincodes():
             if redis_client:
                 await redis_client.close()
 
-            elapsed = (datetime.now() - start_time).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
             logger.info(
                 f"Popular pincodes cache warming completed: "
                 f"{warmed_count} pincodes in {elapsed:.2f}s"
@@ -234,7 +234,7 @@ async def sync_inventory_cache():
     global _inventory_cache
 
     logger.info("Starting inventory cache sync...")
-    start_time = datetime.now()
+    start_time = datetime.now(timezone.utc)
 
     try:
         from app.database import get_db_session
@@ -288,7 +288,7 @@ async def sync_inventory_cache():
             # Update in-memory cache
             _inventory_cache = {k: v["available"] for k, v in inventory_data.items()}
 
-            elapsed = (datetime.now() - start_time).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
             logger.info(
                 f"Inventory cache sync completed: "
                 f"{len(inventory_data)} items in {elapsed:.2f}s"

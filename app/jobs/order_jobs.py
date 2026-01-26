@@ -31,7 +31,7 @@ async def check_pending_payments():
     - expired -> Cancel order
     """
     logger.info("Starting pending payments check...")
-    start_time = datetime.now()
+    start_time = datetime.now(timezone.utc)
     processed_count = 0
     updated_count = 0
 
@@ -48,7 +48,7 @@ async def check_pending_payments():
 
         async with get_db_session() as session:
             # Find orders with pending payment (older than 5 minutes)
-            cutoff_time = datetime.now() - timedelta(minutes=5)
+            cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=5)
 
             result = await session.execute(
                 text("""
@@ -110,7 +110,7 @@ async def check_pending_payments():
                                 {
                                     "status": new_status,
                                     "payment_id": payment["id"],
-                                    "updated_at": datetime.now(),
+                                    "updated_at": datetime.now(timezone.utc),
                                     "order_id": order.id
                                 }
                             )
@@ -122,7 +122,7 @@ async def check_pending_payments():
 
                     else:
                         # No payment attempts - check if order is expired
-                        order_age = datetime.now() - order.created_at
+                        order_age = datetime.now(timezone.utc) - order.created_at
                         if order_age > timedelta(hours=24):
                             await session.execute(
                                 text("""
@@ -153,7 +153,7 @@ async def check_pending_payments():
 
             await session.commit()
 
-        elapsed = (datetime.now() - start_time).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
         logger.info(
             f"Pending payments check completed: "
             f"processed {processed_count}, updated {updated_count} "
@@ -181,7 +181,7 @@ async def process_abandoned_carts():
     - Expired (> 24 hours): Release inventory, delete cart
     """
     logger.info("Starting abandoned carts processing...")
-    start_time = datetime.now()
+    start_time = datetime.now(timezone.utc)
     reminder_count = 0
     cleaned_count = 0
 
@@ -191,8 +191,8 @@ async def process_abandoned_carts():
 
         async with get_db_session() as session:
             # Find abandoned carts (1-24 hours old)
-            abandoned_cutoff = datetime.now() - timedelta(hours=1)
-            expired_cutoff = datetime.now() - timedelta(hours=24)
+            abandoned_cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
+            expired_cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
 
             # Get carts for reminder (1-24 hours old, reminder not sent)
             result = await session.execute(
@@ -243,7 +243,7 @@ async def process_abandoned_carts():
                             SET reminder_sent = true, reminder_sent_at = :now
                             WHERE id = :cart_id
                         """),
-                        {"now": datetime.now(), "cart_id": cart.id}
+                        {"now": datetime.now(timezone.utc), "cart_id": cart.id}
                     )
                     reminder_count += 1
 
@@ -292,13 +292,13 @@ async def process_abandoned_carts():
                     AND is_active = true
                     RETURNING id
                 """),
-                {"now": datetime.now(), "expired_cutoff": expired_cutoff}
+                {"now": datetime.now(timezone.utc), "expired_cutoff": expired_cutoff}
             )
             cleaned_count = result.rowcount or 0
 
             await session.commit()
 
-        elapsed = (datetime.now() - start_time).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
         logger.info(
             f"Abandoned carts processing completed: "
             f"sent {reminder_count} reminders, cleaned {cleaned_count} carts "
@@ -355,8 +355,8 @@ async def queue_cart_reminder_email(
                         "cart_total": float(cart_total),
                         "cart_url": "https://aquapurite.com/cart"
                     }),
-                    "scheduled_for": datetime.now(),
-                    "created_at": datetime.now()
+                    "scheduled_for": datetime.now(timezone.utc),
+                    "created_at": datetime.now(timezone.utc)
                 }
             )
             await session.commit()

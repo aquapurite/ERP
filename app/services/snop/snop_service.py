@@ -174,7 +174,7 @@ class SNOPService:
 
     async def generate_supply_plan_code(self) -> str:
         """Generate unique supply plan code."""
-        today = datetime.now()
+        today = datetime.now(timezone.utc)
         prefix = f"SP{today.strftime('%Y%m%d')}"
 
         result = await self.db.execute(
@@ -484,7 +484,7 @@ class SNOPService:
 
     async def generate_scenario_code(self) -> str:
         """Generate unique scenario code."""
-        today = datetime.now()
+        today = datetime.now(timezone.utc)
         prefix = f"SC{today.strftime('%Y%m%d')}"
 
         result = await self.db.execute(

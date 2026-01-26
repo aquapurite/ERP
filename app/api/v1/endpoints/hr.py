@@ -1,7 +1,7 @@
 """API endpoints for HR & Payroll management with Indian compliance."""
 from typing import Optional, List
 from uuid import UUID
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -824,7 +824,7 @@ async def check_in(
         emp_id = emp.id
 
     today = date.today()
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     # Check if already checked in today
     existing = await db.execute(
@@ -893,7 +893,7 @@ async def check_out(
         emp_id = emp.id
 
     today = date.today()
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     # Find today's attendance
     result = await db.execute(
@@ -1199,7 +1199,7 @@ async def approve_leave_request(
     if action_in.action == "APPROVE":
         leave_req.status = LeaveStatus.APPROVED.value
         leave_req.approved_by = current_user.id
-        leave_req.approved_on = datetime.now()
+        leave_req.approved_on = datetime.now(timezone.utc)
 
         # Deduct from balance
         fy = get_financial_year(leave_req.from_date)
@@ -1220,7 +1220,7 @@ async def approve_leave_request(
     else:  # REJECT
         leave_req.status = LeaveStatus.REJECTED.value
         leave_req.approved_by = current_user.id
-        leave_req.approved_on = datetime.now()
+        leave_req.approved_on = datetime.now(timezone.utc)
         leave_req.rejection_reason = action_in.rejection_reason
 
     await db.commit()
@@ -1387,7 +1387,7 @@ async def process_payroll(
         financial_year=payroll_in.financial_year,
         status=PayrollStatus.PROCESSING,
         processed_by=current_user.id,
-        processed_at=datetime.now(),
+        processed_at=datetime.now(timezone.utc),
     )
     db.add(payroll)
     await db.flush()
@@ -1541,7 +1541,7 @@ async def approve_payroll(
 
     payroll.status = PayrollStatus.APPROVED.value
     payroll.approved_by = current_user.id
-    payroll.approved_at = datetime.now()
+    payroll.approved_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(payroll)
@@ -2640,7 +2640,7 @@ async def submit_self_review(
 
     appraisal.self_rating = review_in.self_rating
     appraisal.self_comments = review_in.self_comments
-    appraisal.self_review_date = datetime.now()
+    appraisal.self_review_date = datetime.now(timezone.utc)
     appraisal.status = AppraisalStatus.MANAGER_REVIEW.value
 
     await db.commit()
@@ -2689,7 +2689,7 @@ async def submit_manager_review(
 
     appraisal.manager_rating = review_in.manager_rating
     appraisal.manager_comments = review_in.manager_comments
-    appraisal.manager_review_date = datetime.now()
+    appraisal.manager_review_date = datetime.now(timezone.utc)
     appraisal.strengths = review_in.strengths
     appraisal.areas_of_improvement = review_in.areas_of_improvement
     appraisal.development_plan = review_in.development_plan
@@ -2734,7 +2734,7 @@ async def submit_hr_review(
     appraisal.performance_band = review_in.performance_band
     appraisal.hr_comments = review_in.hr_comments
     appraisal.hr_reviewed_by = current_user.id
-    appraisal.hr_review_date = datetime.now()
+    appraisal.hr_review_date = datetime.now(timezone.utc)
     appraisal.status = AppraisalStatus.COMPLETED.value
 
     await db.commit()
@@ -2915,7 +2915,7 @@ async def get_performance_dashboard(
     ]
 
     # Recent feedback (last 30 days)
-    thirty_days_ago = datetime.now() - timedelta(days=30)
+    thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
     recent_feedback_result = await db.execute(
         select(func.count(PerformanceFeedback.id))
         .where(PerformanceFeedback.created_at >= thirty_days_ago)
