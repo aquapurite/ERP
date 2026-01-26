@@ -250,92 +250,102 @@ export default function FranchiseeDetailPage({ params }: { params: Promise<{ id:
     auditor_name: '',
   });
 
-  // Fetch franchisee details
-  const { data: franchisee, isLoading } = useQuery<FranchiseeDetail>({
+  // Fetch franchisee details from REAL API
+  const { data: franchisee, isLoading, error } = useQuery<FranchiseeDetail>({
     queryKey: ['franchisee', id],
     queryFn: async () => {
-      // Simulated API response
+      const data = await franchiseesApi.getById(id);
+      // Map backend response to frontend interface
       return {
-        id,
-        code: 'FRC-001',
-        name: 'Bengaluru South Franchise',
-        owner_name: 'Rajesh Kumar',
-        phone: '+91 98765 43210',
-        email: 'rajesh@bsfranchise.com',
-        status: 'ACTIVE',
-        territory: 'Bengaluru South',
+        id: data.id,
+        code: data.franchisee_code,
+        name: data.name,
+        owner_name: data.contact_person,
+        phone: data.phone,
+        email: data.email,
+        status: data.status,
+        territory: data.legal_name || data.name,
         address: {
-          line1: '456 HSR Layout',
-          line2: 'Sector 7',
-          city: 'Bengaluru',
-          state: 'Karnataka',
-          pincode: '560102',
+          line1: data.address_line1,
+          line2: '',
+          city: data.city,
+          state: data.state,
+          pincode: data.pincode,
         },
-        serviceable_pincodes: ['560102', '560103', '560104', '560105', '560068', '560076'],
+        serviceable_pincodes: [], // Loaded separately via serviceability API
         bank_details: {
-          bank_name: 'ICICI Bank',
-          account_number: 'XXXX XXXX 5678',
-          ifsc_code: 'ICIC0001234',
+          bank_name: data.bank_name || '',
+          account_number: data.bank_account_number || '',
+          ifsc_code: data.bank_ifsc || '',
         },
-        contracts: [
-          {
-            id: '1',
-            type: 'FRANCHISE_AGREEMENT',
-            contract_number: 'FA-2024-001',
-            start_date: '2024-01-01',
-            end_date: '2026-12-31',
-            royalty_percentage: 5,
-            security_deposit: 500000,
-            status: 'ACTIVE',
-            signed_at: '2023-12-15',
-            terms: '3-year franchise agreement with exclusive territory rights',
-          },
-          {
-            id: '2',
-            type: 'AMENDMENT',
-            contract_number: 'AMD-2024-001',
-            start_date: '2024-03-01',
-            end_date: '2026-12-31',
-            royalty_percentage: 4.5,
-            security_deposit: 500000,
-            status: 'ACTIVE',
-            signed_at: '2024-02-25',
-            terms: 'Royalty reduction for achieving Q1 targets',
-          },
-        ],
-        training_modules: [
-          { id: '1', name: 'Franchisee Onboarding', description: 'Complete onboarding program', type: 'ONBOARDING', duration_hours: 16, status: 'COMPLETED', progress: 100, score: 92, passing_score: 80, completed_at: '2024-01-10', certificate_url: '/certificates/1.pdf' },
-          { id: '2', name: 'Product Knowledge - Water Purifiers', description: 'Technical training on water purifier products', type: 'PRODUCT', duration_hours: 8, status: 'COMPLETED', progress: 100, score: 88, passing_score: 75, completed_at: '2024-01-20' },
-          { id: '3', name: 'Service Excellence', description: 'Customer service best practices', type: 'SERVICE', duration_hours: 4, status: 'IN_PROGRESS', progress: 65, passing_score: 80, due_date: '2024-04-15' },
-          { id: '4', name: 'Sales Techniques', description: 'Advanced selling skills', type: 'SALES', duration_hours: 6, status: 'NOT_STARTED', progress: 0, passing_score: 75, due_date: '2024-05-01' },
-          { id: '5', name: 'Compliance & Safety', description: 'Regulatory compliance training', type: 'COMPLIANCE', duration_hours: 4, status: 'NOT_STARTED', progress: 0, passing_score: 90, due_date: '2024-06-01' },
-        ],
-        audits: [
-          { id: '1', audit_number: 'AUD-2024-001', type: 'OPERATIONAL', scheduled_date: '2024-02-15', completed_date: '2024-02-15', status: 'COMPLETED', score: 85, max_score: 100, findings_count: 3, critical_findings: 0, auditor_name: 'Priya Sharma', next_audit_date: '2024-05-15' },
-          { id: '2', audit_number: 'AUD-2024-002', type: 'COMPLIANCE', scheduled_date: '2024-03-20', status: 'SCHEDULED', max_score: 100, findings_count: 0, critical_findings: 0, auditor_name: 'Amit Patel' },
-        ],
-        support_tickets: [
-          { id: '1', ticket_number: 'TKT-10001', subject: 'Inventory sync issue', category: 'TECHNICAL', priority: 'HIGH', status: 'RESOLVED', description: 'Stock not reflecting in system', created_at: '2024-03-01', updated_at: '2024-03-02', resolved_at: '2024-03-02', assigned_to: 'Tech Support', messages_count: 5 },
-          { id: '2', ticket_number: 'TKT-10015', subject: 'New product pricing query', category: 'BILLING', priority: 'MEDIUM', status: 'OPEN', description: 'Need clarification on new product margins', created_at: '2024-03-10', updated_at: '2024-03-10', messages_count: 2 },
-          { id: '3', ticket_number: 'TKT-10018', subject: 'Marketing materials request', category: 'OPERATIONAL', priority: 'LOW', status: 'IN_PROGRESS', description: 'Requesting updated brochures and banners', created_at: '2024-03-12', updated_at: '2024-03-13', assigned_to: 'Marketing', messages_count: 3 },
-        ],
+        contracts: [], // Loaded separately via contracts query
+        training_modules: [], // Training not implemented in backend yet
+        audits: [], // Loaded separately via audits query
+        support_tickets: [], // Loaded separately via support tickets query
         stats: {
-          total_revenue: 4500000,
-          this_month_revenue: 380000,
-          total_orders: 856,
-          active_technicians: 8,
-          avg_rating: 4.6,
-          total_reviews: 234,
-          royalty_due: 22500,
-          royalty_paid: 180000,
-          training_completion: 60,
-          compliance_score: 92,
+          total_revenue: Number(data.total_revenue) || 0,
+          this_month_revenue: 0, // Not in basic response
+          total_orders: data.total_orders || 0,
+          active_technicians: 0, // Not in basic response
+          avg_rating: Number(data.customer_rating) || 0,
+          total_reviews: 0, // Not in basic response
+          royalty_due: 0, // Not in basic response
+          royalty_paid: 0, // Not in basic response
+          training_completion: 0, // Not in basic response
+          compliance_score: Number(data.compliance_score) || 0,
         },
-        created_at: '2024-01-01',
-        updated_at: '2024-03-15',
+        created_at: data.created_at,
+        updated_at: data.updated_at,
       };
     },
   });
+
+  // Fetch support tickets for this franchisee
+  const { data: supportTicketsData } = useQuery({
+    queryKey: ['franchisee-support-tickets', id],
+    queryFn: () => franchiseesApi.listSupportTickets({ franchisee_id: id, limit: 50 }),
+    enabled: !!id,
+  });
+
+  // Fetch audits for this franchisee
+  const { data: auditsData } = useQuery({
+    queryKey: ['franchisee-audits', id],
+    queryFn: () => franchiseesApi.listAudits({ franchisee_id: id, limit: 50 }),
+    enabled: !!id,
+  });
+
+  // Merge related data into franchisee object for display
+  const franchiseeWithRelated = franchisee ? {
+    ...franchisee,
+    support_tickets: (supportTicketsData?.items || []).map((t: Record<string, unknown>) => ({
+      id: t.id,
+      ticket_number: t.ticket_number,
+      subject: t.subject,
+      category: t.category,
+      priority: t.priority,
+      status: t.status,
+      description: t.description,
+      created_at: t.created_at,
+      updated_at: t.updated_at,
+      resolved_at: t.resolved_at,
+      assigned_to: t.assigned_to_name || t.assigned_to,
+      messages_count: t.comments_count || 0,
+    })),
+    audits: (auditsData?.items || []).map((a: Record<string, unknown>) => ({
+      id: a.id,
+      audit_number: a.audit_number,
+      type: a.audit_type,
+      scheduled_date: a.scheduled_date,
+      completed_date: a.actual_date,
+      status: a.status,
+      score: a.overall_score,
+      max_score: 100,
+      findings_count: Array.isArray(a.findings) ? a.findings.length : 0,
+      critical_findings: Array.isArray(a.non_conformities) ? a.non_conformities.length : 0,
+      auditor_name: a.auditor_name,
+      next_audit_date: a.follow_up_date,
+    })),
+  } : null;
 
   // Mutations
   const createTicketMutation = useMutation({
@@ -394,10 +404,11 @@ export default function FranchiseeDetailPage({ params }: { params: Promise<{ id:
     );
   }
 
-  if (!franchisee) {
+  if (error || !franchisee) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen">
-        <h2 className="text-xl font-semibold">Franchisee not found</h2>
+        <h2 className="text-xl font-semibold">{error ? 'Failed to load franchisee' : 'Franchisee not found'}</h2>
+        <p className="text-muted-foreground mt-2">{error ? 'Please try again later' : 'The requested franchisee does not exist'}</p>
         <Button className="mt-4" onClick={() => router.back()}>
           Go Back
         </Button>
@@ -766,7 +777,7 @@ export default function FranchiseeDetailPage({ params }: { params: Promise<{ id:
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {franchisee.audits.map((audit) => (
+                  {(franchiseeWithRelated?.audits || []).map((audit: Audit) => (
                     <TableRow key={audit.id}>
                       <TableCell className="font-mono text-sm">{audit.audit_number}</TableCell>
                       <TableCell>{audit.type}</TableCell>
@@ -801,6 +812,13 @@ export default function FranchiseeDetailPage({ params }: { params: Promise<{ id:
                       </TableCell>
                     </TableRow>
                   ))}
+                  {(franchiseeWithRelated?.audits || []).length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                        No audits found for this franchisee
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -821,7 +839,7 @@ export default function FranchiseeDetailPage({ params }: { params: Promise<{ id:
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {franchisee.support_tickets.map((ticket) => (
+                {(franchiseeWithRelated?.support_tickets || []).map((ticket: SupportTicket) => (
                   <div key={ticket.id} className="border rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-3">
@@ -862,6 +880,11 @@ export default function FranchiseeDetailPage({ params }: { params: Promise<{ id:
                     </div>
                   </div>
                 ))}
+                {(franchiseeWithRelated?.support_tickets || []).length === 0 && (
+                  <div className="text-center text-muted-foreground py-8">
+                    No support tickets found for this franchisee
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
