@@ -114,6 +114,10 @@ class Settings(BaseSettings):
     DIGIPIN_API_URL: str = "https://digipin.gov.in/api"  # DigiPin API base URL
     DIGIPIN_API_KEY: str = ""  # DigiPin API key (if required)
 
+    # Cloudflare Turnstile CAPTCHA Settings
+    TURNSTILE_SECRET_KEY: str = ""  # Cloudflare Turnstile secret key for server verification
+    TURNSTILE_ENABLED: bool = True  # Set to False to disable CAPTCHA verification
+
     @field_validator('CORS_ORIGINS', mode='before')
     @classmethod
     def parse_cors_origins(cls, v):

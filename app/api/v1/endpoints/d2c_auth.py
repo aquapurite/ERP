@@ -27,6 +27,7 @@ from app.models.order import Order
 from app.models.wishlist import WishlistItem
 from app.models.product import Product, ProductImage
 from app.services.otp_service import OTPService, send_otp_sms
+from app.services.captcha_service import verify_turnstile_token
 from app.schemas.d2c_auth import (
     SendOTPRequest,
     SendOTPResponse,
@@ -194,12 +195,27 @@ def generate_customer_code(phone: str) -> str:
 @router.post("/send-otp", response_model=SendOTPResponse)
 async def send_otp(
     request: SendOTPRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """
     Send OTP to customer phone number.
     Works for both login and registration.
+    Requires CAPTCHA verification to prevent SMS bombing.
     """
+    # Verify CAPTCHA token first (prevents SMS bombing attacks)
+    client_ip = http_request.client.host if http_request.client else None
+    captcha_valid = await verify_turnstile_token(request.captcha_token, client_ip)
+
+    if not captcha_valid:
+        logger.warning(f"CAPTCHA verification failed for phone {request.phone[-4:].rjust(10, '*')}")
+        return SendOTPResponse(
+            success=False,
+            message="CAPTCHA verification failed. Please try again.",
+            expires_in_seconds=0,
+            resend_in_seconds=0,
+        )
+
     otp_service = OTPService(db)
 
     # Check cooldown

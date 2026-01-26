@@ -448,13 +448,16 @@ export const companyApi = {
 
 // Auth API - D2C customer authentication
 export const authApi = {
-  sendOTP: async (phone: string): Promise<{
+  sendOTP: async (phone: string, captchaToken?: string): Promise<{
     success: boolean;
     message: string;
     expires_in_seconds: number;
     resend_in_seconds: number;
   }> => {
-    const { data } = await storefrontClient.post(`${API_PATH}/d2c/auth/send-otp`, { phone });
+    const { data } = await storefrontClient.post(`${API_PATH}/d2c/auth/send-otp`, {
+      phone,
+      captcha_token: captchaToken,
+    });
     return data;
   },
 

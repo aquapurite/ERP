@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Turnstile, TurnstileRef } from '@/components/ui/turnstile';
 import { toast } from 'sonner';
 import { authApi } from '@/lib/storefront/api';
 import { useAuthStore } from '@/lib/storefront/auth-store';
@@ -34,8 +35,10 @@ function LoginContent() {
   const [loading, setLoading] = useState(false);
   const [resendTimer, setResendTimer] = useState(0);
   const [error, setError] = useState('');
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const turnstileRef = useRef<TurnstileRef>(null);
 
   // Redirect if already logged in
   useEffect(() => {
@@ -69,11 +72,16 @@ function LoginContent() {
       return;
     }
 
+    if (!captchaToken) {
+      setError('Please complete the CAPTCHA verification');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
     try {
-      const response = await authApi.sendOTP(phone);
+      const response = await authApi.sendOTP(phone, captchaToken);
 
       if (response.success) {
         setStep('otp');
@@ -83,9 +91,15 @@ function LoginContent() {
         setTimeout(() => otpRefs.current[0]?.focus(), 100);
       } else {
         setError(response.message);
+        // Reset captcha on error
+        turnstileRef.current?.reset();
+        setCaptchaToken(null);
       }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to send OTP. Please try again.');
+      // Reset captcha on error
+      turnstileRef.current?.reset();
+      setCaptchaToken(null);
     } finally {
       setLoading(false);
     }
@@ -222,15 +236,29 @@ function LoginContent() {
                     placeholder="Enter 10-digit number"
                     className="rounded-l-none"
                     autoFocus
-                    onKeyDown={(e) => e.key === 'Enter' && handleSendOTP()}
+                    onKeyDown={(e) => e.key === 'Enter' && captchaToken && handleSendOTP()}
                   />
                 </div>
                 {error && <p className="text-sm text-red-500">{error}</p>}
               </div>
 
+              {/* CAPTCHA verification */}
+              <Turnstile
+                ref={turnstileRef}
+                onSuccess={(token) => setCaptchaToken(token)}
+                onError={() => {
+                  setCaptchaToken(null);
+                  toast.error('CAPTCHA verification failed. Please try again.');
+                }}
+                onExpire={() => {
+                  setCaptchaToken(null);
+                }}
+                className="flex justify-center"
+              />
+
               <Button
                 onClick={handleSendOTP}
-                disabled={loading || phone.length !== 10}
+                disabled={loading || phone.length !== 10 || !captchaToken}
                 className="w-full"
                 size="lg"
               >

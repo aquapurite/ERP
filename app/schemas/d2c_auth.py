@@ -13,6 +13,7 @@ import re
 class SendOTPRequest(BaseModel):
     """Request to send OTP."""
     phone: str = Field(..., description="Customer phone number (10 digits)")
+    captcha_token: Optional[str] = Field(None, description="Cloudflare Turnstile CAPTCHA token")
 
     @field_validator("phone")
     @classmethod
