@@ -51,7 +51,7 @@ export function ReviewCard({ review }: ReviewCardProps) {
   };
 
   const renderStars = (rating: number) => (
-    <div className="flex gap-0.5">
+    <div className="flex gap-0.5" role="img" aria-label={`Rated ${rating} out of 5 stars`}>
       {[1, 2, 3, 4, 5].map((star) => (
         <Star
           key={star}
@@ -60,6 +60,7 @@ export function ReviewCard({ review }: ReviewCardProps) {
               ? 'fill-yellow-400 text-yellow-400'
               : 'fill-gray-200 text-gray-200'
           }`}
+          aria-hidden="true"
         />
       ))}
     </div>

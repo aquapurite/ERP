@@ -100,7 +100,7 @@ export default function CartDrawer() {
 
                         {/* Quantity Controls */}
                         <div className="flex items-center justify-between mt-2">
-                          <div className="flex items-center border rounded-md">
+                          <div className="flex items-center border rounded-md" role="group" aria-label={`Quantity controls for ${item.product.name}`}>
                             <Button
                               variant="ghost"
                               size="icon"
@@ -108,10 +108,11 @@ export default function CartDrawer() {
                               onClick={() =>
                                 updateQuantity(item.id, item.quantity - 1)
                               }
+                              aria-label={`Decrease quantity of ${item.product.name}`}
                             >
-                              <Minus className="h-3 w-3" />
+                              <Minus className="h-3 w-3" aria-hidden="true" />
                             </Button>
-                            <span className="w-8 text-center text-sm">
+                            <span className="w-8 text-center text-sm" aria-label={`Quantity: ${item.quantity}`}>
                               {item.quantity}
                             </span>
                             <Button
@@ -121,8 +122,9 @@ export default function CartDrawer() {
                               onClick={() =>
                                 updateQuantity(item.id, item.quantity + 1)
                               }
+                              aria-label={`Increase quantity of ${item.product.name}`}
                             >
-                              <Plus className="h-3 w-3" />
+                              <Plus className="h-3 w-3" aria-hidden="true" />
                             </Button>
                           </div>
                           <Button
@@ -130,8 +132,9 @@ export default function CartDrawer() {
                             size="icon"
                             className="h-7 w-7 text-destructive"
                             onClick={() => removeItem(item.id)}
+                            aria-label={`Remove ${item.product.name} from cart`}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-4 w-4" aria-hidden="true" />
                           </Button>
                         </div>
                       </div>

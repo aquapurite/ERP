@@ -110,28 +110,35 @@ export function WriteReviewForm({
     }
   };
 
-  const renderStarSelector = () => (
-    <div className="flex gap-1">
-      {[1, 2, 3, 4, 5].map((star) => (
-        <button
-          key={star}
-          type="button"
-          onClick={() => setRating(star)}
-          onMouseEnter={() => setHoverRating(star)}
-          onMouseLeave={() => setHoverRating(0)}
-          className="focus:outline-none"
-        >
-          <Star
-            className={`h-8 w-8 transition-colors ${
-              star <= (hoverRating || rating)
-                ? 'fill-yellow-400 text-yellow-400'
-                : 'fill-gray-200 text-gray-200 hover:fill-yellow-200 hover:text-yellow-200'
-            }`}
-          />
-        </button>
-      ))}
-    </div>
-  );
+  const renderStarSelector = () => {
+    const labels = ['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'];
+    return (
+      <div className="flex gap-1" role="radiogroup" aria-label="Rating">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <button
+            key={star}
+            type="button"
+            role="radio"
+            aria-checked={rating === star}
+            aria-label={`${star} star${star !== 1 ? 's' : ''} - ${labels[star]}`}
+            onClick={() => setRating(star)}
+            onMouseEnter={() => setHoverRating(star)}
+            onMouseLeave={() => setHoverRating(0)}
+            className="focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded"
+          >
+            <Star
+              className={`h-8 w-8 transition-colors ${
+                star <= (hoverRating || rating)
+                  ? 'fill-yellow-400 text-yellow-400'
+                  : 'fill-gray-200 text-gray-200 hover:fill-yellow-200 hover:text-yellow-200'
+              }`}
+              aria-hidden="true"
+            />
+          </button>
+        ))}
+      </div>
+    );
+  };
 
   const getRatingLabel = () => {
     const labels = ['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'];

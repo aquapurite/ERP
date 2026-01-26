@@ -19,7 +19,7 @@ export function ReviewSummary({
   const renderStars = (rating: number, size: 'sm' | 'lg' = 'sm') => {
     const sizeClass = size === 'lg' ? 'h-6 w-6' : 'h-4 w-4';
     return (
-      <div className="flex gap-0.5">
+      <div className="flex gap-0.5" role="img" aria-label={`${rating.toFixed(1)} out of 5 stars`}>
         {[1, 2, 3, 4, 5].map((star) => (
           <Star
             key={star}
@@ -28,6 +28,7 @@ export function ReviewSummary({
                 ? 'fill-yellow-400 text-yellow-400'
                 : 'fill-gray-200 text-gray-200'
             }`}
+            aria-hidden="true"
           />
         ))}
       </div>
@@ -61,10 +62,10 @@ export function ReviewSummary({
           const count = ratingDistribution[rating.toString()] || 0;
           const percentage = getPercentage(count);
           return (
-            <div key={rating} className="flex items-center gap-3">
+            <div key={rating} className="flex items-center gap-3" aria-label={`${rating} star reviews: ${count}`}>
               <div className="flex items-center gap-1 w-12">
                 <span className="text-sm">{rating}</span>
-                <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
+                <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" aria-hidden="true" />
               </div>
               <Progress value={percentage} className="flex-1 h-2" />
               <span className="text-sm text-muted-foreground w-12 text-right">

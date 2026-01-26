@@ -157,7 +157,7 @@ async def list_sales_channels(
     )
 
 
-@router.get("/stats")
+@router.get("/stats", dependencies=[Depends(require_permissions("channel:view"))])
 async def get_channel_stats(
     db: DB,
     current_user: User = Depends(get_current_user),
@@ -487,7 +487,7 @@ async def list_all_channel_inventory(
     }
 
 
-@router.get("/inventory/stats")
+@router.get("/inventory/stats", dependencies=[Depends(require_permissions("channel:view"))])
 async def get_channel_inventory_stats(
     db: DB,
     channel_id: Optional[UUID] = None,

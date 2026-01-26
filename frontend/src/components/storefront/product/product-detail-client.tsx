@@ -168,9 +168,13 @@ export default function ProductDetailClient({ product }: ProductDetailClientProp
 
             {/* Rating */}
             {reviewSummary && reviewSummary.total_reviews > 0 ? (
-              <div className="flex items-center gap-2">
-                <div className="flex items-center bg-green-600 text-white px-2 py-0.5 rounded text-sm">
-                  <Star className="h-3 w-3 fill-current mr-1" />
+              <div className="flex items-center gap-2" role="group" aria-label="Product rating">
+                <div
+                  className="flex items-center bg-green-600 text-white px-2 py-0.5 rounded text-sm"
+                  role="img"
+                  aria-label={`Rated ${reviewSummary.average_rating.toFixed(1)} out of 5 stars`}
+                >
+                  <Star className="h-3 w-3 fill-current mr-1" aria-hidden="true" />
                   {reviewSummary.average_rating.toFixed(1)}
                 </div>
                 <span className="text-muted-foreground text-sm">
@@ -244,17 +248,18 @@ export default function ProductDetailClient({ product }: ProductDetailClientProp
                 Quantity
               </label>
               <div className="flex items-center gap-3">
-                <div className="flex items-center border rounded-lg">
+                <div className="flex items-center border rounded-lg" role="group" aria-label="Select quantity">
                   <Button
                     variant="ghost"
                     size="icon"
                     className="h-10 w-10"
                     onClick={() => handleQuantityChange(-1)}
                     disabled={quantity <= 1}
+                    aria-label="Decrease quantity"
                   >
-                    <Minus className="h-4 w-4" />
+                    <Minus className="h-4 w-4" aria-hidden="true" />
                   </Button>
-                  <span className="w-12 text-center font-medium">
+                  <span className="w-12 text-center font-medium" aria-live="polite" aria-label={`Quantity: ${quantity}`}>
                     {quantity}
                   </span>
                   <Button
@@ -263,8 +268,9 @@ export default function ProductDetailClient({ product }: ProductDetailClientProp
                     className="h-10 w-10"
                     onClick={() => handleQuantityChange(1)}
                     disabled={quantity >= 10}
+                    aria-label="Increase quantity"
                   >
-                    <Plus className="h-4 w-4" />
+                    <Plus className="h-4 w-4" aria-hidden="true" />
                   </Button>
                 </div>
               </div>
