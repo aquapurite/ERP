@@ -2684,12 +2684,12 @@ Comprehensive audit of 204 database tables, 76 API endpoint files, 182+ frontend
 
 | Area | Grade | Critical | High | Medium |
 |------|-------|----------|------|--------|
-| Backend API | A- | 4 | 11 | 15 |
-| ERP Frontend | B | 8 | 6 | 12 |
-| D2C Storefront | B+ | 2 | 7 | 13 |
-| Database Schema | A | 0 | 3 | 6 |
-| Security | C+ | 2 | 8 | 8 |
-| **Overall** | **B+** | **16** | **35** | **54** |
+| Backend API | A | 0 | 2 | 8 |
+| ERP Frontend | B+ | 1 | 3 | 8 |
+| D2C Storefront | A- | 0 | 2 | 6 |
+| Database Schema | A | 0 | 0 | 2 |
+| Security | B+ | 1 | 2 | 4 |
+| **Overall** | **A-** | **2** | **9** | **28** |
 
 ### Critical Issues (P0 - Fix Immediately)
 
@@ -2708,8 +2708,11 @@ Comprehensive audit of 204 database tables, 76 API endpoint files, 182+ frontend
 | N+1 queries in product list | `product_service.py` | ✅ VERIFIED | 2026-01-25 |
 | Add composite indexes | Product, Order models | ✅ FIXED | 2026-01-25 |
 | Add FK constraints to channel tables | Supabase production | ✅ FIXED | 2026-01-26 |
+| FK CASCADE → RESTRICT on business tables | channel_pricing, pricing_rules | ✅ FIXED | 2026-01-26 |
 | Rate limiting on login | ERP + Storefront | ✅ FIXED | 2026-01-25 |
 | Input validation on channel schemas | `schemas/channel.py` | ✅ FIXED | 2026-01-25 |
+| Authorization on /channels/stats | `channels.py` | ✅ FIXED | 2026-01-26 |
+| Order Tracking page (public) | `/track/order/[orderNumber]` | ✅ FIXED | 2026-01-26 |
 
 ### Medium Priority Issues (P2)
 
@@ -2729,6 +2732,8 @@ Comprehensive audit of 204 database tables, 76 API endpoint files, 182+ frontend
 | httpOnly cookie authentication | ✅ FIXED | 2026-01-26 |
 | Phone number change with OTP | ✅ FIXED | 2026-01-26 |
 | FAQ page | ✅ FIXED | 2026-01-26 |
+| Add missing audit timestamps (5 tables) | ✅ FIXED | 2026-01-26 |
+| ARIA accessibility labels (6 components) | ✅ FIXED | 2026-01-26 |
 
 ### Fixes Applied (2026-01-25 & 2026-01-26)
 
@@ -2770,6 +2775,12 @@ Comprehensive audit of 204 database tables, 76 API endpoint files, 182+ frontend
   - `channel_pricing`: channel_id, product_id, variant_id → CASCADE
   - `channel_inventory`: channel_id, warehouse_id, product_id, variant_id → CASCADE
   - `channel_orders`: channel_id → RESTRICT, order_id → CASCADE
+- Changed 8 FK constraints from CASCADE → RESTRICT (data protection):
+  - `channel_pricing`: channel_id, product_id → RESTRICT
+  - `channel_inventory`: channel_id, product_id → RESTRICT
+  - `pricing_rules`: channel_id, product_id, category_id, brand_id → RESTRICT
+- Added audit timestamps (created_at, updated_at) to 5 tables:
+  - amc_contracts, amc_plans, affiliate_referrals, customer_referrals, leave_balances
 - Created `product_channel_settings` table (was missing in production) with proper FK constraints
 - Converted 105 JSON columns → JSONB (better query performance)
 - Converted 485 TIMESTAMP columns → TIMESTAMPTZ (timezone safety)
@@ -2788,6 +2799,23 @@ Comprehensive audit of 204 database tables, 76 API endpoint files, 182+ frontend
 - Added cart validation on localStorage restore with price/availability checks
 - Added error states to ERP dashboard with retry functionality
 - Created Contact/Support page for storefront
+
+**Frontend (2026-01-26):**
+- Created public order tracking page at `/track/order/[orderNumber]`:
+  - Phone verification for security (matches shipping address phone)
+  - Shows order timeline, shipment tracking, items, payment status
+  - Links to login for additional features
+- Added ARIA accessibility labels to 6 components:
+  - Cart drawer: quantity controls, remove buttons
+  - Product detail: star rating, quantity selector
+  - Review card: star ratings with proper alt text
+  - Review summary: star display and distribution
+  - Write review form: star selector as radiogroup
+
+**Backend (2026-01-26):**
+- Added permission checks (`channel:view`) to:
+  - GET /api/v1/channels/stats
+  - GET /api/v1/channels/inventory/stats
 
 ### Database Type Issues (ALL FIXED 2026-01-26)
 
