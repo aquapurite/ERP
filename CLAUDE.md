@@ -2698,7 +2698,7 @@ Comprehensive audit of 204 database tables, 76 API endpoint files, 182+ frontend
 | Rotate OIDC token | Vercel Dashboard | ⚠️ MANUAL | - |
 | Remove Razorpay test key fallback | `checkout/page.tsx` | ✅ FIXED | 2026-01-25 |
 | Add security headers | `next.config.ts` | ✅ FIXED | 2026-01-25 |
-| JWT in localStorage (XSS vulnerable) | `client.ts` | ⏳ Requires backend | - |
+| JWT in localStorage (XSS vulnerable) | `d2c_auth.py` | ✅ FIXED | 2026-01-26 |
 
 ### High Priority Issues (P1)
 
@@ -2726,6 +2726,9 @@ Comprehensive audit of 204 database tables, 76 API endpoint files, 182+ frontend
 | Fix timestamps to TIMESTAMPTZ (485 columns) | ✅ FIXED | 2026-01-26 |
 | Product Q&A backend endpoints | ✅ FIXED | 2026-01-26 |
 | Partner payouts backend endpoint | ✅ FIXED | 2026-01-26 |
+| httpOnly cookie authentication | ✅ FIXED | 2026-01-26 |
+| Phone number change with OTP | ✅ FIXED | 2026-01-26 |
+| FAQ page | ✅ FIXED | 2026-01-26 |
 
 ### Fixes Applied (2026-01-25 & 2026-01-26)
 
@@ -2750,6 +2753,17 @@ Comprehensive audit of 204 database tables, 76 API endpoint files, 182+ frontend
 - Added ProductQuestion, ProductAnswer, QuestionHelpful, AnswerHelpful models (`app/models/product_review.py`)
 - Added Partner payouts endpoint: GET /api/v1/partners/{partner_id}/payouts (admin)
 - Updated frontend questionsApi to use real backend endpoints instead of mock data
+
+**Security & Features (2026-01-26):**
+- Implemented httpOnly cookie authentication for D2C customers:
+  - Cookies set on login/verify-otp, cleared on logout
+  - Support both cookie and header-based auth (backward compatible)
+  - Added `withCredentials: true` to axios for cookie transmission
+- Added phone number change with OTP verification:
+  - POST /d2c/auth/change-phone/request - Send OTP to new phone
+  - POST /d2c/auth/change-phone/verify - Verify and update phone
+  - Added phone change UI dialog in profile page
+- Created FAQ page at /faq with 6 categories, 24 Q&As
 
 **Database Schema (Supabase Production) - 2026-01-26:**
 - Added 9 FK constraints to channel tables:
