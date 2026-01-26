@@ -209,10 +209,11 @@ export default function VendorInvoicesPage() {
   const queryClient = useQueryClient();
 
   // Fetch vendors from master Vendors table
-  const { data: vendors = [], isLoading: vendorsLoading } = useQuery({
+  const { data: vendorsData, isLoading: vendorsLoading } = useQuery({
     queryKey: ['vendors-dropdown'],
     queryFn: vendorsApi.getDropdown,
   });
+  const vendors = Array.isArray(vendorsData) ? vendorsData : [];
 
   // Fetch POs - filtered by selected vendor
   const { data: posData, isLoading: posLoading } = useQuery({
@@ -225,9 +226,10 @@ export default function VendorInvoicesPage() {
   });
 
   // Filter POs by selected vendor (if any)
+  const posItems = Array.isArray(posData?.items) ? posData.items : [];
   const availablePOs = selectedVendorId
-    ? (posData?.items || []).filter(po => po.vendor?.id === selectedVendorId)
-    : (posData?.items || []);
+    ? posItems.filter(po => po.vendor?.id === selectedVendorId)
+    : posItems;
 
   // Reset form when dialog closes
   useEffect(() => {
@@ -736,7 +738,7 @@ export default function VendorInvoicesPage() {
 
       <DataTable
         columns={columns}
-        data={data?.items ?? []}
+        data={Array.isArray(data?.items) ? data.items : []}
         searchKey="invoice_number"
         searchPlaceholder="Search invoice number..."
         isLoading={isLoading}

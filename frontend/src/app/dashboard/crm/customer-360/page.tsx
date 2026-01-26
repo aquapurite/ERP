@@ -221,7 +221,7 @@ export default function Customer360Page() {
           <Skeleton className="h-64" />
           <Skeleton className="h-64 md:col-span-2" />
         </div>
-      ) : customer360 ? (
+      ) : customer360?.customer ? (
         <div className="space-y-6">
           {/* Customer Profile Card */}
           <div className="grid gap-6 md:grid-cols-3">
