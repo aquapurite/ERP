@@ -405,12 +405,42 @@ export default function BannersPage() {
 
   const deleteMutation = useMutation({
     mutationFn: cmsApi.banners.delete,
+    // Optimistic update: immediately remove from UI before API confirms
+    onMutate: async (deletedId: string) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['cms-banners'] });
+
+      // Snapshot the previous value
+      const previousBanners = queryClient.getQueryData(['cms-banners']);
+
+      // Optimistically remove from cache
+      queryClient.setQueryData(['cms-banners'], (old: any) => {
+        if (!old?.data?.items) return old;
+        return {
+          ...old,
+          data: {
+            ...old.data,
+            items: old.data.items.filter((b: CMSBanner) => b.id !== deletedId),
+          },
+        };
+      });
+
+      // Return context with previous value
+      return { previousBanners };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cms-banners'] });
       toast.success('Banner deleted successfully');
     },
-    onError: () => {
+    onError: (_err, _deletedId, context) => {
+      // Rollback to previous value on error
+      if (context?.previousBanners) {
+        queryClient.setQueryData(['cms-banners'], context.previousBanners);
+      }
       toast.error('Failed to delete banner');
+    },
+    onSettled: () => {
+      // Always refetch after error or success to ensure sync
+      queryClient.invalidateQueries({ queryKey: ['cms-banners'] });
     },
   });
 

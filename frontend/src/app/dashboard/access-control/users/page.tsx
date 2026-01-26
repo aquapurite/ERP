@@ -117,12 +117,31 @@ export default function UsersPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (userId: string) => usersApi.delete(userId),
+    // Optimistic update: immediately remove from UI
+    onMutate: async (deletedId: string) => {
+      await queryClient.cancelQueries({ queryKey: ['users'] });
+      const previousData = queryClient.getQueryData(['users', page, pageSize]);
+
+      queryClient.setQueryData(['users', page, pageSize], (old: any) => {
+        if (!old?.items) return old;
+        return {
+          ...old,
+          items: old.items.filter((u: User) => u.id !== deletedId),
+          total: (old.total || 0) - 1,
+        };
+      });
+
+      return { previousData };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
       toast.success('User deleted successfully');
       setDeleteUser(null);
     },
-    onError: (error: unknown) => {
+    onError: (error: unknown, _deletedId, context) => {
+      // Rollback on error
+      if (context?.previousData) {
+        queryClient.setQueryData(['users', page, pageSize], context.previousData);
+      }
       // Extract error message from axios error
       let message = 'Failed to delete user';
       if (error && typeof error === 'object') {
@@ -135,6 +154,9 @@ export default function UsersPage() {
       }
       toast.error(message);
       setDeleteUser(null);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
     },
   });
 

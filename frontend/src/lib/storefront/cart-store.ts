@@ -6,26 +6,28 @@ import { StorefrontProduct, ProductVariant, CartItem } from '@/types/storefront'
 import { abandonedCartApi, CartSyncRequest, inventoryApi, productsApi } from './api';
 import { toast } from 'sonner';
 
-// Cookie name for partner referral (must match middleware.ts)
-const REFERRAL_COOKIE_NAME = 'partner_ref';
-
-// Get partner referral code from cookie
-export const getPartnerReferralCode = (): string | null => {
-  if (typeof document === 'undefined') return null;
-  const cookies = document.cookie.split(';');
-  for (const cookie of cookies) {
-    const [name, value] = cookie.trim().split('=');
-    if (name === REFERRAL_COOKIE_NAME) {
-      return decodeURIComponent(value);
-    }
+// Get partner referral code from httpOnly cookie via API
+// This is secure because the cookie cannot be read by malicious JS (XSS protection)
+export const getPartnerReferralCode = async (): Promise<string | null> => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const response = await fetch('/api/referral');
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.partner_code || null;
+  } catch {
+    return null;
   }
-  return null;
 };
 
-// Clear partner referral cookie (after order placed)
-export const clearPartnerReferralCode = (): void => {
-  if (typeof document === 'undefined') return;
-  document.cookie = `${REFERRAL_COOKIE_NAME}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+// Clear partner referral cookie (after order placed) via API
+export const clearPartnerReferralCode = async (): Promise<void> => {
+  if (typeof window === 'undefined') return;
+  try {
+    await fetch('/api/referral', { method: 'DELETE' });
+  } catch {
+    // Silently ignore errors when clearing cookie
+  }
 };
 
 // Generate a unique session ID for cart tracking

@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, Pencil, Truck, Package, MapPin, Calendar } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, Pencil, Truck, Package, MapPin, Calendar, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
@@ -57,15 +57,42 @@ const orderStatuses: OrderStatus[] = [
   'CANCELLED',
 ];
 
-export default function OrdersPage() {
+function OrdersPageContent() {
   const router = useRouter();
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(10);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const searchParams = useSearchParams();
+
+  // Read initial values from URL params
+  const initialStatus = searchParams.get('status') || 'all';
+  const initialPage = parseInt(searchParams.get('page') || '0', 10);
+  const initialPageSize = parseInt(searchParams.get('size') || '10', 10);
+
+  const [page, setPage] = useState(initialPage);
+  const [pageSize, setPageSize] = useState(initialPageSize);
+  const [statusFilter, setStatusFilter] = useState<string>(initialStatus);
   const [isTrackingSheetOpen, setIsTrackingSheetOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [trackingInfo, setTrackingInfo] = useState<any>(null);
   const [isLoadingTracking, setIsLoadingTracking] = useState(false);
+
+  // Sync URL params when filters change
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (statusFilter !== 'all') {
+      params.set('status', statusFilter);
+    }
+    if (page > 0) {
+      params.set('page', page.toString());
+    }
+    if (pageSize !== 10) {
+      params.set('size', pageSize.toString());
+    }
+
+    const queryString = params.toString();
+    const newUrl = queryString ? `/dashboard/orders?${queryString}` : '/dashboard/orders';
+
+    // Update URL without triggering navigation
+    window.history.replaceState(null, '', newUrl);
+  }, [statusFilter, page, pageSize]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['orders', page, pageSize, statusFilter],
@@ -332,5 +359,29 @@ export default function OrdersPage() {
         </SheetContent>
       </Sheet>
     </div>
+  );
+}
+
+// Loading fallback component
+function OrdersPageLoading() {
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Orders"
+        description="Manage and track customer orders"
+      />
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    </div>
+  );
+}
+
+// Wrap in Suspense for useSearchParams
+export default function OrdersPage() {
+  return (
+    <Suspense fallback={<OrdersPageLoading />}>
+      <OrdersPageContent />
+    </Suspense>
   );
 }

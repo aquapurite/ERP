@@ -73,8 +73,9 @@ export function middleware(request: NextRequest) {
       res.cookies.set(REFERRAL_COOKIE_NAME, refCode, {
         maxAge: REFERRAL_COOKIE_MAX_AGE,
         path: '/',
-        httpOnly: false, // Allow JS access for checkout
+        httpOnly: true, // Security: prevent XSS from stealing referral codes
         sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
       });
     }
     return res;

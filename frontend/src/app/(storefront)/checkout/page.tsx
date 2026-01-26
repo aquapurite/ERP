@@ -341,8 +341,9 @@ export default function CheckoutPage() {
     setLoading(true);
 
     try {
-      // Get partner referral code from cookie (set by middleware)
-      const partnerCode = getPartnerReferralCode();
+      // Get partner referral code from httpOnly cookie (set by middleware)
+      // Uses API route for secure access to httpOnly cookie
+      const partnerCode = await getPartnerReferralCode();
 
       const orderData: D2COrderRequest = {
         customer_name: formData.full_name,

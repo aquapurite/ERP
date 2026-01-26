@@ -119,14 +119,35 @@ export default function CategoriesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => categoriesApi.delete(id),
+    // Optimistic update: immediately remove from UI
+    onMutate: async (deletedId: string) => {
+      await queryClient.cancelQueries({ queryKey: ['categories'] });
+      const previousData = queryClient.getQueryData(['categories', page, pageSize]);
+
+      queryClient.setQueryData(['categories', page, pageSize], (old: any) => {
+        if (!old?.items) return old;
+        return {
+          ...old,
+          items: old.items.filter((c: Category) => c.id !== deletedId),
+          total: (old.total || 0) - 1,
+        };
+      });
+
+      return { previousData };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
       toast.success('Category deleted successfully');
       setIsDeleteDialogOpen(false);
       setCategoryToDelete(null);
     },
-    onError: (error: Error) => {
+    onError: (error: Error, _deletedId, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['categories', page, pageSize], context.previousData);
+      }
       toast.error(error.message || 'Failed to delete category');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
     },
   });
 

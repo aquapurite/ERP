@@ -399,12 +399,35 @@ export default function TestimonialsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: cmsApi.testimonials.delete,
+    // Optimistic update: immediately remove from UI
+    onMutate: async (deletedId: string) => {
+      await queryClient.cancelQueries({ queryKey: ['cms-testimonials'] });
+      const previousTestimonials = queryClient.getQueryData(['cms-testimonials']);
+
+      queryClient.setQueryData(['cms-testimonials'], (old: any) => {
+        if (!old?.data?.items) return old;
+        return {
+          ...old,
+          data: {
+            ...old.data,
+            items: old.data.items.filter((t: CMSTestimonial) => t.id !== deletedId),
+          },
+        };
+      });
+
+      return { previousTestimonials };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cms-testimonials'] });
       toast.success('Testimonial deleted successfully');
     },
-    onError: () => {
+    onError: (_err, _deletedId, context) => {
+      if (context?.previousTestimonials) {
+        queryClient.setQueryData(['cms-testimonials'], context.previousTestimonials);
+      }
       toast.error('Failed to delete testimonial');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['cms-testimonials'] });
     },
   });
 
