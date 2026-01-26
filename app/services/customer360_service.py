@@ -433,39 +433,42 @@ class Customer360Service:
 
         # Add orders
         for o in orders:
-            events.append(Customer360Timeline(
-                event_type="ORDER",
-                event_id=o.id,
-                title=f"Order {o.order_number}",
-                description=f"Amount: Rs.{o.total_amount}",
-                status=get_enum_value(o.status),
-                timestamp=o.created_at,
-                metadata={"order_number": o.order_number, "amount": float(o.total_amount or 0)},
-            ))
+            if o.created_at:  # Skip if no timestamp
+                events.append(Customer360Timeline(
+                    event_type="ORDER",
+                    event_id=o.id,
+                    title=f"Order {o.order_number}",
+                    description=f"Amount: Rs.{o.total_amount}",
+                    status=get_enum_value(o.status),
+                    timestamp=o.created_at,
+                    metadata={"order_number": o.order_number, "amount": float(o.total_amount or 0)},
+                ))
 
         # Add shipments
         for s in shipments:
-            events.append(Customer360Timeline(
-                event_type="SHIPMENT",
-                event_id=s.id,
-                title=f"Shipment {s.shipment_number}",
-                description=f"AWB: {s.awb_number}" if s.awb_number else None,
-                status=get_enum_value(s.status),
-                timestamp=s.created_at,
-                metadata={"shipment_number": s.shipment_number, "awb": s.awb_number},
-            ))
+            if s.created_at:  # Skip if no timestamp
+                events.append(Customer360Timeline(
+                    event_type="SHIPMENT",
+                    event_id=s.id,
+                    title=f"Shipment {s.shipment_number}",
+                    description=f"AWB: {s.awb_number}" if s.awb_number else None,
+                    status=get_enum_value(s.status),
+                    timestamp=s.created_at,
+                    metadata={"shipment_number": s.shipment_number, "awb": s.awb_number},
+                ))
 
         # Add installations
         for i in installations:
-            events.append(Customer360Timeline(
-                event_type="INSTALLATION",
-                event_id=i.id,
-                title=f"Installation {i.installation_number}",
-                description=f"Pincode: {i.installation_pincode}",
-                status=get_enum_value(i.status),
-                timestamp=i.created_at,
-                metadata={"installation_number": i.installation_number, "rating": i.customer_rating},
-            ))
+            if i.created_at:  # Skip if no timestamp
+                events.append(Customer360Timeline(
+                    event_type="INSTALLATION",
+                    event_id=i.id,
+                    title=f"Installation {i.installation_number}",
+                    description=f"Pincode: {i.installation_pincode}",
+                    status=get_enum_value(i.status),
+                    timestamp=i.created_at,
+                    metadata={"installation_number": i.installation_number, "rating": i.customer_rating},
+                ))
 
         # Add service requests
         for sr in service_requests:
@@ -483,27 +486,29 @@ class Customer360Service:
 
         # Add calls
         for c in calls:
-            events.append(Customer360Timeline(
-                event_type="CALL",
-                event_id=c.id,
-                title=f"Call {c.call_id}",
-                description=f"{get_enum_value(c.call_type)} - {get_enum_value(c.category)}",
-                status=get_enum_value(c.status),
-                timestamp=c.call_start_time,
-                metadata={"call_id": c.call_id, "duration": c.duration_seconds},
-            ))
+            if c.call_start_time:  # Skip if no timestamp
+                events.append(Customer360Timeline(
+                    event_type="CALL",
+                    event_id=c.id,
+                    title=f"Call {c.call_id}",
+                    description=f"{get_enum_value(c.call_type)} - {get_enum_value(c.category)}",
+                    status=get_enum_value(c.status),
+                    timestamp=c.call_start_time,
+                    metadata={"call_id": c.call_id, "duration": c.duration_seconds},
+                ))
 
         # Add payments
         for p in payments:
-            events.append(Customer360Timeline(
-                event_type="PAYMENT",
-                event_id=p.id,
-                title=f"Payment Rs.{p.amount}",
-                description=f"Method: {get_enum_value(p.method)}",
-                status=get_enum_value(p.status),
-                timestamp=p.created_at,
-                metadata={"amount": float(p.amount or 0), "method": get_enum_value(p.method)},
-            ))
+            if p.created_at:  # Skip if no timestamp
+                events.append(Customer360Timeline(
+                    event_type="PAYMENT",
+                    event_id=p.id,
+                    title=f"Payment Rs.{p.amount}",
+                    description=f"Method: {get_enum_value(p.method)}",
+                    status=get_enum_value(p.status),
+                    timestamp=p.created_at,
+                    metadata={"amount": float(p.amount or 0), "method": get_enum_value(p.method)},
+                ))
 
         # Sort by timestamp descending (most recent first)
         events.sort(key=lambda e: e.timestamp, reverse=True)

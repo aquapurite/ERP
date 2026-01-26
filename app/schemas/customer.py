@@ -192,7 +192,7 @@ class Customer360OrderSummary(BaseModel):
     total_amount: float
     payment_status: Optional[str] = None
     items_count: int = 0
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -204,7 +204,7 @@ class Customer360OrderStatusHistory(BaseModel):
     to_status: str
     notes: Optional[str] = None
     changed_by: Optional[str] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -220,7 +220,7 @@ class Customer360ShipmentSummary(BaseModel):
     transporter_name: Optional[str] = None
     delivered_to: Optional[str] = None
     delivered_at: Optional[datetime] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -232,7 +232,7 @@ class Customer360ShipmentTracking(BaseModel):
     location: Optional[str] = None
     city: Optional[str] = None
     remarks: Optional[str] = None
-    event_time: datetime
+    event_time: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -250,7 +250,7 @@ class Customer360InstallationSummary(BaseModel):
     completed_at: Optional[datetime] = None
     customer_rating: Optional[int] = None
     warranty_end_date: Optional[date] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -263,13 +263,13 @@ class Customer360ServiceRequestSummary(BaseModel):
     service_type: str
     status: str
     priority: Optional[str] = None
-    title: str
+    title: Optional[str] = None
     franchisee_name: Optional[str] = None
     technician_name: Optional[str] = None
     scheduled_date: Optional[date] = None
     completed_at: Optional[datetime] = None
     customer_rating: Optional[int] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -281,7 +281,7 @@ class Customer360ServiceStatusHistory(BaseModel):
     to_status: str
     notes: Optional[str] = None
     changed_by: Optional[str] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -290,14 +290,14 @@ class Customer360ServiceStatusHistory(BaseModel):
 class Customer360CallSummary(BaseModel):
     """Call summary for Customer 360."""
     id: uuid.UUID
-    call_id: str
+    call_id: Optional[str] = None
     call_type: str
     category: str
     status: str
     outcome: Optional[str] = None
     duration_seconds: Optional[int] = None
     agent_name: Optional[str] = None
-    call_start_time: datetime
+    call_start_time: Optional[datetime] = None
     sentiment: Optional[str] = None
 
     class Config:
@@ -309,12 +309,12 @@ class Customer360PaymentSummary(BaseModel):
     id: uuid.UUID
     order_number: Optional[str] = None
     amount: float
-    method: str
+    method: Optional[str] = None
     status: str
     transaction_id: Optional[str] = None
     gateway: Optional[str] = None
     completed_at: Optional[datetime] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
