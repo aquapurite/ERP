@@ -264,8 +264,8 @@ const createColumns = (
     accessorKey: 'status',
     header: 'Status',
     cell: ({ row }) => (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[row.original.status]}`}>
-        {row.original.status.replace('_', ' ')}
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[row.original.status] ?? 'bg-gray-100 text-gray-800'}`}>
+        {row.original.status?.replace('_', ' ') ?? '-'}
       </span>
     ),
   },

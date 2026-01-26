@@ -388,8 +388,8 @@ export default function ManifestsPage() {
       accessorKey: 'status',
       header: 'Status',
       cell: ({ row }) => (
-        <Badge className={statusColors[row.original.status]}>
-          {row.original.status.replace(/_/g, ' ')}
+        <Badge className={statusColors[row.original.status] ?? 'bg-gray-100 text-gray-800'}>
+          {row.original.status?.replace(/_/g, ' ') ?? '-'}
         </Badge>
       ),
     },

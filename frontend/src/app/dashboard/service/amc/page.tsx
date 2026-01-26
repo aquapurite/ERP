@@ -473,8 +473,8 @@ export default function AMCPage() {
       header: 'Status',
       cell: ({ row }) => (
         <div className="space-y-1">
-          <Badge className={statusColors[row.original.status]}>
-            {row.original.status.replace(/_/g, ' ')}
+          <Badge className={statusColors[row.original.status] ?? 'bg-gray-100 text-gray-800'}>
+            {row.original.status?.replace(/_/g, ' ') ?? '-'}
           </Badge>
           {row.original.auto_renew && (
             <div className="flex items-center gap-1 text-xs text-muted-foreground">

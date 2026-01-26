@@ -251,7 +251,7 @@ export default function Customer360Page() {
     return <div className="flex items-center justify-center h-96">Customer not found</div>;
   }
 
-  const initials = customer.name.split(' ').map(n => n[0]).join('').toUpperCase();
+  const initials = customer.name?.split(' ')?.map(n => n?.[0] ?? '')?.join('')?.toUpperCase() || 'NA';
 
   return (
     <div className="space-y-6">
@@ -347,7 +347,7 @@ export default function Customer360Page() {
               <Heart className="h-4 w-4 text-red-500" />
               <span className="text-sm text-muted-foreground">Loyalty Points</span>
             </div>
-            <div className="text-2xl font-bold mt-1">{customer.loyalty_points.toLocaleString()}</div>
+            <div className="text-2xl font-bold mt-1">{(customer.loyalty_points ?? 0).toLocaleString()}</div>
           </CardContent>
         </Card>
       </div>
@@ -356,10 +356,10 @@ export default function Customer360Page() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="products">Products ({customer.products.length})</TabsTrigger>
-          <TabsTrigger value="orders">Orders ({customer.orders.length})</TabsTrigger>
-          <TabsTrigger value="services">Services ({customer.service_requests_list.length})</TabsTrigger>
-          <TabsTrigger value="amc">AMC ({customer.amc_contracts.length})</TabsTrigger>
+          <TabsTrigger value="products">Products ({customer.products?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="orders">Orders ({customer.orders?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="services">Services ({customer.service_requests_list?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="amc">AMC ({customer.amc_contracts?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="interactions">Interactions</TabsTrigger>
           <TabsTrigger value="payments">Payments</TabsTrigger>
         </TabsList>
@@ -411,7 +411,7 @@ export default function Customer360Page() {
                 <CardTitle className="text-base">Addresses</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {customer.addresses.map((addr) => (
+                {(customer.addresses ?? []).map((addr) => (
                   <div key={addr.id} className="space-y-1">
                     <div className="flex items-center gap-2">
                       {addr.label === 'Home' ? <Home className="h-4 w-4" /> : <Building2 className="h-4 w-4" />}
@@ -469,7 +469,7 @@ export default function Customer360Page() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {customer.interactions.slice(0, 5).map((interaction) => (
+                {(customer.interactions ?? []).slice(0, 5).map((interaction) => (
                   <div key={interaction.id} className="flex items-start gap-3">
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
                       {interactionTypeIcons[interaction.type]}
@@ -508,7 +508,7 @@ export default function Customer360Page() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {customer.products.map((product) => (
+                  {(customer.products ?? []).map((product) => (
                     <TableRow key={product.id}>
                       <TableCell className="font-medium">{product.product_name}</TableCell>
                       <TableCell className="font-mono text-sm">{product.serial_number}</TableCell>
@@ -555,7 +555,7 @@ export default function Customer360Page() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {customer.orders.map((order) => (
+                  {(customer.orders ?? []).map((order) => (
                     <TableRow key={order.id}>
                       <TableCell className="font-mono font-medium">{order.order_number}</TableCell>
                       <TableCell>{formatDate(order.order_date)}</TableCell>
@@ -599,7 +599,7 @@ export default function Customer360Page() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {customer.service_requests_list.map((sr) => (
+                  {(customer.service_requests_list ?? []).map((sr) => (
                     <TableRow key={sr.id}>
                       <TableCell className="font-mono font-medium">{sr.ticket_number}</TableCell>
                       <TableCell>{formatDate(sr.created_at)}</TableCell>
@@ -646,7 +646,7 @@ export default function Customer360Page() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {customer.amc_contracts.map((amc) => (
+                  {(customer.amc_contracts ?? []).map((amc) => (
                     <TableRow key={amc.id}>
                       <TableCell className="font-mono font-medium">{amc.contract_number}</TableCell>
                       <TableCell>
@@ -688,7 +688,7 @@ export default function Customer360Page() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {customer.interactions.map((interaction) => (
+                {(customer.interactions ?? []).map((interaction) => (
                   <div key={interaction.id} className="flex items-start gap-4 p-4 border rounded-lg">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
                       {interactionTypeIcons[interaction.type]}
@@ -733,7 +733,7 @@ export default function Customer360Page() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {customer.payments.map((payment) => (
+                  {(customer.payments ?? []).map((payment) => (
                     <TableRow key={payment.id}>
                       <TableCell>{formatDate(payment.date)}</TableCell>
                       <TableCell className="font-mono">{payment.reference}</TableCell>

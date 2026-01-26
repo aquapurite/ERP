@@ -186,7 +186,7 @@ const columns: ColumnDef<AllocationRule>[] = [
     accessorKey: 'orders_allocated',
     header: 'Orders',
     cell: ({ row }) => (
-      <span className="font-mono text-sm">{row.original.orders_allocated.toLocaleString()}</span>
+      <span className="font-mono text-sm">{(row.original.orders_allocated ?? 0).toLocaleString()}</span>
     ),
   },
   {

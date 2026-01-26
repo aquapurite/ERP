@@ -256,7 +256,7 @@ export default function LeadsPage() {
       header: 'Source',
       cell: ({ row }) => (
         <span className={`px-2 py-1 rounded-full text-xs font-medium ${sourceColors[row.original.source] || 'bg-gray-100'}`}>
-          {row.original.source.replace(/_/g, ' ')}
+          {row.original.source?.replace(/_/g, ' ') ?? '-'}
         </span>
       ),
     },

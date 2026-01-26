@@ -254,7 +254,7 @@ const createColumns = (onEdit: (rule: PutawayRule) => void, onDelete: (rule: Put
     header: 'Condition',
     cell: ({ row }) => (
       <div className="text-sm font-mono bg-muted px-2 py-1 rounded">
-        {row.original.condition_field} {row.original.condition_operator.toLowerCase().replace('_', ' ')} &quot;{row.original.condition_value}&quot;
+        {row.original.condition_field ?? '-'} {row.original.condition_operator?.toLowerCase()?.replace('_', ' ') ?? '-'} &quot;{row.original.condition_value ?? ''}&quot;
       </div>
     ),
   },
@@ -274,7 +274,7 @@ const createColumns = (onEdit: (rule: PutawayRule) => void, onDelete: (rule: Put
     accessorKey: 'items_processed',
     header: 'Items Processed',
     cell: ({ row }) => (
-      <span className="font-mono text-sm">{row.original.items_processed.toLocaleString()}</span>
+      <span className="font-mono text-sm">{(row.original.items_processed ?? 0).toLocaleString()}</span>
     ),
   },
   {

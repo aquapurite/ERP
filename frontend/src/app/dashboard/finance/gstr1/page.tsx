@@ -354,7 +354,7 @@ export default function GSTR1Page() {
     {
       accessorKey: 'total_quantity',
       header: 'Qty',
-      cell: ({ row }) => row.original.total_quantity.toLocaleString(),
+      cell: ({ row }) => (row.original.total_quantity ?? 0).toLocaleString(),
     },
     {
       accessorKey: 'taxable_value',

@@ -289,7 +289,7 @@ export default function WarrantyClaimsPage() {
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
           {claimTypeIcons[row.original.claim_type]}
-          <span className="capitalize">{row.original.claim_type.toLowerCase()}</span>
+          <span className="capitalize">{row.original.claim_type?.toLowerCase() ?? '-'}</span>
         </div>
       ),
     },
@@ -306,8 +306,8 @@ export default function WarrantyClaimsPage() {
       accessorKey: 'status',
       header: 'Status',
       cell: ({ row }) => (
-        <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[row.original.status]}`}>
-          {row.original.status.replace(/_/g, ' ')}
+        <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[row.original.status] ?? 'bg-gray-100 text-gray-800'}`}>
+          {row.original.status?.replace(/_/g, ' ') ?? '-'}
         </span>
       ),
     },

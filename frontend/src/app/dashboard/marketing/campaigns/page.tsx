@@ -69,8 +69,8 @@ const columns: ColumnDef<Campaign>[] = [
         </div>
         <div>
           <div className="font-medium">{row.original.name}</div>
-          <span className={`px-2 py-0.5 rounded text-xs ${typeColors[row.original.type]}`}>
-            {row.original.type.replace(/_/g, ' ')}
+          <span className={`px-2 py-0.5 rounded text-xs ${typeColors[row.original.type] ?? 'bg-gray-100 text-gray-800'}`}>
+            {row.original.type?.replace(/_/g, ' ') ?? '-'}
           </span>
         </div>
       </div>

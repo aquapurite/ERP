@@ -206,7 +206,7 @@ export default function ServiceRequestsPage() {
       header: 'Type',
       cell: ({ row }) => (
         <span className="text-sm capitalize">
-          {row.original.type.replace(/_/g, ' ').toLowerCase()}
+          {row.original.type?.replace(/_/g, ' ')?.toLowerCase() ?? '-'}
         </span>
       ),
     },

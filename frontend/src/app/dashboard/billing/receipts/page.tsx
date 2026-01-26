@@ -216,7 +216,7 @@ export default function PaymentReceiptsPage() {
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
           {getPaymentModeIcon(row.original.payment_mode)}
-          <span className="text-sm capitalize">{row.original.payment_mode.replace(/_/g, ' ').toLowerCase()}</span>
+          <span className="text-sm capitalize">{row.original.payment_mode?.replace(/_/g, ' ')?.toLowerCase() ?? '-'}</span>
         </div>
       ),
     },

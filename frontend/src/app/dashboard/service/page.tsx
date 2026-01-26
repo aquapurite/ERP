@@ -67,7 +67,7 @@ const columns: ColumnDef<ServiceRequest>[] = [
     accessorKey: 'type',
     header: 'Type',
     cell: ({ row }) => (
-      <span className="text-sm">{row.original.type.replace(/_/g, ' ')}</span>
+      <span className="text-sm">{row.original.type?.replace(/_/g, ' ') ?? '-'}</span>
     ),
   },
   {

@@ -152,7 +152,7 @@ export default function AllocationLogsPage() {
       header: 'Order ID',
       cell: ({ row }) => (
         <code className="text-xs font-mono bg-muted px-2 py-1 rounded">
-          {row.original.order_id.slice(0, 8)}...
+          {row.original.order_id?.slice(0, 8) ?? '-'}...
         </code>
       ),
     },

@@ -140,7 +140,7 @@ export default function HSNSummaryPage() {
     {
       accessorKey: 'total_quantity',
       header: 'Quantity',
-      cell: ({ row }) => row.original.total_quantity.toLocaleString(),
+      cell: ({ row }) => (row.original.total_quantity ?? 0).toLocaleString(),
     },
     {
       accessorKey: 'taxable_value',

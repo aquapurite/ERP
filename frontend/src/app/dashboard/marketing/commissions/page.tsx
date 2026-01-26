@@ -328,8 +328,8 @@ export default function CommissionsPage() {
       accessorKey: 'type',
       header: 'Type',
       cell: ({ row }) => (
-        <Badge className={typeColors[row.original.type]}>
-          {row.original.type.replace(/_/g, ' ')}
+        <Badge className={typeColors[row.original.type] ?? 'bg-gray-100 text-gray-800'}>
+          {row.original.type?.replace(/_/g, ' ') ?? '-'}
         </Badge>
       ),
     },
@@ -431,7 +431,7 @@ export default function CommissionsPage() {
         <div>
           <div className="font-medium">{row.original.beneficiary_name}</div>
           <div className="text-xs text-muted-foreground capitalize">
-            {row.original.beneficiary_type.toLowerCase().replace(/_/g, ' ')}
+            {row.original.beneficiary_type?.toLowerCase()?.replace(/_/g, ' ') ?? '-'}
           </div>
         </div>
       ),

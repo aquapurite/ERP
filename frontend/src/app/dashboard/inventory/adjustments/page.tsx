@@ -190,7 +190,7 @@ export default function StockAdjustmentsPage() {
       accessorKey: 'adjustment_number',
       header: 'Adjustment #',
       cell: ({ row }) => (
-        <span className="font-medium font-mono">{row.original.adjustment_number || row.original.id.slice(0, 8).toUpperCase()}</span>
+        <span className="font-medium font-mono">{row.original.adjustment_number || row.original.id?.slice(0, 8)?.toUpperCase() || '-'}</span>
       ),
     },
     {
@@ -253,7 +253,7 @@ export default function StockAdjustmentsPage() {
       accessorKey: 'reason',
       header: 'Reason',
       cell: ({ row }) => (
-        <span className="text-sm">{row.original.reason.replace('_', ' ')}</span>
+        <span className="text-sm">{row.original.reason?.replace('_', ' ') ?? '-'}</span>
       ),
     },
     {

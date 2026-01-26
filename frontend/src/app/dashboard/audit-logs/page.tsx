@@ -43,14 +43,14 @@ const columns: ColumnDef<AuditLog>[] = [
     accessorKey: 'action',
     header: 'Action',
     cell: ({ row }) => (
-      <StatusBadge status={row.original.action.toUpperCase()} />
+      <StatusBadge status={row.original.action?.toUpperCase() ?? 'UNKNOWN'} />
     ),
   },
   {
     accessorKey: 'entity_type',
     header: 'Entity Type',
     cell: ({ row }) => (
-      <span className="capitalize">{row.original.entity_type.replace(/_/g, ' ')}</span>
+      <span className="capitalize">{row.original.entity_type?.replace(/_/g, ' ') ?? '-'}</span>
     ),
   },
   {
@@ -58,7 +58,7 @@ const columns: ColumnDef<AuditLog>[] = [
     header: 'Entity ID',
     cell: ({ row }) => (
       <code className="rounded bg-muted px-2 py-1 text-xs">
-        {row.original.entity_id.slice(0, 8)}...
+        {row.original.entity_id?.slice(0, 8) ?? '-'}...
       </code>
     ),
   },
