@@ -194,5 +194,47 @@ class AddToWishlistRequest(BaseModel):
     variant_id: Optional[str] = None
 
 
+class ChangePhoneRequest(BaseModel):
+    """Request to change phone number - Step 1: Send OTP to new phone."""
+    new_phone: str = Field(..., description="New phone number (10 digits)")
+
+    @field_validator("new_phone")
+    @classmethod
+    def validate_phone(cls, v: str) -> str:
+        phone = re.sub(r"[\s\-]", "", v)
+        if phone.startswith("+91"):
+            phone = phone[3:]
+        elif phone.startswith("91") and len(phone) > 10:
+            phone = phone[2:]
+        if not re.match(r"^[6-9]\d{9}$", phone):
+            raise ValueError("Enter valid 10-digit Indian mobile number")
+        return phone
+
+
+class VerifyPhoneChangeRequest(BaseModel):
+    """Request to verify phone change - Step 2: Verify OTP for new phone."""
+    new_phone: str = Field(..., description="New phone number")
+    otp: str = Field(..., min_length=6, max_length=6, description="6-digit OTP")
+
+    @field_validator("new_phone")
+    @classmethod
+    def validate_phone(cls, v: str) -> str:
+        phone = re.sub(r"[\s\-]", "", v)
+        if phone.startswith("+91"):
+            phone = phone[3:]
+        elif phone.startswith("91") and len(phone) > 10:
+            phone = phone[2:]
+        if not re.match(r"^[6-9]\d{9}$", phone):
+            raise ValueError("Enter valid 10-digit Indian mobile number")
+        return phone
+
+    @field_validator("otp")
+    @classmethod
+    def validate_otp(cls, v: str) -> str:
+        if not v.isdigit():
+            raise ValueError("OTP must contain only digits")
+        return v
+
+
 # Update forward references
 VerifyOTPResponse.model_rebuild()

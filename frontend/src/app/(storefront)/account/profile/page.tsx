@@ -3,11 +3,18 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, Save, User } from 'lucide-react';
+import { ArrowLeft, Loader2, Save, User, Phone, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { useAuthStore, useIsAuthenticated, useCustomer } from '@/lib/storefront/auth-store';
 import { authApi } from '@/lib/storefront/api';
@@ -25,6 +32,14 @@ export default function ProfilePage() {
     email: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Phone change state
+  const [showPhoneChange, setShowPhoneChange] = useState(false);
+  const [phoneChangeStep, setPhoneChangeStep] = useState<'phone' | 'otp'>('phone');
+  const [newPhone, setNewPhone] = useState('');
+  const [otp, setOtp] = useState('');
+  const [phoneLoading, setPhoneLoading] = useState(false);
+  const [resendTimer, setResendTimer] = useState(0);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -78,6 +93,72 @@ export default function ProfilePage() {
       setLoading(false);
     }
   };
+
+  // Phone change handlers
+  const handleRequestPhoneChange = async () => {
+    if (!newPhone || newPhone.length !== 10) {
+      toast.error('Please enter a valid 10-digit phone number');
+      return;
+    }
+
+    if (newPhone === customer?.phone) {
+      toast.error('New phone number must be different from current');
+      return;
+    }
+
+    setPhoneLoading(true);
+    try {
+      const response = await authApi.requestPhoneChange(newPhone);
+      if (response.success) {
+        setPhoneChangeStep('otp');
+        setResendTimer(response.resend_in_seconds || 30);
+        toast.success('OTP sent to new phone number');
+      } else {
+        toast.error(response.message || 'Failed to send OTP');
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'Failed to send OTP');
+    } finally {
+      setPhoneLoading(false);
+    }
+  };
+
+  const handleVerifyPhoneChange = async () => {
+    if (!otp || otp.length !== 6) {
+      toast.error('Please enter a valid 6-digit OTP');
+      return;
+    }
+
+    setPhoneLoading(true);
+    try {
+      const updatedProfile = await authApi.verifyPhoneChange(newPhone, otp);
+      updateProfile(updatedProfile);
+      toast.success('Phone number updated successfully');
+      setShowPhoneChange(false);
+      setPhoneChangeStep('phone');
+      setNewPhone('');
+      setOtp('');
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'Invalid OTP');
+    } finally {
+      setPhoneLoading(false);
+    }
+  };
+
+  const handleClosePhoneDialog = () => {
+    setShowPhoneChange(false);
+    setPhoneChangeStep('phone');
+    setNewPhone('');
+    setOtp('');
+  };
+
+  // Resend timer countdown
+  useEffect(() => {
+    if (resendTimer > 0) {
+      const timer = setTimeout(() => setResendTimer(resendTimer - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendTimer]);
 
   if (!isAuthenticated || !customer) {
     return (
@@ -137,15 +218,23 @@ export default function ProfilePage() {
 
             <div className="space-y-2">
               <Label htmlFor="phone">Phone Number</Label>
-              <Input
-                id="phone"
-                value={`+91 ${customer.phone}`}
-                disabled
-                className="bg-muted"
-              />
-              <p className="text-xs text-muted-foreground">
-                Phone number cannot be changed
-              </p>
+              <div className="flex gap-2">
+                <Input
+                  id="phone"
+                  value={`+91 ${customer.phone}`}
+                  disabled
+                  className="bg-muted flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowPhoneChange(true)}
+                >
+                  <Phone className="h-4 w-4 mr-1" />
+                  Change
+                </Button>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -191,6 +280,114 @@ export default function ProfilePage() {
           </form>
         </CardContent>
       </Card>
+
+      {/* Phone Change Dialog */}
+      <Dialog open={showPhoneChange} onOpenChange={handleClosePhoneDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Change Phone Number</DialogTitle>
+            <DialogDescription>
+              {phoneChangeStep === 'phone'
+                ? 'Enter your new phone number. We will send an OTP to verify.'
+                : `Enter the 6-digit OTP sent to +91 ${newPhone}`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {phoneChangeStep === 'phone' ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="new_phone">New Phone Number</Label>
+                  <div className="flex gap-2">
+                    <span className="flex items-center px-3 bg-muted rounded-l-md border border-r-0 text-sm text-muted-foreground">
+                      +91
+                    </span>
+                    <Input
+                      id="new_phone"
+                      value={newPhone}
+                      onChange={(e) => setNewPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      placeholder="Enter 10-digit number"
+                      className="rounded-l-none"
+                      maxLength={10}
+                    />
+                  </div>
+                </div>
+                <Button
+                  onClick={handleRequestPhoneChange}
+                  disabled={phoneLoading || newPhone.length !== 10}
+                  className="w-full"
+                >
+                  {phoneLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Sending OTP...
+                    </>
+                  ) : (
+                    'Send OTP'
+                  )}
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="otp">Enter OTP</Label>
+                  <Input
+                    id="otp"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="Enter 6-digit OTP"
+                    maxLength={6}
+                    className="text-center text-lg tracking-widest"
+                  />
+                </div>
+                <Button
+                  onClick={handleVerifyPhoneChange}
+                  disabled={phoneLoading || otp.length !== 6}
+                  className="w-full"
+                >
+                  {phoneLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Verifying...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4 mr-2" />
+                      Verify & Update
+                    </>
+                  )}
+                </Button>
+                <div className="text-center">
+                  {resendTimer > 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Resend OTP in {resendTimer}s
+                    </p>
+                  ) : (
+                    <Button
+                      variant="link"
+                      size="sm"
+                      onClick={handleRequestPhoneChange}
+                      disabled={phoneLoading}
+                    >
+                      Resend OTP
+                    </Button>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setPhoneChangeStep('phone');
+                    setOtp('');
+                  }}
+                  className="w-full"
+                >
+                  Change Number
+                </Button>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

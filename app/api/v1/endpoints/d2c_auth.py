@@ -2,6 +2,9 @@
 D2C Customer Authentication API Endpoints
 
 OTP-based authentication for D2C storefront customers.
+Supports both:
+- httpOnly cookie-based auth (secure, recommended)
+- Bearer token auth (for backward compatibility)
 """
 
 import logging
@@ -9,7 +12,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Response, Request, Cookie
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,6 +41,8 @@ from app.schemas.d2c_auth import (
     WishlistItemResponse,
     WishlistResponse,
     AddToWishlistRequest,
+    ChangePhoneRequest,
+    VerifyPhoneChangeRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,6 +52,49 @@ security = HTTPBearer(auto_error=False)
 # JWT Configuration for D2C customers
 D2C_TOKEN_EXPIRE_HOURS = 24 * 7  # 7 days
 D2C_REFRESH_TOKEN_EXPIRE_DAYS = 30
+
+# Cookie Configuration
+ACCESS_TOKEN_COOKIE = "d2c_access_token"
+REFRESH_TOKEN_COOKIE = "d2c_refresh_token"
+COOKIE_DOMAIN = None  # Set via settings in production
+COOKIE_SECURE = True  # Always use secure in production
+COOKIE_SAMESITE = "lax"  # Allows cookie to be sent on top-level navigations
+
+
+def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
+    """Set httpOnly authentication cookies."""
+    # Access token cookie - shorter expiry
+    response.set_cookie(
+        key=ACCESS_TOKEN_COOKIE,
+        value=access_token,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE,
+        max_age=D2C_TOKEN_EXPIRE_HOURS * 3600,
+        path="/",
+    )
+    # Refresh token cookie - longer expiry
+    response.set_cookie(
+        key=REFRESH_TOKEN_COOKIE,
+        value=refresh_token,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE,
+        max_age=D2C_REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
+        path="/api/v1/d2c/auth",  # Only sent to auth endpoints
+    )
+
+
+def clear_auth_cookies(response: Response):
+    """Clear authentication cookies on logout."""
+    response.delete_cookie(
+        key=ACCESS_TOKEN_COOKIE,
+        path="/",
+    )
+    response.delete_cookie(
+        key=REFRESH_TOKEN_COOKIE,
+        path="/api/v1/d2c/auth",
+    )
 
 
 def create_customer_token(customer_id: str) -> str:
@@ -85,14 +133,31 @@ def decode_customer_token(token: str) -> Optional[str]:
 
 
 async def get_current_customer(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: AsyncSession = Depends(get_db),
 ) -> Optional[Customer]:
-    """Get current authenticated customer."""
-    if not credentials:
+    """
+    Get current authenticated customer.
+    Supports both:
+    1. httpOnly cookie (preferred, more secure)
+    2. Bearer token in Authorization header (backward compatible)
+    """
+    token = None
+
+    # Priority 1: Check httpOnly cookie
+    cookie_token = request.cookies.get(ACCESS_TOKEN_COOKIE)
+    if cookie_token:
+        token = cookie_token
+
+    # Priority 2: Fall back to Authorization header
+    if not token and credentials:
+        token = credentials.credentials
+
+    if not token:
         return None
 
-    customer_id = decode_customer_token(credentials.credentials)
+    customer_id = decode_customer_token(token)
     if not customer_id:
         return None
 
@@ -168,6 +233,7 @@ async def send_otp(
 @router.post("/verify-otp", response_model=VerifyOTPResponse)
 async def verify_otp(
     request: VerifyOTPRequest,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -221,6 +287,11 @@ async def verify_otp(
     access_token = create_customer_token(str(customer.id))
     refresh_token = create_refresh_token(str(customer.id))
 
+    # Set httpOnly cookies for secure authentication
+    set_auth_cookies(response, access_token, refresh_token)
+
+    # Also return tokens in response for backward compatibility
+    # Frontend can choose to use cookies (secure) or tokens (legacy)
     return VerifyOTPResponse(
         success=True,
         message="Login successful",
@@ -240,17 +311,33 @@ async def verify_otp(
 
 @router.post("/refresh-token")
 async def refresh_access_token(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
+    response: Response,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: AsyncSession = Depends(get_db),
 ):
-    """Refresh access token using refresh token."""
-    if not credentials:
+    """
+    Refresh access token using refresh token.
+    Supports both cookie and header-based refresh tokens.
+    """
+    token = None
+
+    # Priority 1: Check httpOnly cookie
+    cookie_token = request.cookies.get(REFRESH_TOKEN_COOKIE)
+    if cookie_token:
+        token = cookie_token
+
+    # Priority 2: Fall back to Authorization header
+    if not token and credentials:
+        token = credentials.credentials
+
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Refresh token required",
         )
 
-    customer_id = decode_customer_token(credentials.credentials)
+    customer_id = decode_customer_token(token)
     if not customer_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -269,9 +356,14 @@ async def refresh_access_token(
             detail="Customer not found or inactive",
         )
 
-    # Generate new access token
+    # Generate new tokens
     access_token = create_customer_token(str(customer.id))
+    new_refresh_token = create_refresh_token(str(customer.id))
 
+    # Set new cookies
+    set_auth_cookies(response, access_token, new_refresh_token)
+
+    # Also return token in response for backward compatibility
     return {
         "access_token": access_token,
         "token_type": "bearer",
@@ -309,6 +401,119 @@ async def update_profile(
 
     await db.commit()
     await db.refresh(customer)
+
+    return CustomerProfile(
+        id=str(customer.id),
+        phone=customer.phone,
+        email=customer.email,
+        first_name=customer.first_name,
+        last_name=customer.last_name,
+        is_verified=customer.is_verified,
+    )
+
+
+@router.post("/change-phone/request", response_model=SendOTPResponse)
+async def request_phone_change(
+    request: ChangePhoneRequest,
+    customer: Customer = Depends(require_customer),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Request to change phone number - Step 1.
+    Sends OTP to the new phone number for verification.
+    """
+    # Check if new phone is same as current
+    if request.new_phone == customer.phone:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New phone number must be different from current",
+        )
+
+    # Check if new phone is already registered to another customer
+    existing = await db.execute(
+        select(Customer).where(
+            Customer.phone == request.new_phone,
+            Customer.id != customer.id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This phone number is already registered to another account",
+        )
+
+    otp_service = OTPService(db)
+
+    # Check cooldown
+    can_resend, remaining = await otp_service.can_resend_otp(request.new_phone)
+    if not can_resend:
+        return SendOTPResponse(
+            success=False,
+            message=f"Please wait {remaining} seconds before requesting a new OTP",
+            expires_in_seconds=0,
+            resend_in_seconds=remaining,
+        )
+
+    # Create and send OTP with PHONE_CHANGE purpose
+    otp_code, otp_record = await otp_service.create_otp(request.new_phone, purpose="PHONE_CHANGE")
+
+    # Send via SMS
+    sms_sent = await send_otp_sms(request.new_phone, otp_code)
+
+    if not sms_sent:
+        logger.error(f"Failed to send phone change OTP SMS to {request.new_phone[-4:].rjust(10, '*')}")
+
+    return SendOTPResponse(
+        success=True,
+        message="OTP sent to new phone number",
+        expires_in_seconds=otp_service.OTP_EXPIRY_MINUTES * 60,
+        resend_in_seconds=otp_service.RESEND_COOLDOWN_SECONDS,
+    )
+
+
+@router.post("/change-phone/verify", response_model=CustomerProfile)
+async def verify_phone_change(
+    request: VerifyPhoneChangeRequest,
+    customer: Customer = Depends(require_customer),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Verify phone change - Step 2.
+    Verifies OTP and updates customer's phone number.
+    """
+    otp_service = OTPService(db)
+
+    # Verify OTP
+    success, message = await otp_service.verify_otp(
+        request.new_phone, request.otp, purpose="PHONE_CHANGE"
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=message,
+        )
+
+    # Check again that new phone isn't already registered
+    existing = await db.execute(
+        select(Customer).where(
+            Customer.phone == request.new_phone,
+            Customer.id != customer.id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This phone number is already registered to another account",
+        )
+
+    # Update phone number
+    old_phone = customer.phone
+    customer.phone = request.new_phone
+    await db.commit()
+    await db.refresh(customer)
+
+    logger.info(f"Customer {customer.customer_code} changed phone from {old_phone[-4:].rjust(10, '*')} to {request.new_phone[-4:].rjust(10, '*')}")
 
     return CustomerProfile(
         id=str(customer.id),
@@ -850,10 +1055,12 @@ async def check_wishlist(
 
 @router.post("/logout")
 async def logout(
+    response: Response,
     customer: Customer = Depends(require_customer),
 ):
     """
     Logout customer.
-    Note: JWT tokens are stateless, so this is mainly for client-side cleanup.
+    Clears httpOnly authentication cookies.
     """
+    clear_auth_cookies(response)
     return {"message": "Logged out successfully"}

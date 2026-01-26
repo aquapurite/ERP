@@ -13,10 +13,12 @@ import {
 } from '@/types/storefront';
 import { useAuthStore, CustomerProfile, CustomerAddress } from './auth-store';
 
-// Create a separate axios instance for storefront (no auth required)
+// Create a separate axios instance for storefront
+// withCredentials: true ensures httpOnly cookies are sent with requests
 const storefrontClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
   timeout: 30000,
+  withCredentials: true, // Send httpOnly cookies with requests
   headers: {
     'Content-Type': 'application/json',
   },
@@ -493,6 +495,33 @@ export const authApi = {
     const { data } = await storefrontClient.put(`${API_PATH}/d2c/auth/me`, profile, {
       headers: { Authorization: `Bearer ${token}` },
     });
+    return data;
+  },
+
+  // Phone change - Step 1: Request OTP for new phone
+  requestPhoneChange: async (newPhone: string): Promise<{
+    success: boolean;
+    message: string;
+    expires_in_seconds: number;
+    resend_in_seconds: number;
+  }> => {
+    const token = useAuthStore.getState().accessToken;
+    const { data } = await storefrontClient.post(
+      `${API_PATH}/d2c/auth/change-phone/request`,
+      { new_phone: newPhone },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return data;
+  },
+
+  // Phone change - Step 2: Verify OTP and update phone
+  verifyPhoneChange: async (newPhone: string, otp: string): Promise<CustomerProfile> => {
+    const token = useAuthStore.getState().accessToken;
+    const { data } = await storefrontClient.post(
+      `${API_PATH}/d2c/auth/change-phone/verify`,
+      { new_phone: newPhone, otp },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
     return data;
   },
 
