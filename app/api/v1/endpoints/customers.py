@@ -237,21 +237,33 @@ async def get_customer_360(
 
     Requires: crm:view permission
     """
-    service = Customer360Service(db)
+    import logging
+    logger = logging.getLogger(__name__)
 
-    result = await service.get_customer_360(
-        customer_id=customer_id,
-        include_timeline=include_timeline,
-        limit_per_section=limit,
-    )
+    try:
+        service = Customer360Service(db)
 
-    if not result:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Customer not found"
+        result = await service.get_customer_360(
+            customer_id=customer_id,
+            include_timeline=include_timeline,
+            limit_per_section=limit,
         )
 
-    return result
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Customer not found"
+            )
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Customer 360 error for {customer_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching customer data: {str(e)}"
+        )
 
 
 @router.get(
