@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { useCartStore } from '@/lib/storefront/cart-store';
 import { useCompareStore, useIsInCompare, useCanAddToCompare } from '@/lib/storefront/compare-store';
+import { useWishlistStore, useIsInWishlist } from '@/lib/storefront/wishlist-store';
+import { useAuthStore } from '@/lib/storefront/auth-store';
 import { usePrefetchProduct } from '@/lib/storefront/hooks';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -57,6 +59,12 @@ export default function ProductCard({
   const isInCompare = useIsInCompare(product.id);
   const canAddMore = useCanAddToCompare();
   const prefetchProduct = usePrefetchProduct();
+
+  // Wishlist
+  const addToWishlist = useWishlistStore((state) => state.addToWishlist);
+  const removeFromWishlist = useWishlistStore((state) => state.removeFromWishlist);
+  const isInWishlist = useIsInWishlist(product.id);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 
   // Prefetch product detail on hover for faster navigation
   const handleMouseEnter = () => {
@@ -111,6 +119,32 @@ export default function ProductCard({
     }
   };
 
+  const handleWishlist = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!isAuthenticated) {
+      toast.error('Please login to add items to wishlist');
+      return;
+    }
+
+    if (isInWishlist) {
+      const removed = await removeFromWishlist(product.id);
+      if (removed) {
+        toast.success('Removed from wishlist');
+      } else {
+        toast.error('Failed to remove from wishlist');
+      }
+    } else {
+      const added = await addToWishlist(product.id);
+      if (added) {
+        toast.success('Added to wishlist');
+      } else {
+        toast.error('Failed to add to wishlist');
+      }
+    }
+  };
+
   return (
     <Card
       className="group overflow-hidden hover:shadow-lg transition-shadow"
@@ -156,14 +190,11 @@ export default function ProductCard({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 bg-background/80 hover:bg-background"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                // TODO: Add to wishlist
-              }}
+              className={`h-8 w-8 bg-background/80 hover:bg-background ${isInWishlist ? 'text-red-500' : ''}`}
+              onClick={handleWishlist}
+              title={isInWishlist ? 'Remove from wishlist' : 'Add to wishlist'}
             >
-              <Heart className="h-4 w-4" />
+              <Heart className={`h-4 w-4 ${isInWishlist ? 'fill-current' : ''}`} />
             </Button>
 
             {/* Compare Button */}

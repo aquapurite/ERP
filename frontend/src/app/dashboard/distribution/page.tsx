@@ -45,32 +45,35 @@ const columns: ColumnDef<Dealer>[] = [
     accessorKey: 'type',
     header: 'Type',
     cell: ({ row }) => (
-      <span className="text-sm">{row.original.type.replace(/_/g, ' ')}</span>
+      <span className="text-sm">{(row.original.type || row.original.dealer_type || 'DEALER').replace(/_/g, ' ')}</span>
     ),
   },
   {
     accessorKey: 'pricing_tier',
     header: 'Tier',
-    cell: ({ row }) => (
-      <Badge variant="outline" className={`border-0 ${tierColors[row.original.pricing_tier]}`}>
-        {row.original.pricing_tier}
-      </Badge>
-    ),
+    cell: ({ row }) => {
+      const tier = row.original.pricing_tier || row.original.tier || 'STANDARD';
+      return (
+        <Badge variant="outline" className={`border-0 ${tierColors[tier as keyof typeof tierColors] || tierColors.STANDARD}`}>
+          {tier}
+        </Badge>
+      );
+    },
   },
   {
     accessorKey: 'credit_limit',
     header: 'Credit Limit',
-    cell: ({ row }) => formatCurrency(row.original.credit_limit),
+    cell: ({ row }) => formatCurrency(row.original.credit_limit || 0),
   },
   {
     accessorKey: 'available_credit',
     header: 'Available',
-    cell: ({ row }) => formatCurrency(row.original.available_credit),
+    cell: ({ row }) => formatCurrency(row.original.available_credit || 0),
   },
   {
     accessorKey: 'status',
     header: 'Status',
-    cell: ({ row }) => <StatusBadge status={row.original.status} />,
+    cell: ({ row }) => <StatusBadge status={row.original.status || 'ACTIVE'} />,
   },
   {
     id: 'actions',

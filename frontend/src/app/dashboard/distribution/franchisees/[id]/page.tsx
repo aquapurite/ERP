@@ -75,6 +75,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { franchiseesApi } from '@/lib/api';
 
 interface Contract {
   id: string;
@@ -339,12 +340,22 @@ export default function FranchiseeDetailPage({ params }: { params: Promise<{ id:
   // Mutations
   const createTicketMutation = useMutation({
     mutationFn: async (data: typeof ticketForm) => {
-      // TODO: Implement actual API call when endpoint is available
-      // const { data: result } = await apiClient.post(`/franchisees/${id}/tickets`, data);
-      return data;
+      // Map frontend priority to backend CRITICAL (URGENT -> CRITICAL)
+      const backendPriority = data.priority === 'URGENT' ? 'CRITICAL' : data.priority;
+      return franchiseesApi.createSupportTicket({
+        franchisee_id: id,
+        subject: data.subject,
+        description: data.description,
+        category: data.category,
+        priority: backendPriority as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
+        contact_name: franchisee?.owner_name || franchisee?.name || 'Unknown',
+        contact_email: franchisee?.email,
+        contact_phone: franchisee?.phone,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['franchisee', id] });
+      queryClient.invalidateQueries({ queryKey: ['franchisee-support-tickets', id] });
       toast.success('Support ticket created');
       setIsNewTicketOpen(false);
       setTicketForm({ subject: '', category: 'OPERATIONAL', priority: 'MEDIUM', description: '' });
@@ -356,12 +367,16 @@ export default function FranchiseeDetailPage({ params }: { params: Promise<{ id:
 
   const scheduleAuditMutation = useMutation({
     mutationFn: async (data: typeof auditForm) => {
-      // TODO: Implement actual API call when endpoint is available
-      // const { data: result } = await apiClient.post(`/franchisees/${id}/audits`, data);
-      return data;
+      return franchiseesApi.createAudit({
+        franchisee_id: id,
+        audit_type: data.type,
+        scheduled_date: data.scheduled_date,
+        auditor_name: data.auditor_name,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['franchisee', id] });
+      queryClient.invalidateQueries({ queryKey: ['franchisee-audits', id] });
       toast.success('Audit scheduled');
       setIsScheduleAuditOpen(false);
       setAuditForm({ type: 'OPERATIONAL', scheduled_date: '', auditor_name: '' });

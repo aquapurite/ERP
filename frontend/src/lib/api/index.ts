@@ -1256,7 +1256,100 @@ export const dealersApi = {
     const { data } = await apiClient.put<Dealer>(`/dealers/${id}`, dealer);
     return data;
   },
+  getLedger: async (id: string, params?: { skip?: number; limit?: number; start_date?: string; end_date?: string }) => {
+    const { data } = await apiClient.get<{
+      items: DealerCreditTransaction[];
+      total: number;
+      total_debit: number;
+      total_credit: number;
+      closing_balance: number;
+    }>(`/dealers/${id}/ledger`, { params });
+    return data;
+  },
+  getTargets: async (id: string, params?: { year?: number }) => {
+    const { data } = await apiClient.get<DealerTarget[]>(`/dealers/${id}/targets`, { params });
+    return data;
+  },
+  recordPayment: async (id: string, payment: {
+    transaction_type: string;
+    transaction_date: string;
+    reference_type: string;
+    reference_number: string;
+    debit_amount: number;
+    credit_amount: number;
+    payment_mode?: string;
+    payment_reference?: string;
+    narration?: string;
+  }) => {
+    const { data } = await apiClient.post<DealerCreditTransaction>(`/dealers/${id}/payment`, payment);
+    return data;
+  },
+  createTarget: async (id: string, target: {
+    target_period: string;
+    target_year: number;
+    target_month?: number;
+    target_quarter?: number;
+    target_type: string;
+    revenue_target: number;
+    quantity_target: number;
+    incentive_percentage?: number;
+  }) => {
+    const { data } = await apiClient.post<DealerTarget>(`/dealers/${id}/targets`, { dealer_id: id, ...target });
+    return data;
+  },
+  getSchemes: async (params?: { scheme_type?: string; is_active?: boolean }) => {
+    const { data } = await apiClient.get<{ items: DealerScheme[]; total: number }>('/dealers/schemes', { params });
+    return data;
+  },
 };
+
+// Dealer types for API
+interface DealerCreditTransaction {
+  id: string;
+  dealer_id: string;
+  transaction_type: string;
+  transaction_date: string;
+  reference_type: string;
+  reference_number: string;
+  debit_amount: number;
+  credit_amount: number;
+  balance: number;
+  payment_mode?: string;
+  narration?: string;
+  created_at: string;
+}
+
+interface DealerTarget {
+  id: string;
+  dealer_id: string;
+  target_period: string;
+  target_year: number;
+  target_month?: number;
+  target_quarter?: number;
+  revenue_target: number;
+  quantity_target: number;
+  revenue_achieved: number;
+  quantity_achieved: number;
+  revenue_achievement_percentage: number;
+  quantity_achievement_percentage: number;
+  incentive_earned: number;
+  is_incentive_paid: boolean;
+  created_at: string;
+}
+
+interface DealerScheme {
+  id: string;
+  scheme_code: string;
+  scheme_name: string;
+  description?: string;
+  scheme_type: string;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+  rules: Record<string, unknown>;
+  total_budget?: number;
+  utilized_budget: number;
+}
 
 // Dashboard API - aggregates data from multiple real endpoints
 export const dashboardApi = {
@@ -4903,6 +4996,103 @@ export const franchiseesApi = {
     const { data } = await apiClient.put(`/franchisees/${id}/serviceability`, { pincodes });
     return data;
   },
+
+  // Support Tickets
+  createSupportTicket: async (ticket: {
+    franchisee_id: string;
+    subject: string;
+    description: string;
+    category: 'TECHNICAL' | 'OPERATIONAL' | 'BILLING' | 'TRAINING' | 'COMPLAINT' | 'SUGGESTION';
+    priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+    contact_name: string;
+    contact_email?: string;
+    contact_phone?: string;
+    attachments?: string[];
+  }) => {
+    const { data } = await apiClient.post('/franchisees/support', ticket);
+    return data;
+  },
+  listSupportTickets: async (params?: {
+    franchisee_id?: string;
+    status?: string;
+    priority?: string;
+    category?: string;
+    skip?: number;
+    limit?: number;
+  }) => {
+    const { data } = await apiClient.get('/franchisees/support', { params });
+    return data;
+  },
+  getSupportTicket: async (ticketId: string) => {
+    const { data } = await apiClient.get(`/franchisees/support/${ticketId}`);
+    return data;
+  },
+  assignSupportTicket: async (ticketId: string, assignedToId: string) => {
+    const { data } = await apiClient.post(`/franchisees/support/${ticketId}/assign`, { assigned_to_id: assignedToId });
+    return data;
+  },
+  resolveSupportTicket: async (ticketId: string, resolution: string) => {
+    const { data } = await apiClient.post(`/franchisees/support/${ticketId}/resolve`, { resolution });
+    return data;
+  },
+  escalateSupportTicket: async (ticketId: string, escalatedToId: string, reason: string) => {
+    const { data } = await apiClient.post(`/franchisees/support/${ticketId}/escalate`, { escalated_to_id: escalatedToId, reason });
+    return data;
+  },
+  closeSupportTicket: async (ticketId: string) => {
+    const { data } = await apiClient.post(`/franchisees/support/${ticketId}/close`);
+    return data;
+  },
+
+  // Audits
+  createAudit: async (audit: {
+    franchisee_id: string;
+    audit_type: 'OPERATIONAL' | 'FINANCIAL' | 'COMPLIANCE' | 'QUALITY' | 'SAFETY';
+    scheduled_date: string;
+    auditor_name: string;
+    auditor_id?: string;
+    notes?: string;
+  }) => {
+    const { data } = await apiClient.post('/franchisees/audits', audit);
+    return data;
+  },
+  listAudits: async (params?: {
+    franchisee_id?: string;
+    audit_type?: string;
+    status?: string;
+    skip?: number;
+    limit?: number;
+  }) => {
+    const { data } = await apiClient.get('/franchisees/audits', { params });
+    return data;
+  },
+  getAudit: async (auditId: string) => {
+    const { data } = await apiClient.get(`/franchisees/audits/${auditId}`);
+    return data;
+  },
+  completeAudit: async (auditId: string, auditData: {
+    actual_date: string;
+    checklist?: Record<string, boolean>;
+    findings?: string[];
+    observations?: string;
+    non_conformities?: string[];
+    overall_score?: number;
+    compliance_score?: number;
+    quality_score?: number;
+    result?: 'PASS' | 'CONDITIONAL_PASS' | 'FAIL';
+    corrective_actions?: Array<{ description: string; due_date: string; assigned_to?: string }>;
+    follow_up_required?: boolean;
+    follow_up_date?: string;
+    report_url?: string;
+    evidence_urls?: string[];
+  }) => {
+    const { data } = await apiClient.post(`/franchisees/audits/${auditId}/complete`, auditData);
+    return data;
+  },
+  closeAudit: async (auditId: string) => {
+    const { data } = await apiClient.post(`/franchisees/audits/${auditId}/close`);
+    return data;
+  },
 };
 
 // ==================== PICKLISTS API ====================
@@ -5749,6 +5939,25 @@ export const partnersApi = {
       page_size: number;
     }>('/partners/me/orders', { params: { partner_id: partnerId, ...params, page_size: params?.size } });
     return data;
+  },
+
+  // Get partner payouts (admin view - stub until backend endpoint is implemented)
+  getPayouts: async (partnerId: string, params?: { page?: number; size?: number }) => {
+    // TODO: Implement backend endpoint GET /partners/{partnerId}/payouts
+    // For now return empty data to prevent build errors
+    return {
+      items: [] as Array<{
+        id: string;
+        partner_id: string;
+        amount: number;
+        status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+        requested_at: string;
+        processed_at?: string;
+        bank_reference?: string;
+      }>,
+      page: params?.page || 1,
+      page_size: params?.size || 20,
+    };
   },
 };
 

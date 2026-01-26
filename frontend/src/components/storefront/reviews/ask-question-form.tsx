@@ -7,21 +7,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuthStore } from '@/lib/storefront/auth-store';
-
-interface Question {
-  id: string;
-  question_text: string;
-  asked_by: string;
-  answers: any[];
-  answer_count: number;
-  helpful_count: number;
-  created_at: string;
-}
+import { questionsApi, ProductQuestion } from '@/lib/storefront/api';
 
 interface AskQuestionFormProps {
   productId: string;
   productName: string;
-  onSubmit: (question: Question) => void;
+  onSubmit: (question: ProductQuestion) => void;
   onCancel: () => void;
 }
 
@@ -53,30 +44,15 @@ export default function AskQuestionForm({
     setError(null);
 
     try {
-      // TODO: Replace with actual API call when backend is ready
-      // const response = await questionsApi.create({
-      //   product_id: productId,
-      //   question_text: questionText.trim(),
-      // });
-
-      // Mock response
-      const newQuestion: Question = {
-        id: `q-${Date.now()}`,
+      const newQuestion = await questionsApi.create({
+        product_id: productId,
         question_text: questionText.trim(),
-        asked_by: customer?.first_name || 'You',
-        answers: [],
-        answer_count: 0,
-        helpful_count: 0,
-        created_at: new Date().toISOString(),
-      };
-
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      });
 
       onSubmit(newQuestion);
       setQuestionText('');
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to submit question');
+      setError(err.response?.data?.detail || err.message || 'Failed to submit question');
     } finally {
       setSubmitting(false);
     }

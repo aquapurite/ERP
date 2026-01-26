@@ -773,6 +773,159 @@ export const reviewsApi = {
   },
 };
 
+// Product Q&A API
+// NOTE: Backend endpoint not yet implemented. Using mock data for now.
+// When backend is ready, update these methods to call actual API endpoints:
+// - GET /api/v1/questions/product/{product_id} - Get questions for product
+// - POST /api/v1/questions - Create a new question
+// - POST /api/v1/questions/{id}/vote - Vote on a question/answer
+
+export interface ProductQuestion {
+  id: string;
+  question_text: string;
+  asked_by: string;
+  answers: ProductAnswer[];
+  answer_count: number;
+  helpful_count: number;
+  created_at: string;
+}
+
+export interface ProductAnswer {
+  id: string;
+  answer_text: string;
+  answered_by: string;
+  is_seller_answer: boolean;
+  helpful_count: number;
+  created_at: string;
+}
+
+export const questionsApi = {
+  // Get questions for a product
+  getByProduct: async (productId: string, params?: { page?: number; size?: number }): Promise<{
+    items: ProductQuestion[];
+    total: number;
+    page: number;
+    size: number;
+  }> => {
+    // TODO: Replace with actual API call when backend endpoint is ready
+    // const { data } = await storefrontClient.get(`${API_PATH}/questions/product/${productId}`, { params });
+    // return data;
+
+    // Mock data for now
+    const mockQuestions: ProductQuestion[] = [
+      {
+        id: '1',
+        question_text: 'Is this water purifier suitable for borewell water with high TDS?',
+        asked_by: 'Rahul M.',
+        answers: [
+          {
+            id: 'a1',
+            answer_text: 'Yes, this purifier can handle TDS levels up to 2000 ppm. It uses RO+UV+UF technology which is perfect for borewell water with high TDS.',
+            answered_by: 'AQUAPURITE Support',
+            is_seller_answer: true,
+            helpful_count: 45,
+            created_at: '2025-12-15T10:30:00Z',
+          },
+          {
+            id: 'a2',
+            answer_text: 'I have borewell water with TDS around 800 ppm and this works great! Water tastes much better now.',
+            answered_by: 'Verified Buyer',
+            is_seller_answer: false,
+            helpful_count: 12,
+            created_at: '2025-12-20T14:45:00Z',
+          },
+        ],
+        answer_count: 2,
+        helpful_count: 23,
+        created_at: '2025-12-10T08:00:00Z',
+      },
+      {
+        id: '2',
+        question_text: 'What is the warranty period and does it cover the filters?',
+        asked_by: 'Priya S.',
+        answers: [
+          {
+            id: 'a3',
+            answer_text: 'The purifier comes with a 1-year comprehensive warranty. The filters are covered for the first 6 months. After that, filter replacements are available at affordable prices.',
+            answered_by: 'AQUAPURITE Support',
+            is_seller_answer: true,
+            helpful_count: 67,
+            created_at: '2025-11-25T16:20:00Z',
+          },
+        ],
+        answer_count: 1,
+        helpful_count: 34,
+        created_at: '2025-11-20T09:15:00Z',
+      },
+      {
+        id: '3',
+        question_text: 'How often do the filters need to be changed?',
+        asked_by: 'Amit K.',
+        answers: [],
+        answer_count: 0,
+        helpful_count: 8,
+        created_at: '2026-01-05T11:00:00Z',
+      },
+    ];
+
+    return {
+      items: mockQuestions,
+      total: mockQuestions.length,
+      page: params?.page || 1,
+      size: params?.size || 10,
+    };
+  },
+
+  // Create a new question
+  create: async (data: { product_id: string; question_text: string }): Promise<ProductQuestion> => {
+    const token = useAuthStore.getState().accessToken;
+    if (!token) {
+      throw new Error('Authentication required to ask a question');
+    }
+
+    // TODO: Replace with actual API call when backend endpoint is ready
+    // const response = await storefrontClient.post(
+    //   `${API_PATH}/questions`,
+    //   data,
+    //   { headers: { Authorization: `Bearer ${token}` } }
+    // );
+    // return response.data;
+
+    // Mock response - simulate API delay and return new question
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    const customer = useAuthStore.getState().customer;
+    return {
+      id: `q-${Date.now()}`,
+      question_text: data.question_text,
+      asked_by: customer?.first_name || 'You',
+      answers: [],
+      answer_count: 0,
+      helpful_count: 0,
+      created_at: new Date().toISOString(),
+    };
+  },
+
+  // Vote on a question or answer
+  voteHelpful: async (type: 'question' | 'answer', id: string): Promise<{ helpful_count: number }> => {
+    const token = useAuthStore.getState().accessToken;
+    if (!token) {
+      throw new Error('Authentication required to vote');
+    }
+
+    // TODO: Replace with actual API call when backend endpoint is ready
+    // const response = await storefrontClient.post(
+    //   `${API_PATH}/questions/${type}/${id}/vote`,
+    //   { is_helpful: true },
+    //   { headers: { Authorization: `Bearer ${token}` } }
+    // );
+    // return response.data;
+
+    // Mock response
+    return { helpful_count: 1 };
+  },
+};
+
 // Coupons API
 export interface CouponValidationRequest {
   code: string;
@@ -1545,6 +1698,7 @@ export const storefrontApi = {
   company: companyApi,
   auth: authApi,
   reviews: reviewsApi,
+  questions: questionsApi,
   coupons: couponsApi,
   returns: returnsApi,
   orderTracking: orderTrackingApi,

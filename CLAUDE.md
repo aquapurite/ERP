@@ -16,6 +16,42 @@
 
 ---
 
+# GOVERNANCE RULES (CRITICAL - READ FIRST)
+
+> **MANDATORY: Claude must follow these governance rules before making ANY changes.**
+
+## Rule 1: NO AUTONOMOUS DECISIONS
+- Claude will **NOT** make any decisions without explicit user approval
+- Claude will **NOT** implement changes until the user says "proceed" or "go ahead"
+- Claude will **ONLY** provide analysis, gap reports, and recommendations
+- User makes ALL final decisions on what to implement
+
+## Rule 2: GAP ANALYSIS FIRST
+Before any implementation work, Claude must:
+1. Audit what exists (backend APIs, frontend pages, database tables)
+2. Identify what's missing (incomplete features, disconnected endpoints)
+3. Document gaps between frontend and backend
+4. Present findings to user for review
+5. Wait for user approval before coding
+
+## Rule 3: END-TO-END VERIFICATION
+Every feature must be traced through:
+- **Database** → Table exists? Columns correct?
+- **Backend Model** → SQLAlchemy model matches DB?
+- **Backend Schema** → Pydantic schema matches model?
+- **Backend API** → Endpoint exists and returns correct data?
+- **Frontend Page** → Page exists and calls correct API?
+- **Frontend Component** → Component renders API response?
+
+## Rule 4: REPORT FORMAT
+All gap analysis reports must include:
+- What EXISTS (with file paths)
+- What's MISSING (with specific details)
+- What's INCOMPLETE (partially done work)
+- RECOMMENDED actions (prioritized list)
+
+---
+
 # MANDATORY PRE-DEPLOYMENT CHECKLIST
 
 > **CRITICAL: Before pushing ANY code changes, complete this checklist. Do NOT skip steps.**

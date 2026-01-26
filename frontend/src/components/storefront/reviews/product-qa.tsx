@@ -18,26 +18,10 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/lib/storefront/auth-store';
+import { questionsApi, ProductQuestion, ProductAnswer } from '@/lib/storefront/api';
 import AskQuestionForm from './ask-question-form';
 
-interface Answer {
-  id: string;
-  answer_text: string;
-  answered_by: string;
-  is_seller_answer: boolean;
-  helpful_count: number;
-  created_at: string;
-}
-
-interface Question {
-  id: string;
-  question_text: string;
-  asked_by: string;
-  answers: Answer[];
-  answer_count: number;
-  helpful_count: number;
-  created_at: string;
-}
+// Using ProductQuestion and ProductAnswer types from api.ts
 
 interface ProductQAProps {
   productId: string;
@@ -46,7 +30,7 @@ interface ProductQAProps {
 
 export default function ProductQA({ productId, productName }: ProductQAProps) {
   const { isAuthenticated, customer } = useAuthStore();
-  const [questions, setQuestions] = useState<Question[]>([]);
+  const [questions, setQuestions] = useState<ProductQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAskForm, setShowAskForm] = useState(false);
@@ -60,68 +44,11 @@ export default function ProductQA({ productId, productName }: ProductQAProps) {
   const fetchQuestions = async () => {
     setLoading(true);
     try {
-      // TODO: Replace with actual API call when backend is ready
-      // const response = await questionsApi.getByProduct(productId);
-      // setQuestions(response);
-
-      // Mock data for now
-      setQuestions([
-        {
-          id: '1',
-          question_text: 'Is this water purifier suitable for borewell water with high TDS?',
-          asked_by: 'Rahul M.',
-          answers: [
-            {
-              id: 'a1',
-              answer_text: 'Yes, this purifier can handle TDS levels up to 2000 ppm. It uses RO+UV+UF technology which is perfect for borewell water with high TDS.',
-              answered_by: 'AQUAPURITE Support',
-              is_seller_answer: true,
-              helpful_count: 45,
-              created_at: '2025-12-15T10:30:00Z',
-            },
-            {
-              id: 'a2',
-              answer_text: 'I have borewell water with TDS around 800 ppm and this works great! Water tastes much better now.',
-              answered_by: 'Verified Buyer',
-              is_seller_answer: false,
-              helpful_count: 12,
-              created_at: '2025-12-20T14:45:00Z',
-            },
-          ],
-          answer_count: 2,
-          helpful_count: 23,
-          created_at: '2025-12-10T08:00:00Z',
-        },
-        {
-          id: '2',
-          question_text: 'What is the warranty period and does it cover the filters?',
-          asked_by: 'Priya S.',
-          answers: [
-            {
-              id: 'a3',
-              answer_text: 'The purifier comes with a 1-year comprehensive warranty. The filters are covered for the first 6 months. After that, filter replacements are available at affordable prices.',
-              answered_by: 'AQUAPURITE Support',
-              is_seller_answer: true,
-              helpful_count: 67,
-              created_at: '2025-11-25T16:20:00Z',
-            },
-          ],
-          answer_count: 1,
-          helpful_count: 34,
-          created_at: '2025-11-20T09:15:00Z',
-        },
-        {
-          id: '3',
-          question_text: 'How often do the filters need to be changed?',
-          asked_by: 'Amit K.',
-          answers: [],
-          answer_count: 0,
-          helpful_count: 8,
-          created_at: '2026-01-05T11:00:00Z',
-        },
-      ]);
+      const response = await questionsApi.getByProduct(productId);
+      setQuestions(response.items);
     } catch (error) {
       console.error('Failed to fetch questions:', error);
+      toast.error('Failed to load questions');
     } finally {
       setLoading(false);
     }
@@ -139,18 +66,27 @@ export default function ProductQA({ productId, productName }: ProductQAProps) {
     });
   };
 
-  const handleVoteHelpful = (answerId: string) => {
+  const handleVoteHelpful = async (answerId: string) => {
     if (helpfulVotes.has(answerId)) {
       toast.info('You already voted for this answer');
       return;
     }
 
-    setHelpfulVotes((prev) => new Set([...prev, answerId]));
-    // TODO: API call to record vote
-    toast.success('Thanks for your feedback!');
+    if (!isAuthenticated) {
+      toast.error('Please login to vote');
+      return;
+    }
+
+    try {
+      await questionsApi.voteHelpful('answer', answerId);
+      setHelpfulVotes((prev) => new Set([...prev, answerId]));
+      toast.success('Thanks for your feedback!');
+    } catch (error) {
+      toast.error('Failed to record vote');
+    }
   };
 
-  const handleQuestionSubmitted = (newQuestion: Question) => {
+  const handleQuestionSubmitted = (newQuestion: ProductQuestion) => {
     setQuestions((prev) => [newQuestion, ...prev]);
     setShowAskForm(false);
     toast.success('Your question has been submitted!');

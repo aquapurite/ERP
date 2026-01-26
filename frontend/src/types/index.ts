@@ -525,26 +525,49 @@ export type DealerType = 'DISTRIBUTOR' | 'DEALER' | 'SUB_DEALER' | 'FRANCHISE' |
 export interface Dealer {
   id: string;
   name: string;
-  code: string;
-  type: DealerType;
+  code?: string;
+  dealer_code?: string;  // Backend returns dealer_code
+  type?: DealerType;
+  dealer_type?: string;  // Backend returns dealer_type
   email?: string;
   phone?: string;
   gst_number?: string;
+  gstin?: string;  // Backend returns gstin
   pan?: string;
+  legal_name?: string;
+  display_name?: string;
   contact_person?: string;
-  pricing_tier: 'PLATINUM' | 'GOLD' | 'SILVER' | 'BRONZE';
-  credit_limit: number;
-  available_credit: number;
-  status: 'ACTIVE' | 'INACTIVE' | 'PENDING' | 'SUSPENDED';
+  pricing_tier?: 'PLATINUM' | 'GOLD' | 'SILVER' | 'BRONZE' | 'STANDARD';
+  tier?: string;  // Backend returns tier
+  credit_limit?: number;
+  credit_days?: number;
+  credit_status?: string;
+  available_credit?: number;
+  outstanding_amount?: number;
+  overdue_amount?: number;
+  status?: 'ACTIVE' | 'INACTIVE' | 'PENDING' | 'SUSPENDED';
   // Address fields
   registered_address_line1?: string;
+  registered_address_line2?: string;
   registered_city?: string;
   registered_district?: string;
   registered_state?: string;
   registered_state_code?: string;
   registered_pincode?: string;
-  region?: 'NORTH' | 'SOUTH' | 'EAST' | 'WEST' | 'CENTRAL';
-  created_at: string;
+  region?: 'NORTH' | 'SOUTH' | 'EAST' | 'WEST' | 'CENTRAL' | string;
+  // Bank details
+  bank_name?: string;
+  bank_account_number?: string;
+  bank_ifsc?: string;
+  bank_branch?: string;
+  // Additional fields
+  assigned_pincodes?: string[];
+  total_orders?: number;
+  total_revenue?: number;
+  average_order_value?: number;
+  credit_utilization_percentage?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 // Common Types

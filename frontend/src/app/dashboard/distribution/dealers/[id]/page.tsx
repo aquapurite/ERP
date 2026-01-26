@@ -217,79 +217,132 @@ export default function DealerDetailPage({ params }: { params: Promise<{ id: str
   const { data: dealer, isLoading } = useQuery<DealerDetail>({
     queryKey: ['dealer', id],
     queryFn: async () => {
-      // Simulated API response
-      return {
-        id,
-        code: 'DLR-001',
-        name: 'ABC Electronics',
-        type: 'DEALER',
-        status: 'ACTIVE',
-        pricing_tier: 'GOLD',
-        credit_limit: 500000,
-        available_credit: 320000,
-        outstanding_amount: 180000,
-        email: 'abc@electronics.com',
-        phone: '+91 98765 43210',
-        gst_number: '29ABCDE1234F1Z5',
-        pan_number: 'ABCDE1234F',
+      // Fetch dealer basic info, ledger, and targets in parallel
+      const [dealerRes, ledgerRes, targetsRes] = await Promise.allSettled([
+        dealersApi.getById(id),
+        dealersApi.getLedger(id, { limit: 50 }),
+        dealersApi.getTargets(id),
+      ]);
+
+      const dealerData = dealerRes.status === 'fulfilled' ? dealerRes.value : null;
+      const ledgerData = ledgerRes.status === 'fulfilled' ? ledgerRes.value : { items: [], total_debit: 0, total_credit: 0 };
+      const targetsData = targetsRes.status === 'fulfilled' ? targetsRes.value : [];
+
+      if (!dealerData) {
+        throw new Error('Failed to fetch dealer details');
+      }
+
+      // Transform backend data to frontend format
+      const creditTransactions: CreditTransaction[] = ledgerData.items.map((item) => ({
+        id: item.id,
+        type: item.credit_amount > 0 ? 'CREDIT' : 'DEBIT',
+        amount: item.credit_amount > 0 ? item.credit_amount : item.debit_amount,
+        balance_after: item.balance,
+        reference_number: item.reference_number,
+        reference_type: item.reference_type as 'ORDER' | 'PAYMENT' | 'CREDIT_NOTE' | 'ADJUSTMENT' | 'REFUND',
+        description: item.narration || `${item.transaction_type} - ${item.reference_number}`,
+        created_at: item.created_at,
+        created_by: 'System',
+      }));
+
+      // Get month name helper
+      const getMonthName = (month: number) => {
+        const months = ['January', 'February', 'March', 'April', 'May', 'June',
+                        'July', 'August', 'September', 'October', 'November', 'December'];
+        return months[month - 1] || '';
+      };
+
+      // Transform targets
+      const targets: SalesTarget[] = targetsData.map((t) => ({
+        id: t.id,
+        period: t.target_month
+          ? `${getMonthName(t.target_month)} ${t.target_year}`
+          : t.target_quarter
+            ? `Q${t.target_quarter} ${t.target_year}`
+            : `${t.target_year}`,
+        period_type: t.target_period as 'MONTHLY' | 'QUARTERLY' | 'YEARLY',
+        target_amount: t.revenue_target,
+        achieved_amount: t.revenue_achieved,
+        target_quantity: t.quantity_target,
+        achieved_quantity: t.quantity_achieved,
+        status: t.revenue_achievement_percentage >= 100
+          ? 'ACHIEVED'
+          : t.revenue_achievement_percentage > 0
+            ? 'IN_PROGRESS'
+            : 'PENDING',
+        incentive_earned: t.incentive_earned,
+        created_at: t.created_at,
+      }));
+
+      // Build dealer detail response
+      const result: DealerDetail = {
+        id: dealerData.id,
+        code: dealerData.dealer_code || '',
+        name: dealerData.name || '',
+        type: dealerData.dealer_type || 'DEALER',
+        status: dealerData.status || 'ACTIVE',
+        pricing_tier: dealerData.tier || 'STANDARD',
+        credit_limit: dealerData.credit_limit || 0,
+        available_credit: dealerData.available_credit || 0,
+        outstanding_amount: dealerData.outstanding_amount || 0,
+        email: dealerData.email || '',
+        phone: dealerData.phone || '',
+        gst_number: dealerData.gstin || dealerData.gst_number || '',
+        pan_number: dealerData.pan || '',
         address: {
-          line1: '123 Main Street',
-          line2: 'Commercial Complex',
-          city: 'Bengaluru',
-          state: 'Karnataka',
-          pincode: '560001',
+          line1: dealerData.registered_address_line1 || '',
+          line2: dealerData.registered_address_line2 || '',
+          city: dealerData.registered_city || '',
+          state: dealerData.registered_state || '',
+          pincode: dealerData.registered_pincode || '',
         },
         bank_details: {
-          bank_name: 'HDFC Bank',
-          account_number: 'XXXX XXXX 1234',
-          ifsc_code: 'HDFC0001234',
-          branch: 'Koramangala',
+          bank_name: dealerData.bank_name || '',
+          account_number: dealerData.bank_account_number ? `XXXX ${dealerData.bank_account_number.slice(-4)}` : '',
+          ifsc_code: dealerData.bank_ifsc || '',
+          branch: dealerData.bank_branch || '',
         },
-        territories: [
-          { id: '1', pincode: '560001', city: 'Bengaluru', state: 'Karnataka', region: 'South', is_exclusive: true, assigned_at: '2024-01-15' },
-          { id: '2', pincode: '560002', city: 'Bengaluru', state: 'Karnataka', region: 'South', is_exclusive: false, assigned_at: '2024-01-15' },
-          { id: '3', pincode: '560003', city: 'Bengaluru', state: 'Karnataka', region: 'South', is_exclusive: true, assigned_at: '2024-02-01' },
-          { id: '4', pincode: '560004', city: 'Bengaluru', state: 'Karnataka', region: 'South', is_exclusive: false, assigned_at: '2024-03-10' },
-        ],
-        credit_transactions: [
-          { id: '1', type: 'CREDIT', amount: 500000, balance_after: 500000, reference_number: 'CRED-001', reference_type: 'ADJUSTMENT', description: 'Initial credit limit', created_at: '2024-01-01', created_by: 'Admin' },
-          { id: '2', type: 'DEBIT', amount: 75000, balance_after: 425000, reference_number: 'ORD-10001', reference_type: 'ORDER', description: 'Order #ORD-10001', created_at: '2024-01-15', created_by: 'System' },
-          { id: '3', type: 'CREDIT', amount: 75000, balance_after: 500000, reference_number: 'PAY-001', reference_type: 'PAYMENT', description: 'Payment received - NEFT', created_at: '2024-01-25', created_by: 'Finance' },
-          { id: '4', type: 'DEBIT', amount: 120000, balance_after: 380000, reference_number: 'ORD-10045', reference_type: 'ORDER', description: 'Order #ORD-10045', created_at: '2024-02-10', created_by: 'System' },
-          { id: '5', type: 'DEBIT', amount: 60000, balance_after: 320000, reference_number: 'ORD-10078', reference_type: 'ORDER', description: 'Order #ORD-10078', created_at: '2024-03-05', created_by: 'System' },
-        ],
-        targets: [
-          { id: '1', period: 'January 2024', period_type: 'MONTHLY', target_amount: 200000, achieved_amount: 225000, target_quantity: 50, achieved_quantity: 58, status: 'ACHIEVED', incentive_earned: 11250, created_at: '2024-01-01' },
-          { id: '2', period: 'February 2024', period_type: 'MONTHLY', target_amount: 200000, achieved_amount: 195000, target_quantity: 50, achieved_quantity: 48, status: 'MISSED', incentive_earned: 0, created_at: '2024-02-01' },
-          { id: '3', period: 'March 2024', period_type: 'MONTHLY', target_amount: 250000, achieved_amount: 180000, target_quantity: 60, achieved_quantity: 42, status: 'IN_PROGRESS', incentive_earned: 0, created_at: '2024-03-01' },
-          { id: '4', period: 'Q1 2024', period_type: 'QUARTERLY', target_amount: 650000, achieved_amount: 600000, target_quantity: 160, achieved_quantity: 148, status: 'IN_PROGRESS', incentive_earned: 0, created_at: '2024-01-01' },
-        ],
-        schemes: [
-          { id: '1', name: 'Summer Sale Discount', code: 'SUMMER24', type: 'DISCOUNT', value: 10, value_type: 'PERCENTAGE', min_order_value: 50000, max_discount: 25000, valid_from: '2024-03-01', valid_to: '2024-05-31', is_active: true, terms: 'Valid on water purifiers only', products_applicable: ['Water Purifiers'] },
-          { id: '2', name: 'Bulk Order Cashback', code: 'BULK5', type: 'CASHBACK', value: 5, value_type: 'PERCENTAGE', min_order_value: 100000, max_discount: 50000, valid_from: '2024-01-01', valid_to: '2024-12-31', is_active: true, terms: 'Cashback credited after 30 days', products_applicable: ['All Products'] },
-          { id: '3', name: 'Quarterly Target Bonus', code: 'QTB-Q1', type: 'SLAB', value: 2, value_type: 'PERCENTAGE', min_order_value: 500000, max_discount: 100000, valid_from: '2024-01-01', valid_to: '2024-03-31', is_active: false, terms: 'On achieving quarterly targets', products_applicable: ['All Products'] },
-        ],
+        // Territories based on assigned_pincodes field (dealers use region, not separate territories)
+        territories: (dealerData.assigned_pincodes || []).map((pincode: string, idx: number) => ({
+          id: `${idx}`,
+          pincode,
+          city: dealerData.registered_city || '',
+          state: dealerData.registered_state || '',
+          region: dealerData.region || '',
+          is_exclusive: false,
+          assigned_at: dealerData.created_at || new Date().toISOString(),
+        })),
+        credit_transactions: creditTransactions,
+        targets,
+        schemes: [], // Schemes will be fetched separately if needed
         stats: {
-          total_orders: 156,
-          total_revenue: 2450000,
-          avg_order_value: 15705,
-          pending_payments: 180000,
-          credit_utilization: 36,
-          current_month_sales: 180000,
-          ytd_sales: 600000,
-          growth_percentage: 12.5,
+          total_orders: dealerData.total_orders || 0,
+          total_revenue: dealerData.total_revenue || 0,
+          avg_order_value: dealerData.average_order_value || 0,
+          pending_payments: dealerData.overdue_amount || 0,
+          credit_utilization: dealerData.credit_utilization_percentage || 0,
+          current_month_sales: 0, // Would need additional API
+          ytd_sales: dealerData.total_revenue || 0,
+          growth_percentage: 0, // Would need additional API
         },
-        created_at: '2024-01-01',
-        updated_at: '2024-03-10',
+        created_at: dealerData.created_at || new Date().toISOString(),
+        updated_at: dealerData.updated_at || new Date().toISOString(),
       };
+      return result;
     },
   });
 
   // Mutations
   const addTerritoryMutation = useMutation({
     mutationFn: async (data: { pincode: string; is_exclusive: boolean }) => {
-      // TODO: Implement actual API call when endpoint is available
-      // const { data: result } = await apiClient.post(`/dealers/${id}/territories`, data);
+      // Territories are managed via assigned_pincodes field on the dealer
+      // Update dealer with new pincode added to assigned_pincodes
+      const currentPincodes = dealer?.territories?.map(t => t.pincode) || [];
+      if (!currentPincodes.includes(data.pincode)) {
+        await dealersApi.update(id, {
+          assigned_pincodes: [...currentPincodes, data.pincode],
+        });
+      }
       return data;
     },
     onSuccess: () => {
@@ -305,9 +358,19 @@ export default function DealerDetailPage({ params }: { params: Promise<{ id: str
 
   const addCreditMutation = useMutation({
     mutationFn: async (data: { type: string; amount: number; description: string }) => {
-      // TODO: Implement actual API call when endpoint is available
-      // const { data: result } = await apiClient.post(`/dealers/${id}/credit-adjustments`, data);
-      return data;
+      const today = new Date().toISOString().split('T')[0];
+      const refNum = `ADJ-${Date.now()}`;
+
+      return dealersApi.recordPayment(id, {
+        transaction_type: data.type === 'CREDIT' ? 'PAYMENT' : 'ADJUSTMENT',
+        transaction_date: today,
+        reference_type: 'ADJUSTMENT',
+        reference_number: refNum,
+        debit_amount: data.type === 'ADJUSTMENT' ? data.amount : 0,
+        credit_amount: data.type === 'CREDIT' ? data.amount : 0,
+        payment_mode: 'ADJUSTMENT',
+        narration: data.description,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dealer', id] });
@@ -322,9 +385,35 @@ export default function DealerDetailPage({ params }: { params: Promise<{ id: str
 
   const addTargetMutation = useMutation({
     mutationFn: async (data: { period: string; period_type: string; target_amount: number; target_quantity: number }) => {
-      // TODO: Implement actual API call when endpoint is available
-      // const { data: result } = await apiClient.post(`/dealers/${id}/targets`, data);
-      return data;
+      // Parse period to get year and month
+      const now = new Date();
+      const year = now.getFullYear();
+      let month: number | undefined;
+      let quarter: number | undefined;
+
+      if (data.period_type === 'MONTHLY') {
+        // Try to parse month from period string (e.g., "April 2024")
+        const monthNames = ['january', 'february', 'march', 'april', 'may', 'june',
+                           'july', 'august', 'september', 'october', 'november', 'december'];
+        const periodLower = data.period.toLowerCase();
+        month = monthNames.findIndex(m => periodLower.includes(m)) + 1;
+        if (month === 0) month = now.getMonth() + 1;
+      } else if (data.period_type === 'QUARTERLY') {
+        // Parse quarter from period (e.g., "Q1 2024")
+        const qMatch = data.period.match(/Q(\d)/i);
+        quarter = qMatch ? parseInt(qMatch[1]) : Math.ceil((now.getMonth() + 1) / 3);
+      }
+
+      return dealersApi.createTarget(id, {
+        target_period: data.period_type,
+        target_year: year,
+        target_month: data.period_type === 'MONTHLY' ? month : undefined,
+        target_quarter: data.period_type === 'QUARTERLY' ? quarter : undefined,
+        target_type: 'BOTH',
+        revenue_target: data.target_amount,
+        quantity_target: data.target_quantity,
+        incentive_percentage: 5, // Default 5% incentive
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dealer', id] });
@@ -339,8 +428,15 @@ export default function DealerDetailPage({ params }: { params: Promise<{ id: str
 
   const removeTerritoryMutation = useMutation({
     mutationFn: async (territoryId: string) => {
-      // TODO: Implement actual API call when endpoint is available
-      // await apiClient.delete(`/dealers/${id}/territories/${territoryId}`);
+      // Remove pincode from assigned_pincodes
+      const territory = dealer?.territories?.find(t => t.id === territoryId);
+      if (territory) {
+        const currentPincodes = dealer?.territories?.map(t => t.pincode) || [];
+        const updatedPincodes = currentPincodes.filter(p => p !== territory.pincode);
+        await dealersApi.update(id, {
+          assigned_pincodes: updatedPincodes,
+        });
+      }
       return territoryId;
     },
     onSuccess: () => {

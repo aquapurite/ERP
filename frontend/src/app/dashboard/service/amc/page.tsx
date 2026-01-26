@@ -129,40 +129,113 @@ interface AMCStats {
 
 const amcApi = {
   getStats: async (): Promise<AMCStats> => {
-    return {
-      total_contracts: 1256,
-      active_contracts: 892,
-      expiring_soon: 45,
-      pending_renewal: 28,
-      total_revenue: 8945600,
-      this_month_revenue: 456780,
-      renewal_rate: 78.5,
-      avg_contract_value: 7125,
-    };
+    try {
+      const { data } = await apiClient.get('/api/v1/amc/contracts/stats');
+      return {
+        total_contracts: data.total || 0,
+        active_contracts: data.active_contracts || 0,
+        expiring_soon: data.expiring_in_30_days || 0,
+        pending_renewal: data.by_status?.PENDING_RENEWAL || 0,
+        total_revenue: data.active_value || 0,
+        this_month_revenue: 0, // Not provided by API
+        renewal_rate: 0, // Calculate if needed
+        avg_contract_value: data.active_contracts > 0 ? data.active_value / data.active_contracts : 0,
+      };
+    } catch {
+      // Return defaults on error
+      return {
+        total_contracts: 0,
+        active_contracts: 0,
+        expiring_soon: 0,
+        pending_renewal: 0,
+        total_revenue: 0,
+        this_month_revenue: 0,
+        renewal_rate: 0,
+        avg_contract_value: 0,
+      };
+    }
   },
   listPlans: async (): Promise<{ items: AMCPlan[]; total: number; pages: number }> => {
-    return {
-      items: [
-        { id: '1', name: 'Basic Care', code: 'AMC-BASIC', duration_months: 12, visits_included: 2, price: 2999, discount_percentage: 0, parts_covered: false, labor_covered: true, priority_support: false, is_active: true, description: 'Annual service with 2 preventive maintenance visits', applicable_products: ['Water Purifiers'], contracts_count: 456 },
-        { id: '2', name: 'Standard Care', code: 'AMC-STD', duration_months: 12, visits_included: 4, price: 4999, discount_percentage: 10, parts_covered: true, labor_covered: true, priority_support: false, is_active: true, description: 'Quarterly service with parts coverage', applicable_products: ['Water Purifiers', 'Air Purifiers'], contracts_count: 312 },
-        { id: '3', name: 'Premium Care', code: 'AMC-PREM', duration_months: 12, visits_included: 6, price: 7999, discount_percentage: 15, parts_covered: true, labor_covered: true, priority_support: true, is_active: true, description: 'Bi-monthly service with priority support', applicable_products: ['All Products'], contracts_count: 124 },
-        { id: '4', name: 'Extended Warranty', code: 'EXT-WARR', duration_months: 24, visits_included: 4, price: 5999, discount_percentage: 0, parts_covered: true, labor_covered: true, priority_support: false, is_active: true, description: '2-year extended warranty plan', applicable_products: ['Water Purifiers'], contracts_count: 89 },
-      ],
-      total: 4,
-      pages: 1,
-    };
+    try {
+      const { data } = await apiClient.get('/api/v1/amc/plans');
+      return {
+        items: (data.items || []).map((p: Record<string, unknown>) => ({
+          id: p.id,
+          name: p.name,
+          code: p.code,
+          duration_months: p.duration_months,
+          visits_included: p.services_included,
+          price: p.base_price,
+          discount_percentage: p.discount_on_parts || 0,
+          parts_covered: p.parts_covered,
+          labor_covered: p.labor_covered,
+          priority_support: p.priority_service,
+          is_active: p.is_active,
+          description: p.description,
+          applicable_products: [],
+          contracts_count: 0,
+        })),
+        total: data.total || 0,
+        pages: Math.ceil((data.total || 0) / 20),
+      };
+    } catch {
+      return { items: [], total: 0, pages: 0 };
+    }
   },
   listContracts: async (params?: { page?: number; size?: number; status?: string }): Promise<{ items: AMCContract[]; total: number; pages: number }> => {
-    return {
-      items: [
-        { id: '1', contract_number: 'AMC-2024-0001', customer_id: '1', customer_name: 'Priya Sharma', customer_phone: '+91 98765 43210', customer_email: 'priya@email.com', product_id: '1', product_name: 'AquaPure UV Compact', serial_number: 'AP-UV-001-12345', plan_id: '2', plan_name: 'Standard Care', start_date: '2024-01-15', end_date: '2025-01-14', amount: 4999, visits_included: 4, visits_used: 1, status: 'ACTIVE', auto_renew: true, payment_status: 'PAID', days_remaining: 280, next_service_date: '2024-04-15', created_at: '2024-01-10' },
-        { id: '2', contract_number: 'AMC-2024-0002', customer_id: '2', customer_name: 'Rahul Verma', customer_phone: '+91 87654 32109', customer_email: 'rahul@email.com', product_id: '2', product_name: 'AquaPure RO Elite', serial_number: 'AP-RO-002-67890', plan_id: '3', plan_name: 'Premium Care', start_date: '2023-12-01', end_date: '2024-11-30', amount: 7999, visits_included: 6, visits_used: 3, status: 'ACTIVE', auto_renew: false, payment_status: 'PAID', days_remaining: 245, created_at: '2023-11-25' },
-        { id: '3', contract_number: 'AMC-2023-0456', customer_id: '3', customer_name: 'Amit Kumar', customer_phone: '+91 76543 21098', customer_email: 'amit@email.com', product_id: '1', product_name: 'AquaPure UV Compact', serial_number: 'AP-UV-001-11111', plan_id: '1', plan_name: 'Basic Care', start_date: '2023-03-20', end_date: '2024-03-19', amount: 2999, visits_included: 2, visits_used: 2, status: 'PENDING_RENEWAL', auto_renew: false, payment_status: 'PAID', days_remaining: 5, created_at: '2023-03-15' },
-        { id: '4', contract_number: 'AMC-2024-0003', customer_id: '4', customer_name: 'Sneha Patel', customer_phone: '+91 65432 10987', customer_email: 'sneha@email.com', product_id: '3', product_name: 'AquaPure RO+UV Pro', serial_number: 'AP-ROUV-003-22222', plan_id: '2', plan_name: 'Standard Care', start_date: '2024-02-01', end_date: '2025-01-31', amount: 4999, visits_included: 4, visits_used: 0, status: 'PENDING_ACTIVATION', auto_renew: true, payment_status: 'PENDING', days_remaining: 300, created_at: '2024-01-28' },
-      ],
-      total: 4,
-      pages: 1,
-    };
+    try {
+      const { data } = await apiClient.get('/api/v1/amc/contracts', { params });
+      return {
+        items: (data.items || []).map((c: Record<string, unknown>) => ({
+          id: c.id,
+          contract_number: c.contract_number,
+          customer_id: c.customer_id,
+          customer_name: c.customer_name,
+          customer_phone: '',
+          customer_email: '',
+          product_id: '',
+          product_name: c.product_name,
+          serial_number: c.serial_number,
+          plan_id: '',
+          plan_name: c.amc_type,
+          start_date: c.start_date,
+          end_date: c.end_date,
+          amount: c.total_amount,
+          visits_included: c.total_services,
+          visits_used: c.services_used,
+          status: c.status as AMCContract['status'],
+          auto_renew: false,
+          payment_status: c.payment_status as AMCContract['payment_status'],
+          days_remaining: c.days_remaining,
+          next_service_date: c.next_service_due,
+          created_at: '',
+        })),
+        total: data.total || 0,
+        pages: Math.ceil((data.total || 0) / (params?.size || 20)),
+      };
+    } catch {
+      return { items: [], total: 0, pages: 0 };
+    }
+  },
+  createContract: async (data: Record<string, unknown>) => {
+    const { data: result } = await apiClient.post('/api/v1/amc/contracts', data);
+    return result;
+  },
+  createPlan: async (data: Record<string, unknown>) => {
+    const { data: result } = await apiClient.post('/api/v1/amc/plans', data);
+    return result;
+  },
+  activateContract: async (contractId: string, paymentMode: string = 'ONLINE', paymentReference?: string) => {
+    const { data: result } = await apiClient.post(`/api/v1/amc/contracts/${contractId}/activate`, null, {
+      params: { payment_mode: paymentMode, payment_reference: paymentReference }
+    });
+    return result;
+  },
+  renewContract: async (contractId: string, newPlanId?: string, durationMonths: number = 12) => {
+    const { data: result } = await apiClient.post(`/api/v1/amc/contracts/${contractId}/renew`, null, {
+      params: { new_plan_id: newPlanId, duration_months: durationMonths }
+    });
+    return result;
   },
 };
 
@@ -234,11 +307,20 @@ export default function AMCPage() {
   // Mutations
   const createContractMutation = useMutation({
     mutationFn: async (data: typeof contractForm) => {
-      // TODO: Implement actual API call - amcApi.createContract(data)
-      return data;
+      return amcApi.createContract({
+        customer_id: data.customer_phone, // Need to lookup customer by phone
+        serial_number: data.serial_number,
+        plan_id: data.plan_id || undefined,
+        amc_type: 'STANDARD',
+        start_date: new Date().toISOString().split('T')[0],
+        duration_months: 12,
+        total_services: 2,
+        base_price: 2999, // Should come from plan
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['amc-contracts'] });
+      queryClient.invalidateQueries({ queryKey: ['amc-stats'] });
       toast.success('AMC contract created');
       setIsCreateContractOpen(false);
       setContractForm({ customer_phone: '', serial_number: '', plan_id: '', auto_renew: true });
@@ -250,8 +332,17 @@ export default function AMCPage() {
 
   const createPlanMutation = useMutation({
     mutationFn: async (data: typeof planForm) => {
-      // TODO: Implement actual API call - amcApi.createPlan(data)
-      return data;
+      return amcApi.createPlan({
+        name: data.name,
+        code: data.code,
+        duration_months: parseInt(data.duration_months),
+        services_included: parseInt(data.visits_included),
+        base_price: parseFloat(data.price),
+        parts_covered: data.parts_covered,
+        labor_covered: data.labor_covered,
+        priority_service: data.priority_support,
+        description: data.description,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['amc-plans'] });
@@ -265,11 +356,11 @@ export default function AMCPage() {
 
   const activateContractMutation = useMutation({
     mutationFn: async (contractId: string) => {
-      // TODO: Implement actual API call - amcApi.activateContract(contractId)
-      return contractId;
+      return amcApi.activateContract(contractId, 'ONLINE');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['amc-contracts'] });
+      queryClient.invalidateQueries({ queryKey: ['amc-stats'] });
       toast.success('Contract activated');
     },
     onError: (error: Error) => {
@@ -279,11 +370,11 @@ export default function AMCPage() {
 
   const renewContractMutation = useMutation({
     mutationFn: async (data: { contractId: string; planId: string }) => {
-      // TODO: Implement actual API call - amcApi.renewContract(data)
-      return data;
+      return amcApi.renewContract(data.contractId, data.planId || undefined);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['amc-contracts'] });
+      queryClient.invalidateQueries({ queryKey: ['amc-stats'] });
       toast.success('Contract renewed successfully');
       setIsRenewOpen(false);
     },

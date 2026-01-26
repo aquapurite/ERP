@@ -3,7 +3,8 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { StorefrontProduct, ProductVariant, CartItem } from '@/types/storefront';
-import { abandonedCartApi, CartSyncRequest, RecoveredCartResponse } from './api';
+import { abandonedCartApi, CartSyncRequest, inventoryApi, productsApi } from './api';
+import { toast } from 'sonner';
 
 // Cookie name for partner referral (must match middleware.ts)
 const REFERRAL_COOKIE_NAME = 'partner_ref';
@@ -111,6 +112,97 @@ const triggerSync = (get: () => CartStore) => {
     get().syncToBackend();
   }, SYNC_DEBOUNCE_MS);
 };
+
+// Validate cart items after restore from localStorage
+interface ValidationResult {
+  validItems: CartItem[];
+  invalidItems: CartItem[];
+  priceChanges: { item: CartItem; oldPrice: number; newPrice: number }[];
+}
+
+async function validateCartItems(items: CartItem[]): Promise<ValidationResult> {
+  const validItems: CartItem[] = [];
+  const invalidItems: CartItem[] = [];
+  const priceChanges: { item: CartItem; oldPrice: number; newPrice: number }[] = [];
+
+  // Skip validation if no items
+  if (items.length === 0) {
+    return { validItems: [], invalidItems: [], priceChanges: [] };
+  }
+
+  try {
+    // Verify stock availability in bulk
+    const stockRequests = items.map((item) => ({
+      product_id: item.product.id,
+      variant_id: item.variant?.id,
+      quantity: item.quantity,
+    }));
+
+    const stockResults = await inventoryApi.verifyStockBulk(stockRequests);
+    const stockMap = new Map(stockResults.map((r) => [r.product_id, r]));
+
+    // Get latest product prices
+    const productIds = [...new Set(items.map((item) => item.product.id))];
+    const productPrices = new Map<string, number>();
+
+    // Fetch current prices for all products
+    for (const productId of productIds) {
+      try {
+        const product = await productsApi.getBySlug(
+          items.find((i) => i.product.id === productId)?.product.slug || productId
+        );
+        if (product) {
+          productPrices.set(productId, product.selling_price);
+        }
+      } catch {
+        // If product not found, mark for removal
+        productPrices.set(productId, -1);
+      }
+    }
+
+    // Validate each item
+    for (const item of items) {
+      const stockResult = stockMap.get(item.product.id);
+      const currentPrice = productPrices.get(item.product.id);
+
+      // Check if product is unavailable
+      if (currentPrice === -1) {
+        invalidItems.push(item);
+        continue;
+      }
+
+      // Check if out of stock
+      if (stockResult && !stockResult.in_stock) {
+        invalidItems.push(item);
+        continue;
+      }
+
+      // Check for price changes (more than 1% difference)
+      if (currentPrice && Math.abs(currentPrice - item.price) > item.price * 0.01) {
+        priceChanges.push({
+          item,
+          oldPrice: item.price,
+          newPrice: currentPrice,
+        });
+        // Update item with new price
+        validItems.push({
+          ...item,
+          price: currentPrice,
+          product: { ...item.product, selling_price: currentPrice },
+        });
+      } else {
+        // Item is valid with unchanged price
+        validItems.push(item);
+      }
+    }
+  } catch (error) {
+    console.warn('Cart validation error:', error);
+    // On error, keep all items (fail open)
+    return { validItems: items, invalidItems: [], priceChanges: [] };
+  }
+
+  return { validItems, invalidItems, priceChanges };
+}
 
 export const useCartStore = create<CartStore>()(
   persist(
@@ -360,6 +452,35 @@ export const useCartStore = create<CartStore>()(
         couponCode: state.couponCode,
         discountAmount: state.discountAmount,
       }),
+      onRehydrateStorage: () => (state) => {
+        // Validate cart items after restore from localStorage
+        if (state && state.items.length > 0) {
+          validateCartItems(state.items).then(({ validItems, invalidItems, priceChanges }) => {
+            if (invalidItems.length > 0 || priceChanges.length > 0) {
+              // Update cart with valid items only
+              useCartStore.setState({ items: validItems });
+
+              // Notify user about removed items
+              if (invalidItems.length > 0) {
+                toast.warning(
+                  `${invalidItems.length} item(s) removed from cart (no longer available)`,
+                  { duration: 5000 }
+                );
+              }
+
+              // Notify about price changes
+              if (priceChanges.length > 0) {
+                toast.info(
+                  `Prices updated for ${priceChanges.length} item(s)`,
+                  { duration: 5000 }
+                );
+              }
+            }
+          }).catch((error) => {
+            console.warn('Cart validation failed:', error);
+          });
+        }
+      },
     }
   )
 );

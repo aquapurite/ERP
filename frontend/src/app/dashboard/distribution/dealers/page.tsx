@@ -72,18 +72,21 @@ const getColumns = (
     header: 'Type',
     cell: ({ row }) => (
       <span className="text-sm capitalize">
-        {row.original.type.replace(/_/g, ' ').toLowerCase()}
+        {(row.original.type || row.original.dealer_type || 'DEALER').replace(/_/g, ' ').toLowerCase()}
       </span>
     ),
   },
   {
     accessorKey: 'pricing_tier',
     header: 'Tier',
-    cell: ({ row }) => (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${tierColors[row.original.pricing_tier]}`}>
-        {row.original.pricing_tier}
-      </span>
-    ),
+    cell: ({ row }) => {
+      const tier = row.original.pricing_tier || row.original.tier || 'STANDARD';
+      return (
+        <span className={`px-2 py-1 rounded-full text-xs font-medium ${tierColors[tier as keyof typeof tierColors] || tierColors.STANDARD}`}>
+          {tier}
+        </span>
+      );
+    },
   },
   {
     accessorKey: 'credit',
@@ -113,7 +116,7 @@ const getColumns = (
   {
     accessorKey: 'status',
     header: 'Status',
-    cell: ({ row }) => <StatusBadge status={row.original.status} />,
+    cell: ({ row }) => <StatusBadge status={row.original.status || 'ACTIVE'} />,
   },
   {
     id: 'actions',
@@ -210,14 +213,14 @@ export default function DealersPage() {
     setSelectedDealer(dealer);
     setFormData({
       name: dealer.name,
-      code: dealer.code || '',
-      type: dealer.type,
+      code: dealer.code || dealer.dealer_code || '',
+      type: (dealer.type || dealer.dealer_type || 'DEALER') as typeof formData.type,
       email: dealer.email || '',
       phone: dealer.phone || '',
-      gst_number: dealer.gst_number || '',
+      gst_number: dealer.gst_number || dealer.gstin || '',
       pan: dealer.pan || '',
       contact_person: dealer.contact_person || dealer.name,
-      pricing_tier: dealer.pricing_tier,
+      pricing_tier: (dealer.pricing_tier || dealer.tier || 'STANDARD') as typeof formData.pricing_tier,
       credit_limit: String(dealer.credit_limit || 0),
       address_line1: dealer.registered_address_line1 || '',
       city: dealer.registered_city || '',
@@ -225,7 +228,7 @@ export default function DealersPage() {
       state: dealer.registered_state || '',
       state_code: dealer.registered_state_code || '',
       pincode: dealer.registered_pincode || '',
-      region: dealer.region || 'NORTH',
+      region: (dealer.region || 'NORTH') as typeof formData.region,
     });
     setIsDialogOpen(true);
   };
