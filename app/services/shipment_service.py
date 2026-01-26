@@ -616,16 +616,15 @@ class ShipmentService:
         # Calculate payment mode
         payment_mode_str = "PREPAID"
         cod_amount = None
-        if hasattr(order, 'payment_method'):
-            if order.payment_method == "COD" or str(order.payment_method) == "COD":
-                payment_mode_str = "COD"
-                cod_amount = float(order.total_amount)
+        if order.payment_method == "COD" or str(order.payment_method) == "COD":
+            payment_mode_str = "COD"
+            cod_amount = float(order.total_amount)
 
         # Calculate weight from order items if order has items
         total_weight = 0.0
-        if hasattr(order, 'items') and order.items:
+        if order.items:
             for item in order.items:
-                if hasattr(item, 'product') and item.product:
+                if item.product:
                     product_weight = getattr(item.product, 'chargeable_weight_kg', 0) or 0
                     total_weight += product_weight * item.quantity
 
@@ -645,7 +644,7 @@ class ShipmentService:
             warehouse_id=order.warehouse_id,
             transporter_id=transporter_id,
             awb_number=awb_number,
-            status=ShipmentStatus.CREATED.value if hasattr(ShipmentStatus.CREATED, 'value') else "CREATED",
+            status="CREATED",  # Database uses VARCHAR, not Enum
             payment_mode=payment_mode_str,
             cod_amount=cod_amount,
             packaging_type="BOX",
@@ -668,7 +667,7 @@ class ShipmentService:
         # Add initial tracking entry
         tracking = ShipmentTracking(
             shipment_id=shipment.id,
-            status=ShipmentStatus.CREATED.value if hasattr(ShipmentStatus.CREATED, 'value') else "CREATED",
+            status="CREATED",  # Database uses VARCHAR, not Enum
             remarks="Shipment auto-created from order allocation",
             source="SYSTEM",
         )

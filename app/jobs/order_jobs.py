@@ -405,6 +405,12 @@ async def update_order_tracking():
                     )
 
                     if tracking_info:
+                        # Normalize tracking status to UPPERCASE before SQL
+                        # (external APIs may return lowercase values)
+                        raw_status = tracking_info.get("status", "")
+                        normalized_status = raw_status.upper() if raw_status else ""
+                        is_delivered = normalized_status == "DELIVERED"
+
                         await session.execute(
                             text("""
                                 UPDATE orders
@@ -412,19 +418,20 @@ async def update_order_tracking():
                                     tracking_status = :tracking_status,
                                     last_tracking_update = :update_time,
                                     status = CASE
-                                        WHEN LOWER(:tracking_status) = 'delivered' THEN 'DELIVERED'
+                                        WHEN :is_delivered THEN 'DELIVERED'
                                         ELSE status
                                     END,
                                     delivered_at = CASE
-                                        WHEN LOWER(:tracking_status) = 'delivered' THEN :update_time
+                                        WHEN :is_delivered THEN :update_time
                                         ELSE delivered_at
                                     END
                                 WHERE id = :order_id
                             """),
                             {
-                                "tracking_status": tracking_info["status"],
+                                "tracking_status": normalized_status,
                                 "update_time": datetime.now(timezone.utc),
-                                "order_id": order.id
+                                "order_id": order.id,
+                                "is_delivered": is_delivered
                             }
                         )
 

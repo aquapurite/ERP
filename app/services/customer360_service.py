@@ -38,6 +38,7 @@ from app.schemas.customer import (
     Customer360LeadSummary,
     Customer360LeadActivity,
 )
+from app.core.enum_utils import get_enum_value
 
 
 class Customer360Service:
@@ -250,17 +251,17 @@ class Customer360Service:
             "lead": Customer360LeadSummary(
                 id=lead.id,
                 lead_number=lead.lead_number,
-                status=lead.status if hasattr(lead.status, 'value') else str(lead.status),
-                source=lead.source if hasattr(lead.source, 'value') else str(lead.source),
+                status=get_enum_value(lead.status),
+                source=get_enum_value(lead.source),
                 converted_at=lead.converted_at,
             ),
             "activities": [
                 Customer360LeadActivity(
-                    activity_type=a.activity_type.value if hasattr(a.activity_type, 'value') else str(a.activity_type),
+                    activity_type=get_enum_value(a.activity_type),
                     subject=a.subject,
                     outcome=a.outcome,
-                    old_status=a.old_status.value if a.old_status and hasattr(a.old_status, 'value') else str(a.old_status) if a.old_status else None,
-                    new_status=a.new_status.value if a.new_status and hasattr(a.new_status, 'value') else str(a.new_status) if a.new_status else None,
+                    old_status=get_enum_value(a.old_status) if a.old_status else None,
+                    new_status=get_enum_value(a.new_status) if a.new_status else None,
                     activity_date=a.activity_date,
                 )
                 for a in activities
@@ -288,8 +289,8 @@ class Customer360Service:
 
         return [
             Customer360OrderStatusHistory(
-                from_status=h.from_status.value if h.from_status and hasattr(h.from_status, 'value') else str(h.from_status) if h.from_status else None,
-                to_status=h.to_status.value if hasattr(h.to_status, 'value') else str(h.to_status),
+                from_status=get_enum_value(h.from_status) if h.from_status else None,
+                to_status=get_enum_value(h.to_status),
                 notes=h.notes,
                 changed_by=str(h.changed_by) if h.changed_by else None,
                 created_at=h.created_at,
@@ -326,7 +327,7 @@ class Customer360Service:
 
         return [
             Customer360ShipmentTracking(
-                status=t.status if hasattr(t.status, 'value') else str(t.status),
+                status=get_enum_value(t.status),
                 location=t.location,
                 city=t.city,
                 remarks=t.remarks,
@@ -356,8 +357,8 @@ class Customer360Service:
 
         return [
             Customer360ServiceStatusHistory(
-                from_status=h.from_status.value if h.from_status and hasattr(h.from_status, 'value') else str(h.from_status) if h.from_status else None,
-                to_status=h.to_status.value if hasattr(h.to_status, 'value') else str(h.to_status),
+                from_status=get_enum_value(h.from_status) if h.from_status else None,
+                to_status=get_enum_value(h.to_status),
                 notes=h.notes,
                 changed_by=str(h.changed_by) if h.changed_by else None,
                 created_at=datetime.utcnow(),  # No created_at in model, use current time
@@ -437,7 +438,7 @@ class Customer360Service:
                 event_id=o.id,
                 title=f"Order {o.order_number}",
                 description=f"Amount: Rs.{o.total_amount}",
-                status=o.status if hasattr(o.status, 'value') else str(o.status),
+                status=get_enum_value(o.status),
                 timestamp=o.created_at,
                 metadata={"order_number": o.order_number, "amount": float(o.total_amount or 0)},
             ))
@@ -449,7 +450,7 @@ class Customer360Service:
                 event_id=s.id,
                 title=f"Shipment {s.shipment_number}",
                 description=f"AWB: {s.awb_number}" if s.awb_number else None,
-                status=s.status if hasattr(s.status, 'value') else str(s.status),
+                status=get_enum_value(s.status),
                 timestamp=s.created_at,
                 metadata={"shipment_number": s.shipment_number, "awb": s.awb_number},
             ))
@@ -461,7 +462,7 @@ class Customer360Service:
                 event_id=i.id,
                 title=f"Installation {i.installation_number}",
                 description=f"Pincode: {i.installation_pincode}",
-                status=i.status if hasattr(i.status, 'value') else str(i.status),
+                status=get_enum_value(i.status),
                 timestamp=i.created_at,
                 metadata={"installation_number": i.installation_number, "rating": i.customer_rating},
             ))
@@ -475,9 +476,9 @@ class Customer360Service:
                 event_id=sr.id,
                 title=f"Service {sr.ticket_number}",
                 description=sr.title,
-                status=sr.status if hasattr(sr.status, 'value') else str(sr.status),
+                status=get_enum_value(sr.status),
                 timestamp=sr_timestamp if isinstance(sr_timestamp, datetime) else datetime.combine(sr_timestamp, datetime.min.time()),
-                metadata={"ticket_number": sr.ticket_number, "service_type": sr.service_type if hasattr(sr.service_type, 'value') else str(sr.service_type)},
+                metadata={"ticket_number": sr.ticket_number, "service_type": get_enum_value(sr.service_type)},
             ))
 
         # Add calls
@@ -486,8 +487,8 @@ class Customer360Service:
                 event_type="CALL",
                 event_id=c.id,
                 title=f"Call {c.call_id}",
-                description=f"{c.call_type.value if hasattr(c.call_type, 'value') else c.call_type} - {c.category if hasattr(c.category, 'value') else c.category}",
-                status=c.status if hasattr(c.status, 'value') else str(c.status),
+                description=f"{get_enum_value(c.call_type)} - {get_enum_value(c.category)}",
+                status=get_enum_value(c.status),
                 timestamp=c.call_start_time,
                 metadata={"call_id": c.call_id, "duration": c.duration_seconds},
             ))
@@ -498,10 +499,10 @@ class Customer360Service:
                 event_type="PAYMENT",
                 event_id=p.id,
                 title=f"Payment Rs.{p.amount}",
-                description=f"Method: {p.method.value if hasattr(p.method, 'value') else p.method}",
-                status=p.status if hasattr(p.status, 'value') else str(p.status),
+                description=f"Method: {get_enum_value(p.method)}",
+                status=get_enum_value(p.status),
                 timestamp=p.created_at,
-                metadata={"amount": float(p.amount or 0), "method": p.method.value if hasattr(p.method, 'value') else str(p.method)},
+                metadata={"amount": float(p.amount or 0), "method": get_enum_value(p.method)},
             ))
 
         # Sort by timestamp descending (most recent first)
@@ -514,9 +515,9 @@ class Customer360Service:
         return Customer360OrderSummary(
             id=order.id,
             order_number=order.order_number,
-            status=order.status if hasattr(order.status, 'value') else str(order.status),
+            status=get_enum_value(order.status),
             total_amount=float(order.total_amount or 0),
-            payment_status=order.payment_status if order.payment_status and hasattr(order.payment_status, 'value') else str(order.payment_status) if order.payment_status else None,
+            payment_status=get_enum_value(order.payment_status) if order.payment_status else None,
             items_count=0,  # Avoid lazy loading - would need selectinload
             created_at=order.created_at,
         )
@@ -527,7 +528,7 @@ class Customer360Service:
             id=shipment.id,
             shipment_number=shipment.shipment_number,
             order_number=None,  # Would need to join
-            status=shipment.status if hasattr(shipment.status, 'value') else str(shipment.status),
+            status=get_enum_value(shipment.status),
             awb_number=shipment.awb_number,
             transporter_name=None,  # Would need to join
             delivered_to=shipment.delivered_to,
@@ -540,7 +541,7 @@ class Customer360Service:
         return Customer360InstallationSummary(
             id=installation.id,
             installation_number=installation.installation_number,
-            status=installation.status if hasattr(installation.status, 'value') else str(installation.status),
+            status=get_enum_value(installation.status),
             product_name=None,  # Would need to join
             installation_pincode=installation.installation_pincode,
             franchisee_name=None,  # Would need to join
@@ -558,9 +559,9 @@ class Customer360Service:
         return Customer360ServiceRequestSummary(
             id=sr.id,
             ticket_number=sr.ticket_number,
-            service_type=sr.service_type if hasattr(sr.service_type, 'value') else str(sr.service_type),
-            status=sr.status if hasattr(sr.status, 'value') else str(sr.status),
-            priority=sr.priority if sr.priority and hasattr(sr.priority, 'value') else str(sr.priority) if sr.priority else None,
+            service_type=get_enum_value(sr.service_type),
+            status=get_enum_value(sr.status),
+            priority=get_enum_value(sr.priority) if sr.priority else None,
             title=sr.title,
             franchisee_name=None,  # Would need to join
             technician_name=None,  # Would need to join
@@ -575,14 +576,14 @@ class Customer360Service:
         return Customer360CallSummary(
             id=call.id,
             call_id=call.call_id,
-            call_type=call.call_type.value if hasattr(call.call_type, 'value') else str(call.call_type),
-            category=call.category if hasattr(call.category, 'value') else str(call.category),
-            status=call.status if hasattr(call.status, 'value') else str(call.status),
-            outcome=call.outcome if call.outcome and hasattr(call.outcome, 'value') else str(call.outcome) if call.outcome else None,
+            call_type=get_enum_value(call.call_type),
+            category=get_enum_value(call.category),
+            status=get_enum_value(call.status),
+            outcome=get_enum_value(call.outcome) if call.outcome else None,
             duration_seconds=call.duration_seconds,
             agent_name=None,  # Would need to join
             call_start_time=call.call_start_time,
-            sentiment=call.sentiment.value if call.sentiment and hasattr(call.sentiment, 'value') else str(call.sentiment) if call.sentiment else None,
+            sentiment=get_enum_value(call.sentiment) if call.sentiment else None,
         )
 
     def _map_payment(self, payment: Payment) -> Customer360PaymentSummary:
@@ -591,8 +592,8 @@ class Customer360Service:
             id=payment.id,
             order_number=None,  # Would need to join
             amount=float(payment.amount or 0),
-            method=payment.method.value if hasattr(payment.method, 'value') else str(payment.method),
-            status=payment.status if hasattr(payment.status, 'value') else str(payment.status),
+            method=get_enum_value(payment.method),
+            status=get_enum_value(payment.status),
             transaction_id=payment.transaction_id,
             gateway=payment.gateway,
             completed_at=payment.completed_at,
@@ -604,8 +605,8 @@ class Customer360Service:
         return Customer360AMCSummary(
             id=amc.id,
             contract_number=amc.contract_number,
-            plan_name=amc.plan_name if hasattr(amc, 'plan_name') else "AMC Plan",
-            status=amc.status if hasattr(amc.status, 'value') else str(amc.status),
+            plan_name=getattr(amc, 'plan_name', "AMC Plan"),
+            status=get_enum_value(amc.status),
             start_date=amc.start_date,
             end_date=amc.end_date,
             total_services=amc.total_services or 0,
