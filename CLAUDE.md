@@ -2676,7 +2676,7 @@ GET  /api/v1/inventory/low-stock                      # Low stock alerts
 
 ---
 
-## System Audit Report (2026-01-25)
+## System Audit Report (2026-01-25, Updated 2026-01-26)
 
 ### Executive Summary
 
@@ -2684,12 +2684,12 @@ Comprehensive audit of 204 database tables, 76 API endpoint files, 182+ frontend
 
 | Area | Grade | Critical | High | Medium |
 |------|-------|----------|------|--------|
-| Backend API | B+ | 5 | 11 | 17 |
+| Backend API | A- | 4 | 11 | 15 |
 | ERP Frontend | B | 8 | 6 | 12 |
-| D2C Storefront | B | 3 | 7 | 15 |
-| Database Schema | A- | 0 | 3 | 8 |
+| D2C Storefront | B+ | 2 | 7 | 13 |
+| Database Schema | A | 0 | 3 | 6 |
 | Security | C+ | 2 | 8 | 8 |
-| **Overall** | **B** | **18** | **35** | **60** |
+| **Overall** | **B+** | **16** | **35** | **54** |
 
 ### Critical Issues (P0 - Fix Immediately)
 
@@ -2724,6 +2724,8 @@ Comprehensive audit of 204 database tables, 76 API endpoint files, 182+ frontend
 | Contact/Support page | ✅ FIXED | 2026-01-25 |
 | Convert JSON to JSONB (105 columns) | ✅ FIXED | 2026-01-26 |
 | Fix timestamps to TIMESTAMPTZ (485 columns) | ✅ FIXED | 2026-01-26 |
+| Product Q&A backend endpoints | ✅ FIXED | 2026-01-26 |
+| Partner payouts backend endpoint | ✅ FIXED | 2026-01-26 |
 
 ### Fixes Applied (2026-01-25 & 2026-01-26)
 
@@ -2737,6 +2739,17 @@ Comprehensive audit of 204 database tables, 76 API endpoint files, 182+ frontend
 - Added transaction rollback with proper exception handling in `order_service.py`
 - Added `IntegrityError` and `SQLAlchemyError` imports for proper error handling
 - Added `@model_validator` cross-field validation to ChannelPricing schemas (selling_price <= mrp, date range validation)
+
+**Backend (2026-01-26):**
+- Implemented Product Q&A endpoints (`app/api/v1/endpoints/questions.py`):
+  - GET /api/v1/questions/product/{product_id} - Get questions for a product (public)
+  - POST /api/v1/questions - Ask a question (authenticated customer)
+  - POST /api/v1/questions/{question_id}/answers - Answer a question
+  - POST /api/v1/questions/{question_id}/helpful - Vote question helpful
+  - POST /api/v1/questions/answers/{answer_id}/helpful - Vote answer helpful
+- Added ProductQuestion, ProductAnswer, QuestionHelpful, AnswerHelpful models (`app/models/product_review.py`)
+- Added Partner payouts endpoint: GET /api/v1/partners/{partner_id}/payouts (admin)
+- Updated frontend questionsApi to use real backend endpoints instead of mock data
 
 **Database Schema (Supabase Production) - 2026-01-26:**
 - Added 9 FK constraints to channel tables:
