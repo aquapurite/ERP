@@ -1361,7 +1361,6 @@ async def sync_products_to_model_codes(
 async def sync_existing_products(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    permissions: Permissions = Depends(Permissions("serialization:admin")),
 ):
     """
     Sync existing products with serialization module.
