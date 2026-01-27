@@ -287,3 +287,34 @@ class VideoGuideListResponse(BaseModel):
     size: int = Field(..., description="Page size")
     pages: int = Field(..., description="Total pages")
     categories: List[str] = Field([], description="Available categories")
+
+
+# ==================== AWB Tracking Schemas ====================
+
+class TrackingEventResponse(BaseModel):
+    """Single tracking event in shipment history."""
+    status: str = Field(..., description="Status code")
+    status_message: str = Field(..., description="Human-readable status message")
+    location: Optional[str] = Field(None, description="Event location")
+    remarks: Optional[str] = Field(None, description="Additional remarks")
+    timestamp: str = Field(..., description="Event timestamp (ISO format)")
+
+
+class AWBTrackingResponse(BaseModel):
+    """Public AWB/shipment tracking response."""
+    awb_number: str = Field(..., description="AWB/tracking number")
+    courier_name: Optional[str] = Field(None, description="Courier/transporter name")
+    status: str = Field(..., description="Current shipment status")
+    status_message: str = Field(..., description="Human-readable status")
+    origin_city: Optional[str] = Field(None, description="Origin city")
+    destination_city: Optional[str] = Field(None, description="Destination city")
+    destination_pincode: Optional[str] = Field(None, description="Destination pincode")
+    shipped_at: Optional[str] = Field(None, description="Shipping timestamp")
+    estimated_delivery: Optional[str] = Field(None, description="Estimated delivery date")
+    delivered_at: Optional[str] = Field(None, description="Actual delivery timestamp")
+    current_location: Optional[str] = Field(None, description="Current shipment location")
+    tracking_url: Optional[str] = Field(None, description="External tracking URL")
+    tracking_events: List[TrackingEventResponse] = Field([], description="Tracking history")
+    order_number: Optional[str] = Field(None, description="Associated order number")
+    payment_mode: str = Field("PREPAID", description="Payment mode: PREPAID or COD")
+    cod_amount: Optional[float] = Field(None, description="COD amount if applicable")

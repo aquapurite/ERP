@@ -2052,6 +2052,7 @@ async def clear_storefront_cache(secret: str = Query(..., description="Admin sec
 # ==================== Demo Booking Endpoint ====================
 
 from app.models.cms import DemoBooking, VideoGuide
+from app.models.shipment import Shipment, ShipmentTracking
 from app.schemas.storefront import (
     DemoBookingRequest,
     DemoBookingResponse,
@@ -2059,6 +2060,8 @@ from app.schemas.storefront import (
     ExchangeCalculateResponse,
     VideoGuideResponse,
     VideoGuideListResponse,
+    AWBTrackingResponse,
+    TrackingEventResponse,
 )
 from app.services.document_sequence_service import DocumentSequenceService
 
@@ -2358,6 +2361,147 @@ async def get_video_guide_by_slug(
         product_name=None,
         view_count=guide.view_count,
         is_featured=guide.is_featured,
+    )
+
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result_data
+
+
+# ==================== Public AWB Tracking Endpoint ====================
+
+# Status message mapping for human-readable messages
+STATUS_MESSAGES = {
+    "CREATED": "Shipment created",
+    "PACKED": "Order packed and ready",
+    "READY_FOR_PICKUP": "Ready for courier pickup",
+    "MANIFESTED": "Added to shipping manifest",
+    "PICKED_UP": "Picked up by courier",
+    "IN_TRANSIT": "In transit to destination",
+    "REACHED_HUB": "Reached delivery hub",
+    "OUT_FOR_DELIVERY": "Out for delivery",
+    "DELIVERED": "Successfully delivered",
+    "DELIVERY_FAILED": "Delivery attempt failed",
+    "RTO_INITIATED": "Return to origin initiated",
+    "RTO_IN_TRANSIT": "Returning to warehouse",
+    "RTO_DELIVERED": "Returned to warehouse",
+    "CANCELLED": "Shipment cancelled",
+    "LOST": "Shipment lost in transit",
+}
+
+
+@router.get("/track/{awb}", response_model=AWBTrackingResponse)
+async def track_shipment_by_awb(
+    awb: str,
+    db: DB,
+    response: Response,
+):
+    """
+    Track a shipment by AWB (Air Waybill) number.
+    Public endpoint - no authentication required.
+
+    Returns shipment status, tracking history, and delivery information.
+    """
+    start_time = time.time()
+
+    # Find shipment by AWB number or tracking number
+    query = (
+        select(Shipment)
+        .options(selectinload(Shipment.tracking_history))
+        .options(selectinload(Shipment.transporter))
+        .options(selectinload(Shipment.warehouse))
+        .options(selectinload(Shipment.order))
+        .where(
+            or_(
+                Shipment.awb_number == awb,
+                Shipment.tracking_number == awb,
+            )
+        )
+    )
+    result = await db.execute(query)
+    shipment = result.scalar_one_or_none()
+
+    if not shipment:
+        raise HTTPException(
+            status_code=404,
+            detail="Shipment not found. Please check the AWB number."
+        )
+
+    # Get transporter name
+    courier_name = None
+    if shipment.transporter:
+        courier_name = shipment.transporter.name
+
+    # Get origin city from warehouse
+    origin_city = None
+    if shipment.warehouse:
+        origin_city = shipment.warehouse.city
+
+    # Build tracking events list (most recent first)
+    tracking_events = []
+    if shipment.tracking_history:
+        for event in sorted(shipment.tracking_history, key=lambda x: x.event_time, reverse=True):
+            status_message = STATUS_MESSAGES.get(event.status, event.status.replace("_", " ").title())
+            if event.remarks:
+                status_message = event.remarks
+
+            tracking_events.append(TrackingEventResponse(
+                status=event.status,
+                status_message=status_message,
+                location=event.location or event.city,
+                remarks=event.transporter_remarks,
+                timestamp=event.event_time.isoformat() if event.event_time else "",
+            ))
+
+    # Get current location from latest tracking event
+    current_location = None
+    if tracking_events:
+        current_location = tracking_events[0].location
+
+    # Get order number if available
+    order_number = None
+    if shipment.order:
+        order_number = shipment.order.order_number
+
+    # Get status message
+    status_message = STATUS_MESSAGES.get(shipment.status, shipment.status.replace("_", " ").title())
+
+    # Build external tracking URL if transporter has one
+    tracking_url = None
+    if shipment.transporter and shipment.awb_number:
+        # Common transporter tracking URL patterns
+        transporter_name = shipment.transporter.name.lower() if shipment.transporter.name else ""
+        if "delhivery" in transporter_name:
+            tracking_url = f"https://www.delhivery.com/track/package/{shipment.awb_number}"
+        elif "bluedart" in transporter_name:
+            tracking_url = f"https://www.bluedart.com/tracking?tracknumbers={shipment.awb_number}"
+        elif "dtdc" in transporter_name:
+            tracking_url = f"https://tracking.dtdc.com/ctbs-tracking/customerInterface.tr?submitName=showCI498&cType=Consignment&cnNo={shipment.awb_number}"
+        elif "fedex" in transporter_name:
+            tracking_url = f"https://www.fedex.com/fedextrack/?tracknumbers={shipment.awb_number}"
+        elif "ecom express" in transporter_name or "ecom" in transporter_name:
+            tracking_url = f"https://ecomexpress.in/tracking/?awb_field={shipment.awb_number}"
+        elif "xpressbees" in transporter_name:
+            tracking_url = f"https://www.xpressbees.com/track?awb={shipment.awb_number}"
+        elif "shadowfax" in transporter_name:
+            tracking_url = f"https://tracker.shadowfax.in/?tracking_id={shipment.awb_number}"
+
+    result_data = AWBTrackingResponse(
+        awb_number=shipment.awb_number or awb,
+        courier_name=courier_name,
+        status=shipment.status,
+        status_message=status_message,
+        origin_city=origin_city,
+        destination_city=shipment.ship_to_city,
+        destination_pincode=shipment.ship_to_pincode,
+        shipped_at=shipment.shipped_at.isoformat() if shipment.shipped_at else None,
+        estimated_delivery=shipment.expected_delivery_date.isoformat() if shipment.expected_delivery_date else None,
+        delivered_at=shipment.delivered_at.isoformat() if shipment.delivered_at else None,
+        current_location=current_location,
+        tracking_url=tracking_url,
+        tracking_events=tracking_events,
+        order_number=order_number,
+        payment_mode=shipment.payment_mode or "PREPAID",
+        cod_amount=shipment.cod_amount if shipment.payment_mode == "COD" else None,
     )
 
     response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
