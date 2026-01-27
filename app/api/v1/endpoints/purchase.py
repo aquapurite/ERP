@@ -211,10 +211,10 @@ async def repair_document_sequence(
 @router.put("/admin/requisitions/{pr_id}/status")
 async def admin_update_pr_status(
     pr_id: UUID,
-    new_status: str,
     db: DB,
     permissions: Permissions,
-    reason: Optional[str] = None,
+    new_status: str = Query(..., description="New status value"),
+    reason: Optional[str] = Query(None, description="Reason for status change"),
 ):
     """
     Update Purchase Requisition status (Super Admin only).
@@ -277,10 +277,10 @@ async def admin_update_pr_status(
 @router.put("/admin/orders/{po_id}/status")
 async def admin_update_po_status(
     po_id: UUID,
-    new_status: str,
     db: DB,
     permissions: Permissions,
-    reason: Optional[str] = None,
+    new_status: str = Query(..., description="New status value"),
+    reason: Optional[str] = Query(None, description="Reason for status change"),
 ):
     """
     Update Purchase Order status (Super Admin only).
