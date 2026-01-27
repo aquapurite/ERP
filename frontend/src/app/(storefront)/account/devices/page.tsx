@@ -42,38 +42,10 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { useAuthStore, useIsAuthenticated } from '@/lib/storefront/auth-store';
 import { formatCurrency } from '@/lib/utils';
+import { deviceApi, CustomerDevice } from '@/lib/storefront/api';
 
-// Types
-interface Device {
-  id: string;
-  serial_number: string;
-  product_name: string;
-  product_image?: string;
-  purchase_date: string;
-  warranty_end_date: string;
-  warranty_status: 'active' | 'expired' | 'expiring_soon';
-  amc_status: 'active' | 'expired' | 'none';
-  amc_end_date?: string;
-  last_service_date?: string;
-  next_service_due?: string;
-  installation_address?: string;
-}
-
-// Mock data - In production, this would come from API
-const mockDevices: Device[] = [
-  {
-    id: '1',
-    serial_number: 'APFSZAIEL00000001',
-    product_name: 'Aquapurite Optima RO+UV+UF',
-    purchase_date: '2024-06-15',
-    warranty_end_date: '2025-06-15',
-    warranty_status: 'active',
-    amc_status: 'none',
-    last_service_date: '2024-10-15',
-    next_service_due: '2025-01-15',
-    installation_address: '123 Main Street, New Delhi',
-  },
-];
+// Types - using API type
+type Device = CustomerDevice;
 
 export default function DevicesPage() {
   const router = useRouter();
@@ -95,13 +67,14 @@ export default function DevicesPage() {
       return;
     }
 
-    // Simulate API call
+    // Fetch devices from API
     const fetchDevices = async () => {
       try {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        setDevices(mockDevices);
+        const data = await deviceApi.getMyDevices();
+        setDevices(data);
       } catch (error) {
-        toast.error('Failed to load devices');
+        console.error('Failed to load devices:', error);
+        setDevices([]);
       } finally {
         setLoading(false);
       }
@@ -118,13 +91,21 @@ export default function DevicesPage() {
 
     setAddingDevice(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      toast.success('Device registered successfully!');
+      const result = await deviceApi.registerDevice({
+        serial_number: newDevice.serial_number,
+        purchase_date: newDevice.purchase_date || undefined,
+        invoice_number: newDevice.invoice_number || undefined,
+      });
+      toast.success(result.message || 'Device registered successfully!');
       setShowAddDialog(false);
       setNewDevice({ serial_number: '', purchase_date: '', invoice_number: '' });
-      // In production, refresh the devices list
+
+      // Refresh the devices list
+      const data = await deviceApi.getMyDevices();
+      setDevices(data);
     } catch (error) {
-      toast.error('Failed to register device');
+      console.error('Failed to register device:', error);
+      toast.error('Failed to register device. Please check the serial number and try again.');
     } finally {
       setAddingDevice(false);
     }

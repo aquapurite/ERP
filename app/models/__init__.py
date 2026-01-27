@@ -492,6 +492,10 @@ from app.models.cms import (
     CMSFeatureBar,
     CMSMegaMenuItem,
     CMSMegaMenuItemType,
+    DemoBooking,
+    DemoBookingStatus,
+    VideoGuide,
+    VideoGuideCategory,
 )
 # Community Sales Channel (Meesho-style)
 from app.models.community_partner import (

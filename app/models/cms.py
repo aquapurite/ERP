@@ -1127,3 +1127,339 @@ class CMSMegaMenuItem(Base):
 
     def __repr__(self) -> str:
         return f"<CMSMegaMenuItem(title='{self.title}', type={self.menu_type})>"
+
+
+# ==================== Demo Booking Model ====================
+
+class DemoBookingStatus(str, Enum):
+    """Demo booking status"""
+    PENDING = "PENDING"
+    CONFIRMED = "CONFIRMED"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+    NO_SHOW = "NO_SHOW"
+
+
+class DemoBooking(Base):
+    """
+    Demo booking requests from customers on the D2C storefront.
+    Allows customers to book video call or phone call demos for products.
+    """
+    __tablename__ = "demo_bookings"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Customer info (may or may not be registered)
+    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("customers.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Linked customer if logged in"
+    )
+    customer_name: Mapped[str] = mapped_column(
+        String(200),
+        nullable=False,
+        comment="Customer's name"
+    )
+    phone: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        index=True,
+        comment="Customer's phone number"
+    )
+    email: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Customer's email"
+    )
+    address: Mapped[Optional[str]] = mapped_column(
+        String(500),
+        nullable=True,
+        comment="Customer's address"
+    )
+    pincode: Mapped[Optional[str]] = mapped_column(
+        String(10),
+        nullable=True,
+        comment="Customer's pincode"
+    )
+
+    # Product info
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Product for which demo is requested"
+    )
+    product_name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="Product name at booking time"
+    )
+
+    # Demo details
+    demo_type: Mapped[str] = mapped_column(
+        String(20),
+        default="VIDEO",
+        nullable=False,
+        comment="VIDEO or PHONE"
+    )
+    preferred_date: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="Preferred date (YYYY-MM-DD)"
+    )
+    preferred_time: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Preferred time slot"
+    )
+    notes: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Customer's questions or notes"
+    )
+
+    # Status
+    status: Mapped[str] = mapped_column(
+        String(20),
+        default="PENDING",
+        nullable=False,
+        comment="PENDING, CONFIRMED, COMPLETED, CANCELLED, NO_SHOW"
+    )
+    booking_number: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        unique=True,
+        index=True,
+        comment="Unique booking reference number"
+    )
+
+    # Assignment
+    assigned_to: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Sales rep assigned to this demo"
+    )
+    confirmed_date: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="Confirmed date for the demo"
+    )
+    confirmed_time: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Confirmed time slot"
+    )
+
+    # Outcome
+    outcome: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="CONVERTED, NOT_INTERESTED, FOLLOW_UP, etc."
+    )
+    outcome_notes: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Notes from the demo session"
+    )
+
+    # Source tracking
+    source: Mapped[str] = mapped_column(
+        String(50),
+        default="WEBSITE",
+        nullable=False,
+        comment="WEBSITE, MOBILE_APP, WHATSAPP, etc."
+    )
+    utm_source: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True
+    )
+    utm_medium: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True
+    )
+    utm_campaign: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True
+    )
+
+    # Audit
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+    # Relationships
+    customer = relationship("Customer", foreign_keys=[customer_id])
+    product = relationship("Product", foreign_keys=[product_id])
+    assignee = relationship("User", foreign_keys=[assigned_to])
+
+    def __repr__(self) -> str:
+        return f"<DemoBooking(id={self.id}, customer='{self.customer_name}', product='{self.product_name}', status={self.status})>"
+
+
+# ==================== Video Guide Model ====================
+
+class VideoGuideCategory(str, Enum):
+    """Video guide categories"""
+    INSTALLATION = "INSTALLATION"
+    MAINTENANCE = "MAINTENANCE"
+    TROUBLESHOOTING = "TROUBLESHOOTING"
+    PRODUCT_TOUR = "PRODUCT_TOUR"
+    HOW_TO = "HOW_TO"
+    TIPS = "TIPS"
+
+
+class VideoGuide(Base):
+    """
+    Video guides for D2C storefront.
+    Educational content like installation guides, maintenance tips, troubleshooting, etc.
+    """
+    __tablename__ = "video_guides"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Content
+    title: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="Video title"
+    )
+    slug: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        unique=True,
+        index=True,
+        comment="URL slug"
+    )
+    description: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Video description"
+    )
+    thumbnail_url: Mapped[str] = mapped_column(
+        String(500),
+        nullable=False,
+        comment="Thumbnail image URL"
+    )
+
+    # Video source
+    video_url: Mapped[str] = mapped_column(
+        String(500),
+        nullable=False,
+        comment="Video URL (YouTube, Vimeo, or direct)"
+    )
+    video_type: Mapped[str] = mapped_column(
+        String(20),
+        default="YOUTUBE",
+        nullable=False,
+        comment="YOUTUBE, VIMEO, DIRECT"
+    )
+    video_id: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="YouTube/Vimeo video ID"
+    )
+    duration_seconds: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Video duration in seconds"
+    )
+
+    # Categorization
+    category: Mapped[str] = mapped_column(
+        String(50),
+        default="HOW_TO",
+        nullable=False,
+        comment="INSTALLATION, MAINTENANCE, TROUBLESHOOTING, PRODUCT_TOUR, HOW_TO, TIPS"
+    )
+    tags: Mapped[Optional[dict]] = mapped_column(
+        JSONB,
+        nullable=True,
+        comment="Tags as JSON array"
+    )
+
+    # Product association
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Associated product (null = general guide)"
+    )
+    product_category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("categories.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Associated product category"
+    )
+
+    # Display
+    sort_order: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False
+    )
+    is_featured: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False
+    )
+
+    # Stats
+    view_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False
+    )
+    like_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False
+    )
+
+    # Audit
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Relationships
+    product = relationship("Product", foreign_keys=[product_id])
+    product_category = relationship("Category", foreign_keys=[product_category_id])
+    creator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[created_by])
+
+    def __repr__(self) -> str:
+        return f"<VideoGuide(title='{self.title}', category={self.category})>"

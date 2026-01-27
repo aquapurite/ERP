@@ -207,3 +207,83 @@ class SearchSuggestionsResponse(BaseModel):
     categories: List[SearchCategorySuggestion] = Field([], description="Category suggestions")
     brands: List[SearchBrandSuggestion] = Field([], description="Brand suggestions")
     query: str = Field(..., description="Original search query")
+
+
+# ==================== Demo Booking Schemas ====================
+
+class DemoBookingRequest(BaseModel):
+    """Request to book a product demo."""
+    product_name: str = Field(..., description="Product name for demo")
+    product_id: Optional[str] = Field(None, description="Product ID if available")
+    customer_name: str = Field(..., description="Customer's full name")
+    phone: str = Field(..., description="Customer's phone number")
+    email: Optional[str] = Field(None, description="Customer's email")
+    address: Optional[str] = Field(None, description="Customer's address")
+    pincode: Optional[str] = Field(None, description="Customer's pincode")
+    demo_type: str = Field("VIDEO", description="Demo type: VIDEO or PHONE")
+    preferred_date: Optional[str] = Field(None, description="Preferred date (YYYY-MM-DD)")
+    preferred_time: Optional[str] = Field(None, description="Preferred time slot")
+    notes: Optional[str] = Field(None, description="Questions or notes")
+
+
+class DemoBookingResponse(BaseModel):
+    """Response after booking a demo."""
+    success: bool = Field(..., description="Whether booking was successful")
+    booking_id: str = Field(..., description="Booking ID")
+    booking_number: str = Field(..., description="Booking reference number")
+    message: str = Field(..., description="Confirmation message")
+    estimated_callback: Optional[str] = Field(None, description="Estimated callback time")
+
+    class Config:
+        from_attributes = True
+
+
+# ==================== Exchange Calculator Schemas ====================
+
+class ExchangeCalculateRequest(BaseModel):
+    """Request to calculate exchange value."""
+    brand: str = Field(..., description="Brand of old purifier")
+    age_years: float = Field(..., description="Age of purifier in years")
+    condition: str = Field(..., description="Condition: excellent, good, fair, poor")
+    purifier_type: Optional[str] = Field(None, description="Type: RO, UV, RO+UV, etc.")
+
+
+class ExchangeCalculateResponse(BaseModel):
+    """Response with calculated exchange value."""
+    estimated_value: int = Field(..., description="Estimated exchange value in INR")
+    min_value: int = Field(..., description="Minimum possible value")
+    max_value: int = Field(..., description="Maximum possible value")
+    factors: dict = Field(..., description="Factors used in calculation")
+    terms: List[str] = Field([], description="Exchange terms and conditions")
+
+
+# ==================== Video Guide Schemas ====================
+
+class VideoGuideResponse(BaseModel):
+    """Video guide response for storefront."""
+    id: str = Field(..., description="Guide ID")
+    title: str = Field(..., description="Guide title")
+    slug: str = Field(..., description="URL slug")
+    description: Optional[str] = Field(None, description="Guide description")
+    thumbnail_url: str = Field(..., description="Thumbnail image URL")
+    video_url: str = Field(..., description="Video URL")
+    video_type: str = Field(..., description="Video source type: YOUTUBE, VIMEO, DIRECT")
+    video_id: Optional[str] = Field(None, description="Video ID for YouTube/Vimeo")
+    duration_seconds: Optional[int] = Field(None, description="Duration in seconds")
+    category: str = Field(..., description="Guide category")
+    product_name: Optional[str] = Field(None, description="Associated product name")
+    view_count: int = Field(0, description="Number of views")
+    is_featured: bool = Field(False, description="Featured guide flag")
+
+    class Config:
+        from_attributes = True
+
+
+class VideoGuideListResponse(BaseModel):
+    """Paginated video guides response."""
+    items: List[VideoGuideResponse] = Field(..., description="Video guides")
+    total: int = Field(..., description="Total count")
+    page: int = Field(..., description="Current page")
+    size: int = Field(..., description="Page size")
+    pages: int = Field(..., description="Total pages")
+    categories: List[str] = Field([], description="Available categories")

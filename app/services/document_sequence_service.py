@@ -43,6 +43,7 @@ DOCUMENT_METADATA = {
     "SA": {"name": "Stock Adjustment", "padding": 5},
     "MF": {"name": "Manifest", "padding": 5},
     "PL": {"name": "Picklist", "padding": 5},
+    "DEMO": {"name": "Demo Booking", "padding": 5},
 }
 
 

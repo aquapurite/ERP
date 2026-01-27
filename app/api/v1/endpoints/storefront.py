@@ -2047,3 +2047,318 @@ async def clear_storefront_cache(secret: str = Query(..., description="Admin sec
             "categories:*"
         ]
     }
+
+
+# ==================== Demo Booking Endpoint ====================
+
+from app.models.cms import DemoBooking, VideoGuide
+from app.schemas.storefront import (
+    DemoBookingRequest,
+    DemoBookingResponse,
+    ExchangeCalculateRequest,
+    ExchangeCalculateResponse,
+    VideoGuideResponse,
+    VideoGuideListResponse,
+)
+from app.services.document_sequence_service import DocumentSequenceService
+
+
+@router.post("/demo-bookings", response_model=DemoBookingResponse)
+async def create_demo_booking(
+    request: DemoBookingRequest,
+    db: DB,
+):
+    """
+    Create a new demo booking request.
+    Allows customers to book video call or phone call demos for products.
+    No authentication required.
+    """
+    # Generate booking number
+    doc_service = DocumentSequenceService(db)
+    booking_number = await doc_service.get_next_number("DEMO", "")
+
+    # Try to find product ID if not provided
+    product_id = None
+    if request.product_id:
+        try:
+            product_id = uuid_module.UUID(request.product_id)
+        except (ValueError, AttributeError):
+            pass
+
+    # Create demo booking
+    demo_booking = DemoBooking(
+        customer_name=request.customer_name,
+        phone=request.phone,
+        email=request.email,
+        address=request.address,
+        pincode=request.pincode,
+        product_id=product_id,
+        product_name=request.product_name,
+        demo_type=request.demo_type.upper() if request.demo_type else "VIDEO",
+        preferred_date=request.preferred_date,
+        preferred_time=request.preferred_time,
+        notes=request.notes,
+        status="PENDING",
+        booking_number=booking_number,
+        source="WEBSITE",
+    )
+
+    db.add(demo_booking)
+    await db.commit()
+    await db.refresh(demo_booking)
+
+    return DemoBookingResponse(
+        success=True,
+        booking_id=str(demo_booking.id),
+        booking_number=booking_number,
+        message="Demo booking created successfully! Our team will contact you shortly to confirm.",
+        estimated_callback="Within 2 hours during business hours (10 AM - 6 PM)",
+    )
+
+
+# ==================== Exchange Calculator Endpoint ====================
+
+# Brand base values for exchange calculation
+EXCHANGE_BRAND_VALUES = {
+    "aquaguard": 2000,
+    "kent": 1800,
+    "pureit": 1500,
+    "livpure": 1400,
+    "eureka_forbes": 1800,
+    "blue_star": 1600,
+    "ao_smith": 1700,
+    "aquapurite": 2000,
+    "other": 1000,
+}
+
+# Age multipliers
+EXCHANGE_AGE_MULTIPLIERS = {
+    (0, 1): 1.0,      # 0-1 years
+    (1, 2): 0.85,     # 1-2 years
+    (2, 3): 0.70,     # 2-3 years
+    (3, 5): 0.50,     # 3-5 years
+    (5, 100): 0.30,   # 5+ years
+}
+
+# Condition multipliers
+EXCHANGE_CONDITION_MULTIPLIERS = {
+    "excellent": 1.0,
+    "good": 0.8,
+    "fair": 0.6,
+    "poor": 0.4,
+}
+
+
+@router.post("/exchange/calculate", response_model=ExchangeCalculateResponse)
+async def calculate_exchange_value(
+    request: ExchangeCalculateRequest,
+):
+    """
+    Calculate the exchange value for an old water purifier.
+    No authentication required.
+    """
+    # Get brand base value
+    brand_lower = request.brand.lower().replace(" ", "_")
+    base_value = EXCHANGE_BRAND_VALUES.get(brand_lower, EXCHANGE_BRAND_VALUES["other"])
+
+    # Get age multiplier
+    age_multiplier = 0.5  # default
+    for (min_age, max_age), multiplier in EXCHANGE_AGE_MULTIPLIERS.items():
+        if min_age <= request.age_years < max_age:
+            age_multiplier = multiplier
+            break
+
+    # Get condition multiplier
+    condition_lower = request.condition.lower()
+    condition_multiplier = EXCHANGE_CONDITION_MULTIPLIERS.get(
+        condition_lower, EXCHANGE_CONDITION_MULTIPLIERS["fair"]
+    )
+
+    # Calculate value
+    calculated_value = int(base_value * age_multiplier * condition_multiplier)
+
+    # Apply min/max bounds
+    min_value = 500
+    max_value = 2000
+    estimated_value = max(min_value, min(calculated_value, max_value))
+
+    return ExchangeCalculateResponse(
+        estimated_value=estimated_value,
+        min_value=min_value,
+        max_value=max_value,
+        factors={
+            "brand": request.brand,
+            "brand_base_value": base_value,
+            "age_years": request.age_years,
+            "age_multiplier": age_multiplier,
+            "condition": request.condition,
+            "condition_multiplier": condition_multiplier,
+            "calculated_value": calculated_value,
+        },
+        terms=[
+            "Old purifier will be picked up at the time of new purifier installation",
+            "Exchange value is subject to physical verification",
+            "Exchange offer cannot be combined with other discounts",
+            "Purifier must be in one piece with all major components intact",
+        ],
+    )
+
+
+# ==================== Video Guides Endpoints ====================
+
+@router.get("/guides", response_model=VideoGuideListResponse)
+async def list_video_guides(
+    db: DB,
+    response: Response,
+    category: Optional[str] = Query(None, description="Filter by category"),
+    product_id: Optional[str] = Query(None, description="Filter by product ID"),
+    is_featured: Optional[bool] = Query(None, description="Filter featured guides only"),
+    search: Optional[str] = Query(None, description="Search in title and description"),
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=12, ge=1, le=50),
+):
+    """
+    List video guides for the storefront.
+    No authentication required. Cached for 10 minutes.
+    """
+    start_time = time.time()
+    cache = get_cache()
+
+    # Build cache key
+    cache_params = f"guides:{category}:{product_id}:{is_featured}:{search}:{page}:{size}"
+    cached_result = await cache.get(cache_params)
+    if cached_result:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+        return VideoGuideListResponse(**cached_result)
+
+    # Build query
+    query = (
+        select(VideoGuide)
+        .where(VideoGuide.is_active == True)
+    )
+
+    if category:
+        query = query.where(VideoGuide.category == category.upper())
+    if product_id:
+        try:
+            prod_uuid = uuid_module.UUID(product_id)
+            query = query.where(VideoGuide.product_id == prod_uuid)
+        except (ValueError, AttributeError):
+            pass
+    if is_featured is not None:
+        query = query.where(VideoGuide.is_featured == is_featured)
+    if search:
+        search_term = f"%{search}%"
+        query = query.where(
+            or_(
+                VideoGuide.title.ilike(search_term),
+                VideoGuide.description.ilike(search_term),
+            )
+        )
+
+    # Get total count
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Sort and paginate
+    query = query.order_by(
+        VideoGuide.is_featured.desc(),
+        VideoGuide.sort_order.asc(),
+        VideoGuide.created_at.desc(),
+    )
+    offset = (page - 1) * size
+    query = query.offset(offset).limit(size)
+
+    result = await db.execute(query)
+    guides = result.scalars().all()
+
+    # Get unique categories for filters
+    categories_query = select(VideoGuide.category.distinct()).where(VideoGuide.is_active == True)
+    categories_result = await db.execute(categories_query)
+    available_categories = [row[0] for row in categories_result.all() if row[0]]
+
+    # Transform to response
+    items = []
+    for g in guides:
+        items.append(VideoGuideResponse(
+            id=str(g.id),
+            title=g.title,
+            slug=g.slug,
+            description=g.description,
+            thumbnail_url=g.thumbnail_url,
+            video_url=g.video_url,
+            video_type=g.video_type,
+            video_id=g.video_id,
+            duration_seconds=g.duration_seconds,
+            category=g.category,
+            product_name=None,  # Could fetch product name if needed
+            view_count=g.view_count,
+            is_featured=g.is_featured,
+        ))
+
+    pages = (total + size - 1) // size
+
+    result_data = VideoGuideListResponse(
+        items=items,
+        total=total,
+        page=page,
+        size=size,
+        pages=pages,
+        categories=available_categories,
+    )
+
+    # Cache for 10 minutes
+    await cache.set(cache_params, result_data.model_dump(), ttl=600)
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result_data
+
+
+@router.get("/guides/{slug}", response_model=VideoGuideResponse)
+async def get_video_guide_by_slug(
+    slug: str,
+    db: DB,
+    response: Response,
+):
+    """
+    Get a single video guide by slug.
+    Increments view count.
+    No authentication required.
+    """
+    start_time = time.time()
+
+    query = (
+        select(VideoGuide)
+        .where(VideoGuide.slug == slug, VideoGuide.is_active == True)
+    )
+    result = await db.execute(query)
+    guide = result.scalar_one_or_none()
+
+    if not guide:
+        raise HTTPException(status_code=404, detail="Video guide not found")
+
+    # Increment view count
+    guide.view_count = (guide.view_count or 0) + 1
+    await db.commit()
+
+    result_data = VideoGuideResponse(
+        id=str(guide.id),
+        title=guide.title,
+        slug=guide.slug,
+        description=guide.description,
+        thumbnail_url=guide.thumbnail_url,
+        video_url=guide.video_url,
+        video_type=guide.video_type,
+        video_id=guide.video_id,
+        duration_seconds=guide.duration_seconds,
+        category=guide.category,
+        product_name=None,
+        view_count=guide.view_count,
+        is_featured=guide.is_featured,
+    )
+
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result_data

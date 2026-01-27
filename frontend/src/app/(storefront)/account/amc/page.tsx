@@ -41,6 +41,7 @@ import { toast } from 'sonner';
 import { useIsAuthenticated } from '@/lib/storefront/auth-store';
 import { formatCurrency } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import { amcApi, deviceApi, AMCPlan as APIPlan, AMCContract } from '@/lib/storefront/api';
 
 // Types
 interface AMCPlan {
@@ -69,8 +70,8 @@ interface ActiveAMC {
   next_service_date?: string;
 }
 
-// AMC Plans
-const amcPlans: AMCPlan[] = [
+// Default AMC Plans (fallback if API doesn't return plans)
+const defaultPlans: AMCPlan[] = [
   {
     id: 'basic',
     name: 'Basic Care',
@@ -128,13 +129,12 @@ const amcPlans: AMCPlan[] = [
   },
 ];
 
-// Mock active AMCs
-const mockActiveAMCs: ActiveAMC[] = [];
-
 export default function AMCPage() {
   const router = useRouter();
   const isAuthenticated = useIsAuthenticated();
   const [activeAMCs, setActiveAMCs] = useState<ActiveAMC[]>([]);
+  const [amcPlans, setAmcPlans] = useState<AMCPlan[]>(defaultPlans);
+  const [devices, setDevices] = useState<{ id: string; name: string; serial: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [showBuyDialog, setShowBuyDialog] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<AMCPlan | null>(null);
@@ -147,19 +147,86 @@ export default function AMCPage() {
       return;
     }
 
-    const fetchAMCs = async () => {
+    const fetchData = async () => {
       try {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        setActiveAMCs(mockActiveAMCs);
+        // Fetch AMC plans, active contracts, and devices in parallel
+        const [plansData, contractsData, devicesData] = await Promise.all([
+          amcApi.getPlans().catch(() => []),
+          amcApi.getMyContracts().catch(() => []),
+          deviceApi.getMyDevices().catch(() => []),
+        ]);
+
+        // Transform plans from API
+        if (plansData && plansData.length > 0) {
+          const transformedPlans: AMCPlan[] = plansData.map((plan: APIPlan, index: number) => ({
+            id: plan.id,
+            name: plan.name,
+            duration_months: plan.duration_months,
+            price: plan.base_price,
+            original_price: plan.base_price * 1.25, // Assume 20% discount
+            service_visits: plan.services_included,
+            filter_discount: plan.discount_on_parts,
+            priority_support: plan.priority_support,
+            is_popular: index === 1, // Mark middle plan as popular
+            features: generateFeatures(plan),
+          }));
+          setAmcPlans(transformedPlans);
+        }
+
+        // Transform contracts to active AMCs
+        const transformedAMCs: ActiveAMC[] = contractsData.map((contract: AMCContract) => {
+          const endDate = new Date(contract.end_date);
+          const now = new Date();
+          const daysRemaining = Math.floor((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+          let status: ActiveAMC['status'] = 'active';
+          if (daysRemaining < 0) status = 'expired';
+          else if (daysRemaining <= 30) status = 'expiring_soon';
+
+          return {
+            id: contract.id,
+            plan_name: contract.plan_name,
+            device_name: contract.product_name,
+            device_serial: contract.serial_number,
+            start_date: contract.start_date,
+            end_date: contract.end_date,
+            status,
+            visits_used: contract.services_used,
+            visits_total: contract.total_services,
+            next_service_date: contract.next_service_due,
+          };
+        });
+        setActiveAMCs(transformedAMCs);
+
+        // Transform devices for selection
+        const deviceOptions = devicesData.map((device) => ({
+          id: device.serial_number,
+          name: device.product_name,
+          serial: device.serial_number,
+        }));
+        setDevices(deviceOptions);
       } catch (error) {
-        toast.error('Failed to load AMC plans');
+        console.error('Failed to load AMC data:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchAMCs();
+    fetchData();
   }, [isAuthenticated, router]);
+
+  // Helper to generate features from plan
+  function generateFeatures(plan: APIPlan): string[] {
+    const features: string[] = [];
+    features.push(`${plan.services_included === 99 ? 'Unlimited' : plan.services_included} preventive maintenance visits`);
+    if (plan.discount_on_parts > 0) features.push(`${plan.discount_on_parts}% discount on spare parts`);
+    if (plan.priority_support) features.push('Priority phone & WhatsApp support');
+    if (plan.emergency_support) features.push('24/7 emergency support');
+    if (plan.labor_covered) features.push('Free labor charges');
+    if (plan.parts_covered) features.push('Parts covered under plan');
+    if (plan.description) features.push(plan.description);
+    return features;
+  }
 
   const handleBuyPlan = (plan: AMCPlan) => {
     setSelectedPlan(plan);
@@ -167,21 +234,47 @@ export default function AMCPage() {
   };
 
   const handlePurchase = async () => {
-    if (!selectedDevice) {
+    if (!selectedDevice || !selectedPlan) {
       toast.error('Please select a device');
       return;
     }
 
     setPurchasing(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      toast.success('AMC plan purchased successfully!');
+      const result = await amcApi.purchasePlan(selectedPlan.id, selectedDevice);
+      toast.success(result.message || 'AMC plan purchased successfully!');
       setShowBuyDialog(false);
       setSelectedPlan(null);
       setSelectedDevice('');
-      // In production, refresh the active AMCs
+
+      // Refresh the active AMCs list
+      const contractsData = await amcApi.getMyContracts();
+      const transformedAMCs: ActiveAMC[] = contractsData.map((contract: AMCContract) => {
+        const endDate = new Date(contract.end_date);
+        const now = new Date();
+        const daysRemaining = Math.floor((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+        let status: ActiveAMC['status'] = 'active';
+        if (daysRemaining < 0) status = 'expired';
+        else if (daysRemaining <= 30) status = 'expiring_soon';
+
+        return {
+          id: contract.id,
+          plan_name: contract.plan_name,
+          device_name: contract.product_name,
+          device_serial: contract.serial_number,
+          start_date: contract.start_date,
+          end_date: contract.end_date,
+          status,
+          visits_used: contract.services_used,
+          visits_total: contract.total_services,
+          next_service_date: contract.next_service_due,
+        };
+      });
+      setActiveAMCs(transformedAMCs);
     } catch (error) {
-      toast.error('Failed to purchase plan');
+      console.error('Failed to purchase plan:', error);
+      toast.error('Failed to purchase plan. Please try again.');
     } finally {
       setPurchasing(false);
     }
@@ -419,9 +512,17 @@ export default function AMCPage() {
                   <SelectValue placeholder="Choose a device" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="device1">
-                    Aquapurite Optima RO+UV+UF (APFSZAIEL00000001)
-                  </SelectItem>
+                  {devices.length > 0 ? (
+                    devices.map((device) => (
+                      <SelectItem key={device.id} value={device.serial}>
+                        {device.name} ({device.serial})
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-devices" disabled>
+                      No devices registered
+                    </SelectItem>
+                  )}
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground mt-1">

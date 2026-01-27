@@ -43,8 +43,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { useIsAuthenticated } from '@/lib/storefront/auth-store';
+import { portalApi, ServiceRequest as APIServiceRequest } from '@/lib/storefront/api';
 
-// Types
+// Types - extended from API type
 interface ServiceRequest {
   id: string;
   ticket_number: string;
@@ -62,39 +63,6 @@ interface ServiceRequest {
   completed_at?: string;
   rating?: number;
 }
-
-// Mock data
-const mockServiceRequests: ServiceRequest[] = [
-  {
-    id: '1',
-    ticket_number: 'SR-2024-001',
-    device_name: 'Aquapurite Optima RO+UV+UF',
-    device_serial: 'APFSZAIEL00000001',
-    service_type: 'maintenance',
-    status: 'confirmed',
-    scheduled_date: '2025-01-28',
-    scheduled_time: '10:00 AM - 12:00 PM',
-    technician_name: 'Rajesh Kumar',
-    technician_phone: '9876543210',
-    description: 'Regular maintenance and filter check',
-    address: '123 Main Street, New Delhi',
-    created_at: '2025-01-20',
-  },
-  {
-    id: '2',
-    ticket_number: 'SR-2024-002',
-    device_name: 'Aquapurite Optima RO+UV+UF',
-    device_serial: 'APFSZAIEL00000001',
-    service_type: 'filter_change',
-    status: 'completed',
-    scheduled_date: '2024-10-15',
-    description: 'Sediment and carbon filter replacement',
-    address: '123 Main Street, New Delhi',
-    created_at: '2024-10-10',
-    completed_at: '2024-10-15',
-    rating: 5,
-  },
-];
 
 const serviceTypes = [
   { value: 'installation', label: 'Installation', description: 'New product installation' },
@@ -131,10 +99,29 @@ function ServicesPageContent() {
 
     const fetchServices = async () => {
       try {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        setServices(mockServiceRequests);
+        const data = await portalApi.getServiceRequests({ limit: 50 });
+        // Transform API data to local format
+        const transformedServices: ServiceRequest[] = (data.items || []).map((req: APIServiceRequest) => ({
+          id: req.id,
+          ticket_number: req.ticket_number || `SR-${req.id.slice(0, 8)}`,
+          device_name: req.product_name || 'Water Purifier',
+          device_serial: req.product_id || '',
+          service_type: (req.request_type?.toLowerCase() || 'maintenance') as ServiceRequest['service_type'],
+          status: (req.status?.toLowerCase() || 'pending') as ServiceRequest['status'],
+          scheduled_date: req.scheduled_date,
+          scheduled_time: req.scheduled_time,
+          technician_name: req.technician_name,
+          technician_phone: req.technician_phone,
+          description: req.description || req.subject || '',
+          address: req.address || '',
+          created_at: req.created_at,
+          completed_at: req.completed_at,
+          rating: req.rating,
+        }));
+        setServices(transformedServices);
       } catch (error) {
-        toast.error('Failed to load service requests');
+        console.error('Failed to load service requests:', error);
+        setServices([]);
       } finally {
         setLoading(false);
       }
@@ -151,7 +138,24 @@ function ServicesPageContent() {
 
     setBookingService(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Map local service type to API request type
+      const requestTypeMap: Record<string, string> = {
+        'installation': 'INSTALLATION',
+        'repair': 'REPAIR',
+        'maintenance': 'MAINTENANCE',
+        'filter_change': 'REPAIR',
+        'complaint': 'COMPLAINT',
+      };
+
+      await portalApi.createServiceRequest({
+        request_type: requestTypeMap[newService.service_type] as any || 'GENERAL',
+        subject: `${serviceTypes.find(t => t.value === newService.service_type)?.label || 'Service'} Request`,
+        description: newService.description || `Service type: ${newService.service_type}`,
+        preferred_date: newService.preferred_date,
+        preferred_time: newService.preferred_time,
+        address: newService.address,
+      });
+
       toast.success('Service request submitted! We\'ll call you to confirm.');
       setShowBookDialog(false);
       setNewService({
@@ -162,8 +166,30 @@ function ServicesPageContent() {
         description: '',
         address: '',
       });
+
+      // Refresh the service list
+      const data = await portalApi.getServiceRequests({ limit: 50 });
+      const transformedServices: ServiceRequest[] = (data.items || []).map((req: APIServiceRequest) => ({
+        id: req.id,
+        ticket_number: req.ticket_number || `SR-${req.id.slice(0, 8)}`,
+        device_name: req.product_name || 'Water Purifier',
+        device_serial: req.product_id || '',
+        service_type: (req.request_type?.toLowerCase() || 'maintenance') as ServiceRequest['service_type'],
+        status: (req.status?.toLowerCase() || 'pending') as ServiceRequest['status'],
+        scheduled_date: req.scheduled_date,
+        scheduled_time: req.scheduled_time,
+        technician_name: req.technician_name,
+        technician_phone: req.technician_phone,
+        description: req.description || req.subject || '',
+        address: req.address || '',
+        created_at: req.created_at,
+        completed_at: req.completed_at,
+        rating: req.rating,
+      }));
+      setServices(transformedServices);
     } catch (error) {
-      toast.error('Failed to submit service request');
+      console.error('Failed to submit service request:', error);
+      toast.error('Failed to submit service request. Please try again.');
     } finally {
       setBookingService(false);
     }

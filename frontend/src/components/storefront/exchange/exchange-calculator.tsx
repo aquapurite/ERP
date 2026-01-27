@@ -10,6 +10,7 @@ import {
   AlertCircle,
   ChevronRight,
   X,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,6 +35,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/lib/utils';
+import { exchangeApi } from '@/lib/storefront/api';
 
 interface ExchangeCalculatorProps {
   newProductPrice?: number;
@@ -80,6 +82,7 @@ export default function ExchangeCalculator({
 }: ExchangeCalculatorProps) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<'details' | 'result'>('details');
+  const [loading, setLoading] = useState(false);
 
   const [brand, setBrand] = useState('');
   const [age, setAge] = useState('');
@@ -88,29 +91,56 @@ export default function ExchangeCalculator({
 
   const [exchangeValue, setExchangeValue] = useState(0);
 
-  const calculateExchangeValue = () => {
+  // Helper to convert age range to years for API
+  const parseAgeToYears = (ageRange: string): number => {
+    switch (ageRange) {
+      case '0-1': return 0.5;
+      case '1-2': return 1.5;
+      case '2-3': return 2.5;
+      case '3-5': return 4;
+      case '5+': return 6;
+      default: return 3;
+    }
+  };
+
+  const calculateExchangeValue = async () => {
     if (!brand || !age || !condition) return;
 
-    const baseValue = brandValues[brand] || 1000;
-    const ageMultiplier = ageMultipliers[age] || 0.5;
-    const conditionMultiplier = conditionMultipliers[condition] || 0.5;
+    setLoading(true);
+    try {
+      // Call the exchange API
+      const result = await exchangeApi.calculateValue({
+        brand,
+        age_years: parseAgeToYears(age),
+        condition: condition as 'excellent' | 'good' | 'fair' | 'poor',
+        purifier_type: purifierType || undefined,
+      });
 
-    // Calculate final value
-    let value = Math.round(baseValue * ageMultiplier * conditionMultiplier);
+      setExchangeValue(result.estimated_value);
+      onExchangeValueCalculated?.(result.estimated_value);
+      setStep('result');
+    } catch (error) {
+      console.error('Failed to calculate exchange value:', error);
+      // Fallback to client-side calculation if API fails
+      const baseValue = brandValues[brand] || 1000;
+      const ageMultiplier = ageMultipliers[age] || 0.5;
+      const conditionMultiplier = conditionMultipliers[condition] || 0.5;
 
-    // Minimum exchange value of ₹500
-    value = Math.max(value, 500);
+      let value = Math.round(baseValue * ageMultiplier * conditionMultiplier);
+      value = Math.max(value, 500);
+      value = Math.min(value, 2000);
 
-    // Maximum exchange value of ₹2000
-    value = Math.min(value, 2000);
-
-    setExchangeValue(value);
-    onExchangeValueCalculated?.(value);
-    setStep('result');
+      setExchangeValue(value);
+      onExchangeValueCalculated?.(value);
+      setStep('result');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const resetForm = () => {
     setStep('details');
+    setLoading(false);
     setBrand('');
     setAge('');
     setCondition('');
@@ -269,10 +299,19 @@ export default function ExchangeCalculator({
             <Button
               className="w-full"
               onClick={calculateExchangeValue}
-              disabled={!brand || !age || !condition}
+              disabled={loading || !brand || !age || !condition}
             >
-              Calculate Exchange Value
-              <ChevronRight className="h-4 w-4 ml-2" />
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Calculating...
+                </>
+              ) : (
+                <>
+                  Calculate Exchange Value
+                  <ChevronRight className="h-4 w-4 ml-2" />
+                </>
+              )}
             </Button>
           </div>
         )}

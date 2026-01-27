@@ -35,6 +35,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { demoBookingApi } from '@/lib/storefront/api';
 
 interface DemoBookingProps {
   productName?: string;
@@ -107,29 +108,23 @@ export default function DemoBooking({
 
     setLoading(true);
     try {
-      // In a real implementation, this would call an API to book the demo
-      // For now, we'll simulate a successful booking
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      // Send WhatsApp notification (opens in new tab)
-      const message = encodeURIComponent(
-        `New Demo Booking Request:\n` +
-        `Type: ${demoType === 'video' ? 'Video Call' : 'Phone Call'}\n` +
-        `Date: ${selectedDate ? formatDate(selectedDate) : 'Not selected'}\n` +
-        `Time: ${timeSlots.find(t => t.value === selectedTime)?.label || selectedTime}\n` +
-        `Name: ${formData.name}\n` +
-        `Phone: ${formData.phone}\n` +
-        `Email: ${formData.email || 'Not provided'}\n` +
-        `Product: ${productName || 'General Inquiry'}\n` +
-        `Query: ${formData.query || 'None'}`
-      );
-
-      // Open WhatsApp in background (or you could use an API)
-      // window.open(`https://wa.me/919311939076?text=${message}`, '_blank');
+      // Call the demo booking API
+      const result = await demoBookingApi.bookDemo({
+        product_name: productName || 'General Inquiry',
+        customer_name: formData.name,
+        phone: formData.phone,
+        email: formData.email || undefined,
+        address: formData.query || '', // Using query field as notes
+        pincode: '',
+        preferred_date: selectedDate ? selectedDate.toISOString().split('T')[0] : '',
+        preferred_time: timeSlots.find(t => t.value === selectedTime)?.label || selectedTime,
+        notes: `Demo Type: ${demoType === 'video' ? 'Video Call' : 'Phone Call'}`,
+      });
 
       setStep('success');
-      toast.success('Demo booked successfully!');
+      toast.success(result.message || 'Demo booked successfully!');
     } catch (error) {
+      console.error('Failed to book demo:', error);
       toast.error('Failed to book demo. Please try again.');
     } finally {
       setLoading(false);

@@ -27,57 +27,7 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { useIsAuthenticated, useCustomer } from '@/lib/storefront/auth-store';
 import { formatCurrency } from '@/lib/utils';
-
-interface ReferralStats {
-  referral_code: string;
-  total_referrals: number;
-  successful_referrals: number;
-  pending_referrals: number;
-  total_earnings: number;
-  pending_earnings: number;
-  referrals: {
-    id: string;
-    referee_name: string;
-    status: 'pending' | 'completed' | 'expired';
-    order_amount?: number;
-    reward_amount?: number;
-    created_at: string;
-  }[];
-}
-
-// Mock data - replace with actual API
-const mockReferralStats: ReferralStats = {
-  referral_code: 'AQUA2024',
-  total_referrals: 5,
-  successful_referrals: 3,
-  pending_referrals: 2,
-  total_earnings: 1500,
-  pending_earnings: 500,
-  referrals: [
-    {
-      id: '1',
-      referee_name: 'Rahul S.',
-      status: 'completed',
-      order_amount: 24999,
-      reward_amount: 500,
-      created_at: '2025-01-15',
-    },
-    {
-      id: '2',
-      referee_name: 'Priya M.',
-      status: 'completed',
-      order_amount: 34999,
-      reward_amount: 500,
-      created_at: '2025-01-10',
-    },
-    {
-      id: '3',
-      referee_name: 'Amit K.',
-      status: 'pending',
-      created_at: '2025-01-20',
-    },
-  ],
-};
+import { referralApi, ReferralStats } from '@/lib/storefront/api';
 
 const referralBenefits = [
   {
@@ -130,17 +80,26 @@ export default function ReferralPage() {
       return;
     }
 
-    // Fetch referral stats
+    // Fetch referral stats from API
     const fetchStats = async () => {
       try {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        // Generate referral code from customer name if available
+        const data = await referralApi.getMyReferralStats();
+        setStats(data);
+      } catch (error) {
+        console.error('Failed to load referral data:', error);
+        // Generate fallback referral code if API fails
         const code = customer
           ? `${customer.first_name?.toUpperCase().slice(0, 4) || 'AQUA'}${customer.phone?.slice(-4) || '2024'}`
           : 'AQUA2024';
-        setStats({ ...mockReferralStats, referral_code: code });
-      } catch (error) {
-        toast.error('Failed to load referral data');
+        setStats({
+          referral_code: code,
+          total_referrals: 0,
+          successful_referrals: 0,
+          pending_referrals: 0,
+          total_earnings: 0,
+          pending_earnings: 0,
+          referrals: [],
+        });
       } finally {
         setLoading(false);
       }
