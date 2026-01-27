@@ -156,6 +156,10 @@ export interface Product {
   short_description?: string;
   model_number?: string;
   fg_code?: string;
+  // Serialization fields (auto-generated on creation)
+  model_code?: string; // 3-letter code for barcode generation (e.g., IEL, ELZ)
+  item_type?: 'FG' | 'SP' | 'CO' | 'CN' | 'AC'; // FG=Finished Goods, SP=Spare Part, etc.
+  part_code?: string; // Vendor's part code
   category_id?: string;
   brand_id?: string;
   mrp: number;

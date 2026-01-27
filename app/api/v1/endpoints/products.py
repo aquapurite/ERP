@@ -24,6 +24,7 @@ from app.schemas.product import (
 )
 from app.services.product_service import ProductService
 from app.services.costing_service import CostingService
+from app.services.product_orchestration_service import ProductOrchestrationService
 from app.schemas.product_cost import (
     ProductCostResponse,
     ProductCostBriefResponse,
@@ -330,6 +331,14 @@ async def create_product(
 
     product = await service.create_product(data)
 
+    # ORCHESTRATION: Auto-setup serialization (model_code, serial sequence)
+    orchestration = ProductOrchestrationService(db)
+    orchestration_result = await orchestration.on_product_created(product)
+
+    # Commit orchestration changes
+    await db.commit()
+    await db.refresh(product)
+
     # Invalidate product caches
     cache = get_cache()
     await cache.invalidate_products()
@@ -361,6 +370,9 @@ async def update_product(
             detail="Product not found"
         )
 
+    # Track old model_code for orchestration
+    old_model_code = product.model_code
+
     # Validate category if changing
     if data.category_id:
         category = await service.get_category_by_id(data.category_id)
@@ -380,6 +392,14 @@ async def update_product(
             )
 
     updated = await service.update_product(product_id, data)
+
+    # ORCHESTRATION: Update serialization if model_code changed
+    orchestration = ProductOrchestrationService(db)
+    await orchestration.on_product_updated(updated, old_model_code)
+
+    # Commit orchestration changes
+    await db.commit()
+    await db.refresh(updated)
 
     # Invalidate product caches
     cache = get_cache()

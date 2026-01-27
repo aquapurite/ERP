@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Pencil, Trash2, Package, Loader2 } from 'lucide-react';
+import { MoreHorizontal, Plus, Pencil, Trash2, Package, Loader2, Barcode, Tag } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -94,9 +94,27 @@ export default function ProductsPage() {
               )}
             </div>
             <div>
-              <Link href={`/dashboard/catalog/${row.original.id}`} className="font-medium hover:underline">
-                {row.original.name}
-              </Link>
+              <div className="flex items-center gap-2">
+                <Link href={`/dashboard/catalog/${row.original.id}`} className="font-medium hover:underline">
+                  {row.original.name}
+                </Link>
+                {row.original.model_code && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-xs font-medium" title="Model Code for Barcode">
+                    <Barcode className="h-3 w-3" />
+                    {row.original.model_code}
+                  </span>
+                )}
+                {row.original.item_type && (
+                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium ${
+                    row.original.item_type === 'FG' ? 'bg-green-100 text-green-700' :
+                    row.original.item_type === 'SP' ? 'bg-orange-100 text-orange-700' :
+                    'bg-gray-100 text-gray-700'
+                  }`} title={row.original.item_type === 'FG' ? 'Finished Goods' : row.original.item_type === 'SP' ? 'Spare Part' : row.original.item_type}>
+                    <Tag className="h-3 w-3" />
+                    {row.original.item_type}
+                  </span>
+                )}
+              </div>
               <div className="text-sm text-muted-foreground">{row.original.sku}</div>
             </div>
           </div>

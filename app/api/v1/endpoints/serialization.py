@@ -1349,3 +1349,39 @@ async def sync_products_to_model_codes(
         "skipped": skipped_count,
         "created_codes": created_codes
     }
+
+
+# ==================== PRODUCT ORCHESTRATION SYNC ====================
+
+@router.post(
+    "/sync-products",
+    summary="Sync existing products with serialization",
+    description="One-time sync for existing FG/SP products that don't have model codes or serial sequences. Creates ModelCodeReference and ProductSerialSequence entries.",
+)
+async def sync_existing_products(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    permissions: Permissions = Depends(Permissions("serialization:admin")),
+):
+    """
+    Sync existing products with serialization module.
+
+    This utility:
+    1. Finds all FG/SP products without model codes
+    2. Auto-generates 3-letter model codes from product names
+    3. Creates ModelCodeReference entries
+    4. Creates ProductSerialSequence entries
+
+    Only run this once after initial setup or when products were created
+    before orchestration was implemented.
+    """
+    from app.services.product_orchestration_service import ProductOrchestrationService
+
+    orchestration = ProductOrchestrationService(db)
+    result = await orchestration.sync_existing_products()
+
+    return {
+        "success": True,
+        "message": f"Synced {result['total_synced']} products with serialization",
+        **result
+    }
