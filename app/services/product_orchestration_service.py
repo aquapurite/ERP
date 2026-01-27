@@ -219,7 +219,6 @@ class ProductOrchestrationService:
                 return None  # FG code already mapped
 
         model_ref = ModelCodeReference(
-            id=uuid.uuid4(),  # Production uses UUID type
             product_id=product.id,
             product_sku=product.sku,
             fg_code=product.fg_code,
@@ -227,6 +226,7 @@ class ProductOrchestrationService:
             description=f"Auto-created for {product.name}",
             is_active=True
         )
+        # Let the model's default generate the ID
         self.db.add(model_ref)
         return model_ref
 
@@ -267,7 +267,6 @@ class ProductOrchestrationService:
             return None  # Already exists
 
         serial_seq = ProductSerialSequence(
-            id=uuid.uuid4(),  # Production uses UUID type
             product_id=product.id,
             model_code=product.model_code,
             item_type=product.item_type,
@@ -277,6 +276,7 @@ class ProductOrchestrationService:
             total_generated=0,
             max_serial=99999999
         )
+        # Let the model's default generate the ID
         self.db.add(serial_seq)
         return serial_seq
 
