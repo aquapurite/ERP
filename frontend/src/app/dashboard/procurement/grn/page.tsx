@@ -255,8 +255,9 @@ export default function GRNPage() {
     }),
   });
 
-  // Fetch POs that can have GRN created (APPROVED, SENT_TO_VENDOR, CONFIRMED, PARTIALLY_RECEIVED)
-  // Note: APPROVED is included because goods can arrive after approval but before formal send-to-vendor
+  // Fetch POs that can have GRN created
+  // Valid POStatus values: APPROVED, SENT_TO_VENDOR, ACKNOWLEDGED, PARTIALLY_RECEIVED
+  // Note: APPROVED included because goods can arrive after approval but before formal send-to-vendor
   const { data: purchaseOrders } = useQuery({
     queryKey: ['purchase-orders-for-grn'],
     queryFn: async () => {
@@ -264,7 +265,7 @@ export default function GRNPage() {
       const results = await Promise.all([
         purchaseOrdersApi.list({ status: 'APPROVED', size: 100 }),
         purchaseOrdersApi.list({ status: 'SENT_TO_VENDOR', size: 100 }),
-        purchaseOrdersApi.list({ status: 'CONFIRMED', size: 100 }),
+        purchaseOrdersApi.list({ status: 'ACKNOWLEDGED', size: 100 }),
         purchaseOrdersApi.list({ status: 'PARTIALLY_RECEIVED', size: 100 }),
       ]);
       // Combine all results

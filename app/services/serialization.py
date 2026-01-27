@@ -158,11 +158,30 @@ class SerializationService:
         return chr(65 + (offset % 26))  # A=65 in ASCII
 
     def get_channel_from_supplier(self, supplier_code: str) -> str:
-        """Get channel code from supplier code"""
+        """Get channel code from supplier code (uses hardcoded map for backwards compatibility)"""
         channel = self.SUPPLIER_CHANNEL_MAP.get(supplier_code.upper())
         if not channel:
-            raise ValueError(f"Unknown supplier code: {supplier_code}. Valid: {list(self.SUPPLIER_CHANNEL_MAP.keys())}")
+            # For new supplier codes not in hardcoded map, default to "EC" (Economical)
+            # This allows new vendors to be added via database without code changes
+            return "EC"
         return channel
+
+    async def get_supplier_code_by_vendor_id(self, vendor_id) -> Optional[SupplierCode]:
+        """Get supplier code from database by vendor ID"""
+        result = await self.db.execute(
+            select(SupplierCode).where(
+                SupplierCode.vendor_id == vendor_id,
+                SupplierCode.is_active == True
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_or_create_supplier_code_for_vendor(self, vendor_id, vendor_name: str) -> Optional[str]:
+        """Get supplier code for a vendor, or return None if not mapped (don't auto-create)"""
+        supplier_code = await self.get_supplier_code_by_vendor_id(vendor_id)
+        if supplier_code:
+            return supplier_code.code
+        return None
 
     def get_supplier_from_channel(self, channel_code: str) -> str:
         """Get supplier code from channel code"""

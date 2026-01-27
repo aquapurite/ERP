@@ -1436,6 +1436,9 @@ async def create_purchase_order(
             "gstin": bill_to.get('gstin') if bill_to else None,  # Same GSTIN as buyer
         }
 
+    # Set today's date for PO
+    today = date.today()
+
     # Create PO with initial zero values for NOT NULL fields
     # Quantize all numeric inputs to ensure they fit in Numeric(X, 2) columns
     po = PurchaseOrder(
