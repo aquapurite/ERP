@@ -24,6 +24,8 @@ import ProductFAQ from '@/components/storefront/product/product-faq';
 import ImageGallery from '@/components/storefront/product/image-gallery';
 import StockStatus from '@/components/storefront/product/stock-status';
 import ShareButton from '@/components/storefront/product/share-button';
+import DemoBooking from '@/components/storefront/booking/demo-booking';
+import { ExchangeBanner } from '@/components/storefront/exchange/exchange-calculator';
 import { useCartStore } from '@/lib/storefront/cart-store';
 import { addToRecentlyViewed } from '@/lib/storefront/recently-viewed';
 import { reviewsApi } from '@/lib/storefront/api';
@@ -221,6 +223,12 @@ export default function ProductDetailClient({ product }: ProductDetailClientProp
               )}
             </div>
 
+            {/* Exchange Offer */}
+            <ExchangeBanner
+              newProductPrice={currentPrice}
+              newProductName={product.name}
+            />
+
             {/* Stock Status */}
             <StockStatus
               productId={product.id}
@@ -319,6 +327,9 @@ export default function ProductDetailClient({ product }: ProductDetailClientProp
                 text={`Check out ${product.name} on AQUAPURITE - ${formatCurrency(currentPrice)}`}
               />
             </div>
+
+            {/* Demo Booking */}
+            <DemoBooking productName={product.name} />
 
             {/* Features */}
             <div className="grid grid-cols-3 gap-4 pt-4 border-t">

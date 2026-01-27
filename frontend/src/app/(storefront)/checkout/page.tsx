@@ -402,6 +402,36 @@ export default function CheckoutPage() {
             email: formData.email,
             contact: formData.phone,
           },
+          // Enable EMI options for orders above ₹5,000
+          ...(finalTotal >= 5000 && {
+            config: {
+              display: {
+                blocks: {
+                  utib: { // Axis Bank
+                    name: 'Pay using Axis Bank',
+                    instruments: [{ method: 'card', issuers: ['UTIB'] }, { method: 'emi', issuers: ['UTIB'] }],
+                  },
+                  other: {
+                    name: 'Other Payment Methods',
+                    instruments: [
+                      { method: 'card' },
+                      { method: 'emi' },
+                      { method: 'netbanking' },
+                      { method: 'wallet' },
+                      { method: 'upi' },
+                    ],
+                  },
+                },
+                sequence: ['block.utib', 'block.other'],
+                preferences: {
+                  show_default_blocks: true,
+                },
+              },
+            },
+          }),
+          theme: {
+            color: '#0066FF',
+          },
           handler: async function (response: any) {
             try {
               console.log('Payment response received:', response);
@@ -865,9 +895,17 @@ export default function CheckoutPage() {
                     <div className="flex items-center space-x-3 p-4 border rounded-lg">
                       <RadioGroupItem value="RAZORPAY" id="razorpay" />
                       <Label htmlFor="razorpay" className="flex-1 cursor-pointer">
-                        <div className="font-medium">Pay Online</div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">Pay Online</span>
+                          {total >= 5000 && (
+                            <Badge className="bg-green-100 text-green-800 text-xs">
+                              EMI Available
+                            </Badge>
+                          )}
+                        </div>
                         <div className="text-sm text-muted-foreground">
                           Credit/Debit Card, UPI, Net Banking, Wallets
+                          {total >= 5000 && ' • No-cost EMI from ' + formatCurrency(Math.round(total / 6)) + '/mo'}
                         </div>
                       </Label>
                       <img

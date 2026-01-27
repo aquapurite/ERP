@@ -13,6 +13,9 @@ import {
   Clock,
   Loader2,
   Heart,
+  Wrench,
+  Shield,
+  Cpu,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -146,6 +149,27 @@ export default function AccountPage() {
               <Button variant="outline" className="w-full justify-start">
                 <Heart className="h-4 w-4 mr-2" />
                 Wishlist
+                <ChevronRight className="h-4 w-4 ml-auto" />
+              </Button>
+            </Link>
+            <Link href="/account/devices" className="block">
+              <Button variant="outline" className="w-full justify-start">
+                <Cpu className="h-4 w-4 mr-2" />
+                My Devices
+                <ChevronRight className="h-4 w-4 ml-auto" />
+              </Button>
+            </Link>
+            <Link href="/account/services" className="block">
+              <Button variant="outline" className="w-full justify-start">
+                <Wrench className="h-4 w-4 mr-2" />
+                Service Requests
+                <ChevronRight className="h-4 w-4 ml-auto" />
+              </Button>
+            </Link>
+            <Link href="/account/amc" className="block">
+              <Button variant="outline" className="w-full justify-start">
+                <Shield className="h-4 w-4 mr-2" />
+                AMC Plans
                 <ChevronRight className="h-4 w-4 ml-auto" />
               </Button>
             </Link>
