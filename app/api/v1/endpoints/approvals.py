@@ -29,6 +29,7 @@ from app.models.approval import (
     get_approval_level_name,
 )
 from app.models.purchase import PurchaseOrder, POStatus, PurchaseRequisition, RequisitionStatus
+from app.models.vendor import Vendor, VendorStatus
 from app.schemas.approval import (
     ApprovalRequestResponse,
     ApprovalRequestBrief,
@@ -830,7 +831,7 @@ async def approve_request(
     )
     db.add(history)
 
-    # Update the entity based on type - handle Purchase Requisitions too
+    # Update the entity based on type - handle all entity types
     if approval.entity_type == ApprovalEntityType.PURCHASE_ORDER:
         po_result = await db.execute(
             select(PurchaseOrder).where(PurchaseOrder.id == approval.entity_id)
@@ -849,6 +850,19 @@ async def approve_request(
             pr.status = RequisitionStatus.APPROVED.value
             pr.approved_by = current_user.id
             pr.approved_at = datetime.now(timezone.utc)
+    elif approval.entity_type == ApprovalEntityType.VENDOR_ONBOARDING:
+        # Update vendor status to ACTIVE when approved
+        vendor_result = await db.execute(
+            select(Vendor).where(Vendor.id == approval.entity_id)
+        )
+        vendor = vendor_result.scalar_one_or_none()
+        if vendor:
+            vendor.status = VendorStatus.ACTIVE.value
+            vendor.is_verified = True
+            vendor.verified_at = datetime.now(timezone.utc)
+            vendor.verified_by = current_user.id
+            vendor.approved_by = current_user.id
+            vendor.approved_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(approval)
@@ -929,6 +943,15 @@ async def reject_request(
         if pr:
             pr.status = RequisitionStatus.REJECTED.value
             pr.rejection_reason = request.reason
+    elif approval.entity_type == ApprovalEntityType.VENDOR_ONBOARDING:
+        # Set vendor status to INACTIVE when rejected
+        vendor_result = await db.execute(
+            select(Vendor).where(Vendor.id == approval.entity_id)
+        )
+        vendor = vendor_result.scalar_one_or_none()
+        if vendor:
+            vendor.status = VendorStatus.INACTIVE.value
+            vendor.internal_notes = f"Rejected: {request.reason}"
 
     await db.commit()
     await db.refresh(approval)
@@ -1040,6 +1063,18 @@ async def bulk_approve(
                     po.status = POStatus.APPROVED.value
                     po.approved_by = current_user.id
                     po.approved_at = datetime.now(timezone.utc)
+            elif approval.entity_type == ApprovalEntityType.VENDOR_ONBOARDING:
+                vendor_result = await db.execute(
+                    select(Vendor).where(Vendor.id == approval.entity_id)
+                )
+                vendor = vendor_result.scalar_one_or_none()
+                if vendor:
+                    vendor.status = VendorStatus.ACTIVE.value
+                    vendor.is_verified = True
+                    vendor.verified_at = datetime.now(timezone.utc)
+                    vendor.verified_by = current_user.id
+                    vendor.approved_by = current_user.id
+                    vendor.approved_at = datetime.now(timezone.utc)
 
             # History
             history = ApprovalHistory(

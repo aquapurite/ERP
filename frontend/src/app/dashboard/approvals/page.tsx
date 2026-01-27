@@ -24,6 +24,7 @@ import {
   Check,
   X,
   History,
+  ClipboardList,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -62,7 +63,7 @@ import { formatDate, formatDateTime, cn } from '@/lib/utils';
 // Types
 interface ApprovalItem {
   id: string;
-  entity_type: 'PURCHASE_ORDER' | 'VENDOR' | 'TRANSFER' | 'JOURNAL_ENTRY' | 'GRN' | 'INVOICE' | 'EXPENSE' | 'CREDIT_NOTE';
+  entity_type: 'PURCHASE_ORDER' | 'PURCHASE_REQUISITION' | 'VENDOR' | 'VENDOR_ONBOARDING' | 'TRANSFER' | 'JOURNAL_ENTRY' | 'GRN' | 'INVOICE' | 'EXPENSE' | 'CREDIT_NOTE';
   entity_id: string;
   reference: string;
   title: string;
@@ -101,7 +102,9 @@ interface ApprovalStats {
 // Entity type config
 const entityConfig: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
   PURCHASE_ORDER: { icon: <ShoppingCart className="h-4 w-4" />, label: 'Purchase Order', color: 'bg-blue-100 text-blue-800' },
+  PURCHASE_REQUISITION: { icon: <ClipboardList className="h-4 w-4" />, label: 'Purchase Requisition', color: 'bg-indigo-100 text-indigo-800' },
   VENDOR: { icon: <Building2 className="h-4 w-4" />, label: 'Vendor', color: 'bg-green-100 text-green-800' },
+  VENDOR_ONBOARDING: { icon: <Building2 className="h-4 w-4" />, label: 'Vendor', color: 'bg-green-100 text-green-800' },
   TRANSFER: { icon: <Truck className="h-4 w-4" />, label: 'Stock Transfer', color: 'bg-purple-100 text-purple-800' },
   JOURNAL_ENTRY: { icon: <FileText className="h-4 w-4" />, label: 'Journal Entry', color: 'bg-orange-100 text-orange-800' },
   GRN: { icon: <Package className="h-4 w-4" />, label: 'GRN', color: 'bg-cyan-100 text-cyan-800' },
