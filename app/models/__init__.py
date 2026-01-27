@@ -168,6 +168,7 @@ from app.models.billing import (
 # Document Sequence (PR/PO/GRN numbering)
 from app.models.document_sequence import (
     DocumentSequence,
+    DocumentSequenceAudit,
     DocumentType as DocumentSequenceType,
 )
 # TDS (Tax Deducted at Source)
@@ -660,6 +661,7 @@ __all__ = [
     "InvoiceNumberSequence",
     # Document Sequence (PR/PO/GRN)
     "DocumentSequence",
+    "DocumentSequenceAudit",
     "DocumentSequenceType",
     # TDS (Tax Deducted at Source)
     "TDSDeduction",

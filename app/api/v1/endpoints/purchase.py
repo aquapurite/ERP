@@ -121,6 +121,91 @@ async def get_next_grn_number(
     return {"next_number": next_grn, "prefix": prefix}
 
 
+# ==================== Document Sequence Admin ====================
+
+@router.get("/sequences/verify")
+async def verify_document_sequences(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Verify all document sequences are in sync with actual documents.
+
+    Checks PR, PO, and GRN sequences against their respective tables.
+    Returns status for each sequence and auto-repairs if out of sync.
+
+    Requires authentication.
+    """
+    service = DocumentSequenceService(db)
+
+    results = []
+
+    # Check PR
+    pr_result = await service.verify_and_repair_sequence(
+        "PR", "purchase_requisitions", "requisition_number"
+    )
+    results.append(pr_result)
+
+    # Check PO
+    po_result = await service.verify_and_repair_sequence(
+        "PO", "purchase_orders", "po_number"
+    )
+    results.append(po_result)
+
+    # Check GRN
+    grn_result = await service.verify_and_repair_sequence(
+        "GRN", "goods_receipt_notes", "grn_number"
+    )
+    results.append(grn_result)
+
+    await db.commit()
+
+    return {
+        "status": "OK" if all(r["status"] == "OK" or r["repaired"] for r in results) else "ISSUES_FOUND",
+        "sequences": results,
+        "message": "All sequences verified and repaired if needed"
+    }
+
+
+@router.post("/sequences/repair/{document_type}")
+async def repair_document_sequence(
+    document_type: str,
+    max_number: int,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Manually repair a document sequence to a specific number.
+
+    Use this if you know the correct maximum sequence number.
+    The sequence will be set to this number so next document gets max_number + 1.
+
+    Args:
+        document_type: PR, PO, or GRN
+        max_number: The highest sequence number that exists
+
+    Requires authentication.
+    """
+    service = DocumentSequenceService(
+        db,
+        user_id=str(current_user.id)
+    )
+
+    try:
+        sequence = await service.sync_sequence_from_max(document_type, max_number)
+        await db.commit()
+
+        return {
+            "success": True,
+            "document_type": document_type,
+            "current_number": sequence.current_number,
+            "next_number": sequence.preview_next_number(),
+            "message": f"Sequence repaired. Next {document_type} will be {sequence.preview_next_number()}"
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 # ==================== Purchase Requisition (PR) ====================
 
 @router.post("/requisitions", response_model=PurchaseRequisitionResponse, status_code=status.HTTP_201_CREATED)

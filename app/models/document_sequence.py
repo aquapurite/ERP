@@ -50,6 +50,67 @@ class DocumentType(str, Enum):
     PICKLIST = "PL"
 
 
+class DocumentSequenceAudit(Base):
+    """
+    Audit log for document sequence operations.
+
+    Tracks all sequence number generations, previews, and manual updates
+    for compliance and debugging purposes.
+    """
+    __tablename__ = "document_sequence_audit"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    document_type: Mapped[str] = mapped_column(
+        String(10),
+        nullable=False,
+        index=True
+    )
+    financial_year: Mapped[str] = mapped_column(
+        String(10),
+        nullable=False
+    )
+    operation: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        comment="GET_NEXT, PREVIEW, MANUAL_UPDATE, SYNC_FROM_TRIGGER"
+    )
+    old_number: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True
+    )
+    new_number: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True
+    )
+    document_number: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True
+    )
+    source: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="API, TRIGGER, MANUAL"
+    )
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True
+    )
+    ip_address: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+
 class DocumentSequence(Base):
     """
     Document sequence management for atomic number generation.
