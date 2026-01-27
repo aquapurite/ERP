@@ -56,7 +56,7 @@ from app.schemas.purchase import (
     SRNQualityCheckRequest, SRNPutAwayRequest, PickupScheduleRequest,
     PickupUpdateRequest, SRNReceiveRequest, SRNResolveRequest,
 )
-from app.api.deps import DB, CurrentUser, get_current_user, require_permissions
+from app.api.deps import DB, CurrentUser, get_current_user, require_permissions, Permissions
 from app.services.audit_service import AuditService
 from app.services.approval_service import ApprovalService
 from app.services.document_sequence_service import DocumentSequenceService
@@ -204,6 +204,176 @@ async def repair_document_sequence(
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ==================== Admin Status Edit (Super Admin Only) ====================
+
+@router.put("/admin/requisitions/{pr_id}/status")
+async def admin_update_pr_status(
+    pr_id: UUID,
+    new_status: str,
+    reason: Optional[str] = None,
+    db: DB = None,
+    current_user: User = Depends(get_current_user),
+    permissions: Permissions = None,
+):
+    """
+    Update Purchase Requisition status (Super Admin only).
+
+    Allows super admin to change PR status to any valid status.
+    Use for data corrections or exceptional cases.
+
+    Valid statuses: DRAFT, SUBMITTED, APPROVED, REJECTED, CONVERTED, CANCELLED
+    """
+    # Check super admin
+    if not permissions or not permissions.is_super_admin():
+        raise HTTPException(
+            status_code=403,
+            detail="Only Super Admin can directly edit PR status"
+        )
+
+    # Validate status
+    valid_statuses = [s.value for s in RequisitionStatus]
+    if new_status.upper() not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status. Valid values: {', '.join(valid_statuses)}"
+        )
+
+    # Get PR
+    result = await db.execute(
+        select(PurchaseRequisition).where(PurchaseRequisition.id == pr_id)
+    )
+    pr = result.scalar_one_or_none()
+    if not pr:
+        raise HTTPException(status_code=404, detail="Purchase Requisition not found")
+
+    old_status = pr.status
+    pr.status = new_status.upper()
+
+    # Log the change
+    audit_service = AuditService(db)
+    await audit_service.log_action(
+        entity_type="PurchaseRequisition",
+        entity_id=str(pr_id),
+        action="ADMIN_STATUS_CHANGE",
+        old_value={"status": old_status},
+        new_value={"status": new_status.upper(), "reason": reason},
+        user_id=current_user.id,
+    )
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "pr_number": pr.requisition_number,
+        "old_status": old_status,
+        "new_status": new_status.upper(),
+        "changed_by": current_user.email,
+        "reason": reason,
+        "message": f"PR status changed from {old_status} to {new_status.upper()}"
+    }
+
+
+@router.put("/admin/orders/{po_id}/status")
+async def admin_update_po_status(
+    po_id: UUID,
+    new_status: str,
+    reason: Optional[str] = None,
+    db: DB = None,
+    current_user: User = Depends(get_current_user),
+    permissions: Permissions = None,
+):
+    """
+    Update Purchase Order status (Super Admin only).
+
+    Allows super admin to change PO status to any valid status.
+    Use for data corrections or exceptional cases.
+
+    Valid statuses: DRAFT, PENDING_APPROVAL, APPROVED, SENT_TO_VENDOR,
+                   ACKNOWLEDGED, PARTIALLY_RECEIVED, FULLY_RECEIVED, CLOSED, CANCELLED
+    """
+    # Check super admin
+    if not permissions or not permissions.is_super_admin():
+        raise HTTPException(
+            status_code=403,
+            detail="Only Super Admin can directly edit PO status"
+        )
+
+    # Validate status
+    valid_statuses = [s.value for s in POStatus]
+    if new_status.upper() not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status. Valid values: {', '.join(valid_statuses)}"
+        )
+
+    # Get PO
+    result = await db.execute(
+        select(PurchaseOrder).where(PurchaseOrder.id == po_id)
+    )
+    po = result.scalar_one_or_none()
+    if not po:
+        raise HTTPException(status_code=404, detail="Purchase Order not found")
+
+    old_status = po.status
+    po.status = new_status.upper()
+
+    # Log the change
+    audit_service = AuditService(db)
+    await audit_service.log_action(
+        entity_type="PurchaseOrder",
+        entity_id=str(po_id),
+        action="ADMIN_STATUS_CHANGE",
+        old_value={"status": old_status},
+        new_value={"status": new_status.upper(), "reason": reason},
+        user_id=current_user.id,
+    )
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "po_number": po.po_number,
+        "old_status": old_status,
+        "new_status": new_status.upper(),
+        "changed_by": current_user.email,
+        "reason": reason,
+        "message": f"PO status changed from {old_status} to {new_status.upper()}"
+    }
+
+
+@router.get("/admin/status-options")
+async def get_status_options(
+    current_user: User = Depends(get_current_user),
+    permissions: Permissions = None,
+):
+    """
+    Get all valid status options for PR and PO (Super Admin only).
+
+    Returns list of valid statuses that can be used with admin status update endpoints.
+    """
+    # Check super admin
+    if not permissions or not permissions.is_super_admin():
+        raise HTTPException(
+            status_code=403,
+            detail="Only Super Admin can access this endpoint"
+        )
+
+    return {
+        "pr_statuses": [
+            {"value": s.value, "label": s.value.replace("_", " ").title()}
+            for s in RequisitionStatus
+        ],
+        "po_statuses": [
+            {"value": s.value, "label": s.value.replace("_", " ").title()}
+            for s in POStatus
+        ],
+        "grn_statuses": [
+            {"value": s.value, "label": s.value.replace("_", " ").title()}
+            for s in GRNStatus
+        ],
+    }
 
 
 # ==================== Purchase Requisition (PR) ====================
