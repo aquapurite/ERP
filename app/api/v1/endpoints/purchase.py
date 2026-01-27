@@ -252,13 +252,14 @@ async def admin_update_pr_status(
 
     # Log the change
     audit_service = AuditService(db)
-    await audit_service.log_action(
-        entity_type="PurchaseRequisition",
-        entity_id=str(pr_id),
+    await audit_service.log(
         action="ADMIN_STATUS_CHANGE",
-        old_value={"status": old_status},
-        new_value={"status": new_status.upper(), "reason": reason},
+        entity_type="PurchaseRequisition",
+        entity_id=pr_id,
         user_id=permissions.user.id,
+        old_values={"status": old_status},
+        new_values={"status": new_status.upper(), "reason": reason},
+        description=f"Admin changed PR status from {old_status} to {new_status.upper()}",
     )
 
     await db.commit()
@@ -319,13 +320,14 @@ async def admin_update_po_status(
 
     # Log the change
     audit_service = AuditService(db)
-    await audit_service.log_action(
-        entity_type="PurchaseOrder",
-        entity_id=str(po_id),
+    await audit_service.log(
         action="ADMIN_STATUS_CHANGE",
-        old_value={"status": old_status},
-        new_value={"status": new_status.upper(), "reason": reason},
+        entity_type="PurchaseOrder",
+        entity_id=po_id,
         user_id=permissions.user.id,
+        old_values={"status": old_status},
+        new_values={"status": new_status.upper(), "reason": reason},
+        description=f"Admin changed PO status from {old_status} to {new_status.upper()}",
     )
 
     await db.commit()
