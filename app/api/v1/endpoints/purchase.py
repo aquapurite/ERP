@@ -792,7 +792,12 @@ async def update_purchase_requisition(
     db: DB,
     current_user: User = Depends(get_current_user),
 ):
-    """Update a purchase requisition. Only DRAFT and SUBMITTED PRs can be edited."""
+    """Update a purchase requisition. Only DRAFT and SUBMITTED PRs can be edited.
+
+    Supports full editing including:
+    - Header fields (warehouse, priority, dates, reason, notes)
+    - Line items (if items provided, replaces all existing items)
+    """
     result = await db.execute(
         select(PurchaseRequisition)
         .options(selectinload(PurchaseRequisition.items))
@@ -811,13 +816,55 @@ async def update_purchase_requisition(
             detail=f"Cannot edit PR with status '{pr.status}'. Only DRAFT or SUBMITTED PRs can be edited."
         )
 
-    # Update fields
-    update_dict = update_data.model_dump(exclude_unset=True)
+    # Get update dict excluding items (handle separately)
+    update_dict = update_data.model_dump(exclude_unset=True, exclude={"items"})
+
+    # Update scalar fields
     for field, value in update_dict.items():
         setattr(pr, field, value)
 
+    # Handle items update if provided
+    if update_data.items is not None:
+        # Delete existing items
+        for item in pr.items:
+            await db.delete(item)
+
+        # Create new items
+        estimated_total = Decimal("0")
+        for item_data in update_data.items:
+            item_dict = item_data.model_dump()
+            item_total = item_dict["quantity_requested"] * item_dict["estimated_unit_price"]
+
+            pr_item = PurchaseRequisitionItem(
+                requisition_id=pr_id,
+                product_id=item_dict["product_id"],
+                variant_id=item_dict.get("variant_id"),
+                product_name=item_dict["product_name"],
+                sku=item_dict["sku"],
+                quantity_requested=item_dict["quantity_requested"],
+                uom=item_dict.get("uom", "PCS"),
+                estimated_unit_price=item_dict["estimated_unit_price"],
+                estimated_total=item_total,
+                preferred_vendor_id=item_dict.get("preferred_vendor_id"),
+                notes=item_dict.get("notes"),
+                monthly_quantities=item_dict.get("monthly_quantities"),
+            )
+            db.add(pr_item)
+            estimated_total += item_total
+
+        # Update PR total
+        pr.estimated_total = estimated_total
+
     await db.commit()
+
+    # Refresh with items loaded
     await db.refresh(pr)
+    result = await db.execute(
+        select(PurchaseRequisition)
+        .options(selectinload(PurchaseRequisition.items))
+        .where(PurchaseRequisition.id == pr_id)
+    )
+    pr = result.scalar_one_or_none()
 
     return pr
 

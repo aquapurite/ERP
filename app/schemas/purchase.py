@@ -37,6 +37,21 @@ class PRItemCreate(PRItemBase):
     pass
 
 
+class PRItemUpdate(BaseModel):
+    """Schema for updating PR item. All fields optional."""
+    id: Optional[UUID] = None  # If provided, update existing; if None, create new
+    product_id: Optional[UUID] = None
+    variant_id: Optional[UUID] = None
+    product_name: Optional[str] = None
+    sku: Optional[str] = None
+    quantity_requested: Optional[int] = Field(None, gt=0)
+    uom: Optional[str] = None
+    estimated_unit_price: Optional[Decimal] = Field(None, ge=0)
+    preferred_vendor_id: Optional[UUID] = None
+    notes: Optional[str] = None
+    monthly_quantities: Optional[dict] = None
+
+
 class PRItemResponse(PRItemBase):
     """Response schema for PR item."""
     model_config = ConfigDict(from_attributes=True)
@@ -61,11 +76,15 @@ class PurchaseRequisitionCreate(PurchaseRequisitionBase):
 
 
 class PurchaseRequisitionUpdate(BaseModel):
-    """Schema for updating PR."""
+    """Schema for updating PR. Supports full editing including items."""
+    requesting_department: Optional[str] = None
     required_by_date: Optional[date] = None
-    priority: Optional[int] = None
+    delivery_warehouse_id: Optional[UUID] = None
+    priority: Optional[int] = Field(None, ge=1, le=10)
     reason: Optional[str] = None
     notes: Optional[str] = None
+    # Items - if provided, replaces all existing items
+    items: Optional[List[PRItemCreate]] = None
 
 
 class PurchaseRequisitionResponse(PurchaseRequisitionBase):

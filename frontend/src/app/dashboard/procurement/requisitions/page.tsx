@@ -158,7 +158,14 @@ const requisitionsApi = {
   delete: async (id: string) => {
     await apiClient.delete(`/purchase/requisitions/${id}`);
   },
-  update: async (id: string, updateData: { required_by_date?: string; priority?: number; reason?: string; notes?: string }) => {
+  update: async (id: string, updateData: {
+    required_by_date?: string;
+    priority?: number;
+    reason?: string;
+    notes?: string;
+    delivery_warehouse_id?: string;
+    items?: PRFormItem[];
+  }) => {
     const { data } = await apiClient.put(`/purchase/requisitions/${id}`, updateData);
     return data;
   },
@@ -209,12 +216,27 @@ export default function PurchaseRequisitionsPage() {
   const [viewPRDetails, setViewPRDetails] = useState<any>(null);
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [editPRData, setEditPRData] = useState<{ required_by_date: string; priority: number; reason: string; notes: string }>({
+  const [editPRData, setEditPRData] = useState<{
+    required_by_date: string;
+    priority: number;
+    reason: string;
+    notes: string;
+    delivery_warehouse_id: string;
+    items: PRFormItem[];
+  }>({
     required_by_date: '',
     priority: 5,
     reason: '',
     notes: '',
+    delivery_warehouse_id: '',
+    items: [],
   });
+  const [editNewItem, setEditNewItem] = useState({
+    product_id: '',
+    quantity: 1,
+    estimated_price: 0,
+  });
+  const [editSelectedCategoryId, setEditSelectedCategoryId] = useState<string>('all');
   // Admin status edit state
   const [isEditStatusDialogOpen, setIsEditStatusDialogOpen] = useState(false);
   const [editStatusData, setEditStatusData] = useState<{ new_status: string; reason: string }>({
@@ -437,7 +459,14 @@ export default function PurchaseRequisitionsPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { required_by_date?: string; priority?: number; reason?: string; notes?: string } }) =>
+    mutationFn: ({ id, data }: { id: string; data: {
+      required_by_date?: string;
+      priority?: number;
+      reason?: string;
+      notes?: string;
+      delivery_warehouse_id?: string;
+      items?: PRFormItem[];
+    } }) =>
       requisitionsApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-requisitions'] });
@@ -445,7 +474,9 @@ export default function PurchaseRequisitionsPage() {
       toast.success('PR updated successfully');
       setIsEditDialogOpen(false);
       setSelectedPR(null);
-      setEditPRData({ required_by_date: '', priority: 5, reason: '', notes: '' });
+      setEditPRData({ required_by_date: '', priority: 5, reason: '', notes: '', delivery_warehouse_id: '', items: [] });
+      setEditNewItem({ product_id: '', quantity: 1, estimated_price: 0 });
+      setEditSelectedCategoryId('all');
     },
     onError: (error: Error) => toast.error(error.message || 'Failed to update PR'),
   });
@@ -465,15 +496,49 @@ export default function PurchaseRequisitionsPage() {
     onError: (error: Error) => toast.error(error.message || 'Failed to update PR status'),
   });
 
-  // Handle Edit PR
-  const handleEditPR = (pr: PurchaseRequisition) => {
+  // Handle Edit PR - Fetch full details including items
+  const handleEditPR = async (pr: PurchaseRequisition) => {
     setSelectedPR(pr);
-    setEditPRData({
-      required_by_date: pr.required_by_date || '',
-      priority: pr.priority || 5,
-      reason: pr.reason || '',
-      notes: pr.notes || '',
-    });
+    try {
+      // Fetch full PR details with items
+      const fullDetails = await requisitionsApi.getById(pr.id);
+      const items: PRFormItem[] = (fullDetails.items || []).map((item: any) => ({
+        product_id: item.product_id,
+        product_name: item.product_name,
+        sku: item.sku,
+        quantity_requested: item.quantity_requested,
+        estimated_unit_price: item.estimated_unit_price || 0,
+        uom: item.uom || 'PCS',
+        monthly_quantities: item.monthly_quantities,
+      }));
+
+      setEditPRData({
+        required_by_date: fullDetails.required_by_date || pr.required_by_date || '',
+        priority: fullDetails.priority || pr.priority || 5,
+        reason: fullDetails.reason || pr.reason || '',
+        notes: fullDetails.notes || pr.notes || '',
+        delivery_warehouse_id: fullDetails.delivery_warehouse_id || pr.delivery_warehouse_id || '',
+        items: items,
+      });
+    } catch {
+      // Fallback to basic PR data if fetch fails
+      setEditPRData({
+        required_by_date: pr.required_by_date || '',
+        priority: pr.priority || 5,
+        reason: pr.reason || '',
+        notes: pr.notes || '',
+        delivery_warehouse_id: pr.delivery_warehouse_id || '',
+        items: pr.items ? pr.items.map((item: any) => ({
+          product_id: item.product_id,
+          product_name: item.product_name,
+          sku: item.sku,
+          quantity_requested: item.quantity_requested,
+          estimated_unit_price: item.estimated_unit_price || 0,
+          uom: item.uom || 'PCS',
+          monthly_quantities: item.monthly_quantities,
+        })) : [],
+      });
+    }
     setIsEditDialogOpen(true);
   };
 
@@ -495,6 +560,14 @@ export default function PurchaseRequisitionsPage() {
 
   const handleUpdatePR = () => {
     if (!selectedPR) return;
+    if (!editPRData.delivery_warehouse_id) {
+      toast.error('Please select a warehouse');
+      return;
+    }
+    if (editPRData.items.length === 0) {
+      toast.error('Please add at least one item');
+      return;
+    }
     updateMutation.mutate({
       id: selectedPR.id,
       data: {
@@ -502,6 +575,8 @@ export default function PurchaseRequisitionsPage() {
         priority: editPRData.priority,
         reason: editPRData.reason || undefined,
         notes: editPRData.notes || undefined,
+        delivery_warehouse_id: editPRData.delivery_warehouse_id,
+        items: editPRData.items,
       },
     });
   };
@@ -1603,63 +1678,265 @@ export default function PurchaseRequisitionsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Edit PR Dialog */}
+      {/* Edit PR Dialog - Full Editing */}
       <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
         if (!open) {
           setIsEditDialogOpen(false);
           setSelectedPR(null);
-          setEditPRData({ required_by_date: '', priority: 5, reason: '', notes: '' });
+          setEditPRData({ required_by_date: '', priority: 5, reason: '', notes: '', delivery_warehouse_id: '', items: [] });
+          setEditNewItem({ product_id: '', quantity: 1, estimated_price: 0 });
+          setEditSelectedCategoryId('all');
         }
       }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Purchase Requisition</DialogTitle>
             <DialogDescription>
-              Update PR {selectedPR?.requisition_number}
+              Update PR {selectedPR?.requisition_number} - All fields are editable
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="grid gap-4 py-4">
+            {/* Row 1: Warehouse and Priority */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Delivery Warehouse *</Label>
+                <Select
+                  value={editPRData.delivery_warehouse_id || 'select'}
+                  onValueChange={(value) => setEditPRData({ ...editPRData, delivery_warehouse_id: value === 'select' ? '' : value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select warehouse" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="select" disabled>Select warehouse</SelectItem>
+                    {warehouses.filter((w: Warehouse) => w.id && w.id.trim() !== '').map((w: Warehouse) => (
+                      <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Priority (1-10)</Label>
+                <Select
+                  value={String(editPRData.priority)}
+                  onValueChange={(value) => setEditPRData({ ...editPRData, priority: parseInt(value) })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select priority" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 - Lowest</SelectItem>
+                    <SelectItem value="3">3 - Low</SelectItem>
+                    <SelectItem value="5">5 - Normal</SelectItem>
+                    <SelectItem value="7">7 - High</SelectItem>
+                    <SelectItem value="10">10 - Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Row 2: Required By Date */}
             <div className="space-y-2">
-              <Label htmlFor="edit-required-date">Required By Date</Label>
+              <Label>Required By Date</Label>
               <Input
-                id="edit-required-date"
                 type="date"
                 value={editPRData.required_by_date}
                 onChange={(e) => setEditPRData({ ...editPRData, required_by_date: e.target.value })}
               />
             </div>
+
+            {/* Reason/Justification */}
             <div className="space-y-2">
-              <Label htmlFor="edit-priority">Priority (1-10)</Label>
-              <Select
-                value={String(editPRData.priority)}
-                onValueChange={(value) => setEditPRData({ ...editPRData, priority: parseInt(value) })}
-              >
-                <SelectTrigger id="edit-priority">
-                  <SelectValue placeholder="Select priority" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">1 - Low</SelectItem>
-                  <SelectItem value="3">3 - Normal</SelectItem>
-                  <SelectItem value="5">5 - Medium</SelectItem>
-                  <SelectItem value="7">7 - High</SelectItem>
-                  <SelectItem value="10">10 - Urgent</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-reason">Reason / Justification</Label>
+              <Label>Reason / Justification</Label>
               <Textarea
-                id="edit-reason"
                 value={editPRData.reason}
                 onChange={(e) => setEditPRData({ ...editPRData, reason: e.target.value })}
                 placeholder="Enter reason for requisition"
-                rows={3}
+                rows={2}
               />
             </div>
+
+            {/* Items Section */}
             <div className="space-y-2">
-              <Label htmlFor="edit-notes">Notes</Label>
+              <Label className="text-base font-semibold">Items *</Label>
+              <div className="border rounded-lg p-4 space-y-4">
+                {/* Category Filter */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label className="text-sm font-medium">Product Category</Label>
+                    <Select
+                      value={editSelectedCategoryId}
+                      onValueChange={(value) => {
+                        setEditSelectedCategoryId(value);
+                        setEditNewItem({ ...editNewItem, product_id: '', estimated_price: 0 });
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="All Categories" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Categories</SelectItem>
+                        {categories.map((cat: { id: string; name: string }) => (
+                          <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Add Item Row */}
+                <div className="grid grid-cols-12 gap-3 items-end">
+                  <div className="col-span-6">
+                    <Label className="text-sm font-medium">Product</Label>
+                    <Select
+                      value={editNewItem.product_id || 'select'}
+                      onValueChange={(value) => {
+                        const product = (editSelectedCategoryId === 'all' ? allProducts : allProducts.filter((p: any) => p.category_id === editSelectedCategoryId)).find((p: Product) => p.id === value);
+                        setEditNewItem({
+                          ...editNewItem,
+                          product_id: value === 'select' ? '' : value,
+                          estimated_price: parseFloat(String(product?.mrp)) || 0
+                        });
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select product" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="select" disabled>Select product</SelectItem>
+                        {(editSelectedCategoryId === 'all' ? allProducts : allProducts.filter((p: any) => p.category_id === editSelectedCategoryId))
+                          .filter((p: Product) => p.id && p.id.trim() !== '')
+                          .map((p: Product) => (
+                            <SelectItem key={p.id} value={p.id}>{p.name} ({p.sku})</SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-2">
+                    <Label className="text-sm font-medium">Quantity</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={editNewItem.quantity}
+                      onChange={(e) => setEditNewItem({ ...editNewItem, quantity: parseInt(e.target.value) || 0 })}
+                      className="w-full"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <Label className="text-sm font-medium">Est. Price</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={editNewItem.estimated_price || ''}
+                      onChange={(e) => setEditNewItem({ ...editNewItem, estimated_price: parseFloat(e.target.value) || 0 })}
+                      className="w-full"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        if (!editNewItem.product_id) {
+                          toast.error('Please select a product');
+                          return;
+                        }
+                        if (editNewItem.quantity <= 0) {
+                          toast.error('Please enter quantity');
+                          return;
+                        }
+                        const productList = editSelectedCategoryId === 'all' ? allProducts : allProducts.filter((p: any) => p.category_id === editSelectedCategoryId);
+                        const product = productList.find((p: Product) => p.id === editNewItem.product_id);
+                        if (!product) {
+                          toast.error('Product not found');
+                          return;
+                        }
+                        setEditPRData({
+                          ...editPRData,
+                          items: [...editPRData.items, {
+                            product_id: product.id,
+                            product_name: product.name,
+                            sku: product.sku,
+                            quantity_requested: editNewItem.quantity,
+                            estimated_unit_price: editNewItem.estimated_price || product.mrp || 0,
+                            uom: 'PCS',
+                          }],
+                        });
+                        setEditNewItem({ product_id: '', quantity: 1, estimated_price: 0 });
+                      }}
+                      className="w-full h-10"
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Items List */}
+            {editPRData.items.length > 0 && (
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Product</th>
+                      <th className="px-3 py-2 text-right">Qty</th>
+                      <th className="px-3 py-2 text-right">Est. Price</th>
+                      <th className="px-3 py-2 text-right">Total</th>
+                      <th className="px-3 py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {editPRData.items.map((item, index) => (
+                      <tr key={index} className="border-t">
+                        <td className="px-3 py-2">
+                          <div className="font-medium">{item.product_name}</div>
+                          <div className="text-xs text-muted-foreground">{item.sku}</div>
+                        </td>
+                        <td className="px-3 py-2 text-right">{item.quantity_requested}</td>
+                        <td className="px-3 py-2 text-right">{formatCurrency(item.estimated_unit_price)}</td>
+                        <td className="px-3 py-2 text-right font-medium">
+                          {formatCurrency(item.quantity_requested * item.estimated_unit_price)}
+                        </td>
+                        <td className="px-3 py-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setEditPRData({
+                              ...editPRData,
+                              items: editPRData.items.filter((_, i) => i !== index),
+                            })}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-muted/50">
+                    <tr className="border-t">
+                      <td colSpan={3} className="px-3 py-2 text-right font-semibold">Estimated Total:</td>
+                      <td className="px-3 py-2 text-right font-bold">
+                        {formatCurrency(editPRData.items.reduce((sum, item) => sum + (item.quantity_requested * item.estimated_unit_price), 0))}
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+
+            {editPRData.items.length === 0 && (
+              <div className="text-sm text-muted-foreground text-center py-4 border rounded-lg">
+                No items added yet. Select a product and click + to add.
+              </div>
+            )}
+
+            {/* Notes */}
+            <div className="space-y-2">
+              <Label>Notes (Optional)</Label>
               <Textarea
-                id="edit-notes"
                 value={editPRData.notes}
                 onChange={(e) => setEditPRData({ ...editPRData, notes: e.target.value })}
                 placeholder="Additional notes"
@@ -1673,7 +1950,9 @@ export default function PurchaseRequisitionsPage() {
               onClick={() => {
                 setIsEditDialogOpen(false);
                 setSelectedPR(null);
-                setEditPRData({ required_by_date: '', priority: 5, reason: '', notes: '' });
+                setEditPRData({ required_by_date: '', priority: 5, reason: '', notes: '', delivery_warehouse_id: '', items: [] });
+                setEditNewItem({ product_id: '', quantity: 1, estimated_price: 0 });
+                setEditSelectedCategoryId('all');
               }}
             >
               Cancel
