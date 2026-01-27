@@ -456,34 +456,34 @@ async def get_requisition_stats(
     current_user: User = Depends(get_current_user),
 ):
     """Get purchase requisition statistics."""
-    # Count by status
+    # Count by status - use string comparison for VARCHAR columns
     draft_result = await db.execute(
         select(func.count(PurchaseRequisition.id))
-        .where(PurchaseRequisition.status == RequisitionStatus.DRAFT)
+        .where(PurchaseRequisition.status == "DRAFT")
     )
     draft_count = draft_result.scalar() or 0
 
     submitted_result = await db.execute(
         select(func.count(PurchaseRequisition.id))
-        .where(PurchaseRequisition.status == RequisitionStatus.SUBMITTED)
+        .where(PurchaseRequisition.status == "SUBMITTED")
     )
     submitted_count = submitted_result.scalar() or 0
 
     approved_result = await db.execute(
         select(func.count(PurchaseRequisition.id))
-        .where(PurchaseRequisition.status == RequisitionStatus.APPROVED)
+        .where(PurchaseRequisition.status == "APPROVED")
     )
     approved_count = approved_result.scalar() or 0
 
     rejected_result = await db.execute(
         select(func.count(PurchaseRequisition.id))
-        .where(PurchaseRequisition.status == RequisitionStatus.REJECTED)
+        .where(PurchaseRequisition.status == "REJECTED")
     )
     rejected_count = rejected_result.scalar() or 0
 
     converted_result = await db.execute(
         select(func.count(PurchaseRequisition.id))
-        .where(PurchaseRequisition.status == RequisitionStatus.CONVERTED)
+        .where(PurchaseRequisition.status == "CONVERTED")
     )
     converted_count = converted_result.scalar() or 0
 
@@ -492,13 +492,18 @@ async def get_requisition_stats(
     )
     total_count = total_result.scalar() or 0
 
+    # Calculate average approval time (for PRs that have been approved)
+    # This would need approved_at and submitted_at timestamps to calculate properly
+    avg_approval_time_hours = 0  # TODO: Calculate from timestamps when available
+
     return {
         "total": total_count,
         "draft": draft_count,
-        "submitted": submitted_count,
+        "pending_approval": submitted_count,  # Frontend expects this name
         "approved": approved_count,
         "rejected": rejected_count,
-        "converted": converted_count,
+        "converted_to_po": converted_count,  # Frontend expects this name
+        "avg_approval_time_hours": avg_approval_time_hours,
     }
 
 
