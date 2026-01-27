@@ -7,6 +7,7 @@ import WhyChooseUs from '@/components/storefront/home/why-choose-us';
 import TrustStats from '@/components/storefront/home/trust-stats';
 import Testimonials from '@/components/storefront/home/testimonials';
 import RecentlyViewedWrapper from '@/components/storefront/product/recently-viewed-wrapper';
+import { WaterQualityBanner } from '@/components/storefront/tools/water-quality-calculator';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   getHomepageData,
@@ -118,6 +119,13 @@ export default async function HomePage() {
           viewAllLink="/products?is_bestseller=true"
         />
       )}
+
+      {/* Water Quality Calculator Banner */}
+      <section className="py-8">
+        <div className="container mx-auto px-4">
+          <WaterQualityBanner />
+        </div>
+      </section>
 
       {/* Why Choose Us */}
       <WhyChooseUs />

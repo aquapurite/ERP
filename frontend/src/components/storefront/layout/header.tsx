@@ -115,6 +115,12 @@ export default function StorefrontHeader() {
             <Link href="/track" className="hover:underline">
               Track Order
             </Link>
+            <Link href="/guides" className="hover:underline">
+              Video Guides
+            </Link>
+            <Link href="/referral" className="hover:underline">
+              Refer & Earn
+            </Link>
             <Link href="/support" className="hover:underline">
               Support
             </Link>
@@ -482,6 +488,20 @@ export default function StorefrontHeader() {
                 ))
               ) : (
                 <>
+                  <Link
+                    href="/guides"
+                    className="block py-2 text-base"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Video Guides
+                  </Link>
+                  <Link
+                    href="/referral"
+                    className="block py-2 text-base font-medium text-primary"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Refer & Earn ₹500
+                  </Link>
                   <Link
                     href="/about"
                     className="block py-2 text-base"

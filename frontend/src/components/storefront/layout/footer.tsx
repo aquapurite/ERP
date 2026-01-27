@@ -96,9 +96,10 @@ export default function StorefrontFooter() {
   const displayQuickLinks = quickLinks.length > 0 ? quickLinks : [
     { id: '1', menu_location: 'footer_quick', title: 'About Us', url: '/about', target: '_self', children: [] },
     { id: '2', menu_location: 'footer_quick', title: 'Our Products', url: '/products', target: '_self', children: [] },
-    { id: '3', menu_location: 'footer_quick', title: 'Contact Us', url: '/contact', target: '_self', children: [] },
-    { id: '4', menu_location: 'footer_quick', title: 'Support', url: '/support', target: '_self', children: [] },
-    { id: '5', menu_location: 'footer_quick', title: 'Track Order', url: '/track', target: '_self', children: [] },
+    { id: '3', menu_location: 'footer_quick', title: 'Video Guides', url: '/guides', target: '_self', children: [] },
+    { id: '4', menu_location: 'footer_quick', title: 'Refer & Earn', url: '/referral', target: '_self', children: [] },
+    { id: '5', menu_location: 'footer_quick', title: 'Contact Us', url: '/contact', target: '_self', children: [] },
+    { id: '6', menu_location: 'footer_quick', title: 'Track Order', url: '/track', target: '_self', children: [] },
   ];
 
   // Default service links if none from CMS

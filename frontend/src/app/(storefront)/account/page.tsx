@@ -16,6 +16,7 @@ import {
   Wrench,
   Shield,
   Cpu,
+  Gift,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -170,6 +171,13 @@ export default function AccountPage() {
               <Button variant="outline" className="w-full justify-start">
                 <Shield className="h-4 w-4 mr-2" />
                 AMC Plans
+                <ChevronRight className="h-4 w-4 ml-auto" />
+              </Button>
+            </Link>
+            <Link href="/referral" className="block">
+              <Button variant="outline" className="w-full justify-start text-primary border-primary/30 bg-primary/5 hover:bg-primary/10">
+                <Gift className="h-4 w-4 mr-2" />
+                Refer & Earn ₹500
                 <ChevronRight className="h-4 w-4 ml-auto" />
               </Button>
             </Link>
