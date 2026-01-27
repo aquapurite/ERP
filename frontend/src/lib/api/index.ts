@@ -1169,6 +1169,13 @@ export const purchaseOrdersApi = {
     const { data } = await apiClient.get<string>(`/purchase/orders/${id}/download`);
     return data;
   },
+  // Admin status update (Super Admin only)
+  adminUpdateStatus: async (id: string, newStatus: string, reason?: string) => {
+    const params = new URLSearchParams({ new_status: newStatus });
+    if (reason) params.append('reason', reason);
+    const { data } = await apiClient.put<PurchaseOrder>(`/purchase/admin/orders/${id}/status?${params.toString()}`);
+    return data;
+  },
 };
 
 // Service Requests API

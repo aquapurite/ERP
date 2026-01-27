@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, Send, CheckCircle, XCircle, FileText, ShoppingCart, Clock, AlertCircle, ArrowRight, Trash2, Loader2, Calendar, Printer, Lock, Pencil } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, Send, CheckCircle, XCircle, FileText, ShoppingCart, Clock, AlertCircle, ArrowRight, Trash2, Loader2, Calendar, Printer, Lock, Pencil, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -170,6 +170,13 @@ const requisitionsApi = {
     const { data } = await apiClient.get(`/purchase/requisitions/${id}/print`, { responseType: 'text' });
     return data;
   },
+  // Admin status update (Super Admin only)
+  adminUpdateStatus: async (id: string, newStatus: string, reason?: string) => {
+    const params = new URLSearchParams({ new_status: newStatus });
+    if (reason) params.append('reason', reason);
+    const { data } = await apiClient.put(`/purchase/admin/requisitions/${id}/status?${params.toString()}`);
+    return data;
+  },
 };
 
 const statusColors: Record<string, string> = {
@@ -190,7 +197,7 @@ const priorityColors: Record<string, string> = {
 
 export default function PurchaseRequisitionsPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, permissions } = useAuth();
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -207,6 +214,12 @@ export default function PurchaseRequisitionsPage() {
     priority: 5,
     reason: '',
     notes: '',
+  });
+  // Admin status edit state
+  const [isEditStatusDialogOpen, setIsEditStatusDialogOpen] = useState(false);
+  const [editStatusData, setEditStatusData] = useState<{ new_status: string; reason: string }>({
+    new_status: '',
+    reason: '',
   });
 
   // Form state
@@ -437,6 +450,21 @@ export default function PurchaseRequisitionsPage() {
     onError: (error: Error) => toast.error(error.message || 'Failed to update PR'),
   });
 
+  // Admin status update mutation (Super Admin only)
+  const adminUpdateStatusMutation = useMutation({
+    mutationFn: ({ id, newStatus, reason }: { id: string; newStatus: string; reason?: string }) =>
+      requisitionsApi.adminUpdateStatus(id, newStatus, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-requisitions'] });
+      queryClient.invalidateQueries({ queryKey: ['pr-stats'] });
+      toast.success('PR status updated successfully');
+      setIsEditStatusDialogOpen(false);
+      setSelectedPR(null);
+      setEditStatusData({ new_status: '', reason: '' });
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to update PR status'),
+  });
+
   // Handle Edit PR
   const handleEditPR = (pr: PurchaseRequisition) => {
     setSelectedPR(pr);
@@ -447,6 +475,22 @@ export default function PurchaseRequisitionsPage() {
       notes: pr.notes || '',
     });
     setIsEditDialogOpen(true);
+  };
+
+  // Handle Edit Status (Super Admin only)
+  const handleEditStatus = (pr: PurchaseRequisition) => {
+    setSelectedPR(pr);
+    setEditStatusData({ new_status: pr.status, reason: '' });
+    setIsEditStatusDialogOpen(true);
+  };
+
+  const handleUpdateStatus = () => {
+    if (!selectedPR || !editStatusData.new_status) return;
+    adminUpdateStatusMutation.mutate({
+      id: selectedPR.id,
+      newStatus: editStatusData.new_status,
+      reason: editStatusData.reason || undefined,
+    });
   };
 
   const handleUpdatePR = () => {
@@ -879,6 +923,13 @@ export default function PurchaseRequisitionsPage() {
                 <DropdownMenuItem onClick={() => handleEditPR(pr)}>
                   <Pencil className="mr-2 h-4 w-4" />
                   Edit PR
+                </DropdownMenuItem>
+              )}
+              {/* 2.5. Edit Status - Super Admin only */}
+              {permissions?.is_super_admin && (
+                <DropdownMenuItem onClick={() => handleEditStatus(pr)}>
+                  <Shield className="mr-2 h-4 w-4" />
+                  Edit Status
                 </DropdownMenuItem>
               )}
               {/* 3. Convert to PO - Only for APPROVED */}
@@ -1633,6 +1684,83 @@ export default function PurchaseRequisitionsPage() {
             >
               {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Update PR
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Status Dialog (Super Admin only) */}
+      <Dialog open={isEditStatusDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setIsEditStatusDialogOpen(false);
+          setSelectedPR(null);
+          setEditStatusData({ new_status: '', reason: '' });
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5 text-orange-500" />
+              Edit PR Status (Admin)
+            </DialogTitle>
+            <DialogDescription>
+              Change status for {selectedPR?.requisition_number}. This is an admin override.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Current Status</Label>
+              <div className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${statusColors[selectedPR?.status || ''] || ''}`}>
+                {selectedPR?.status}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-status-new">New Status *</Label>
+              <Select
+                value={editStatusData.new_status}
+                onValueChange={(value) => setEditStatusData({ ...editStatusData, new_status: value })}
+              >
+                <SelectTrigger id="edit-status-new">
+                  <SelectValue placeholder="Select new status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DRAFT">DRAFT</SelectItem>
+                  <SelectItem value="SUBMITTED">SUBMITTED</SelectItem>
+                  <SelectItem value="APPROVED">APPROVED</SelectItem>
+                  <SelectItem value="REJECTED">REJECTED</SelectItem>
+                  <SelectItem value="CONVERTED">CONVERTED</SelectItem>
+                  <SelectItem value="CANCELLED">CANCELLED</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-status-reason">Reason for Change</Label>
+              <Textarea
+                id="edit-status-reason"
+                value={editStatusData.reason}
+                onChange={(e) => setEditStatusData({ ...editStatusData, reason: e.target.value })}
+                placeholder="Enter reason for status change (for audit purposes)"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsEditStatusDialogOpen(false);
+                setSelectedPR(null);
+                setEditStatusData({ new_status: '', reason: '' });
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUpdateStatus}
+              disabled={adminUpdateStatusMutation.isPending || !editStatusData.new_status || editStatusData.new_status === selectedPR?.status}
+            >
+              {adminUpdateStatusMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Update Status
             </Button>
           </DialogFooter>
         </DialogContent>

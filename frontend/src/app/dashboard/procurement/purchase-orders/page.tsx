@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, FileText, Send, CheckCircle, X, Loader2, Trash2, Download, Printer, Package, Barcode, Lock, FileSpreadsheet, Pencil } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, FileText, Send, CheckCircle, X, Loader2, Trash2, Download, Printer, Package, Barcode, Lock, FileSpreadsheet, Pencil, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/providers/auth-provider';
 import { Button } from '@/components/ui/button';
@@ -182,6 +182,13 @@ export default function PurchaseOrdersPage() {
     terms_and_conditions: '',
     special_instructions: '',
     internal_notes: '',
+  });
+
+  // Admin status edit state (Super Admin only)
+  const [isEditStatusDialogOpen, setIsEditStatusDialogOpen] = useState(false);
+  const [editStatusData, setEditStatusData] = useState<{ new_status: string; reason: string }>({
+    new_status: '',
+    reason: '',
   });
 
   const [formData, setFormData] = useState({
@@ -396,6 +403,20 @@ export default function PurchaseOrdersPage() {
     onError: (error: Error) => toast.error(error.message || 'Failed to update PO'),
   });
 
+  // Admin status update mutation (Super Admin only)
+  const adminUpdateStatusMutation = useMutation({
+    mutationFn: ({ id, newStatus, reason }: { id: string; newStatus: string; reason?: string }) =>
+      purchaseOrdersApi.adminUpdateStatus(id, newStatus, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      toast.success('PO status updated successfully');
+      setIsEditStatusDialogOpen(false);
+      setSelectedPO(null);
+      setEditStatusData({ new_status: '', reason: '' });
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to update PO status'),
+  });
+
   // Handle Edit PO
   const handleEditPO = (po: PurchaseOrder) => {
     setSelectedPO(po);
@@ -426,6 +447,22 @@ export default function PurchaseOrdersPage() {
         special_instructions: editPOData.special_instructions || undefined,
         internal_notes: editPOData.internal_notes || undefined,
       },
+    });
+  };
+
+  // Handle Edit Status (Super Admin only)
+  const handleEditStatus = (po: PurchaseOrder) => {
+    setSelectedPO(po);
+    setEditStatusData({ new_status: po.status, reason: '' });
+    setIsEditStatusDialogOpen(true);
+  };
+
+  const handleUpdateStatus = () => {
+    if (!selectedPO || !editStatusData.new_status) return;
+    adminUpdateStatusMutation.mutate({
+      id: selectedPO.id,
+      newStatus: editStatusData.new_status,
+      reason: editStatusData.reason || undefined,
     });
   };
 
@@ -918,6 +955,13 @@ export default function PurchaseOrdersPage() {
               <DropdownMenuItem onClick={() => handleEditPO(row.original)}>
                 <Pencil className="mr-2 h-4 w-4" />
                 Edit PO
+              </DropdownMenuItem>
+            )}
+            {/* Edit Status - Super Admin only */}
+            {isSuperAdmin && (
+              <DropdownMenuItem onClick={() => handleEditStatus(row.original)}>
+                <Shield className="mr-2 h-4 w-4" />
+                Edit Status
               </DropdownMenuItem>
             )}
             <DropdownMenuItem onClick={() => handleDownload(row.original)}>
@@ -2323,6 +2367,83 @@ export default function PurchaseOrdersPage() {
             >
               {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Update PO
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Status Dialog (Super Admin only) */}
+      <Dialog open={isEditStatusDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setIsEditStatusDialogOpen(false);
+          setSelectedPO(null);
+          setEditStatusData({ new_status: '', reason: '' });
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5 text-orange-500" />
+              Edit PO Status (Admin)
+            </DialogTitle>
+            <DialogDescription>
+              Change status for {selectedPO?.po_number}. This is an admin override.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Current Status</Label>
+              <Badge variant="outline">{selectedPO?.status}</Badge>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-status-new">New Status *</Label>
+              <Select
+                value={editStatusData.new_status}
+                onValueChange={(value) => setEditStatusData({ ...editStatusData, new_status: value })}
+              >
+                <SelectTrigger id="edit-status-new">
+                  <SelectValue placeholder="Select new status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DRAFT">DRAFT</SelectItem>
+                  <SelectItem value="PENDING_APPROVAL">PENDING_APPROVAL</SelectItem>
+                  <SelectItem value="APPROVED">APPROVED</SelectItem>
+                  <SelectItem value="SENT_TO_VENDOR">SENT_TO_VENDOR</SelectItem>
+                  <SelectItem value="CONFIRMED">CONFIRMED</SelectItem>
+                  <SelectItem value="PARTIALLY_RECEIVED">PARTIALLY_RECEIVED</SelectItem>
+                  <SelectItem value="COMPLETED">COMPLETED</SelectItem>
+                  <SelectItem value="CANCELLED">CANCELLED</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-status-reason">Reason for Change</Label>
+              <Textarea
+                id="edit-status-reason"
+                value={editStatusData.reason}
+                onChange={(e) => setEditStatusData({ ...editStatusData, reason: e.target.value })}
+                placeholder="Enter reason for status change (for audit purposes)"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsEditStatusDialogOpen(false);
+                setSelectedPO(null);
+                setEditStatusData({ new_status: '', reason: '' });
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUpdateStatus}
+              disabled={adminUpdateStatusMutation.isPending || !editStatusData.new_status || editStatusData.new_status === selectedPO?.status}
+            >
+              {adminUpdateStatusMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Update Status
             </Button>
           </DialogFooter>
         </DialogContent>
