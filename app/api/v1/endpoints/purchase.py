@@ -212,10 +212,9 @@ async def repair_document_sequence(
 async def admin_update_pr_status(
     pr_id: UUID,
     new_status: str,
+    db: DB,
+    permissions: Permissions,
     reason: Optional[str] = None,
-    db: DB = None,
-    current_user: User = Depends(get_current_user),
-    permissions: Permissions = None,
 ):
     """
     Update Purchase Requisition status (Super Admin only).
@@ -226,7 +225,7 @@ async def admin_update_pr_status(
     Valid statuses: DRAFT, SUBMITTED, APPROVED, REJECTED, CONVERTED, CANCELLED
     """
     # Check super admin
-    if not permissions or not permissions.is_super_admin():
+    if not permissions.is_super_admin():
         raise HTTPException(
             status_code=403,
             detail="Only Super Admin can directly edit PR status"
@@ -259,7 +258,7 @@ async def admin_update_pr_status(
         action="ADMIN_STATUS_CHANGE",
         old_value={"status": old_status},
         new_value={"status": new_status.upper(), "reason": reason},
-        user_id=current_user.id,
+        user_id=permissions.user.id,
     )
 
     await db.commit()
@@ -269,7 +268,7 @@ async def admin_update_pr_status(
         "pr_number": pr.requisition_number,
         "old_status": old_status,
         "new_status": new_status.upper(),
-        "changed_by": current_user.email,
+        "changed_by": permissions.user.email,
         "reason": reason,
         "message": f"PR status changed from {old_status} to {new_status.upper()}"
     }
@@ -279,10 +278,9 @@ async def admin_update_pr_status(
 async def admin_update_po_status(
     po_id: UUID,
     new_status: str,
+    db: DB,
+    permissions: Permissions,
     reason: Optional[str] = None,
-    db: DB = None,
-    current_user: User = Depends(get_current_user),
-    permissions: Permissions = None,
 ):
     """
     Update Purchase Order status (Super Admin only).
@@ -294,7 +292,7 @@ async def admin_update_po_status(
                    ACKNOWLEDGED, PARTIALLY_RECEIVED, FULLY_RECEIVED, CLOSED, CANCELLED
     """
     # Check super admin
-    if not permissions or not permissions.is_super_admin():
+    if not permissions.is_super_admin():
         raise HTTPException(
             status_code=403,
             detail="Only Super Admin can directly edit PO status"
@@ -327,7 +325,7 @@ async def admin_update_po_status(
         action="ADMIN_STATUS_CHANGE",
         old_value={"status": old_status},
         new_value={"status": new_status.upper(), "reason": reason},
-        user_id=current_user.id,
+        user_id=permissions.user.id,
     )
 
     await db.commit()
@@ -337,7 +335,7 @@ async def admin_update_po_status(
         "po_number": po.po_number,
         "old_status": old_status,
         "new_status": new_status.upper(),
-        "changed_by": current_user.email,
+        "changed_by": permissions.user.email,
         "reason": reason,
         "message": f"PO status changed from {old_status} to {new_status.upper()}"
     }
@@ -345,8 +343,7 @@ async def admin_update_po_status(
 
 @router.get("/admin/status-options")
 async def get_status_options(
-    current_user: User = Depends(get_current_user),
-    permissions: Permissions = None,
+    permissions: Permissions,
 ):
     """
     Get all valid status options for PR and PO (Super Admin only).
@@ -354,7 +351,7 @@ async def get_status_options(
     Returns list of valid statuses that can be used with admin status update endpoints.
     """
     # Check super admin
-    if not permissions or not permissions.is_super_admin():
+    if not permissions.is_super_admin():
         raise HTTPException(
             status_code=403,
             detail="Only Super Admin can access this endpoint"
