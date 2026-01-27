@@ -182,13 +182,44 @@ async def get_invoice_stats(
     """Get vendor invoice statistics."""
     today = date.today()
 
+    # Total invoices count
+    total_query = select(func.count()).select_from(VendorInvoice)
+    total_invoices = await db.scalar(total_query) or 0
+
+    # Pending review (RECEIVED + UNDER_VERIFICATION)
+    pending_review_query = select(func.count()).select_from(VendorInvoice).where(
+        VendorInvoice.status.in_(["RECEIVED", "UNDER_VERIFICATION"])
+    )
+    pending_review = await db.scalar(pending_review_query) or 0
+
+    # Matched count
+    matched_query = select(func.count()).select_from(VendorInvoice).where(
+        VendorInvoice.status == "MATCHED"
+    )
+    matched = await db.scalar(matched_query) or 0
+
+    # Mismatch count
+    mismatch_query = select(func.count()).select_from(VendorInvoice).where(
+        VendorInvoice.status == "MISMATCH"
+    )
+    mismatch = await db.scalar(mismatch_query) or 0
+
+    # Overdue count (due_date < today and balance_due > 0)
+    overdue_count_query = select(func.count()).select_from(VendorInvoice).where(
+        and_(
+            VendorInvoice.due_date < today,
+            VendorInvoice.balance_due > 0
+        )
+    )
+    overdue = await db.scalar(overdue_count_query) or 0
+
     # Total pending amount
     pending_query = select(func.sum(VendorInvoice.balance_due)).where(
         VendorInvoice.balance_due > 0
     )
     pending_amount = await db.scalar(pending_query) or Decimal("0")
 
-    # Overdue amount
+    # Total overdue amount
     overdue_query = select(func.sum(VendorInvoice.balance_due)).where(
         and_(
             VendorInvoice.due_date < today,
@@ -197,30 +228,14 @@ async def get_invoice_stats(
     )
     overdue_amount = await db.scalar(overdue_query) or Decimal("0")
 
-    # Count by status
-    status_query = select(
-        VendorInvoice.status,
-        func.count().label("count"),
-        func.sum(VendorInvoice.balance_due).label("total")
-    ).group_by(VendorInvoice.status)
-
-    status_result = await db.execute(status_query)
-    by_status = [
-        {"status": row[0], "count": row[1], "total": float(row[2] or 0)}
-        for row in status_result.all()
-    ]
-
-    # Unmatched invoices
-    unmatched_query = select(func.count()).select_from(VendorInvoice).where(
-        VendorInvoice.is_fully_matched == False
-    )
-    unmatched_count = await db.scalar(unmatched_query) or 0
-
     return {
+        "total_invoices": total_invoices,
+        "pending_review": pending_review,
+        "matched": matched,
+        "mismatch": mismatch,
+        "overdue": overdue,
         "total_pending_amount": float(pending_amount),
-        "overdue_amount": float(overdue_amount),
-        "by_status": by_status,
-        "unmatched_count": unmatched_count,
+        "total_overdue_amount": float(overdue_amount),
     }
 
 
