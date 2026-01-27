@@ -2729,6 +2729,9 @@ async def delete_grn(
     Delete a GRN. Only DRAFT, CANCELLED, or REJECTED GRNs can be deleted.
     Super Admin can delete any GRN that hasn't been put away.
     """
+    from app.models.serialization import POSerial
+    from sqlalchemy import cast, String
+
     result = await db.execute(
         select(GoodsReceiptNote)
         .where(GoodsReceiptNote.id == grn_id)
@@ -2771,6 +2774,18 @@ async def delete_grn(
             status_code=400,
             detail="Cannot delete GRN after put-away is complete. Inventory has been updated."
         )
+
+    # Clear po_serials.grn_id references before deletion
+    # Note: po_serials.grn_id is VARCHAR in production but UUID in model
+    # Nullify grn_id instead of deleting - preserves serial numbers for re-linking
+    from sqlalchemy import update
+    grn_id_str = str(grn_id)
+    await db.execute(
+        update(POSerial)
+        .where(cast(POSerial.grn_id, String) == grn_id_str)
+        .values(grn_id=None, grn_item_id=None, received_at=None, received_by=None)
+        .execution_options(synchronize_session=False)
+    )
 
     # Delete the GRN (CASCADE will delete items)
     await db.delete(grn)
