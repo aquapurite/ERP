@@ -268,6 +268,13 @@ export default function ProductCard({
             )}
           </div>
 
+          {/* EMI Option - Show for products above ₹5,000 */}
+          {sellingPrice >= 5000 && (
+            <p className="text-xs text-green-600 font-medium mt-1">
+              No-cost EMI from {formatCurrency(Math.round(sellingPrice / 6))}/mo
+            </p>
+          )}
+
           {/* Warranty */}
           {product.warranty_months && (
             <p className="text-xs text-muted-foreground mt-2">

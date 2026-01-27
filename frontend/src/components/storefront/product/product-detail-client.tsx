@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import PinCodeChecker from '@/components/storefront/product/pincode-checker';
 import { ProductReviews } from '@/components/storefront/reviews';
 import ProductQA from '@/components/storefront/reviews/product-qa';
+import ProductFAQ from '@/components/storefront/product/product-faq';
 import ImageGallery from '@/components/storefront/product/image-gallery';
 import StockStatus from '@/components/storefront/product/stock-status';
 import ShareButton from '@/components/storefront/product/share-button';
@@ -207,6 +208,17 @@ export default function ProductDetailClient({ product }: ProductDetailClientProp
               <p className="text-sm text-muted-foreground">
                 Inclusive of all taxes
               </p>
+              {/* EMI Option */}
+              {currentPrice >= 5000 && (
+                <div className="flex items-center gap-2 mt-2 p-2 bg-green-50 rounded-lg border border-green-200">
+                  <span className="text-green-700 font-medium text-sm">
+                    No-cost EMI from {formatCurrency(Math.round(currentPrice / 6))}/month
+                  </span>
+                  <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
+                    6 months
+                  </Badge>
+                </div>
+              )}
             </div>
 
             {/* Stock Status */}
@@ -335,6 +347,7 @@ export default function ProductDetailClient({ product }: ProductDetailClientProp
             <TabsTrigger value="specifications">Specifications</TabsTrigger>
             <TabsTrigger value="reviews">Reviews</TabsTrigger>
             <TabsTrigger value="qa">Q&A</TabsTrigger>
+            <TabsTrigger value="faq">FAQs</TabsTrigger>
           </TabsList>
 
           <TabsContent value="description" className="space-y-4">
@@ -403,6 +416,10 @@ export default function ProductDetailClient({ product }: ProductDetailClientProp
 
           <TabsContent value="qa">
             <ProductQA productId={product.id} productName={product.name} />
+          </TabsContent>
+
+          <TabsContent value="faq">
+            <ProductFAQ productName={product.name} />
           </TabsContent>
         </Tabs>
       </div>

@@ -3,6 +3,7 @@ import StorefrontHeader from '@/components/storefront/layout/header';
 import StorefrontFooter from '@/components/storefront/layout/footer';
 import AnnouncementBar from '@/components/storefront/layout/announcement-bar';
 import CompareBarWrapper from '@/components/storefront/product/compare-bar-wrapper';
+import WhatsAppButton from '@/components/storefront/layout/whatsapp-button';
 import { ServiceabilityProvider } from '@/components/storefront/serviceability-provider';
 
 export const metadata: Metadata = {
@@ -43,6 +44,8 @@ export default function StorefrontLayout({
         <StorefrontFooter />
         {/* Product Comparison Bar - Fixed at bottom */}
         <CompareBarWrapper />
+        {/* WhatsApp Floating Button */}
+        <WhatsAppButton />
       </div>
     </ServiceabilityProvider>
   );

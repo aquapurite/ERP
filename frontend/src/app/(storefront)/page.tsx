@@ -4,6 +4,7 @@ import HeroBanner from '@/components/storefront/home/hero-banner';
 import CategoryGrid from '@/components/storefront/home/category-grid';
 import ProductSection from '@/components/storefront/home/product-section';
 import WhyChooseUs from '@/components/storefront/home/why-choose-us';
+import TrustStats from '@/components/storefront/home/trust-stats';
 import Testimonials from '@/components/storefront/home/testimonials';
 import RecentlyViewedWrapper from '@/components/storefront/product/recently-viewed-wrapper';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -147,6 +148,9 @@ export default async function HomePage() {
       <Suspense fallback={<ProductSectionSkeleton title="Recently Viewed" />}>
         <RecentlyViewedWrapper maxItems={8} />
       </Suspense>
+
+      {/* Trust Stats */}
+      <TrustStats />
 
       {/* Testimonials */}
       <Testimonials />
