@@ -2719,6 +2719,66 @@ async def get_grn(
     return grn
 
 
+@router.delete("/grn/{grn_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_grn(
+    grn_id: UUID,
+    db: DB,
+    permissions: Permissions,
+):
+    """
+    Delete a GRN. Only DRAFT, CANCELLED, or REJECTED GRNs can be deleted.
+    Super Admin can delete any GRN that hasn't been put away.
+    """
+    result = await db.execute(
+        select(GoodsReceiptNote)
+        .where(GoodsReceiptNote.id == grn_id)
+    )
+    grn = result.scalar_one_or_none()
+
+    if not grn:
+        raise HTTPException(status_code=404, detail="GRN not found")
+
+    # Define which statuses can be deleted
+    deletable_statuses = [
+        GRNStatus.DRAFT.value,
+        GRNStatus.CANCELLED.value,
+        GRNStatus.REJECTED.value,
+        "DRAFT", "CANCELLED", "REJECTED"  # Also allow string values
+    ]
+
+    # Super admin can also delete PENDING_QC, QC_PASSED, QC_FAILED, ACCEPTED (if not put away)
+    if permissions.is_super_admin():
+        deletable_statuses.extend([
+            GRNStatus.PENDING_QC.value,
+            GRNStatus.QC_PASSED.value,
+            GRNStatus.QC_FAILED.value,
+            GRNStatus.PARTIALLY_ACCEPTED.value,
+            GRNStatus.ACCEPTED.value,
+            "PENDING_QC", "QC_PASSED", "QC_FAILED", "PARTIALLY_ACCEPTED", "ACCEPTED"
+        ])
+
+    # Check if GRN can be deleted
+    grn_status = grn.status.value if hasattr(grn.status, 'value') else str(grn.status)
+    if grn_status not in deletable_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete GRN with status '{grn_status}'. Only DRAFT, CANCELLED, or REJECTED GRNs can be deleted."
+        )
+
+    # Cannot delete if put away is complete (inventory has been updated)
+    if grn.put_away_complete:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete GRN after put-away is complete. Inventory has been updated."
+        )
+
+    # Delete the GRN (CASCADE will delete items)
+    await db.delete(grn)
+    await db.commit()
+
+    return None
+
+
 @router.post("/grn/{grn_id}/qc", response_model=GoodsReceiptResponse)
 async def process_grn_quality_check(
     grn_id: UUID,
