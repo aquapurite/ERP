@@ -61,16 +61,17 @@ class SupplierCodeUpdate(BaseModel):
 
 
 class SupplierCodeResponse(BaseModel):
-    id: str
+    id: UUID
     code: str
     name: str
-    vendor_id: Optional[str] = None
+    vendor_id: Optional[UUID] = None
     description: Optional[str] = None
     is_active: bool
     created_at: datetime
 
     class Config:
         from_attributes = True
+        json_encoders = {UUID: str}
 
 
 # ==================== Model Code Reference Schemas ====================
@@ -100,8 +101,8 @@ class ModelCodeUpdate(BaseModel):
 
 
 class ModelCodeResponse(BaseModel):
-    id: str
-    product_id: Optional[str] = None
+    id: UUID
+    product_id: Optional[UUID] = None
     product_sku: Optional[str] = None
     fg_code: str
     model_code: str
@@ -113,6 +114,10 @@ class ModelCodeResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        # Serialize UUIDs as strings in JSON output
+        json_encoders = {
+            UUID: str
+        }
 
     @model_validator(mode='after')
     def compute_item_type(self):
@@ -157,11 +162,14 @@ class GenerateSerialItem(BaseModel):
 
 class GenerateSerialsResponse(BaseModel):
     """Response after generating serials"""
-    po_id: str
+    po_id: UUID
     supplier_code: str
     total_generated: int
     items: List["GeneratedSerialSummary"]
     barcodes: List[str]
+
+    class Config:
+        json_encoders = {UUID: str}
 
 
 class GeneratedSerialSummary(BaseModel):
@@ -177,10 +185,10 @@ class GeneratedSerialSummary(BaseModel):
 # ==================== PO Serial Schemas ====================
 
 class POSerialResponse(BaseModel):
-    id: str
-    po_id: str
-    po_item_id: Optional[str] = None
-    product_id: Optional[str] = None
+    id: UUID
+    po_id: UUID
+    po_item_id: Optional[UUID] = None
+    product_id: Optional[UUID] = None
     product_sku: Optional[str] = None
     model_code: str
     item_type: ItemType
@@ -191,11 +199,11 @@ class POSerialResponse(BaseModel):
     serial_number: int
     barcode: str
     status: str
-    grn_id: Optional[str] = None
+    grn_id: Optional[UUID] = None
     received_at: Optional[datetime] = None
-    stock_item_id: Optional[str] = None
+    stock_item_id: Optional[UUID] = None
     assigned_at: Optional[datetime] = None
-    order_id: Optional[str] = None
+    order_id: Optional[UUID] = None
     sold_at: Optional[datetime] = None
     warranty_start_date: Optional[datetime] = None
     warranty_end_date: Optional[datetime] = None
@@ -203,14 +211,18 @@ class POSerialResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        json_encoders = {UUID: str}
 
 
 class POSerialsListResponse(BaseModel):
     """List of serials for a PO"""
-    po_id: str
+    po_id: UUID
     total: int
     by_status: dict
     serials: List[POSerialResponse]
+
+    class Config:
+        json_encoders = {UUID: str}
 
 
 # ==================== Serial Scan/Validation Schemas ====================
