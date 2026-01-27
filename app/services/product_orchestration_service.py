@@ -66,15 +66,15 @@ class ProductOrchestrationService:
 
         # 2. Create ModelCodeReference entry
         if product.model_code:
-            model_ref = await self._create_model_code_reference(product)
-            if model_ref:
-                results["model_code_reference_id"] = str(model_ref.id)
+            model_ref_id = await self._create_model_code_reference(product)
+            if model_ref_id:
+                results["model_code_reference_id"] = model_ref_id
                 results["actions_performed"].append("model_code_reference_created")
 
             # 3. Create ProductSerialSequence entry
-            serial_seq = await self._create_serial_sequence(product)
-            if serial_seq:
-                results["serial_sequence_id"] = str(serial_seq.id)
+            serial_seq_id = await self._create_serial_sequence(product)
+            if serial_seq_id:
+                results["serial_sequence_id"] = serial_seq_id
                 results["actions_performed"].append("serial_sequence_created")
 
         return results
@@ -103,15 +103,15 @@ class ProductOrchestrationService:
         # If model_code was added or changed
         if product.model_code and product.model_code != old_model_code:
             # Update/create ModelCodeReference
-            model_ref = await self._create_or_update_model_code_reference(product)
-            if model_ref:
-                results["model_code_reference_id"] = str(model_ref.id)
+            model_ref_id = await self._create_or_update_model_code_reference(product)
+            if model_ref_id:
+                results["model_code_reference_id"] = model_ref_id
                 results["actions_performed"].append("model_code_reference_updated")
 
             # Update/create ProductSerialSequence
-            serial_seq = await self._create_or_update_serial_sequence(product)
-            if serial_seq:
-                results["serial_sequence_id"] = str(serial_seq.id)
+            serial_seq_id = await self._create_or_update_serial_sequence(product)
+            if serial_seq_id:
+                results["serial_sequence_id"] = serial_seq_id
                 results["actions_performed"].append("serial_sequence_updated")
 
         return results
@@ -198,11 +198,17 @@ class ProductOrchestrationService:
 
         return None  # Could not find unique code
 
-    async def _create_model_code_reference(self, product: Product) -> Optional[ModelCodeReference]:
+    async def _create_model_code_reference(self, product: Product) -> Optional[str]:
         """
         Create ModelCodeReference entry for the product.
         This maps the product to its 3-letter model code for serialization.
+        Uses raw SQL to handle UUID type mismatch between model and production.
+
+        Returns:
+            str: ID of created record, or None if already exists
         """
+        from sqlalchemy import text
+
         # Check if already exists
         existing = await self.db.execute(
             select(ModelCodeReference).where(ModelCodeReference.product_id == product.id)
@@ -218,22 +224,33 @@ class ProductOrchestrationService:
             if existing_fg.scalar_one_or_none():
                 return None  # FG code already mapped
 
-        model_ref = ModelCodeReference(
-            product_id=product.id,
-            product_sku=product.sku,
-            fg_code=product.fg_code,
-            model_code=product.model_code,
-            description=f"Auto-created for {product.name}",
-            is_active=True
-        )
-        # Let the model's default generate the ID
-        self.db.add(model_ref)
-        return model_ref
+        # Use raw SQL to insert (production uses UUID type, model uses String)
+        result = await self.db.execute(text('''
+            INSERT INTO model_code_references
+            (id, product_id, product_sku, fg_code, model_code, description, is_active, created_at, updated_at)
+            VALUES
+            (gen_random_uuid(), :product_id, :product_sku, :fg_code, :model_code, :description, true, NOW(), NOW())
+            RETURNING id
+        '''), {
+            'product_id': product.id,
+            'product_sku': product.sku,
+            'fg_code': product.fg_code,
+            'model_code': product.model_code,
+            'description': f"Auto-created for {product.name}"
+        })
+        row = result.fetchone()
+        return str(row[0]) if row else None
 
-    async def _create_or_update_model_code_reference(self, product: Product) -> Optional[ModelCodeReference]:
+    async def _create_or_update_model_code_reference(self, product: Product) -> Optional[str]:
         """
         Create or update ModelCodeReference entry for the product.
+        Uses raw SQL for updates to handle type mismatches.
+
+        Returns:
+            str: ID of created/updated record, or None if unchanged
         """
+        from sqlalchemy import text
+
         # Check if exists for this product
         result = await self.db.execute(
             select(ModelCodeReference).where(ModelCodeReference.product_id == product.id)
@@ -241,21 +258,33 @@ class ProductOrchestrationService:
         existing = result.scalar_one_or_none()
 
         if existing:
-            # Update existing
-            existing.product_sku = product.sku
-            existing.fg_code = product.fg_code
-            existing.model_code = product.model_code
-            existing.updated_at = datetime.now(timezone.utc)
-            return existing
+            # Update existing via raw SQL
+            await self.db.execute(text('''
+                UPDATE model_code_references
+                SET product_sku = :product_sku, fg_code = :fg_code, model_code = :model_code, updated_at = NOW()
+                WHERE product_id = :product_id
+            '''), {
+                'product_id': product.id,
+                'product_sku': product.sku,
+                'fg_code': product.fg_code,
+                'model_code': product.model_code
+            })
+            return str(existing.id)
         else:
             # Create new
             return await self._create_model_code_reference(product)
 
-    async def _create_serial_sequence(self, product: Product) -> Optional[ProductSerialSequence]:
+    async def _create_serial_sequence(self, product: Product) -> Optional[str]:
         """
         Create ProductSerialSequence entry for the product.
         This initializes the serial number sequence for barcode generation.
+        Uses raw SQL to handle UUID type mismatch between model and production.
+
+        Returns:
+            str: ID of created record, or None if already exists
         """
+        from sqlalchemy import text
+
         # Check if already exists
         existing = await self.db.execute(
             select(ProductSerialSequence).where(
@@ -266,24 +295,34 @@ class ProductOrchestrationService:
         if existing.scalar_one_or_none():
             return None  # Already exists
 
-        serial_seq = ProductSerialSequence(
-            product_id=product.id,
-            model_code=product.model_code,
-            item_type=product.item_type,
-            product_name=product.name,
-            product_sku=product.sku,
-            last_serial=0,
-            total_generated=0,
-            max_serial=99999999
-        )
-        # Let the model's default generate the ID
-        self.db.add(serial_seq)
-        return serial_seq
+        # Use raw SQL to insert (production uses UUID type, model uses String)
+        result = await self.db.execute(text('''
+            INSERT INTO product_serial_sequences
+            (id, product_id, model_code, item_type, product_name, product_sku, last_serial, total_generated, max_serial, created_at, updated_at)
+            VALUES
+            (gen_random_uuid(), :product_id, :model_code, :item_type, :product_name, :product_sku, 0, 0, 99999999, NOW(), NOW())
+            ON CONFLICT (model_code, item_type) DO NOTHING
+            RETURNING id
+        '''), {
+            'product_id': product.id,
+            'model_code': product.model_code,
+            'item_type': product.item_type,
+            'product_name': product.name,
+            'product_sku': product.sku
+        })
+        row = result.fetchone()
+        return str(row[0]) if row else None
 
-    async def _create_or_update_serial_sequence(self, product: Product) -> Optional[ProductSerialSequence]:
+    async def _create_or_update_serial_sequence(self, product: Product) -> Optional[str]:
         """
         Create or update ProductSerialSequence entry for the product.
+        Uses raw SQL for updates to handle type mismatches.
+
+        Returns:
+            str: ID of created/updated record, or None if unchanged
         """
+        from sqlalchemy import text
+
         # Check if exists for this model_code + item_type
         result = await self.db.execute(
             select(ProductSerialSequence).where(
@@ -294,12 +333,19 @@ class ProductOrchestrationService:
         existing = result.scalar_one_or_none()
 
         if existing:
-            # Update product linkage (don't reset serial counters!)
-            existing.product_id = product.id
-            existing.product_name = product.name
-            existing.product_sku = product.sku
-            existing.updated_at = datetime.now(timezone.utc)
-            return existing
+            # Update product linkage via raw SQL (don't reset serial counters!)
+            await self.db.execute(text('''
+                UPDATE product_serial_sequences
+                SET product_id = :product_id, product_name = :product_name, product_sku = :product_sku, updated_at = NOW()
+                WHERE model_code = :model_code AND item_type = :item_type
+            '''), {
+                'product_id': product.id,
+                'product_name': product.name,
+                'product_sku': product.sku,
+                'model_code': product.model_code,
+                'item_type': product.item_type
+            })
+            return str(existing.id)
         else:
             # Create new
             return await self._create_serial_sequence(product)
