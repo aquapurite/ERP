@@ -948,6 +948,10 @@ export const vendorsApi = {
       items: data.items.map(transformVendorResponse),
     };
   },
+  getDropdown: async (params?: { vendor_type?: string; active_only?: boolean }) => {
+    const { data } = await apiClient.get<Record<string, unknown>[]>('/vendors/dropdown', { params });
+    return data.map(transformVendorResponse);
+  },
   getById: async (id: string) => {
     const { data } = await apiClient.get<Record<string, unknown>>(`/vendors/${id}`);
     return transformVendorResponse(data);

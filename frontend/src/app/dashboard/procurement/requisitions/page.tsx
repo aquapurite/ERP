@@ -49,7 +49,7 @@ import { Label } from '@/components/ui/label';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
 import apiClient from '@/lib/api/client';
-import { warehousesApi, productsApi, companyApi, purchaseRequisitionsApi, categoriesApi } from '@/lib/api';
+import { warehousesApi, productsApi, companyApi, purchaseRequisitionsApi, categoriesApi, vendorsApi } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useAuth } from '@/providers/auth-provider';
 
@@ -336,16 +336,13 @@ export default function PurchaseRequisitionsPage() {
   const categories = categoriesData || [];
 
   const { data: vendorsData } = useQuery({
-    queryKey: ['vendors-dropdown'],
-    queryFn: async () => {
-      const { data } = await apiClient.get('/vendors', { params: { limit: 100 } });
-      return data;
-    },
+    queryKey: ['vendors-dropdown-active'],
+    queryFn: () => vendorsApi.getDropdown(),
   });
 
   const warehouses = warehousesData?.items ?? [];
   const allProducts = productsData?.items ?? [];
-  const vendors = vendorsData?.items ?? [];
+  const vendors = vendorsData ?? [];
 
   // Filter products by selected category
   const products = useMemo(() => {

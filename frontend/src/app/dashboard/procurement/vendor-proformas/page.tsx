@@ -210,10 +210,10 @@ export default function VendorProformasPage() {
       }),
   });
 
-  // Fetch vendors for dropdown
+  // Fetch vendors for dropdown (only ACTIVE vendors)
   const { data: vendorsData } = useQuery({
-    queryKey: ['vendors-dropdown'],
-    queryFn: () => vendorsApi.list({ size: 100 }),
+    queryKey: ['vendors-dropdown-active'],
+    queryFn: () => vendorsApi.getDropdown(),
   });
 
   // Fetch products for dropdown
@@ -399,7 +399,7 @@ export default function VendorProformasPage() {
     return { subtotal, gstAmount, total: subtotal + gstAmount };
   };
 
-  const vendors: Vendor[] = vendorsData?.items ?? (Array.isArray(vendorsData) ? vendorsData : []);
+  const vendors: Vendor[] = Array.isArray(vendorsData) ? vendorsData : [];
   const products: Product[] = productsData?.items ?? (Array.isArray(productsData) ? productsData : []);
   const proformas: VendorProforma[] = data?.items ?? (Array.isArray(data) ? data : []);
   const totals = calculateTotals();

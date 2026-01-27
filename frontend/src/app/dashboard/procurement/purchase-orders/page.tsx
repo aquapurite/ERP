@@ -252,8 +252,8 @@ export default function PurchaseOrdersPage() {
   });
 
   const { data: vendorsData } = useQuery({
-    queryKey: ['vendors-dropdown'],
-    queryFn: () => vendorsApi.list({ size: 100 }),
+    queryKey: ['vendors-dropdown-active'],
+    queryFn: () => vendorsApi.list({ size: 100, status: 'ACTIVE' }),
   });
 
   const { data: warehousesData } = useQuery({
