@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Pencil, Trash2, Building, Phone, Mail, Lock, Loader2 } from 'lucide-react';
+import { MoreHorizontal, Plus, Pencil, Trash2, Building, Phone, Mail, Lock, Loader2, Barcode } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -104,17 +104,35 @@ function getColumns(
     {
       accessorKey: 'name',
       header: 'Vendor',
-      cell: ({ row }) => (
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-            <Building className="h-5 w-5 text-muted-foreground" />
+      cell: ({ row }) => {
+        const vendorType = row.original.vendor_type || '';
+        const needsSupplierCode = ['SPARE_PARTS', 'MANUFACTURER', 'RAW_MATERIAL'].includes(vendorType);
+        const hasSupplierCode = !!row.original.supplier_code;
+        return (
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+              <Building className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <div>
+              <div className="font-medium">{row.original.name}</div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground font-mono">{row.original.code}</span>
+                {hasSupplierCode && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-xs font-medium">
+                    <Barcode className="h-3 w-3" />
+                    {row.original.supplier_code}
+                  </span>
+                )}
+                {needsSupplierCode && !hasSupplierCode && row.original.status === 'ACTIVE' && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-xs">
+                    No barcode
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
-          <div>
-            <div className="font-medium">{row.original.name}</div>
-            <div className="text-sm text-muted-foreground font-mono">{row.original.code}</div>
-          </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       accessorKey: 'contact',

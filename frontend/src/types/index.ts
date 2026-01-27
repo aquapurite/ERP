@@ -414,6 +414,8 @@ export interface Vendor {
   // Backend uses grade, frontend can use tier as alias
   grade?: VendorGrade;
   tier?: VendorGrade; // Alias for grade
+  // Auto-generated supplier code for barcode generation (SPARE_PARTS/MANUFACTURER vendors)
+  supplier_code?: string;
   created_at: string;
   contact_person?: string;
   address_line1?: string;

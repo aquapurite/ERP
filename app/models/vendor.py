@@ -319,6 +319,15 @@ class Vendor(Base):
         comment="Linked GL account for Accounts Payable (Creditors)"
     )
 
+    # Auto-generated supplier code for barcode generation (for SPARE_PARTS vendors)
+    supplier_code: Mapped[Optional[str]] = mapped_column(
+        String(2),
+        nullable=True,
+        unique=True,
+        index=True,
+        comment="2-char code for barcode generation (auto-created for SPARE_PARTS vendors on approval)"
+    )
+
     # Documents
     gst_certificate_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     pan_card_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)

@@ -168,6 +168,7 @@ class VendorResponse(VendorBase):
     last_po_date: Optional[datetime] = None
     last_payment_date: Optional[datetime] = None
     gl_account_id: Optional[UUID] = None  # Linked GL account
+    supplier_code: Optional[str] = None  # Auto-generated 2-char code for barcode (SPARE_PARTS vendors)
     created_at: datetime
     updated_at: datetime
 
@@ -191,6 +192,7 @@ class VendorBrief(BaseModel):
     state: str
     current_balance: Decimal
     credit_limit: Decimal
+    supplier_code: Optional[str] = None  # 2-char code for barcode (SPARE_PARTS vendors)
 
 
 class VendorListResponse(BaseModel):

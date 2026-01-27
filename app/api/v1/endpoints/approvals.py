@@ -864,6 +864,11 @@ async def approve_request(
             vendor.approved_by = current_user.id
             vendor.approved_at = datetime.now(timezone.utc)
 
+            # ORCHESTRATION: Auto-create supplier code and other downstream setups
+            from app.services.vendor_orchestration_service import VendorOrchestrationService
+            orchestration = VendorOrchestrationService(db)
+            await orchestration.on_vendor_approved(vendor, current_user.id)
+
     await db.commit()
     await db.refresh(approval)
 

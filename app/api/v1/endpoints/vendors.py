@@ -760,3 +760,30 @@ async def get_vendor_stats(
         "total_advances": float(total_advances),
         "total_vendors": sum(status_counts.values()),
     }
+
+
+# ==================== Vendor Orchestration Sync ====================
+
+@router.post("/sync-supplier-codes")
+async def sync_vendor_supplier_codes(
+    db: DB,
+    current_user: User = Depends(require_permissions("vendor:manage")),
+):
+    """
+    Sync supplier codes for existing approved vendors.
+
+    This is a one-time utility to fix vendors that were approved
+    before the orchestration service was implemented.
+
+    Only SPARE_PARTS, MANUFACTURER, and RAW_MATERIAL vendors get supplier codes.
+    """
+    from app.services.vendor_orchestration_service import VendorOrchestrationService
+
+    orchestration = VendorOrchestrationService(db)
+    result = await orchestration.sync_existing_vendors()
+
+    return {
+        "success": True,
+        "message": f"Synced {result['total_synced']} vendors with supplier codes",
+        "details": result
+    }
