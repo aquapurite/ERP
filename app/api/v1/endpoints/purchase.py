@@ -2092,6 +2092,9 @@ async def submit_purchase_order(
     current_user: User = Depends(get_current_user),
 ):
     """Submit a purchase order for approval (DRAFT -> PENDING_APPROVAL)."""
+    import logging
+    logging.info(f"PO SUBMIT: Starting submit for po_id={po_id}")
+
     result = await db.execute(
         select(PurchaseOrder)
         .options(
@@ -2103,19 +2106,36 @@ async def submit_purchase_order(
     po = result.scalar_one_or_none()
 
     if not po:
+        logging.error(f"PO SUBMIT: PO not found for id={po_id}")
         raise HTTPException(status_code=404, detail="Purchase Order not found")
 
-    if po.status != POStatus.DRAFT:
+    logging.info(f"PO SUBMIT: Found PO {po.po_number}, current status='{po.status}', type={type(po.status)}")
+
+    # Compare with string value to avoid enum comparison issues
+    if po.status != "DRAFT":
+        logging.error(f"PO SUBMIT: Cannot submit - status is '{po.status}', not 'DRAFT'")
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot submit PO in {po.status} status. Only DRAFT POs can be submitted."
+            detail=f"Cannot submit PO in '{po.status}' status. Only DRAFT POs can be submitted."
         )
 
     po.status = POStatus.PENDING_APPROVAL.value
+    logging.info(f"PO SUBMIT: Updating status to PENDING_APPROVAL")
 
     await db.commit()
-    await db.refresh(po)
 
+    # Refresh with relationships loaded
+    result = await db.execute(
+        select(PurchaseOrder)
+        .options(
+            selectinload(PurchaseOrder.items),
+            selectinload(PurchaseOrder.delivery_schedules)
+        )
+        .where(PurchaseOrder.id == po_id)
+    )
+    po = result.scalar_one()
+
+    logging.info(f"PO SUBMIT: Successfully submitted PO {po.po_number}")
     return po
 
 
@@ -2146,11 +2166,12 @@ async def approve_purchase_order(
 
     logging.info(f"PO APPROVE: Found PO {po.po_number}, current status={po.status}, items_count={len(po.items) if po.items else 0}")
 
-    if po.status not in [POStatus.DRAFT, POStatus.PENDING_APPROVAL]:
-        logging.error(f"PO APPROVE: Invalid status {po.status} for PO {po.po_number}")
+    # Compare with string values to avoid enum comparison issues
+    if po.status not in ["DRAFT", "PENDING_APPROVAL"]:
+        logging.error(f"PO APPROVE: Invalid status '{po.status}' for PO {po.po_number}")
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot {request.action.lower()} PO in {po.status} status"
+            detail=f"Cannot {request.action.lower()} PO in '{po.status}' status. Only DRAFT or PENDING_APPROVAL POs can be approved."
         )
 
     # Capture item data BEFORE commit (while po.items is still loaded)
@@ -2359,10 +2380,10 @@ async def send_po_to_vendor(
     if not po:
         raise HTTPException(status_code=404, detail="Purchase Order not found")
 
-    if po.status not in [POStatus.APPROVED, POStatus.SENT_TO_VENDOR]:
+    if po.status not in ["APPROVED", "SENT_TO_VENDOR"]:
         raise HTTPException(
             status_code=400,
-            detail="PO must be approved before sending to vendor"
+            detail=f"PO must be approved before sending to vendor. Current status: '{po.status}'"
         )
 
     # Get vendor details to find supplier code
@@ -2652,10 +2673,11 @@ async def create_grn(
     if not po:
         raise HTTPException(status_code=404, detail="Purchase Order not found")
 
-    if po.status not in [POStatus.CONFIRMED, POStatus.PARTIAL]:
+    # Allow GRN creation for POs that have been sent/acknowledged or partially received
+    if po.status not in ["SENT_TO_VENDOR", "ACKNOWLEDGED", "PARTIALLY_RECEIVED"]:
         raise HTTPException(
             status_code=400,
-            detail="PO must be confirmed before receiving goods"
+            detail=f"PO must be sent to vendor before receiving goods. Current status: '{po.status}'"
         )
 
     # Generate GRN number using atomic sequence service
@@ -3469,7 +3491,7 @@ async def get_pending_grn_report(
     query = select(PurchaseOrder).options(
         selectinload(PurchaseOrder.items)
     ).where(
-        PurchaseOrder.status.in_([POStatus.CONFIRMED, POStatus.PARTIAL])
+        PurchaseOrder.status.in_(["SENT_TO_VENDOR", "ACKNOWLEDGED", "PARTIALLY_RECEIVED"])
     )
 
     if vendor_id:
@@ -3893,8 +3915,8 @@ async def manually_generate_serials(
     if not po:
         raise HTTPException(status_code=404, detail="PO not found")
 
-    if po.status != POStatus.APPROVED:
-        raise HTTPException(status_code=400, detail=f"PO must be APPROVED to generate serials. Current status: {po.status}")
+    if po.status != "APPROVED":
+        raise HTTPException(status_code=400, detail=f"PO must be APPROVED to generate serials. Current status: '{po.status}'")
 
     # Check if serials already exist (po_serials.po_id is VARCHAR)
     existing_result = await db.execute(
