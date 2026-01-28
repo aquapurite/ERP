@@ -32,13 +32,20 @@ import { PageHeader } from '@/components/common';
 import { productsApi, categoriesApi, brandsApi, uploadsApi } from '@/lib/api';
 import { Category, Brand, Product, ProductImage, ProductVariant, ProductSpecification, ProductDocument } from '@/types';
 
+// Item type options
+const ITEM_TYPES = [
+  { value: 'FG', label: 'Finished Goods', description: 'Complete products like Water Purifiers' },
+  { value: 'SP', label: 'Spare Parts', description: 'Replacement parts, filters, membranes' },
+] as const;
+
 interface ProductFormData {
   name: string;
   sku: string;
   slug?: string;
   description?: string;
-  category_id?: string;
   brand_id?: string;
+  category_id?: string;
+  item_type?: 'FG' | 'SP';
   mrp: number;
   selling_price?: number; // Legacy - use Channel Pricing instead
   cost_price?: number;    // Legacy - auto-calculated from GRNs
@@ -61,8 +68,9 @@ const productSchema = z.object({
   sku: z.string().min(2, 'SKU must be at least 2 characters'),
   slug: z.string().optional(),
   description: z.string().optional(),
-  category_id: z.string().optional(),
   brand_id: z.string().optional(),
+  category_id: z.string().optional(),
+  item_type: z.enum(['FG', 'SP']).optional(),
   mrp: z.coerce.number().min(0, 'MRP must be positive'),
   selling_price: z.coerce.number().min(0).optional(), // Legacy - use Channel Pricing
   cost_price: z.coerce.number().min(0).optional(),    // Legacy - auto-calculated from GRNs
@@ -132,20 +140,31 @@ export default function ProductDetailPage() {
   const [docType, setDocType] = useState('OTHER');
   const [docFileUrl, setDocFileUrl] = useState('');
 
+  // Cascading category state
+  const [selectedParentCategoryId, setSelectedParentCategoryId] = useState<string>('');
+
   const { data: product, isLoading, error } = useQuery({
     queryKey: ['product', productId],
     queryFn: () => productsApi.getById(productId),
     enabled: !!productId,
   });
 
-  const { data: categoriesData } = useQuery({
-    queryKey: ['categories'],
-    queryFn: () => categoriesApi.list({ size: 100 }),
-  });
-
   const { data: brandsData } = useQuery({
     queryKey: ['brands'],
     queryFn: () => brandsApi.list({ size: 100 }),
+  });
+
+  // Fetch root categories (parent_id IS NULL)
+  const { data: rootCategoriesData } = useQuery({
+    queryKey: ['categories-roots'],
+    queryFn: () => categoriesApi.getRoots(),
+  });
+
+  // Fetch subcategories when parent is selected
+  const { data: subcategoriesData } = useQuery({
+    queryKey: ['categories-children', selectedParentCategoryId],
+    queryFn: () => categoriesApi.getChildren(selectedParentCategoryId),
+    enabled: !!selectedParentCategoryId,
   });
 
   // Product Cost (COGS) query
@@ -169,9 +188,10 @@ export default function ProductDetailPage() {
       sku: product.sku || '',
       slug: product.slug || '',
       description: product.description || '',
-      // Handle both direct category_id and nested category.id
-      category_id: product.category_id || product.category?.id || '',
+      // Handle both direct ids and nested objects
       brand_id: product.brand_id || product.brand?.id || '',
+      category_id: product.category_id || product.category?.id || '',
+      item_type: (product.item_type as 'FG' | 'SP') || 'FG',
       mrp: product.mrp || 0,
       selling_price: product.selling_price || 0,
       cost_price: product.cost_price || 0,
@@ -353,8 +373,9 @@ export default function ProductDetailPage() {
       sku: data.sku,
       slug: data.slug,
       description: data.description,
-      category_id: data.category_id || undefined,
       brand_id: data.brand_id || undefined,
+      category_id: data.category_id || undefined,
+      item_type: data.item_type || undefined,
       mrp: data.mrp,
       selling_price: data.selling_price,
       cost_price: data.cost_price || undefined,
@@ -512,8 +533,29 @@ export default function ProductDetailPage() {
     }
   };
 
-  const categories = categoriesData?.items || [];
   const brands = brandsData?.items || [];
+  const rootCategories = rootCategoriesData?.items || [];
+  const subcategories = subcategoriesData?.items || [];
+
+  // Handle parent category change - reset subcategory selection
+  const handleParentCategoryChange = (parentId: string) => {
+    setSelectedParentCategoryId(parentId);
+    form.setValue('category_id', ''); // Reset subcategory when parent changes
+  };
+
+  // Set parent category when product loads (find parent from category)
+  // This runs when product data is loaded to determine which parent category it belongs to
+  const currentCategory = product?.category;
+  if (currentCategory?.parent_id && !selectedParentCategoryId) {
+    setSelectedParentCategoryId(currentCategory.parent_id);
+  } else if (currentCategory && !currentCategory.parent_id && !selectedParentCategoryId) {
+    // If category has no parent, it IS the parent - but products should be in subcategories
+    // Check if this category is a root category and if there are subcategories
+    const isRootCategory = rootCategories.some(c => c.id === currentCategory.id);
+    if (isRootCategory) {
+      setSelectedParentCategoryId(currentCategory.id);
+    }
+  }
   const images: ProductImage[] = product?.images || [];
   const variants: ProductVariant[] = product?.variants || [];
   const specifications: ProductSpecification[] = product?.specifications || [];
@@ -678,18 +720,62 @@ export default function ProductDetailPage() {
                       <Textarea id="description" rows={4} {...form.register('description')} />
                     </div>
 
+                    {/* Step 1: Brand Selection */}
+                    <div className="space-y-2">
+                      <Label htmlFor="brand">Brand *</Label>
+                      <Select
+                        value={form.watch('brand_id')}
+                        onValueChange={(value) => form.setValue('brand_id', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select brand" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {brands.map((brand: Brand) => (
+                            <SelectItem key={brand.id} value={brand.id}>
+                              {brand.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Step 2: Category Selection (Cascading) */}
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
-                        <Label htmlFor="category">Category</Label>
+                        <Label htmlFor="parent_category">Product Line *</Label>
+                        <Select
+                          value={selectedParentCategoryId}
+                          onValueChange={handleParentCategoryChange}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select product line" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {rootCategories.map((category: Category) => (
+                              <SelectItem key={category.id} value={category.id}>
+                                {category.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          E.g., Water Purifiers, Air Purifiers
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="category">Subcategory *</Label>
                         <Select
                           value={form.watch('category_id')}
                           onValueChange={(value) => form.setValue('category_id', value)}
+                          disabled={!selectedParentCategoryId}
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="Select category" />
+                            <SelectValue placeholder={selectedParentCategoryId ? "Select subcategory" : "Select product line first"} />
                           </SelectTrigger>
                           <SelectContent>
-                            {categories.map((category: Category) => (
+                            {subcategories.map((category: Category) => (
                               <SelectItem key={category.id} value={category.id}>
                                 {category.name}
                               </SelectItem>
@@ -697,24 +783,39 @@ export default function ProductDetailPage() {
                           </SelectContent>
                         </Select>
                       </div>
+                    </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="brand">Brand</Label>
-                        <Select
-                          value={form.watch('brand_id')}
-                          onValueChange={(value) => form.setValue('brand_id', value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select brand" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {brands.map((brand: Brand) => (
-                              <SelectItem key={brand.id} value={brand.id}>
-                                {brand.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                    {/* Step 3: Item Type Selection */}
+                    <div className="space-y-2">
+                      <Label>Item Type *</Label>
+                      <div className="flex gap-4">
+                        {ITEM_TYPES.map((type) => (
+                          <div
+                            key={type.value}
+                            className={`flex-1 cursor-pointer rounded-lg border-2 p-4 transition-colors ${
+                              form.watch('item_type') === type.value
+                                ? 'border-primary bg-primary/5'
+                                : 'border-border hover:border-primary/50'
+                            }`}
+                            onClick={() => form.setValue('item_type', type.value)}
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className={`h-4 w-4 rounded-full border-2 ${
+                                form.watch('item_type') === type.value
+                                  ? 'border-primary bg-primary'
+                                  : 'border-muted-foreground'
+                              }`}>
+                                {form.watch('item_type') === type.value && (
+                                  <div className="h-full w-full rounded-full bg-primary" />
+                                )}
+                              </div>
+                              <span className="font-medium">{type.label}</span>
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {type.description}
+                            </p>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </CardContent>

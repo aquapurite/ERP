@@ -1294,29 +1294,6 @@ export default function SerializationPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Category *</Label>
-                  <Select
-                    value={newProduct.category_id || 'select'}
-                    onValueChange={(value) => {
-                      if (value !== 'select') {
-                        setNewProduct({ ...newProduct, category_id: value });
-                      }
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="select" disabled>Select category</SelectItem>
-                      {categories.map((c: Category) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
                   <Label>Brand *</Label>
                   <Select
                     value={newProduct.brand_id || 'select'}
@@ -1334,6 +1311,29 @@ export default function SerializationPage() {
                       {brands.map((b: Brand) => (
                         <SelectItem key={b.id} value={b.id}>
                           {b.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Category *</Label>
+                  <Select
+                    value={newProduct.category_id || 'select'}
+                    onValueChange={(value) => {
+                      if (value !== 'select') {
+                        setNewProduct({ ...newProduct, category_id: value });
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="select" disabled>Select category</SelectItem>
+                      {categories.map((c: Category) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
