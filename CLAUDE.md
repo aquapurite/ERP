@@ -433,6 +433,105 @@ Before pushing any code:
 
 ---
 
+## Rules of Engagement (Development Workflow)
+
+Follow these practices for efficient and safe deployments:
+
+### 1. Test Locally First (Most Important)
+
+Before pushing ANY changes to production:
+
+```bash
+# Terminal 1: Start backend
+cd "/Users/mantosh/Desktop/Consumer durable 2"
+uvicorn app.main:app --reload --port 8000
+
+# Terminal 2: Start frontend
+cd frontend && pnpm dev
+```
+
+Verify your changes work locally before committing. This catches 90% of issues.
+
+### 2. Use Smart Deployments
+
+Configuration is already set up to skip unnecessary deployments:
+
+**Vercel** (`vercel.json`):
+- Skips deployment if only backend files changed
+- Deploys only when `frontend/` directory has changes
+
+**Render** (configure in dashboard):
+- Go to Render Dashboard → aquapurite-api service
+- Settings → Build & Deploy → Auto-Deploy
+- Add to "Ignored Paths": `frontend/**`
+- This skips backend rebuild when only frontend files change
+
+### 3. Batch Related Changes
+
+Instead of pushing after every small fix:
+
+```bash
+# ❌ BAD - 5 separate deployments
+git commit -m "Fix typo"
+git push
+# wait 5 mins...
+git commit -m "Fix another thing"
+git push
+# wait 5 mins...
+
+# ✅ GOOD - 1 deployment with all fixes
+git commit -m "Fix typo in orders"
+git commit -m "Fix validation in products"
+git commit -m "Update category tree view"
+git push  # Single deployment with all changes
+```
+
+### 4. Use Feature Branches (Best Practice)
+
+For larger changes, use feature branches:
+
+```bash
+# Create feature branch
+git checkout -b feature/new-category-tree
+
+# Make multiple commits
+git commit -m "Add tree structure"
+git commit -m "Add expand/collapse"
+git commit -m "Style improvements"
+
+# When ready, merge to main and push
+git checkout main
+git merge feature/new-category-tree
+git push  # Single deployment
+```
+
+### 5. Separate Backend and Frontend Commits
+
+Group changes by deployment target:
+
+```bash
+# ✅ GOOD - Isolated deployments
+git commit -m "Backend: Fix product API response"
+git commit -m "Frontend: Update category page"
+git push
+
+# Smart deployment will:
+# - Deploy backend only if app/ changed
+# - Deploy frontend only if frontend/ changed
+```
+
+### Summary
+
+| Practice | Benefit |
+|----------|---------|
+| Test locally first | Catch issues before deployment |
+| Smart deployments | Skip unnecessary rebuilds |
+| Batch changes | Fewer deployment cycles |
+| Feature branches | Keep main stable |
+| Separate commits | Isolated deployments |
+
+---
+
 ## Deployment
 
 ### Git Repository
