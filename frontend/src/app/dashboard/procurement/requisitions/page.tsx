@@ -1788,7 +1788,10 @@ export default function PurchaseRequisitionsPage() {
                     <Select
                       value={editNewItem.product_id || 'select'}
                       onValueChange={(value) => {
-                        const product = (editSelectedCategoryId === 'all' ? allProducts : allProducts.filter((p: any) => p.category_id === editSelectedCategoryId)).find((p: Product) => p.id === value);
+                        const filteredProducts = editSelectedCategoryId === 'all'
+                          ? allProducts
+                          : allProducts.filter((p: any) => (p.category_id || p.category?.id) === editSelectedCategoryId);
+                        const product = filteredProducts.find((p: Product) => p.id === value);
                         setEditNewItem({
                           ...editNewItem,
                           product_id: value === 'select' ? '' : value,
@@ -1801,8 +1804,10 @@ export default function PurchaseRequisitionsPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="select" disabled>Select product</SelectItem>
-                        {(editSelectedCategoryId === 'all' ? allProducts : allProducts.filter((p: any) => p.category_id === editSelectedCategoryId))
-                          .filter((p: Product) => p.id && p.id.trim() !== '')
+                        {(editSelectedCategoryId === 'all'
+                          ? allProducts
+                          : allProducts.filter((p: any) => (p.category_id || p.category?.id) === editSelectedCategoryId))
+                          .filter((p: Product) => p.id)
                           .map((p: Product) => (
                             <SelectItem key={p.id} value={p.id}>{p.name} ({p.sku})</SelectItem>
                           ))}
@@ -1842,7 +1847,9 @@ export default function PurchaseRequisitionsPage() {
                           toast.error('Please enter quantity');
                           return;
                         }
-                        const productList = editSelectedCategoryId === 'all' ? allProducts : allProducts.filter((p: any) => p.category_id === editSelectedCategoryId);
+                        const productList = editSelectedCategoryId === 'all'
+                          ? allProducts
+                          : allProducts.filter((p: any) => (p.category_id || p.category?.id) === editSelectedCategoryId);
                         const product = productList.find((p: Product) => p.id === editNewItem.product_id);
                         if (!product) {
                           toast.error('Product not found');
