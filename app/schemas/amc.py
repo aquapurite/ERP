@@ -6,6 +6,7 @@ import uuid
 
 from app.models.amc import AMCType, AMCStatus
 from app.schemas.customer import CustomerBrief
+from app.schemas.base import BaseResponseSchema
 
 
 class AMCContractCreate(BaseModel):
@@ -61,7 +62,7 @@ class AMCServiceSchedule(BaseModel):
     notes: Optional[str] = None
 
 
-class AMCContractResponse(BaseModel):
+class AMCContractResponse(BaseResponseSchema):
     """AMC contract response schema."""
     id: uuid.UUID
     contract_number: str
@@ -83,10 +84,6 @@ class AMCContractResponse(BaseModel):
     next_service_due: Optional[date] = None
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class AMCContractDetail(AMCContractResponse):
     """Detailed AMC contract response."""
@@ -160,7 +157,7 @@ class AMCPlanUpdate(BaseModel):
     sort_order: Optional[int] = None
 
 
-class AMCPlanResponse(BaseModel):
+class AMCPlanResponse(BaseResponseSchema):
     """AMC plan response schema."""
     id: uuid.UUID
     name: str
@@ -180,10 +177,6 @@ class AMCPlanResponse(BaseModel):
     is_active: bool
     sort_order: int
     created_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class AMCPlanListResponse(BaseModel):
     """Paginated AMC plan list."""

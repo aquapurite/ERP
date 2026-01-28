@@ -1,5 +1,7 @@
 """Pydantic schemas for ProductCost (COGS auto-calculation)."""
 from pydantic import BaseModel, Field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
@@ -20,18 +22,13 @@ class CostHistoryEntry(BaseModel):
     running_average: Decimal = Field(..., description="Average cost after this GRN")
 
 
-class CostHistoryResponse(BaseModel):
+class CostHistoryResponse(BaseResponseSchema):
     """Response schema for cost history."""
     product_id: uuid.UUID
     product_name: str
     sku: str
     entries: List[CostHistoryEntry] = []
     total_entries: int = 0
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== PRODUCT COST SCHEMAS ====================
 
 class ProductCostBase(BaseModel):
@@ -60,7 +57,7 @@ class ProductCostUpdate(BaseModel):
     standard_cost: Optional[Decimal] = Field(None, ge=0)
 
 
-class ProductCostResponse(BaseModel):
+class ProductCostResponse(BaseResponseSchema):
     """Response schema for ProductCost."""
     id: uuid.UUID
     product_id: uuid.UUID
@@ -91,10 +88,6 @@ class ProductCostResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
-
 class ProductCostDetailResponse(ProductCostResponse):
     """Detailed response with cost history."""
     cost_history: List[CostHistoryEntry] = []
@@ -103,7 +96,7 @@ class ProductCostDetailResponse(ProductCostResponse):
     warehouse_name: Optional[str] = None
 
 
-class ProductCostBriefResponse(BaseModel):
+class ProductCostBriefResponse(BaseResponseSchema):
     """Brief cost response for product lists."""
     product_id: uuid.UUID
     average_cost: Decimal
@@ -111,11 +104,6 @@ class ProductCostBriefResponse(BaseModel):
     quantity_on_hand: int
     total_value: Decimal
     last_calculated_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== GRN COST UPDATE SCHEMAS ====================
 
 class GRNCostUpdateRequest(BaseModel):

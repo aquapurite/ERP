@@ -5,6 +5,8 @@ from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 
+from app.schemas.base import BaseResponseSchema
+
 from app.models.vendor import (
     VendorType, VendorStatus, VendorGrade, PaymentTerms, VendorTransactionType
 )
@@ -147,10 +149,8 @@ class VendorUpdate(BaseModel):
     internal_notes: Optional[str] = None
 
 
-class VendorResponse(VendorBase):
+class VendorResponse(BaseResponseSchema):
     """Response schema for Vendor."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     vendor_code: str
     status: str
@@ -173,10 +173,8 @@ class VendorResponse(VendorBase):
     updated_at: datetime
 
 
-class VendorBrief(BaseModel):
+class VendorBrief(BaseResponseSchema):
     """Brief vendor info for list and dropdowns."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     vendor_code: str
     name: str
@@ -234,10 +232,8 @@ class VendorLedgerCreate(VendorLedgerBase):
     pass
 
 
-class VendorLedgerResponse(VendorLedgerBase):
+class VendorLedgerResponse(BaseResponseSchema):
     """Response schema for VendorLedger."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     running_balance: Decimal
     is_settled: bool
@@ -277,10 +273,8 @@ class VendorContactCreate(VendorContactBase):
     pass
 
 
-class VendorContactResponse(VendorContactBase):
+class VendorContactResponse(BaseResponseSchema):
     """Response schema for VendorContact."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     vendor_id: UUID  # Included in response from database
     is_active: bool

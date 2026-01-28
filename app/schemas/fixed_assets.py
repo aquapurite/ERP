@@ -5,6 +5,8 @@ from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict
 
+from app.schemas.base import BaseResponseSchema
+
 from app.models.fixed_assets import (
     DepreciationMethod, AssetStatus, TransferStatus, MaintenanceStatus
 )
@@ -43,10 +45,8 @@ class AssetCategoryUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class AssetCategoryResponse(AssetCategoryBase):
+class AssetCategoryResponse(BaseResponseSchema):
     """Response schema for Asset Category."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     is_active: bool
     asset_count: int = 0
@@ -150,10 +150,8 @@ class AssetUpdate(BaseModel):
     notes: Optional[str] = None
 
 
-class AssetResponse(BaseModel):
+class AssetResponse(BaseResponseSchema):
     """Response schema for Asset (list view)."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     asset_code: str
     name: str
@@ -239,10 +237,8 @@ class DepreciationRunRequest(BaseModel):
     asset_ids: Optional[List[UUID]] = None  # If None, process all active assets
 
 
-class DepreciationEntryResponse(BaseModel):
+class DepreciationEntryResponse(BaseResponseSchema):
     """Response schema for Depreciation Entry."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     asset_id: UUID
     asset_code: Optional[str] = None
@@ -288,10 +284,8 @@ class AssetTransferCreate(BaseModel):
     reason: Optional[str] = None
 
 
-class AssetTransferResponse(BaseModel):
+class AssetTransferResponse(BaseResponseSchema):
     """Response schema for Asset Transfer."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     transfer_number: str
     asset_id: UUID
@@ -360,10 +354,8 @@ class AssetMaintenanceUpdate(BaseModel):
     assigned_to: Optional[UUID] = None
 
 
-class AssetMaintenanceResponse(BaseModel):
+class AssetMaintenanceResponse(BaseResponseSchema):
     """Response schema for Asset Maintenance."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     maintenance_number: str
     asset_id: UUID

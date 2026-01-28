@@ -5,6 +5,8 @@ from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 
+from app.schemas.base import BaseResponseSchema
+
 # Note: Franchisee tables use VARCHAR(36) for IDs in production database
 # - Response schemas use `str` for franchisee id/franchisee_id (matches DB VARCHAR)
 # - Input schemas use `UUID` for franchisee_id (validated by Pydantic, then converted to str in endpoint)
@@ -108,10 +110,8 @@ class FranchiseeUpdate(BaseModel):
     notes: Optional[str] = None
 
 
-class FranchiseeResponse(BaseModel):
+class FranchiseeResponse(BaseResponseSchema):
     """Response schema for Franchisee."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: str  # VARCHAR in production
     franchisee_code: str
     name: str
@@ -249,10 +249,8 @@ class FranchiseeContractUpdate(BaseModel):
     notes: Optional[str] = None
 
 
-class FranchiseeContractResponse(BaseModel):
+class FranchiseeContractResponse(BaseResponseSchema):
     """Response schema for Contract."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: str  # VARCHAR in production
     franchisee_id: str  # VARCHAR FK
     contract_number: str
@@ -325,10 +323,8 @@ class FranchiseeTerritoryUpdate(BaseModel):
     notes: Optional[str] = None
 
 
-class FranchiseeTerritoryResponse(BaseModel):
+class FranchiseeTerritoryResponse(BaseResponseSchema):
     """Response schema for Territory."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: str  # VARCHAR in production
     franchisee_id: str  # VARCHAR FK
     territory_name: str
@@ -382,10 +378,8 @@ class FranchiseePerformanceCreate(BaseModel):
     penalties_applied: Decimal = Decimal("0")
 
 
-class FranchiseePerformanceResponse(BaseModel):
+class FranchiseePerformanceResponse(BaseResponseSchema):
     """Response schema for Performance."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: str  # VARCHAR in production
     franchisee_id: str  # VARCHAR FK
     period_type: str
@@ -472,10 +466,8 @@ class FranchiseeTrainingUpdate(BaseModel):
     notes: Optional[str] = None
 
 
-class FranchiseeTrainingResponse(BaseModel):
+class FranchiseeTrainingResponse(BaseResponseSchema):
     """Response schema for Training."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: str  # VARCHAR in production
     franchisee_id: str  # VARCHAR FK
     training_code: str
@@ -548,10 +540,8 @@ class FranchiseeSupportUpdate(BaseModel):
     attachments: Optional[List[str]] = None
 
 
-class FranchiseeSupportResponse(BaseModel):
+class FranchiseeSupportResponse(BaseResponseSchema):
     """Response schema for Support Ticket."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: str  # VARCHAR in production
     franchisee_id: str  # VARCHAR FK
     ticket_number: str
@@ -622,10 +612,8 @@ class SupportCommentCreate(BaseModel):
     attachments: Optional[List[str]] = None
 
 
-class SupportCommentResponse(BaseModel):
+class SupportCommentResponse(BaseResponseSchema):
     """Response for comment."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: str  # VARCHAR in production
     ticket_id: str  # VARCHAR FK
     comment: str
@@ -660,10 +648,8 @@ class FranchiseeAuditUpdate(BaseModel):
     notes: Optional[str] = None
 
 
-class FranchiseeAuditResponse(BaseModel):
+class FranchiseeAuditResponse(BaseResponseSchema):
     """Response schema for Audit."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: str  # VARCHAR in production
     franchisee_id: str  # VARCHAR FK
     audit_number: str

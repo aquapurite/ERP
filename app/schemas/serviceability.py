@@ -14,6 +14,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field, ConfigDict
 
+from app.schemas.base import BaseResponseSchema
+
 
 # ==================== Enums ====================
 
@@ -84,10 +86,8 @@ class WarehouseServiceabilityUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class WarehouseServiceabilityResponse(WarehouseServiceabilityBase):
+class WarehouseServiceabilityResponse(BaseResponseSchema):
     """Response schema for warehouse serviceability."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     warehouse_id: UUID
     warehouse_name: Optional[str] = None
@@ -152,10 +152,8 @@ class AllocationRuleUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class AllocationRuleResponse(AllocationRuleBase):
+class AllocationRuleResponse(BaseResponseSchema):
     """Response schema for allocation rule."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     channel_id: Optional[UUID] = None
     fixed_warehouse_id: Optional[UUID] = None
@@ -312,10 +310,8 @@ class AllocationDecision(BaseModel):
     )
 
 
-class AllocationLogResponse(BaseModel):
+class AllocationLogResponse(BaseResponseSchema):
     """Response for allocation log entry."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     order_id: UUID
     rule_id: Optional[UUID] = None

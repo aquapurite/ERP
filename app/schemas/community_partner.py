@@ -18,6 +18,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
+from app.schemas.base import BaseResponseSchema
+
 
 # ============================================================================
 # Enums (for input validation - stored as VARCHAR in DB)
@@ -103,7 +105,7 @@ class PartnerTierUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class PartnerTierResponse(PartnerTierBase):
+class PartnerTierResponse(BaseResponseSchema):
     """Schema for partner tier response"""
     id: UUID
     level: int = 1
@@ -116,10 +118,6 @@ class PartnerTierResponse(PartnerTierBase):
     is_default: bool = False
     created_at: datetime
     updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 # ============================================================================
 # Community Partner Schemas
 # ============================================================================
@@ -209,7 +207,7 @@ class KYCVerification(BaseModel):
     kyc_verified_by: Optional[UUID] = None
 
 
-class CommunityPartnerResponse(CommunityPartnerBase):
+class CommunityPartnerResponse(BaseResponseSchema):
     """Schema for partner response"""
     id: UUID
     partner_code: str
@@ -246,10 +244,6 @@ class CommunityPartnerResponse(CommunityPartnerBase):
 
     # Related
     tier: Optional[PartnerTierResponse] = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class CommunityPartnerList(BaseModel):
     """Schema for paginated partner list"""
     items: List[CommunityPartnerResponse]
@@ -277,7 +271,7 @@ class PartnerCommissionBase(BaseModel):
     total_earnings: Decimal = Field(default=Decimal("0"), ge=0)
 
 
-class PartnerCommissionResponse(PartnerCommissionBase):
+class PartnerCommissionResponse(BaseResponseSchema):
     """Schema for commission response"""
     id: UUID
     partner_id: UUID
@@ -294,10 +288,6 @@ class PartnerCommissionResponse(PartnerCommissionBase):
     paid_at: Optional[datetime] = None
     cancelled_at: Optional[datetime] = None
     cancellation_reason: Optional[str] = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class CommissionSummary(BaseModel):
     """Schema for commission summary"""
     total_earned: Decimal = Decimal("0")
@@ -323,7 +313,7 @@ class PayoutRequest(BaseModel):
     payout_method: PayoutMethod = PayoutMethod.BANK_TRANSFER
 
 
-class PartnerPayoutResponse(BaseModel):
+class PartnerPayoutResponse(BaseResponseSchema):
     """Schema for payout response"""
     id: UUID
     partner_id: UUID
@@ -352,9 +342,6 @@ class PartnerPayoutResponse(BaseModel):
     retry_count: int = 0
     notes: Optional[str] = None
 
-    model_config = ConfigDict(from_attributes=True)
-
-
 class PayoutList(BaseModel):
     """Schema for paginated payout list"""
     items: List[PartnerPayoutResponse]
@@ -367,7 +354,7 @@ class PayoutList(BaseModel):
 # Referral Schemas
 # ============================================================================
 
-class PartnerReferralResponse(BaseModel):
+class PartnerReferralResponse(BaseResponseSchema):
     """Schema for referral response"""
     id: UUID
     referrer_id: UUID
@@ -377,9 +364,6 @@ class PartnerReferralResponse(BaseModel):
     is_qualified: bool
     qualified_at: Optional[datetime] = None
     created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
 
 class ReferralSummary(BaseModel):
     """Schema for referral summary"""
@@ -405,7 +389,7 @@ class PartnerTrainingBase(BaseModel):
     passing_score: Optional[int] = Field(None, ge=0, le=100)
 
 
-class PartnerTrainingResponse(PartnerTrainingBase):
+class PartnerTrainingResponse(BaseResponseSchema):
     """Schema for training response"""
     id: UUID
     partner_id: UUID
@@ -414,10 +398,6 @@ class PartnerTrainingResponse(PartnerTrainingBase):
     score: Optional[int] = None
     certificate_url: Optional[str] = None
     created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class TrainingCompletion(BaseModel):
     """Schema for marking training as complete"""
     score: Optional[int] = Field(None, ge=0, le=100)
@@ -427,7 +407,7 @@ class TrainingCompletion(BaseModel):
 # Order Attribution Schemas
 # ============================================================================
 
-class PartnerOrderResponse(BaseModel):
+class PartnerOrderResponse(BaseResponseSchema):
     """Schema for partner order attribution"""
     id: UUID
     partner_id: UUID
@@ -439,9 +419,6 @@ class PartnerOrderResponse(BaseModel):
     customer_phone: Optional[str] = None
     order_status: str
     created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
 
 class PartnerOrderList(BaseModel):
     """Schema for paginated order list"""

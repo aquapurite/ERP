@@ -5,6 +5,8 @@ from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict
 
+from app.schemas.base import BaseResponseSchema
+
 from app.models.escalation import (
     EscalationLevel, EscalationStatus, EscalationPriority,
     EscalationSource, EscalationReason, NotificationChannel
@@ -65,10 +67,8 @@ class EscalationMatrixUpdate(BaseModel):
     sort_order: Optional[int] = None
 
 
-class EscalationMatrixResponse(BaseModel):
+class EscalationMatrixResponse(BaseResponseSchema):
     """Response schema for EscalationMatrix."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     name: str
     description: Optional[str] = None
@@ -170,10 +170,8 @@ class EscalationFeedbackRequest(BaseModel):
     feedback: Optional[str] = None
 
 
-class EscalationResponse(BaseModel):
+class EscalationResponse(BaseResponseSchema):
     """Response schema for Escalation."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     escalation_number: str
     source_type: EscalationSource
@@ -240,10 +238,8 @@ class EscalationListResponse(BaseModel):
 
 # ==================== Escalation History Schemas ====================
 
-class EscalationHistoryResponse(BaseModel):
+class EscalationHistoryResponse(BaseResponseSchema):
     """Response schema for EscalationHistory."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     escalation_id: UUID
     from_level: Optional[EscalationLevel] = None
@@ -268,10 +264,8 @@ class EscalationCommentCreate(BaseModel):
     attachments: Optional[List[str]] = None
 
 
-class EscalationCommentResponse(BaseModel):
+class EscalationCommentResponse(BaseResponseSchema):
     """Response schema for EscalationComment."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     escalation_id: UUID
     comment: str
@@ -304,10 +298,8 @@ class SLAConfigurationCreate(BaseModel):
     is_active: bool = True
 
 
-class SLAConfigurationResponse(BaseModel):
+class SLAConfigurationResponse(BaseResponseSchema):
     """Response schema for SLA configuration."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     name: str
     description: Optional[str] = None

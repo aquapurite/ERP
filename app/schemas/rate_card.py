@@ -1,5 +1,7 @@
 """Pydantic schemas for Rate Card models (D2C, B2B, FTL)."""
 from pydantic import BaseModel, Field, field_validator
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 from datetime import datetime, date
 from decimal import Decimal
@@ -31,7 +33,7 @@ class D2CWeightSlabCreate(BaseModel):
     is_active: bool = True
 
 
-class D2CWeightSlabResponse(BaseModel):
+class D2CWeightSlabResponse(BaseResponseSchema):
     """Response schema for D2C weight slab."""
     id: uuid.UUID
     rate_card_id: uuid.UUID
@@ -48,10 +50,6 @@ class D2CWeightSlabResponse(BaseModel):
     is_active: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
-
 class D2CSurchargeCreate(BaseModel):
     """Create schema for D2C surcharge."""
     surcharge_type: SurchargeType
@@ -67,7 +65,7 @@ class D2CSurchargeCreate(BaseModel):
     effective_to: Optional[date] = None
 
 
-class D2CSurchargeResponse(BaseModel):
+class D2CSurchargeResponse(BaseResponseSchema):
     """Response schema for D2C surcharge."""
     id: uuid.UUID
     rate_card_id: uuid.UUID
@@ -82,10 +80,6 @@ class D2CSurchargeResponse(BaseModel):
     is_active: bool
     effective_from: Optional[date] = None
     effective_to: Optional[date] = None
-
-    class Config:
-        from_attributes = True
-
 
 class D2CRateCardCreate(BaseModel):
     """Create schema for D2C rate card."""
@@ -114,7 +108,7 @@ class D2CRateCardUpdate(BaseModel):
     is_default: Optional[bool] = None
 
 
-class D2CRateCardResponse(BaseModel):
+class D2CRateCardResponse(BaseResponseSchema):
     """Response schema for D2C rate card."""
     id: uuid.UUID
     transporter_id: uuid.UUID
@@ -131,10 +125,6 @@ class D2CRateCardResponse(BaseModel):
     updated_at: datetime
     transporter_name: Optional[str] = None
     transporter_code: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
 
 class D2CRateCardDetailResponse(D2CRateCardResponse):
     """Detailed response with weight slabs and surcharges."""
@@ -178,7 +168,7 @@ class ZoneMappingCreate(BaseModel):
     is_oda: bool = False
 
 
-class ZoneMappingResponse(BaseModel):
+class ZoneMappingResponse(BaseResponseSchema):
     """Response schema for zone mapping."""
     id: uuid.UUID
     origin_pincode: Optional[str] = None
@@ -191,10 +181,6 @@ class ZoneMappingResponse(BaseModel):
     distance_km: Optional[int] = None
     is_oda: bool
     created_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class ZoneMappingListResponse(BaseModel):
     """Paginated zone mapping list."""
@@ -247,7 +233,7 @@ class B2BRateSlabCreate(BaseModel):
     is_active: bool = True
 
 
-class B2BRateSlabResponse(BaseModel):
+class B2BRateSlabResponse(BaseResponseSchema):
     """Response schema for B2B rate slab."""
     id: uuid.UUID
     rate_card_id: uuid.UUID
@@ -266,10 +252,6 @@ class B2BRateSlabResponse(BaseModel):
     is_active: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
-
 class B2BAdditionalChargeCreate(BaseModel):
     """Create schema for B2B additional charge."""
     charge_type: SurchargeType
@@ -279,7 +261,7 @@ class B2BAdditionalChargeCreate(BaseModel):
     is_active: bool = True
 
 
-class B2BAdditionalChargeResponse(BaseModel):
+class B2BAdditionalChargeResponse(BaseResponseSchema):
     """Response schema for B2B additional charge."""
     id: uuid.UUID
     rate_card_id: uuid.UUID
@@ -288,10 +270,6 @@ class B2BAdditionalChargeResponse(BaseModel):
     value: Decimal
     per_unit: Optional[str] = None
     is_active: bool
-
-    class Config:
-        from_attributes = True
-
 
 class B2BRateCardCreate(BaseModel):
     """Create schema for B2B rate card."""
@@ -322,7 +300,7 @@ class B2BRateCardUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class B2BRateCardResponse(BaseModel):
+class B2BRateCardResponse(BaseResponseSchema):
     """Response schema for B2B rate card."""
     id: uuid.UUID
     transporter_id: uuid.UUID
@@ -340,10 +318,6 @@ class B2BRateCardResponse(BaseModel):
     updated_at: datetime
     transporter_name: Optional[str] = None
     transporter_code: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
 
 class B2BRateCardDetailResponse(B2BRateCardResponse):
     """Detailed response with rate slabs and additional charges."""
@@ -392,7 +366,7 @@ class FTLLaneRateCreate(BaseModel):
     is_active: bool = True
 
 
-class FTLLaneRateResponse(BaseModel):
+class FTLLaneRateResponse(BaseResponseSchema):
     """Response schema for FTL lane rate."""
     id: uuid.UUID
     rate_card_id: uuid.UUID
@@ -417,10 +391,6 @@ class FTLLaneRateResponse(BaseModel):
     is_active: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
-
 class FTLAdditionalChargeCreate(BaseModel):
     """Create schema for FTL additional charge."""
     charge_type: str = Field(..., min_length=2, max_length=50)
@@ -431,7 +401,7 @@ class FTLAdditionalChargeCreate(BaseModel):
     is_active: bool = True
 
 
-class FTLAdditionalChargeResponse(BaseModel):
+class FTLAdditionalChargeResponse(BaseResponseSchema):
     """Response schema for FTL additional charge."""
     id: uuid.UUID
     rate_card_id: uuid.UUID
@@ -441,10 +411,6 @@ class FTLAdditionalChargeResponse(BaseModel):
     per_unit: Optional[str] = None
     free_hours: Optional[int] = None
     is_active: bool
-
-    class Config:
-        from_attributes = True
-
 
 class FTLRateCardCreate(BaseModel):
     """Create schema for FTL rate card."""
@@ -472,7 +438,7 @@ class FTLRateCardUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class FTLRateCardResponse(BaseModel):
+class FTLRateCardResponse(BaseResponseSchema):
     """Response schema for FTL rate card."""
     id: uuid.UUID
     transporter_id: Optional[uuid.UUID] = None
@@ -488,10 +454,6 @@ class FTLRateCardResponse(BaseModel):
     updated_at: datetime
     transporter_name: Optional[str] = None
     transporter_code: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
 
 class FTLRateCardDetailResponse(FTLRateCardResponse):
     """Detailed response with lane rates and additional charges."""
@@ -542,7 +504,7 @@ class FTLVehicleTypeUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class FTLVehicleTypeResponse(BaseModel):
+class FTLVehicleTypeResponse(BaseResponseSchema):
     """Response schema for FTL vehicle type."""
     id: uuid.UUID
     code: str
@@ -555,10 +517,6 @@ class FTLVehicleTypeResponse(BaseModel):
     category: Optional[str] = None
     is_active: bool
     created_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class FTLVehicleTypeListResponse(BaseModel):
     """Paginated FTL vehicle type list."""
@@ -573,7 +531,7 @@ class FTLVehicleTypeListResponse(BaseModel):
 # CARRIER PERFORMANCE SCHEMAS
 # ============================================
 
-class CarrierPerformanceResponse(BaseModel):
+class CarrierPerformanceResponse(BaseResponseSchema):
     """Response schema for carrier performance."""
     id: uuid.UUID
     transporter_id: uuid.UUID
@@ -602,10 +560,6 @@ class CarrierPerformanceResponse(BaseModel):
     updated_at: datetime
     transporter_name: Optional[str] = None
     transporter_code: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
 
 class CarrierPerformanceListResponse(BaseModel):
     """Paginated carrier performance list."""
@@ -759,18 +713,13 @@ class BulkAllocationResponse(BaseModel):
 # DROPDOWN/BRIEF SCHEMAS
 # ============================================
 
-class RateCardBrief(BaseModel):
+class RateCardBrief(BaseResponseSchema):
     """Brief rate card info for dropdowns."""
     id: uuid.UUID
     code: str
     name: str
     service_type: str
     is_active: bool
-
-    class Config:
-        from_attributes = True
-
-
 class TransporterRateCardSummary(BaseModel):
     """Summary of rate cards per transporter."""
     transporter_id: uuid.UUID

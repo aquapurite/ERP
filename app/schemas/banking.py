@@ -1,5 +1,7 @@
 """Banking module schemas for API requests/responses."""
 from pydantic import BaseModel, Field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 from uuid import UUID
 from datetime import date
@@ -18,7 +20,7 @@ class BankAccountCreate(BaseModel):
     ledger_account_id: Optional[UUID] = Field(None, description="Linked ledger account ID")
 
 
-class BankAccountResponse(BaseModel):
+class BankAccountResponse(BaseResponseSchema):
     """Bank account response."""
     id: UUID
     account_name: str
@@ -30,11 +32,7 @@ class BankAccountResponse(BaseModel):
     current_balance: Decimal
     is_active: bool
 
-    class Config:
-        from_attributes = True
-
-
-class BankTransactionResponse(BaseModel):
+class BankTransactionResponse(BaseResponseSchema):
     """Bank transaction response."""
     id: UUID
     transaction_date: date
@@ -46,10 +44,6 @@ class BankTransactionResponse(BaseModel):
     credit_amount: Decimal
     running_balance: Optional[Decimal] = None
     is_reconciled: bool
-
-    class Config:
-        from_attributes = True
-
 
 class ImportResult(BaseModel):
     """Import result response."""

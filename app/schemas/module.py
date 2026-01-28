@@ -1,4 +1,6 @@
 from pydantic import BaseModel, Field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 from datetime import datetime
 import uuid
@@ -13,7 +15,7 @@ class ModuleBase(BaseModel):
     sort_order: int = Field(default=0, description="Display order")
 
 
-class ModuleResponse(BaseModel):
+class ModuleResponse(BaseResponseSchema):
     """Module response schema."""
     id: uuid.UUID
     name: str
@@ -24,10 +26,6 @@ class ModuleResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class ModuleListResponse(BaseModel):
     """Module list response."""

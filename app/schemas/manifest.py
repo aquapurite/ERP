@@ -6,11 +6,12 @@ import uuid
 
 from app.models.manifest import ManifestStatus, BusinessType
 from app.schemas.transporter import TransporterBrief
+from app.schemas.base import BaseResponseSchema
 
 
 # ==================== MANIFEST ITEM SCHEMAS ====================
 
-class ManifestItemResponse(BaseModel):
+class ManifestItemResponse(BaseResponseSchema):
     """Manifest item response schema."""
     id: uuid.UUID
     manifest_id: uuid.UUID
@@ -29,22 +30,13 @@ class ManifestItemResponse(BaseModel):
     destination_city: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
-
-class ManifestItemBrief(BaseModel):
+class ManifestItemBrief(BaseResponseSchema):
     """Brief manifest item info."""
     id: uuid.UUID
     awb_number: str
     order_number: str
     is_scanned: bool
     is_handed_over: bool
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== MANIFEST SCHEMAS ====================
 
 class ManifestCreate(BaseModel):
@@ -69,7 +61,7 @@ class ManifestUpdate(BaseModel):
     remarks: Optional[str] = None
 
 
-class ManifestResponse(BaseModel):
+class ManifestResponse(BaseResponseSchema):
     """Manifest response schema."""
     id: uuid.UUID
     manifest_number: str
@@ -99,10 +91,6 @@ class ManifestResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
-
 class ManifestDetailResponse(ManifestResponse):
     """Detailed manifest response with items."""
     items: List[ManifestItemResponse] = []
@@ -117,17 +105,12 @@ class ManifestListResponse(BaseModel):
     pages: int
 
 
-class ManifestBrief(BaseModel):
+class ManifestBrief(BaseResponseSchema):
     """Brief manifest info."""
     id: uuid.UUID
     manifest_number: str
     status: str
     total_shipments: int
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== MANIFEST OPERATIONS ====================
 
 class ManifestAddShipmentRequest(BaseModel):

@@ -1,5 +1,7 @@
 """Inventory schemas for API requests/responses."""
 from pydantic import BaseModel, Field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 from datetime import datetime, date
 from decimal import Decimal
@@ -74,7 +76,7 @@ class StockItemUpdate(BaseModel):
     notes: Optional[str] = None
 
 
-class StockItemResponse(BaseModel):
+class StockItemResponse(BaseResponseSchema):
     """Stock item response schema."""
     id: uuid.UUID
     product_id: uuid.UUID
@@ -101,10 +103,6 @@ class StockItemResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
-
 class StockItemDetailResponse(StockItemResponse):
     """Detailed stock item with product and warehouse info."""
     product_name: Optional[str] = None
@@ -125,7 +123,7 @@ class StockItemListResponse(BaseModel):
 
 # ==================== INVENTORY SUMMARY SCHEMAS ====================
 
-class InventorySummaryResponse(BaseModel):
+class InventorySummaryResponse(BaseResponseSchema):
     """Inventory summary response."""
     id: uuid.UUID
     warehouse_id: uuid.UUID
@@ -146,10 +144,6 @@ class InventorySummaryResponse(BaseModel):
     is_out_of_stock: bool
     last_stock_in_date: Optional[datetime] = None
     last_stock_out_date: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
 
 class InventorySummaryDetail(InventorySummaryResponse):
     """Detailed inventory summary with product/warehouse info."""
@@ -193,7 +187,7 @@ class StockMovementCreate(BaseModel):
     notes: Optional[str] = None
 
 
-class StockMovementResponse(BaseModel):
+class StockMovementResponse(BaseResponseSchema):
     """Stock movement response."""
     id: uuid.UUID
     movement_number: str
@@ -214,10 +208,6 @@ class StockMovementResponse(BaseModel):
     created_by: Optional[uuid.UUID] = None
     notes: Optional[str] = None
     created_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class StockMovementDetail(StockMovementResponse):
     """Detailed stock movement with product/warehouse info."""

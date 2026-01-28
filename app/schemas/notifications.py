@@ -4,6 +4,8 @@ from typing import Optional, List, Dict, Any
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict
 
+from app.schemas.base import BaseResponseSchema
+
 from app.models.notifications import NotificationType, NotificationPriority
 
 
@@ -24,10 +26,8 @@ class NotificationCreate(BaseModel):
     channels: Optional[List[str]] = None
 
 
-class NotificationResponse(BaseModel):
+class NotificationResponse(BaseResponseSchema):
     """Response schema for Notification."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     user_id: UUID
     notification_type: Optional[str] = None
@@ -104,10 +104,8 @@ class NotificationPreferenceUpdate(BaseModel):
     email_digest_frequency: Optional[str] = None
 
 
-class NotificationPreferenceResponse(NotificationPreferenceBase):
+class NotificationPreferenceResponse(BaseResponseSchema):
     """Response schema for notification preferences."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     user_id: UUID
     created_at: datetime
@@ -147,10 +145,8 @@ class AnnouncementUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class AnnouncementResponse(BaseModel):
+class AnnouncementResponse(BaseResponseSchema):
     """Response schema for announcement."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     title: str
     message: str
@@ -206,10 +202,8 @@ class NotificationTemplateUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class NotificationTemplateResponse(BaseModel):
+class NotificationTemplateResponse(BaseResponseSchema):
     """Response schema for notification template."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     notification_type: str  # VARCHAR in DB
     title_template: str

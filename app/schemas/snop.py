@@ -10,6 +10,8 @@ Request/Response schemas for:
 """
 
 from pydantic import BaseModel, Field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List, Dict, Any
 from datetime import datetime, date
 from decimal import Decimal
@@ -104,7 +106,7 @@ class DemandForecastGenerateRequest(BaseModel):
     lookback_days: int = Field(365, ge=90, le=1095)
 
 
-class DemandForecastResponse(BaseModel):
+class DemandForecastResponse(BaseResponseSchema):
     """Demand forecast response."""
     id: uuid.UUID
     forecast_code: str
@@ -158,11 +160,7 @@ class DemandForecastResponse(BaseModel):
 
     notes: Optional[str] = None
 
-    class Config:
-        from_attributes = True
-
-
-class DemandForecastBrief(BaseModel):
+class DemandForecastBrief(BaseResponseSchema):
     """Brief forecast info for listings."""
     id: uuid.UUID
     forecast_code: str
@@ -177,11 +175,6 @@ class DemandForecastBrief(BaseModel):
     algorithm_used: ForecastAlgorithm
     status: str
     created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== FORECAST ADJUSTMENT SCHEMAS ====================
 
 class ForecastAdjustmentCreate(BaseModel):
@@ -193,7 +186,7 @@ class ForecastAdjustmentCreate(BaseModel):
     justification: Optional[str] = None
 
 
-class ForecastAdjustmentResponse(BaseModel):
+class ForecastAdjustmentResponse(BaseResponseSchema):
     """Forecast adjustment response."""
     id: uuid.UUID
     forecast_id: uuid.UUID
@@ -208,10 +201,6 @@ class ForecastAdjustmentResponse(BaseModel):
     approved_by_name: Optional[str] = None
     created_at: datetime
     approved_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
 
 class ForecastApprovalRequest(BaseModel):
     """Request to approve/reject a forecast or adjustment."""
@@ -267,7 +256,7 @@ class SupplyPlanOptimizeRequest(BaseModel):
     min_safety_stock_days: int = Field(7, ge=0)
 
 
-class SupplyPlanResponse(BaseModel):
+class SupplyPlanResponse(BaseResponseSchema):
     """Supply plan response."""
     id: uuid.UUID
     plan_code: str
@@ -302,11 +291,6 @@ class SupplyPlanResponse(BaseModel):
     approved_at: Optional[datetime] = None
 
     notes: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== SCENARIO PLANNING SCHEMAS ====================
 
 class ScenarioAssumptions(BaseModel):
@@ -364,7 +348,7 @@ class ScenarioResults(BaseModel):
     monthly_projections: Optional[List[Dict[str, Any]]] = None
 
 
-class SNOPScenarioResponse(BaseModel):
+class SNOPScenarioResponse(BaseResponseSchema):
     """Scenario response."""
     id: uuid.UUID
     scenario_code: str
@@ -387,10 +371,6 @@ class SNOPScenarioResponse(BaseModel):
     created_by_name: Optional[str] = None
     created_at: datetime
     completed_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
 
 class ScenarioCompareRequest(BaseModel):
     """Request to compare multiple scenarios."""
@@ -432,7 +412,7 @@ class ExternalFactorCreate(BaseModel):
     metadata_json: Optional[Dict[str, Any]] = None
 
 
-class ExternalFactorResponse(BaseModel):
+class ExternalFactorResponse(BaseResponseSchema):
     """External factor response."""
     id: uuid.UUID
     factor_code: str
@@ -455,11 +435,6 @@ class ExternalFactorResponse(BaseModel):
 
     is_active: bool
     created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== INVENTORY OPTIMIZATION SCHEMAS ====================
 
 class InventoryOptimizationRequest(BaseModel):
@@ -476,7 +451,7 @@ class InventoryOptimizationRequest(BaseModel):
     analysis_end_date: date
 
 
-class InventoryOptimizationResponse(BaseModel):
+class InventoryOptimizationResponse(BaseResponseSchema):
     """Inventory optimization recommendations."""
     id: uuid.UUID
 
@@ -512,10 +487,6 @@ class InventoryOptimizationResponse(BaseModel):
 
     is_applied: bool
 
-    class Config:
-        from_attributes = True
-
-
 class ApplyOptimizationRequest(BaseModel):
     """Apply inventory optimization recommendations."""
     optimization_ids: List[uuid.UUID]
@@ -546,7 +517,7 @@ class SNOPMeetingUpdate(BaseModel):
     is_completed: bool = False
 
 
-class SNOPMeetingResponse(BaseModel):
+class SNOPMeetingResponse(BaseResponseSchema):
     """S&OP meeting response."""
     id: uuid.UUID
     meeting_code: str
@@ -568,11 +539,6 @@ class SNOPMeetingResponse(BaseModel):
 
     created_by_name: Optional[str] = None
     created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== DASHBOARD SCHEMAS ====================
 
 class SNOPDashboardSummary(BaseModel):

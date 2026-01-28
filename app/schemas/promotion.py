@@ -5,6 +5,8 @@ from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict
 
+from app.schemas.base import BaseResponseSchema
+
 from app.models.promotion import (
     PromotionType, PromotionScope, DiscountApplication, PromotionStatus,
     CommissionBeneficiary
@@ -123,10 +125,8 @@ class PromotionUpdate(BaseModel):
     terms_and_conditions: Optional[str] = None
 
 
-class PromotionResponse(PromotionBase):
+class PromotionResponse(BaseResponseSchema):
     """Response schema for Promotion."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     status: str
     current_usage_count: int
@@ -203,10 +203,8 @@ class PromotionValidateResponse(BaseModel):
 
 # ==================== Promotion Usage Schemas ====================
 
-class PromotionUsageResponse(BaseModel):
+class PromotionUsageResponse(BaseResponseSchema):
     """Response schema for PromotionUsage."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     promotion_id: UUID
     order_id: UUID
@@ -285,10 +283,8 @@ class ChannelCommissionPlanUpdate(BaseModel):
     tds_rate: Optional[Decimal] = None
 
 
-class ChannelCommissionPlanResponse(ChannelCommissionPlanBase):
+class ChannelCommissionPlanResponse(BaseResponseSchema):
     """Response schema for ChannelCommissionPlan."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     created_at: datetime
     updated_at: datetime
@@ -319,10 +315,8 @@ class ChannelCommissionCategoryRateCreate(ChannelCommissionCategoryRateBase):
     pass
 
 
-class ChannelCommissionCategoryRateResponse(ChannelCommissionCategoryRateBase):
+class ChannelCommissionCategoryRateResponse(BaseResponseSchema):
     """Response schema for category rate."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     created_at: datetime
 
@@ -354,10 +348,8 @@ class ChannelCommissionEarningCreate(ChannelCommissionEarningBase):
     level: int = Field(1, ge=1)
 
 
-class ChannelCommissionEarningResponse(ChannelCommissionEarningBase):
+class ChannelCommissionEarningResponse(BaseResponseSchema):
     """Response schema for commission earning."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     tds_rate: Decimal
     tds_amount: Decimal
@@ -420,10 +412,8 @@ class LoyaltyProgramCreate(LoyaltyProgramBase):
     pass
 
 
-class LoyaltyProgramResponse(LoyaltyProgramBase):
+class LoyaltyProgramResponse(BaseResponseSchema):
     """Response schema for LoyaltyProgram."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     created_at: datetime
     updated_at: datetime
@@ -479,10 +469,8 @@ class ReferralProgramCreate(ReferralProgramBase):
     pass
 
 
-class ReferralProgramResponse(ReferralProgramBase):
+class ReferralProgramResponse(BaseResponseSchema):
     """Response schema for ReferralProgram."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     created_at: datetime
     updated_at: datetime
@@ -504,10 +492,8 @@ class CustomerReferralCreate(CustomerReferralBase):
     pass
 
 
-class CustomerReferralResponse(CustomerReferralBase):
+class CustomerReferralResponse(BaseResponseSchema):
     """Response schema for CustomerReferral."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     referee_id: Optional[UUID] = None
     channel_code: Optional[str] = None

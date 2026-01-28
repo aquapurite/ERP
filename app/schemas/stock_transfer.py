@@ -1,5 +1,7 @@
 """Stock Transfer schemas for API requests/responses."""
 from pydantic import BaseModel, Field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 from datetime import datetime
 import uuid
@@ -17,7 +19,7 @@ class TransferItemCreate(BaseModel):
     notes: Optional[str] = None
 
 
-class TransferItemResponse(BaseModel):
+class TransferItemResponse(BaseResponseSchema):
     """Transfer item response schema."""
     id: uuid.UUID
     transfer_id: uuid.UUID
@@ -32,10 +34,6 @@ class TransferItemResponse(BaseModel):
     total_cost: float
     notes: Optional[str] = None
     created_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class TransferItemDetail(TransferItemResponse):
     """Detailed transfer item with product info."""
@@ -105,7 +103,7 @@ class TransferReceive(BaseModel):
     notes: Optional[str] = None
 
 
-class StockTransferResponse(BaseModel):
+class StockTransferResponse(BaseResponseSchema):
     """Stock transfer response schema."""
     id: uuid.UUID
     transfer_number: str
@@ -136,10 +134,6 @@ class StockTransferResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
-
 class StockTransferDetail(StockTransferResponse):
     """Detailed transfer with items and warehouse info."""
     from_warehouse_name: Optional[str] = None
@@ -158,7 +152,7 @@ class StockTransferListResponse(BaseModel):
     pages: int
 
 
-class StockTransferBrief(BaseModel):
+class StockTransferBrief(BaseResponseSchema):
     """Brief transfer info."""
     id: uuid.UUID
     transfer_number: str
@@ -167,6 +161,3 @@ class StockTransferBrief(BaseModel):
     to_warehouse_code: str
     total_quantity: int
     request_date: datetime
-
-    class Config:
-        from_attributes = True

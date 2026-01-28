@@ -5,6 +5,8 @@ from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 
+from app.schemas.base import BaseResponseSchema
+
 from app.models.hr import (
     EmploymentType, EmployeeStatus, LeaveType, LeaveStatus,
     AttendanceStatus, PayrollStatus, Gender, MaritalStatus,
@@ -38,10 +40,8 @@ class DepartmentUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class DepartmentResponse(DepartmentBase):
+class DepartmentResponse(BaseResponseSchema):
     """Response schema for Department."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     parent_name: Optional[str] = None
     head_name: Optional[str] = None
@@ -59,10 +59,8 @@ class DepartmentListResponse(BaseModel):
     pages: int = 1
 
 
-class DepartmentDropdown(BaseModel):
+class DepartmentDropdown(BaseResponseSchema):
     """Dropdown item for Department selection."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     code: str
     name: str
@@ -207,10 +205,8 @@ class EmployeeUpdate(BaseModel):
     profile_photo_url: Optional[str] = None
 
 
-class EmployeeResponse(BaseModel):
+class EmployeeResponse(BaseResponseSchema):
     """Response schema for Employee (list view)."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     employee_code: str
     user_id: UUID
@@ -290,10 +286,8 @@ class EmployeeListResponse(BaseModel):
     pages: int = 1
 
 
-class EmployeeDropdown(BaseModel):
+class EmployeeDropdown(BaseResponseSchema):
     """Dropdown item for Employee selection."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     employee_code: str
     full_name: str
@@ -340,10 +334,8 @@ class SalaryStructureUpdate(BaseModel):
     pt_applicable: Optional[bool] = None
 
 
-class SalaryStructureResponse(SalaryStructureBase):
+class SalaryStructureResponse(BaseResponseSchema):
     """Response schema for Salary Structure."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     employee_id: UUID
 
@@ -397,10 +389,8 @@ class AttendanceUpdate(BaseModel):
     remarks: Optional[str] = None
 
 
-class AttendanceResponse(AttendanceBase):
+class AttendanceResponse(BaseResponseSchema):
     """Response schema for Attendance."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     check_in: Optional[datetime] = None
     check_out: Optional[datetime] = None
@@ -456,10 +446,8 @@ class AttendanceReportResponse(BaseModel):
 
 # ==================== Leave Schemas ====================
 
-class LeaveBalanceResponse(BaseModel):
+class LeaveBalanceResponse(BaseResponseSchema):
     """Response schema for Leave Balance."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     employee_id: UUID
     leave_type: LeaveType
@@ -495,10 +483,8 @@ class LeaveRequestCreate(LeaveRequestBase):
     employee_id: Optional[UUID] = None  # Auto from token if not provided
 
 
-class LeaveRequestResponse(LeaveRequestBase):
+class LeaveRequestResponse(BaseResponseSchema):
     """Response schema for Leave Request."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     employee_id: UUID
     days: Decimal
@@ -543,10 +529,8 @@ class PayrollProcessRequest(BaseModel):
     employee_ids: Optional[List[UUID]] = None  # If None, process all active
 
 
-class PayrollResponse(BaseModel):
+class PayrollResponse(BaseResponseSchema):
     """Response schema for Payroll."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     payroll_month: date
     financial_year: str
@@ -584,10 +568,8 @@ class PayrollDetailResponse(PayrollResponse):
 
 # ==================== Payslip Schemas ====================
 
-class PayslipResponse(BaseModel):
+class PayslipResponse(BaseResponseSchema):
     """Response schema for Payslip."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     payroll_id: UUID
     employee_id: UUID
@@ -751,10 +733,8 @@ class AppraisalCycleUpdate(BaseModel):
     status: Optional[AppraisalCycleStatus] = None
 
 
-class AppraisalCycleResponse(AppraisalCycleBase):
+class AppraisalCycleResponse(BaseResponseSchema):
     """Response schema for Appraisal Cycle."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     status: str
     created_at: datetime
@@ -801,10 +781,8 @@ class KPIUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class KPIResponse(KPIBase):
+class KPIResponse(BaseResponseSchema):
     """Response schema for KPI."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     is_active: bool
     department_name: Optional[str] = None
@@ -856,10 +834,8 @@ class GoalUpdate(BaseModel):
     completion_percentage: Optional[int] = Field(None, ge=0, le=100)
 
 
-class GoalResponse(GoalBase):
+class GoalResponse(BaseResponseSchema):
     """Response schema for Goal."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     employee_id: UUID
     cycle_id: UUID
@@ -919,10 +895,8 @@ class AppraisalHRReview(BaseModel):
     hr_comments: Optional[str] = None
 
 
-class AppraisalResponse(BaseModel):
+class AppraisalResponse(BaseResponseSchema):
     """Response schema for Appraisal."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     employee_id: UUID
     cycle_id: UUID
@@ -992,10 +966,8 @@ class FeedbackCreate(BaseModel):
     goal_id: Optional[UUID] = None
 
 
-class FeedbackResponse(BaseModel):
+class FeedbackResponse(BaseResponseSchema):
     """Response schema for Feedback."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     employee_id: UUID
     given_by: UUID

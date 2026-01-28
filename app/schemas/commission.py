@@ -5,6 +5,8 @@ from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 
+from app.schemas.base import BaseResponseSchema
+
 from app.models.commission import (
     CommissionType, CalculationBasis, CommissionStatus, PayoutStatus
 )
@@ -68,10 +70,8 @@ class CommissionPlanUpdate(BaseModel):
     terms_and_conditions: Optional[str] = None
 
 
-class CommissionPlanResponse(CommissionPlanBase):
+class CommissionPlanResponse(BaseResponseSchema):
     """Response schema for CommissionPlan."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     is_valid: bool
     created_at: datetime
@@ -103,10 +103,8 @@ class CommissionCategoryRateCreate(CommissionCategoryRateBase):
     pass
 
 
-class CommissionCategoryRateResponse(CommissionCategoryRateBase):
+class CommissionCategoryRateResponse(BaseResponseSchema):
     """Response schema for category rate."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     plan_id: UUID  # Included in response from database
     created_at: datetime
@@ -128,10 +126,8 @@ class CommissionProductRateCreate(CommissionProductRateBase):
     pass
 
 
-class CommissionProductRateResponse(CommissionProductRateBase):
+class CommissionProductRateResponse(BaseResponseSchema):
     """Response schema for product rate."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     plan_id: UUID  # Included in response from database
     created_at: datetime
@@ -186,10 +182,8 @@ class CommissionEarnerUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class CommissionEarnerResponse(CommissionEarnerBase):
+class CommissionEarnerResponse(BaseResponseSchema):
     """Response schema for CommissionEarner."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     user_id: Optional[UUID] = None
     dealer_id: Optional[UUID] = None
@@ -244,10 +238,8 @@ class CommissionTransactionCreate(CommissionTransactionBase):
     level: int = Field(1, ge=1)
 
 
-class CommissionTransactionResponse(CommissionTransactionBase):
+class CommissionTransactionResponse(BaseResponseSchema):
     """Response schema for CommissionTransaction."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     tds_amount: Decimal
     net_amount: Decimal
@@ -305,10 +297,8 @@ class CommissionPayoutCreate(CommissionPayoutBase):
     earner_ids: Optional[List[UUID]] = None  # If None, include all eligible
 
 
-class CommissionPayoutLineResponse(BaseModel):
+class CommissionPayoutLineResponse(BaseResponseSchema):
     """Response schema for payout line."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     earner_id: UUID
     earner_name: Optional[str] = None
@@ -328,10 +318,8 @@ class CommissionPayoutLineResponse(BaseModel):
     created_at: datetime
 
 
-class CommissionPayoutResponse(CommissionPayoutBase):
+class CommissionPayoutResponse(BaseResponseSchema):
     """Response schema for CommissionPayout."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     payout_number: str
     status: str
@@ -404,10 +392,8 @@ class AffiliateReferralCreate(AffiliateReferralBase):
     device_type: Optional[str] = None
 
 
-class AffiliateReferralResponse(AffiliateReferralBase):
+class AffiliateReferralResponse(BaseResponseSchema):
     """Response schema for AffiliateReferral."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     customer_id: Optional[UUID] = None
     order_id: Optional[UUID] = None

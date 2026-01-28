@@ -1,5 +1,7 @@
 """Auto Journal Entry generation schemas for API requests/responses."""
 from pydantic import BaseModel, Field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 from uuid import UUID
 from datetime import date

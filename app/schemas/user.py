@@ -1,4 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 from datetime import datetime
 import uuid
@@ -36,29 +38,19 @@ class UserUpdate(BaseModel):
     avatar_url: Optional[str] = None
 
 
-class RoleBasicInfo(BaseModel):
+class RoleBasicInfo(BaseResponseSchema):
     """Basic role info for user response."""
     id: uuid.UUID
     name: str
     code: str
     level: str
-
-    class Config:
-        from_attributes = True
-
-
-class RegionBasicInfo(BaseModel):
+class RegionBasicInfo(BaseResponseSchema):
     """Basic region info for user response."""
     id: uuid.UUID
     name: str
     code: str
     type: str
-
-    class Config:
-        from_attributes = True
-
-
-class UserResponse(BaseModel):
+class UserResponse(BaseResponseSchema):
     """User response schema."""
     id: uuid.UUID
     email: str
@@ -77,10 +69,6 @@ class UserResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     last_login_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
 
 class UserListResponse(BaseModel):
     """Paginated user list response."""

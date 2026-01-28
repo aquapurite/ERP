@@ -5,6 +5,8 @@ from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
+from app.schemas.base import BaseResponseSchema
+
 from app.models.lead import (
     LeadSource, LeadStatus, LeadPriority, LeadType,
     LeadInterest, ActivityType, LostReason
@@ -153,10 +155,8 @@ class LeadLostRequest(BaseModel):
     lost_to_competitor: Optional[str] = None
 
 
-class LeadResponse(BaseModel):
+class LeadResponse(BaseResponseSchema):
     """Response schema for Lead."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     lead_number: str
     lead_type: LeadType
@@ -283,10 +283,8 @@ class LeadActivityCreate(LeadActivityBase):
     call_id: Optional[UUID] = None
 
 
-class LeadActivityResponse(BaseModel):
+class LeadActivityResponse(BaseResponseSchema):
     """Response schema for LeadActivity."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     lead_id: UUID
     activity_type: ActivityType
@@ -322,10 +320,8 @@ class LeadScoreRuleCreate(BaseModel):
     is_active: bool = True
 
 
-class LeadScoreRuleResponse(BaseModel):
+class LeadScoreRuleResponse(BaseResponseSchema):
     """Response schema for score rule."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     name: str
     description: Optional[str] = None
@@ -359,10 +355,8 @@ class LeadAssignmentRuleCreate(BaseModel):
     is_active: bool = True
 
 
-class LeadAssignmentRuleResponse(BaseModel):
+class LeadAssignmentRuleResponse(BaseResponseSchema):
     """Response schema for assignment rule."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     name: str
     description: Optional[str] = None

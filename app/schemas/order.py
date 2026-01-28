@@ -6,6 +6,7 @@ import uuid
 
 from app.models.order import OrderStatus, PaymentStatus, PaymentMethod, OrderSource
 from app.schemas.customer import CustomerBrief, AddressResponse
+from app.schemas.base import BaseResponseSchema
 
 
 # ==================== ORDER ITEM SCHEMAS ====================
@@ -18,7 +19,7 @@ class OrderItemCreate(BaseModel):
     unit_price: Optional[Decimal] = Field(None, ge=0)  # Override price if needed
 
 
-class OrderItemResponse(BaseModel):
+class OrderItemResponse(BaseResponseSchema):
     """Order item response schema."""
     id: uuid.UUID
     product_id: uuid.UUID
@@ -56,11 +57,6 @@ class OrderItemResponse(BaseModel):
     def total(self) -> Decimal:
         """Alias for total_amount - frontend expects 'total'."""
         return self.total_amount
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== PAYMENT SCHEMAS ====================
 
 class PaymentCreate(BaseModel):
@@ -73,7 +69,7 @@ class PaymentCreate(BaseModel):
     notes: Optional[str] = None
 
 
-class PaymentResponse(BaseModel):
+class PaymentResponse(BaseResponseSchema):
     """Payment response schema."""
     id: uuid.UUID
     amount: Decimal
@@ -85,14 +81,9 @@ class PaymentResponse(BaseModel):
     notes: Optional[str] = None
     created_at: datetime
     completed_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== STATUS HISTORY SCHEMAS ====================
 
-class StatusHistoryResponse(BaseModel):
+class StatusHistoryResponse(BaseResponseSchema):
     """Order status history response."""
     id: uuid.UUID
     from_status: Optional[str] = None  # VARCHAR in DB
@@ -100,14 +91,9 @@ class StatusHistoryResponse(BaseModel):
     changed_by: Optional[uuid.UUID] = None
     notes: Optional[str] = None
     created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== INVOICE SCHEMAS ====================
 
-class InvoiceResponse(BaseModel):
+class InvoiceResponse(BaseResponseSchema):
     """Invoice response schema."""
     id: uuid.UUID
     invoice_number: str
@@ -123,11 +109,6 @@ class InvoiceResponse(BaseModel):
     due_date: Optional[datetime] = None
     is_cancelled: bool
     created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== ORDER SCHEMAS ====================
 
 class AddressInput(BaseModel):
@@ -176,7 +157,7 @@ class OrderStatusUpdate(BaseModel):
     notes: Optional[str] = None
 
 
-class OrderResponse(BaseModel):
+class OrderResponse(BaseResponseSchema):
     """Order response schema."""
     id: uuid.UUID
     order_number: str
@@ -203,10 +184,6 @@ class OrderResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     confirmed_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
 
 class OrderDetailResponse(OrderResponse):
     """Detailed order response with items and history."""

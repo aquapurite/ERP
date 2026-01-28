@@ -5,6 +5,8 @@ from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict
 
+from app.schemas.base import BaseResponseSchema
+
 from app.models.purchase import (
     RequisitionStatus, POStatus, GRNStatus, VendorInvoiceStatus, QualityCheckResult, ProformaStatus,
     DeliveryLotStatus, SRNStatus, ReturnReason, ItemCondition, RestockDecision, PickupStatus, ResolutionType
@@ -52,10 +54,8 @@ class PRItemUpdate(BaseModel):
     monthly_quantities: Optional[dict] = None
 
 
-class PRItemResponse(PRItemBase):
+class PRItemResponse(BaseResponseSchema):
     """Response schema for PR item."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     estimated_total: Decimal
 
@@ -87,10 +87,8 @@ class PurchaseRequisitionUpdate(BaseModel):
     items: Optional[List[PRItemCreate]] = None
 
 
-class PurchaseRequisitionResponse(PurchaseRequisitionBase):
+class PurchaseRequisitionResponse(BaseResponseSchema):
     """Response schema for PR."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     requisition_number: str
     status: str
@@ -152,10 +150,8 @@ class POItemCreate(POItemBase):
     pass
 
 
-class POItemResponse(POItemBase):
+class POItemResponse(BaseResponseSchema):
     """Response schema for PO item."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     line_number: int
     discount_amount: Decimal
@@ -195,10 +191,8 @@ class PODeliveryScheduleCreate(PODeliveryScheduleBase):
     pass
 
 
-class PODeliveryScheduleResponse(PODeliveryScheduleBase):
+class PODeliveryScheduleResponse(BaseResponseSchema):
     """Response schema for delivery schedule."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     lot_number: int
     lot_value: Decimal
@@ -231,10 +225,8 @@ class PODeliveryScheduleResponse(PODeliveryScheduleBase):
     is_fully_paid: Optional[bool] = None
 
 
-class PODeliveryScheduleBrief(BaseModel):
+class PODeliveryScheduleBrief(BaseResponseSchema):
     """Brief schema for delivery schedule list."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     lot_number: int
     lot_name: str
@@ -311,15 +303,13 @@ class PurchaseOrderUpdate(BaseModel):
     internal_notes: Optional[str] = None
 
 
-class PurchaseOrderResponse(BaseModel):
+class PurchaseOrderResponse(BaseResponseSchema):
     """Response schema for PO.
 
     IMPORTANT: This schema must ONLY include fields that exist as columns
     or properties in the PurchaseOrder model. Do NOT add fields that would
     need to come from relationships - those must be loaded separately.
     """
-    model_config = ConfigDict(from_attributes=True)
-
     # Core identifiers
     id: UUID
     po_number: str
@@ -399,10 +389,8 @@ class POWarehouseBrief(BaseModel):
     name: Optional[str] = None
 
 
-class POBrief(BaseModel):
+class POBrief(BaseResponseSchema):
     """Brief PO for list display."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     po_number: str
     po_date: date
@@ -470,10 +458,8 @@ class GRNItemCreate(GRNItemBase):
     pass
 
 
-class GRNItemResponse(GRNItemBase):
+class GRNItemResponse(BaseResponseSchema):
     """Response schema for GRN item."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     unit_price: Decimal
     accepted_value: Decimal
@@ -509,10 +495,8 @@ class GoodsReceiptUpdate(BaseModel):
     receiving_remarks: Optional[str] = None
 
 
-class GoodsReceiptResponse(GoodsReceiptBase):
+class GoodsReceiptResponse(BaseResponseSchema):
     """Response schema for GRN."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     grn_number: str
     grn_date: date
@@ -537,10 +521,8 @@ class GoodsReceiptResponse(GoodsReceiptBase):
     updated_at: datetime
 
 
-class GRNBrief(BaseModel):
+class GRNBrief(BaseResponseSchema):
     """Brief GRN for listing."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     grn_number: str
     grn_date: date
@@ -613,10 +595,8 @@ class VendorInvoiceUpdate(BaseModel):
     internal_notes: Optional[str] = None
 
 
-class VendorInvoiceResponse(VendorInvoiceBase):
+class VendorInvoiceResponse(BaseResponseSchema):
     """Response schema for Vendor Invoice."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     our_reference: str
     status: str
@@ -641,10 +621,8 @@ class VendorInvoiceResponse(VendorInvoiceBase):
     updated_at: datetime
 
 
-class VendorInvoiceBrief(BaseModel):
+class VendorInvoiceBrief(BaseResponseSchema):
     """Brief vendor invoice."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     our_reference: str
     invoice_number: str
@@ -761,10 +739,8 @@ class VendorProformaItemCreate(VendorProformaItemBase):
     pass
 
 
-class VendorProformaItemResponse(VendorProformaItemBase):
+class VendorProformaItemResponse(BaseResponseSchema):
     """Response schema for Vendor Proforma item."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     proforma_id: UUID
     discount_amount: Decimal
@@ -813,10 +789,8 @@ class VendorProformaUpdate(BaseModel):
     internal_notes: Optional[str] = None
 
 
-class VendorProformaResponse(VendorProformaBase):
+class VendorProformaResponse(BaseResponseSchema):
     """Response schema for Vendor Proforma Invoice."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     our_reference: str
     status: str
@@ -841,10 +815,8 @@ class VendorProformaResponse(VendorProformaBase):
     updated_at: datetime
 
 
-class VendorProformaBrief(BaseModel):
+class VendorProformaBrief(BaseResponseSchema):
     """Brief vendor proforma for listing."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     our_reference: str
     proforma_number: str
@@ -897,10 +869,8 @@ class SRNItemCreate(BaseModel):
     remarks: Optional[str] = None
 
 
-class SRNItemResponse(BaseModel):
+class SRNItemResponse(BaseResponseSchema):
     """Response schema for SRN item."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     srn_id: UUID
     order_item_id: Optional[UUID] = None
@@ -958,10 +928,8 @@ class SalesReturnCreate(BaseModel):
     items: List[SRNItemCreate]
 
 
-class SalesReturnResponse(BaseModel):
+class SalesReturnResponse(BaseResponseSchema):
     """Response schema for Sales Return Note."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     srn_number: str
     srn_date: date
@@ -1032,10 +1000,8 @@ class SalesReturnResponse(BaseModel):
     updated_at: datetime
 
 
-class SRNBrief(BaseModel):
+class SRNBrief(BaseResponseSchema):
     """Brief SRN for listing."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     srn_number: str
     srn_date: date

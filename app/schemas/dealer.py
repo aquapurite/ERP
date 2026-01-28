@@ -5,6 +5,8 @@ from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, field_validator
 
+from app.schemas.base import BaseResponseSchema
+
 from app.models.dealer import (
     DealerType, DealerStatus, DealerTier, CreditStatus,
     TransactionType, SchemeType
@@ -161,10 +163,8 @@ class DealerUpdate(BaseModel):
     internal_notes: Optional[str] = None
 
 
-class DealerResponse(DealerBase):
+class DealerResponse(BaseResponseSchema):
     """Response schema for Dealer."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     dealer_code: str
     status: str
@@ -280,10 +280,8 @@ class DealerPricingUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class DealerPricingResponse(DealerPricingBase):
+class DealerPricingResponse(BaseResponseSchema):
     """Response schema for DealerPricing."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     dealer_margin: Decimal
     created_at: datetime
@@ -315,10 +313,8 @@ class DealerTierPricingCreate(DealerTierPricingBase):
     pass
 
 
-class DealerTierPricingResponse(DealerTierPricingBase):
+class DealerTierPricingResponse(BaseResponseSchema):
     """Response schema for tier pricing."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     created_at: datetime
     updated_at: datetime
@@ -348,10 +344,8 @@ class DealerCreditLedgerCreate(DealerCreditLedgerBase):
     pass
 
 
-class DealerCreditLedgerResponse(DealerCreditLedgerBase):
+class DealerCreditLedgerResponse(BaseResponseSchema):
     """Response schema for ledger entry."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     balance: Decimal
     is_settled: bool
@@ -416,10 +410,8 @@ class DealerTargetUpdate(BaseModel):
     incentive_percentage: Optional[Decimal] = None
 
 
-class DealerTargetResponse(DealerTargetBase):
+class DealerTargetResponse(BaseResponseSchema):
     """Response schema for DealerTarget."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     revenue_achieved: Decimal
     quantity_achieved: int
@@ -476,10 +468,8 @@ class DealerSchemeUpdate(BaseModel):
     terms_and_conditions: Optional[str] = None
 
 
-class DealerSchemeResponse(DealerSchemeBase):
+class DealerSchemeResponse(BaseResponseSchema):
     """Response schema for DealerScheme."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     utilized_budget: Decimal
     budget_remaining: Optional[Decimal] = None
@@ -507,10 +497,8 @@ class DealerSchemeApplicationCreate(BaseModel):
     product_ids: List[UUID] = []
 
 
-class DealerSchemeApplicationResponse(BaseModel):
+class DealerSchemeApplicationResponse(BaseResponseSchema):
     """Response schema for scheme application."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     scheme_id: UUID
     dealer_id: UUID

@@ -1,11 +1,13 @@
 """Storefront schemas for public D2C website API."""
 from pydantic import BaseModel, Field, computed_field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 
 
 # ==================== Product Sub-schemas ====================
 
-class StorefrontProductImage(BaseModel):
+class StorefrontProductImage(BaseResponseSchema):
     """Product image for storefront."""
     id: str = Field(..., description="Image ID")
     image_url: str = Field(..., description="Image URL")
@@ -13,12 +15,7 @@ class StorefrontProductImage(BaseModel):
     alt_text: Optional[str] = Field(None, description="Alt text for accessibility")
     is_primary: bool = Field(False, description="Whether this is the primary image")
     sort_order: int = Field(0, description="Display order")
-
-    class Config:
-        from_attributes = True
-
-
-class StorefrontProductVariant(BaseModel):
+class StorefrontProductVariant(BaseResponseSchema):
     """Product variant for storefront."""
     id: str = Field(..., description="Variant ID")
     name: str = Field(..., description="Variant name")
@@ -29,36 +26,21 @@ class StorefrontProductVariant(BaseModel):
     stock_quantity: Optional[int] = Field(None, description="Stock quantity")
     image_url: Optional[str] = Field(None, description="Variant image URL")
     is_active: bool = Field(True, description="Whether variant is active")
-
-    class Config:
-        from_attributes = True
-
-
-class StorefrontProductSpecification(BaseModel):
+class StorefrontProductSpecification(BaseResponseSchema):
     """Product specification for storefront."""
     id: str = Field(..., description="Specification ID")
     group_name: Optional[str] = Field(None, description="Specification group")
     key: str = Field(..., description="Specification key/name")
     value: str = Field(..., description="Specification value")
     sort_order: Optional[int] = Field(0, description="Display order")
-
-    class Config:
-        from_attributes = True
-
-
-class StorefrontProductDocument(BaseModel):
+class StorefrontProductDocument(BaseResponseSchema):
     """Product document for storefront."""
     id: str = Field(..., description="Document ID")
     title: str = Field(..., description="Document title")
     document_type: str = Field(..., description="Document type")
     file_url: str = Field(..., description="Document file URL")
     file_size_bytes: Optional[int] = Field(None, description="File size in bytes")
-
-    class Config:
-        from_attributes = True
-
-
-class StorefrontProductResponse(BaseModel):
+class StorefrontProductResponse(BaseResponseSchema):
     """Product response for storefront."""
     id: str = Field(..., description="Product ID")
     name: str = Field(..., description="Product name")
@@ -89,11 +71,7 @@ class StorefrontProductResponse(BaseModel):
     in_stock: bool = Field(True, description="Whether product is in stock")
     stock_quantity: int = Field(0, description="Available stock quantity")
 
-    class Config:
-        from_attributes = True
-
-
-class StorefrontCategoryResponse(BaseModel):
+class StorefrontCategoryResponse(BaseResponseSchema):
     """Category response for storefront."""
     id: str = Field(..., description="Category ID")
     name: str = Field(..., description="Category name")
@@ -106,16 +84,11 @@ class StorefrontCategoryResponse(BaseModel):
     is_featured: Optional[bool] = Field(False, description="Featured category flag")
     product_count: int = Field(0, description="Number of products in this category")
     children: List["StorefrontCategoryResponse"] = Field([], description="Child categories")
-
-    class Config:
-        from_attributes = True
-
-
 # Enable forward reference resolution
 StorefrontCategoryResponse.model_rebuild()
 
 
-class StorefrontBrandResponse(BaseModel):
+class StorefrontBrandResponse(BaseResponseSchema):
     """Brand response for storefront."""
     id: str = Field(..., description="Brand ID")
     name: str = Field(..., description="Brand name")
@@ -131,10 +104,6 @@ class StorefrontBrandResponse(BaseModel):
         """Alias for slug - frontend expects 'code' field."""
         return self.slug
 
-    class Config:
-        from_attributes = True
-
-
 class PaginatedProductsResponse(BaseModel):
     """Paginated products response."""
     items: List[StorefrontProductResponse] = Field(..., description="Product items")
@@ -144,7 +113,7 @@ class PaginatedProductsResponse(BaseModel):
     pages: int = Field(..., description="Total pages")
 
 
-class StorefrontCompanyInfo(BaseModel):
+class StorefrontCompanyInfo(BaseResponseSchema):
     """Public company info for storefront."""
     name: str = Field(..., description="Company legal name")
     trade_name: Optional[str] = Field(None, description="Trade name")
@@ -158,14 +127,9 @@ class StorefrontCompanyInfo(BaseModel):
     city: str = Field(..., description="City")
     state: str = Field(..., description="State")
     pincode: str = Field(..., description="Pincode")
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== Search Suggestions ====================
 
-class SearchProductSuggestion(BaseModel):
+class SearchProductSuggestion(BaseResponseSchema):
     """Product suggestion in search results."""
     id: str = Field(..., description="Product ID")
     name: str = Field(..., description="Product name")
@@ -173,34 +137,19 @@ class SearchProductSuggestion(BaseModel):
     image_url: Optional[str] = Field(None, description="Primary image URL")
     price: float = Field(..., description="Selling price")
     mrp: float = Field(..., description="MRP")
-
-    class Config:
-        from_attributes = True
-
-
-class SearchCategorySuggestion(BaseModel):
+class SearchCategorySuggestion(BaseResponseSchema):
     """Category suggestion in search results."""
     id: str = Field(..., description="Category ID")
     name: str = Field(..., description="Category name")
     slug: str = Field(..., description="URL slug")
     image_url: Optional[str] = Field(None, description="Category image")
     product_count: int = Field(0, description="Number of products in category")
-
-    class Config:
-        from_attributes = True
-
-
-class SearchBrandSuggestion(BaseModel):
+class SearchBrandSuggestion(BaseResponseSchema):
     """Brand suggestion in search results."""
     id: str = Field(..., description="Brand ID")
     name: str = Field(..., description="Brand name")
     slug: str = Field(..., description="URL slug")
     logo_url: Optional[str] = Field(None, description="Brand logo")
-
-    class Config:
-        from_attributes = True
-
-
 class SearchSuggestionsResponse(BaseModel):
     """Search suggestions response with products, categories, and brands."""
     products: List[SearchProductSuggestion] = Field([], description="Product suggestions")
@@ -226,18 +175,13 @@ class DemoBookingRequest(BaseModel):
     notes: Optional[str] = Field(None, description="Questions or notes")
 
 
-class DemoBookingResponse(BaseModel):
+class DemoBookingResponse(BaseResponseSchema):
     """Response after booking a demo."""
     success: bool = Field(..., description="Whether booking was successful")
     booking_id: str = Field(..., description="Booking ID")
     booking_number: str = Field(..., description="Booking reference number")
     message: str = Field(..., description="Confirmation message")
     estimated_callback: Optional[str] = Field(None, description="Estimated callback time")
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== Exchange Calculator Schemas ====================
 
 class ExchangeCalculateRequest(BaseModel):
@@ -259,7 +203,7 @@ class ExchangeCalculateResponse(BaseModel):
 
 # ==================== Video Guide Schemas ====================
 
-class VideoGuideResponse(BaseModel):
+class VideoGuideResponse(BaseResponseSchema):
     """Video guide response for storefront."""
     id: str = Field(..., description="Guide ID")
     title: str = Field(..., description="Guide title")
@@ -274,10 +218,6 @@ class VideoGuideResponse(BaseModel):
     product_name: Optional[str] = Field(None, description="Associated product name")
     view_count: int = Field(0, description="Number of views")
     is_featured: bool = Field(False, description="Featured guide flag")
-
-    class Config:
-        from_attributes = True
-
 
 class VideoGuideListResponse(BaseModel):
     """Paginated video guides response."""

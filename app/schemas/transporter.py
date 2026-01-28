@@ -1,5 +1,7 @@
 """Pydantic schemas for Transporter/Carrier models."""
 from pydantic import BaseModel, Field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 from datetime import datetime
 import uuid
@@ -97,7 +99,7 @@ class TransporterUpdate(BaseModel):
     priority: Optional[int] = None
 
 
-class TransporterResponse(BaseModel):
+class TransporterResponse(BaseResponseSchema):
     """Transporter response schema."""
     id: uuid.UUID
     code: str
@@ -122,21 +124,12 @@ class TransporterResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
-
-class TransporterBrief(BaseModel):
+class TransporterBrief(BaseResponseSchema):
     """Brief transporter info."""
     id: uuid.UUID
     code: str
     name: str
     transporter_type: TransporterType
-
-    class Config:
-        from_attributes = True
-
-
 class TransporterListResponse(BaseModel):
     """Paginated transporter list."""
     items: List[TransporterResponse]
@@ -174,7 +167,7 @@ class ServiceabilityBulkCreate(BaseModel):
     items: List[ServiceabilityCreate]
 
 
-class ServiceabilityResponse(BaseModel):
+class ServiceabilityResponse(BaseResponseSchema):
     """Serviceability response schema."""
     id: uuid.UUID
     transporter_id: uuid.UUID
@@ -190,10 +183,6 @@ class ServiceabilityResponse(BaseModel):
     cod_charge: Optional[float] = None
     zone: Optional[str] = None
     created_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class ServiceabilityCheckRequest(BaseModel):
     """Check serviceability request."""

@@ -1,20 +1,17 @@
 from pydantic import BaseModel, Field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 from datetime import datetime
 import uuid
 
 
-class ModuleBasicInfo(BaseModel):
+class ModuleBasicInfo(BaseResponseSchema):
     """Basic module info for permission response."""
     id: uuid.UUID
     name: str
     code: str
-
-    class Config:
-        from_attributes = True
-
-
-class PermissionResponse(BaseModel):
+class PermissionResponse(BaseResponseSchema):
     """Permission response schema."""
     id: uuid.UUID
     name: str
@@ -25,10 +22,6 @@ class PermissionResponse(BaseModel):
     module: Optional[ModuleBasicInfo] = None
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class PermissionListResponse(BaseModel):
     """Paginated permission list response."""

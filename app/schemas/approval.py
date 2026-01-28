@@ -10,6 +10,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.schemas.base import BaseResponseSchema
+
 from app.models.approval import ApprovalEntityType, ApprovalLevel, ApprovalStatus
 
 
@@ -80,17 +82,12 @@ class ReassignRequest(BaseModel):
 
 # ============== Response Schemas ==============
 
-class UserBrief(BaseModel):
+class UserBrief(BaseResponseSchema):
     """Brief user info for responses."""
     id: UUID
     name: Optional[str] = None
     email: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
-
-class ApprovalHistoryResponse(BaseModel):
+class ApprovalHistoryResponse(BaseResponseSchema):
     """Response schema for approval history item."""
     id: UUID
     action: str
@@ -101,11 +98,7 @@ class ApprovalHistoryResponse(BaseModel):
     actor_name: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
-
-class ApprovalRequestResponse(BaseModel):
+class ApprovalRequestResponse(BaseResponseSchema):
     """Response schema for approval request."""
     id: UUID
     request_number: str
@@ -160,11 +153,7 @@ class ApprovalRequestResponse(BaseModel):
     # History (optional, can be fetched separately)
     history: Optional[List[ApprovalHistoryResponse]] = None
 
-    class Config:
-        from_attributes = True
-
-
-class ApprovalRequestBrief(BaseModel):
+class ApprovalRequestBrief(BaseResponseSchema):
     """Brief approval request for list views."""
     id: UUID
     request_number: str
@@ -177,11 +166,6 @@ class ApprovalRequestBrief(BaseModel):
     requester_name: Optional[str] = None
     requested_at: datetime
     is_overdue: bool = False
-
-    class Config:
-        from_attributes = True
-
-
 class ApprovalListResponse(BaseModel):
     """Response schema for listing approval requests."""
     items: List[ApprovalRequestBrief]

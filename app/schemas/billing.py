@@ -5,6 +5,8 @@ from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
+from app.schemas.base import BaseResponseSchema
+
 from app.models.billing import (
     InvoiceType, InvoiceStatus, DocumentType, NoteReason,
     EWayBillStatus, PaymentMode
@@ -41,10 +43,8 @@ class InvoiceItemCreate(InvoiceItemBase):
     pass
 
 
-class InvoiceItemResponse(InvoiceItemBase):
+class InvoiceItemResponse(BaseResponseSchema):
     """Response schema for InvoiceItem."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     discount_amount: Decimal
     taxable_value: Decimal
@@ -139,10 +139,8 @@ class InvoiceUpdate(BaseModel):
     payment_terms: Optional[str] = None
 
 
-class InvoiceResponse(InvoiceBase):
+class InvoiceResponse(BaseResponseSchema):
     """Response schema for Invoice."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     invoice_number: str
     invoice_series: Optional[str] = None
@@ -215,10 +213,8 @@ class InvoiceListResponse(BaseModel):
     total_value: Decimal = Decimal("0")
 
 
-class InvoiceBrief(BaseModel):
+class InvoiceBrief(BaseResponseSchema):
     """Brief invoice for listing."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     invoice_number: str
     invoice_date: date
@@ -275,10 +271,8 @@ class CreditDebitNoteItemCreate(CreditDebitNoteItemBase):
     pass
 
 
-class CreditDebitNoteItemResponse(CreditDebitNoteItemBase):
+class CreditDebitNoteItemResponse(BaseResponseSchema):
     """Response schema for note item."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     taxable_value: Decimal
     cgst_amount: Decimal
@@ -311,10 +305,8 @@ class CreditDebitNoteCreate(CreditDebitNoteBase):
     items: List[CreditDebitNoteItemCreate] = Field(..., min_length=1)
 
 
-class CreditDebitNoteResponse(CreditDebitNoteBase):
+class CreditDebitNoteResponse(BaseResponseSchema):
     """Response schema for CreditDebitNote."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     note_number: str
     status: str
@@ -364,10 +356,8 @@ class EWayBillItemCreate(EWayBillItemBase):
     pass
 
 
-class EWayBillItemResponse(EWayBillItemBase):
+class EWayBillItemResponse(BaseResponseSchema):
     """Response schema for EWayBillItem."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     cgst_amount: Decimal
     sgst_amount: Decimal
@@ -419,10 +409,8 @@ class EWayBillCreate(EWayBillBase):
     items: List[EWayBillItemCreate] = Field(..., min_length=1)
 
 
-class EWayBillResponse(EWayBillBase):
+class EWayBillResponse(BaseResponseSchema):
     """Response schema for EWayBill."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     eway_bill_number: Optional[str] = None
     status: str
@@ -508,10 +496,8 @@ class PaymentReceiptCreate(PaymentReceiptBase):
     pass
 
 
-class PaymentReceiptResponse(PaymentReceiptBase):
+class PaymentReceiptResponse(BaseResponseSchema):
     """Response schema for PaymentReceipt."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     receipt_number: str
     tds_amount: Optional[Decimal] = None
@@ -554,10 +540,8 @@ class InvoiceNumberSequenceCreate(InvoiceNumberSequenceBase):
     pass
 
 
-class InvoiceNumberSequenceResponse(InvoiceNumberSequenceBase):
+class InvoiceNumberSequenceResponse(BaseResponseSchema):
     """Response schema for InvoiceNumberSequence."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     current_number: int
     created_at: datetime

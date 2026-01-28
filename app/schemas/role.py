@@ -1,4 +1,6 @@
 from pydantic import BaseModel, Field, field_validator
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List, Literal
 from datetime import datetime
 import uuid
@@ -66,19 +68,14 @@ class RoleUpdate(BaseModel):
         return v  # Let Pydantic handle validation error for invalid values
 
 
-class PermissionBasicInfo(BaseModel):
+class PermissionBasicInfo(BaseResponseSchema):
     """Basic permission info for role response."""
     id: uuid.UUID
     name: str
     code: str
     action: Optional[str] = None
     module_name: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
-
-class RoleResponse(BaseModel):
+class RoleResponse(BaseResponseSchema):
     """Role response schema."""
     id: uuid.UUID
     name: str
@@ -91,10 +88,6 @@ class RoleResponse(BaseModel):
     permission_count: int = 0
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class RoleWithPermissions(RoleResponse):
     """Role response with permissions."""

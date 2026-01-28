@@ -1,4 +1,6 @@
 from pydantic import BaseModel, Field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 from datetime import datetime
 import uuid
@@ -28,7 +30,7 @@ class RegionUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class RegionResponse(BaseModel):
+class RegionResponse(BaseResponseSchema):
     """Region response schema."""
     id: uuid.UUID
     name: str
@@ -39,10 +41,6 @@ class RegionResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class RegionWithChildren(RegionResponse):
     """Region response with children."""

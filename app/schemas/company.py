@@ -4,6 +4,8 @@ from typing import Optional, List, Annotated
 from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, PlainSerializer, field_validator
+
+from app.schemas.base import BaseResponseSchema
 import re
 
 from app.models.company import CompanyType, GSTRegistrationType
@@ -214,10 +216,8 @@ class CompanyUpdate(BaseModel):
         return v
 
 
-class CompanyResponse(CompanyBase):
+class CompanyResponse(BaseResponseSchema):
     """Response schema for Company."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     is_active: bool
     is_primary: bool
@@ -229,10 +229,8 @@ class CompanyResponse(CompanyBase):
     gst_state_name: Optional[str] = None
 
 
-class CompanyBrief(BaseModel):
+class CompanyBrief(BaseResponseSchema):
     """Brief company info for dropdowns."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     code: str
     legal_name: str
@@ -309,10 +307,8 @@ class CompanyBranchUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class CompanyBranchResponse(CompanyBranchBase):
+class CompanyBranchResponse(BaseResponseSchema):
     """Response schema for CompanyBranch."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     company_id: UUID
     is_active: bool
@@ -320,10 +316,8 @@ class CompanyBranchResponse(CompanyBranchBase):
     updated_at: datetime
 
 
-class CompanyBranchBrief(BaseModel):
+class CompanyBranchBrief(BaseResponseSchema):
     """Brief branch info for dropdowns."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     code: str
     name: str
@@ -377,10 +371,8 @@ class CompanyBankAccountUpdate(BaseModel):
     show_on_invoice: Optional[bool] = None
 
 
-class CompanyBankAccountResponse(CompanyBankAccountBase):
+class CompanyBankAccountResponse(BaseResponseSchema):
     """Response schema for CompanyBankAccount."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     company_id: UUID
     is_active: bool
@@ -388,10 +380,8 @@ class CompanyBankAccountResponse(CompanyBankAccountBase):
     ledger_account_id: Optional[UUID] = None  # Link to Chart of Accounts for Journal Entries
 
 
-class CompanyBankAccountBrief(BaseModel):
+class CompanyBankAccountBrief(BaseResponseSchema):
     """Brief bank account info."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     bank_name: str
     account_number: str  # Last 4 digits only in actual response

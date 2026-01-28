@@ -5,6 +5,8 @@ from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict, field_validator, field_serializer
 
+from app.schemas.base import BaseResponseSchema
+
 from app.models.accounting import (
     AccountType, AccountSubType,
     FinancialPeriodStatus as PeriodStatus,
@@ -52,10 +54,8 @@ class ChartOfAccountUpdate(BaseModel):
     bank_ifsc: Optional[str] = None
 
 
-class ChartOfAccountResponse(BaseModel):
+class ChartOfAccountResponse(BaseResponseSchema):
     """Response schema for ChartOfAccount."""
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
-
     id: UUID
     account_code: str
     account_name: str
@@ -142,10 +142,8 @@ class FinancialPeriodUpdate(BaseModel):
     status: Optional[PeriodStatus] = None
 
 
-class FinancialPeriodResponse(BaseModel):
+class FinancialPeriodResponse(BaseResponseSchema):
     """Response schema for FinancialPeriod."""
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
-
     id: UUID
     period_name: str
     period_code: Optional[str] = None
@@ -208,10 +206,8 @@ class CostCenterUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class CostCenterResponse(CostCenterBase):
+class CostCenterResponse(BaseResponseSchema):
     """Response schema for CostCenter."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     current_spend: Decimal = Decimal("0")
     created_at: datetime
@@ -238,14 +234,17 @@ class JournalEntryLineCreate(JournalEntryLineBase):
     pass
 
 
-class JournalEntryLineResponse(JournalEntryLineBase):
+class JournalEntryLineResponse(BaseResponseSchema):
     """Response schema for JournalEntryLine."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     line_number: int
+    account_id: UUID
     account_code: Optional[str] = None
     account_name: Optional[str] = None
+    description: Optional[str] = None
+    debit_amount: Decimal = Decimal("0")
+    credit_amount: Decimal = Decimal("0")
+    cost_center_id: Optional[UUID] = None
 
     # Serialize Decimal as float for JSON (frontend expects numbers, not strings)
     @field_serializer('debit_amount', 'credit_amount')
@@ -310,10 +309,8 @@ class JournalEntryUpdate(BaseModel):
         return v
 
 
-class JournalEntryResponse(JournalEntryBase):
+class JournalEntryResponse(BaseResponseSchema):
     """Response schema for JournalEntry."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     entry_number: str
     period_id: UUID
@@ -392,10 +389,8 @@ class JournalRejectRequest(BaseModel):
     reason: str = Field(..., min_length=5, max_length=500, description="Reason for rejection")
 
 
-class JournalApprovalResponse(BaseModel):
+class JournalApprovalResponse(BaseResponseSchema):
     """Response for approval operations."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     entry_number: str
     status: str
@@ -455,10 +450,8 @@ class ApprovalHistoryResponse(BaseModel):
 
 # ==================== GeneralLedger Schemas ====================
 
-class GeneralLedgerResponse(BaseModel):
+class GeneralLedgerResponse(BaseResponseSchema):
     """Response schema for GeneralLedger."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     account_id: UUID
     period_id: UUID
@@ -552,10 +545,8 @@ class TaxConfigurationUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class TaxConfigurationResponse(TaxConfigurationBase):
+class TaxConfigurationResponse(BaseResponseSchema):
     """Response schema for TaxConfiguration."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     created_at: datetime
     updated_at: datetime

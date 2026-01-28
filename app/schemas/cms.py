@@ -3,6 +3,8 @@ from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict, field_validator
+
+from app.schemas.base import BaseResponseSchema
 from enum import Enum
 
 
@@ -68,20 +70,16 @@ class CMSBannerUpdate(BaseModel):
     ends_at: Optional[datetime] = None
 
 
-class CMSBannerResponse(CMSBannerBase):
+class CMSBannerResponse(BaseResponseSchema):
     """Response schema for banner."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     created_at: datetime
     updated_at: datetime
     created_by: Optional[UUID] = None
 
 
-class CMSBannerBrief(BaseModel):
+class CMSBannerBrief(BaseResponseSchema):
     """Brief banner info for lists."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     title: str
     image_url: str
@@ -121,10 +119,8 @@ class CMSUspUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class CMSUspResponse(CMSUspBase):
+class CMSUspResponse(BaseResponseSchema):
     """Response schema for USP."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     created_at: datetime
     updated_at: datetime
@@ -170,10 +166,8 @@ class CMSTestimonialUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class CMSTestimonialResponse(CMSTestimonialBase):
+class CMSTestimonialResponse(BaseResponseSchema):
     """Response schema for testimonial."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     created_at: datetime
     updated_at: datetime
@@ -217,10 +211,8 @@ class CMSAnnouncementUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class CMSAnnouncementResponse(CMSAnnouncementBase):
+class CMSAnnouncementResponse(BaseResponseSchema):
     """Response schema for announcement."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     created_at: datetime
     updated_at: datetime
@@ -270,10 +262,8 @@ class CMSPageUpdate(BaseModel):
     sort_order: Optional[int] = Field(None, ge=0)
 
 
-class CMSPageVersionResponse(BaseModel):
+class CMSPageVersionResponse(BaseResponseSchema):
     """Response schema for page version."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     page_id: UUID
     version_number: int
@@ -286,10 +276,8 @@ class CMSPageVersionResponse(BaseModel):
     created_by: Optional[UUID] = None
 
 
-class CMSPageResponse(CMSPageBase):
+class CMSPageResponse(BaseResponseSchema):
     """Response schema for page."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     published_at: Optional[datetime] = None
     created_at: datetime
@@ -299,10 +287,8 @@ class CMSPageResponse(CMSPageBase):
     versions: List[CMSPageVersionResponse] = []
 
 
-class CMSPageBrief(BaseModel):
+class CMSPageBrief(BaseResponseSchema):
     """Brief page info for lists."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     title: str
     slug: str
@@ -350,10 +336,8 @@ class CMSSeoUpdate(BaseModel):
     structured_data: Optional[dict] = None
 
 
-class CMSSeoResponse(CMSSeoBase):
+class CMSSeoResponse(BaseResponseSchema):
     """Response schema for SEO settings."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     created_at: datetime
     updated_at: datetime
@@ -497,10 +481,8 @@ class CMSSiteSettingUpdate(BaseModel):
     sort_order: Optional[int] = None
 
 
-class CMSSiteSettingResponse(CMSSiteSettingBase):
+class CMSSiteSettingResponse(BaseResponseSchema):
     """Response schema for site setting."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     created_at: datetime
     updated_at: datetime
@@ -552,10 +534,8 @@ class CMSMenuItemUpdate(BaseModel):
     css_class: Optional[str] = Field(None, max_length=100)
 
 
-class CMSMenuItemResponse(CMSMenuItemBase):
+class CMSMenuItemResponse(BaseResponseSchema):
     """Response schema for menu item."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     created_at: datetime
     updated_at: datetime
@@ -592,10 +572,8 @@ class CMSFeatureBarUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class CMSFeatureBarResponse(CMSFeatureBarBase):
+class CMSFeatureBarResponse(BaseResponseSchema):
     """Response schema for feature bar item."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     created_at: datetime
     updated_at: datetime
@@ -648,10 +626,8 @@ class CMSMegaMenuItemUpdate(BaseModel):
     highlight_text: Optional[str] = Field(None, max_length=20)
 
 
-class CMSMegaMenuItemResponse(CMSMegaMenuItemBase):
+class CMSMegaMenuItemResponse(BaseResponseSchema):
     """Response schema for mega menu item."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     company_id: Optional[UUID] = None
     created_at: datetime

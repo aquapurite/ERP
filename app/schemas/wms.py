@@ -1,5 +1,7 @@
 """Pydantic schemas for WMS (Warehouse Management System) models."""
 from pydantic import BaseModel, Field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 from datetime import datetime
 import uuid
@@ -39,7 +41,7 @@ class ZoneUpdate(BaseModel):
     sort_order: Optional[int] = None
 
 
-class ZoneResponse(BaseModel):
+class ZoneResponse(BaseResponseSchema):
     """Warehouse zone response schema."""
     id: uuid.UUID
     warehouse_id: uuid.UUID
@@ -59,21 +61,12 @@ class ZoneResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
-
-class ZoneBrief(BaseModel):
+class ZoneBrief(BaseResponseSchema):
     """Brief zone info."""
     id: uuid.UUID
     zone_code: str
     zone_name: str
     zone_type: str  # VARCHAR in DB
-
-    class Config:
-        from_attributes = True
-
-
 class ZoneListResponse(BaseModel):
     """Paginated zone list."""
     items: List[ZoneResponse]
@@ -144,7 +137,7 @@ class BinUpdate(BaseModel):
     pick_sequence: Optional[int] = None
 
 
-class BinResponse(BaseModel):
+class BinResponse(BaseResponseSchema):
     """Warehouse bin response schema."""
     id: uuid.UUID
     warehouse_id: uuid.UUID
@@ -177,21 +170,12 @@ class BinResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
-
-class BinBrief(BaseModel):
+class BinBrief(BaseResponseSchema):
     """Brief bin info."""
     id: uuid.UUID
     bin_code: str
     bin_type: str  # VARCHAR in DB
     current_items: int
-
-    class Config:
-        from_attributes = True
-
-
 class BinListResponse(BaseModel):
     """Paginated bin list."""
     items: List[BinResponse]
@@ -267,7 +251,7 @@ class PutAwayRuleUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class PutAwayRuleResponse(BaseModel):
+class PutAwayRuleResponse(BaseResponseSchema):
     """PutAway rule response schema."""
     id: uuid.UUID
     warehouse_id: uuid.UUID
@@ -283,10 +267,6 @@ class PutAwayRuleResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class PutAwayRuleListResponse(BaseModel):
     """Paginated putaway rule list."""

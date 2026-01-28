@@ -6,6 +6,8 @@ from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 
+from app.schemas.base import BaseResponseSchema
+
 from app.models.channel import ChannelType, ChannelStatus, PricingRuleType
 
 
@@ -101,10 +103,8 @@ class SalesChannelUpdate(BaseModel):
     sync_interval_minutes: Optional[int] = None
 
 
-class SalesChannelResponse(SalesChannelBase):
+class SalesChannelResponse(BaseResponseSchema):
     """Response schema for SalesChannel."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     config: Optional[dict] = None
     last_sync_at: Optional[datetime] = None
@@ -207,10 +207,8 @@ class ChannelPricingUpdate(BaseModel):
         return self
 
 
-class ChannelPricingResponse(ChannelPricingBase):
+class ChannelPricingResponse(BaseResponseSchema):
     """Response schema for ChannelPricing."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     margin_percentage: Decimal
     # Product details from joined Product table
@@ -267,10 +265,8 @@ class ChannelInventoryUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class ChannelInventoryResponse(ChannelInventoryBase):
+class ChannelInventoryResponse(BaseResponseSchema):
     """Response schema for ChannelInventory."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     marketplace_quantity: int
     available_quantity: int
@@ -314,10 +310,8 @@ class ChannelOrderCreate(BaseModel):
     raw_order_data: Optional[dict] = None
 
 
-class ChannelOrderResponse(ChannelOrderBase):
+class ChannelOrderResponse(BaseResponseSchema):
     """Response schema for ChannelOrder."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     raw_order_data: Optional[dict] = None
     synced_at: datetime
@@ -435,10 +429,8 @@ class ProductChannelSettingsUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class ProductChannelSettingsResponse(ProductChannelSettingsBase):
+class ProductChannelSettingsResponse(BaseResponseSchema):
     """Response schema for ProductChannelSettings."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     created_at: datetime
     updated_at: datetime
@@ -590,10 +582,8 @@ class MarketplaceSyncResponse(BaseModel):
 
 # ==================== Channel Inventory Extended Schemas ====================
 
-class ChannelInventoryExtendedResponse(ChannelInventoryResponse):
+class ChannelInventoryExtendedResponse(BaseResponseSchema):
     """Extended channel inventory response with additional computed fields."""
-    model_config = ConfigDict(from_attributes=True)
-
     # Product details
     product_name: Optional[str] = None
     product_sku: Optional[str] = None
@@ -671,10 +661,8 @@ class PricingRuleUpdate(BaseModel):
     max_uses_per_customer: Optional[int] = None
 
 
-class PricingRuleResponse(PricingRuleBase):
+class PricingRuleResponse(BaseResponseSchema):
     """Response schema for PricingRule."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     current_uses: int = 0
     created_at: datetime
@@ -692,10 +680,8 @@ class PricingRuleListResponse(BaseModel):
 
 # ==================== Pricing History Schemas ====================
 
-class PricingHistoryResponse(BaseModel):
+class PricingHistoryResponse(BaseResponseSchema):
     """Response schema for PricingHistory."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     entity_type: str
     entity_id: UUID

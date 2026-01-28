@@ -1,4 +1,6 @@
 from pydantic import BaseModel, Field, field_validator, computed_field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List, Any, Union
 from datetime import datetime
 from decimal import Decimal
@@ -18,7 +20,7 @@ class ProductImageCreate(BaseModel):
     sort_order: int = 0
 
 
-class ProductImageResponse(BaseModel):
+class ProductImageResponse(BaseResponseSchema):
     """Product image response."""
     id: uuid.UUID
     image_url: str
@@ -26,11 +28,6 @@ class ProductImageResponse(BaseModel):
     alt_text: Optional[str] = None
     is_primary: bool
     sort_order: int
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== SPECIFICATION SCHEMAS ====================
 
 class ProductSpecCreate(BaseModel):
@@ -41,18 +38,13 @@ class ProductSpecCreate(BaseModel):
     sort_order: int = 0
 
 
-class ProductSpecResponse(BaseModel):
+class ProductSpecResponse(BaseResponseSchema):
     """Product specification response."""
     id: uuid.UUID
     group_name: str
     key: str
     value: str
     sort_order: int
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== VARIANT SCHEMAS ====================
 
 class ProductVariantCreate(BaseModel):
@@ -79,7 +71,7 @@ class ProductVariantUpdate(BaseModel):
     sort_order: Optional[int] = None
 
 
-class ProductVariantResponse(BaseModel):
+class ProductVariantResponse(BaseResponseSchema):
     """Product variant response."""
     id: uuid.UUID
     name: str
@@ -93,11 +85,6 @@ class ProductVariantResponse(BaseModel):
     sort_order: int
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== DOCUMENT SCHEMAS ====================
 
 class ProductDocumentCreate(BaseModel):
@@ -110,7 +97,7 @@ class ProductDocumentCreate(BaseModel):
     sort_order: int = 0
 
 
-class ProductDocumentResponse(BaseModel):
+class ProductDocumentResponse(BaseResponseSchema):
     """Product document response."""
     id: uuid.UUID
     title: str
@@ -120,11 +107,6 @@ class ProductDocumentResponse(BaseModel):
     mime_type: Optional[str] = None
     sort_order: int
     created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== PRODUCT SCHEMAS ====================
 
 class ProductBase(BaseModel):
@@ -279,27 +261,17 @@ class ProductUpdate(BaseModel):
         return v
 
 
-class CategoryBrief(BaseModel):
+class CategoryBrief(BaseResponseSchema):
     """Brief category info for product response."""
     id: uuid.UUID
     name: str
     slug: str
-
-    class Config:
-        from_attributes = True
-
-
-class BrandBrief(BaseModel):
+class BrandBrief(BaseResponseSchema):
     """Brief brand info for product response."""
     id: uuid.UUID
     name: str
     slug: str
     logo_url: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
-
 class WeightInfo(BaseModel):
     """Weight information including calculated fields."""
     dead_weight_kg: Optional[float] = None
@@ -308,7 +280,7 @@ class WeightInfo(BaseModel):
     dimensions: dict = {}
 
 
-class ProductResponse(BaseModel):
+class ProductResponse(BaseResponseSchema):
     """Product response schema."""
     id: uuid.UUID
     name: str
@@ -404,10 +376,6 @@ class ProductResponse(BaseModel):
         """Alias for chargeable_weight_kg - frontend expects 'chargeable_weight'."""
         return self.chargeable_weight_kg
 
-    class Config:
-        from_attributes = True
-
-
 class ProductDetailResponse(ProductResponse):
     """Detailed product response with all relations."""
     specifications: List[ProductSpecResponse] = []
@@ -425,7 +393,7 @@ class ProductListResponse(BaseModel):
     pages: int
 
 
-class ProductBriefResponse(BaseModel):
+class ProductBriefResponse(BaseResponseSchema):
     """Brief product response for lists/dropdowns."""
     id: uuid.UUID
     name: str
@@ -443,11 +411,7 @@ class ProductBriefResponse(BaseModel):
     status: str
     chargeable_weight_kg: Optional[float] = None
 
-    class Config:
-        from_attributes = True
-
-
-class MasterProductFileResponse(BaseModel):
+class MasterProductFileResponse(BaseResponseSchema):
     """Master Product File response with complete identification and weight info."""
     id: uuid.UUID
     fg_code: Optional[str] = None
@@ -473,6 +437,3 @@ class MasterProductFileResponse(BaseModel):
     # Status
     status: str
     is_active: bool
-
-    class Config:
-        from_attributes = True

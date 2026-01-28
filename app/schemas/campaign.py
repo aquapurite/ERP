@@ -5,6 +5,8 @@ from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict
 
+from app.schemas.base import BaseResponseSchema
+
 from app.models.campaign import (
     CampaignType, CampaignStatus, CampaignCategory,
     AudienceType, DeliveryStatus
@@ -44,10 +46,8 @@ class CampaignTemplateUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class CampaignTemplateResponse(BaseModel):
+class CampaignTemplateResponse(BaseResponseSchema):
     """Response schema for CampaignTemplate."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     name: str
     description: Optional[str] = None
@@ -98,10 +98,8 @@ class AudienceSegmentUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class AudienceSegmentResponse(BaseModel):
+class AudienceSegmentResponse(BaseResponseSchema):
     """Response schema for AudienceSegment."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     name: str
     description: Optional[str] = None
@@ -175,10 +173,8 @@ class CampaignScheduleRequest(BaseModel):
     scheduled_at: datetime
 
 
-class CampaignResponse(BaseModel):
+class CampaignResponse(BaseResponseSchema):
     """Response schema for Campaign."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     campaign_code: str
     name: str
@@ -239,10 +235,8 @@ class CampaignListResponse(BaseModel):
 
 # ==================== Campaign Recipient Schemas ====================
 
-class CampaignRecipientResponse(BaseModel):
+class CampaignRecipientResponse(BaseResponseSchema):
     """Response schema for CampaignRecipient."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     campaign_id: UUID
     customer_id: Optional[UUID] = None
@@ -302,10 +296,8 @@ class CampaignAutomationUpdate(BaseModel):
     cooldown_days: Optional[int] = None
 
 
-class CampaignAutomationResponse(BaseModel):
+class CampaignAutomationResponse(BaseResponseSchema):
     """Response schema for CampaignAutomation."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     name: str
     description: Optional[str] = None
@@ -333,10 +325,8 @@ class UnsubscribeRequest(BaseModel):
     campaign_id: Optional[UUID] = None
 
 
-class UnsubscribeResponse(BaseModel):
+class UnsubscribeResponse(BaseResponseSchema):
     """Response for unsubscribe."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     customer_id: Optional[UUID] = None
     email: Optional[str] = None

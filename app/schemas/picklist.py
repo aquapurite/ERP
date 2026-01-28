@@ -1,5 +1,7 @@
 """Pydantic schemas for Picklist models."""
 from pydantic import BaseModel, Field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 from datetime import datetime
 import uuid
@@ -9,7 +11,7 @@ from app.models.picklist import PicklistStatus, PicklistType
 
 # ==================== PICKLIST ITEM SCHEMAS ====================
 
-class PicklistItemResponse(BaseModel):
+class PicklistItemResponse(BaseResponseSchema):
     """Picklist item response schema."""
     id: uuid.UUID
     picklist_id: uuid.UUID
@@ -38,11 +40,7 @@ class PicklistItemResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
-
-class PicklistItemBrief(BaseModel):
+class PicklistItemBrief(BaseResponseSchema):
     """Brief picklist item info."""
     id: uuid.UUID
     sku: str
@@ -51,11 +49,6 @@ class PicklistItemBrief(BaseModel):
     quantity_required: int
     quantity_picked: int
     is_picked: bool
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== PICKLIST SCHEMAS ====================
 
 class PicklistGenerateRequest(BaseModel):
@@ -87,7 +80,7 @@ class PicklistAssignRequest(BaseModel):
     assigned_to: uuid.UUID
 
 
-class PicklistResponse(BaseModel):
+class PicklistResponse(BaseResponseSchema):
     """Picklist response schema."""
     id: uuid.UUID
     picklist_number: str
@@ -113,10 +106,6 @@ class PicklistResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
-
 class PicklistDetailResponse(PicklistResponse):
     """Detailed picklist response with items."""
     items: List[PicklistItemResponse] = []
@@ -131,18 +120,13 @@ class PicklistListResponse(BaseModel):
     pages: int
 
 
-class PicklistBrief(BaseModel):
+class PicklistBrief(BaseResponseSchema):
     """Brief picklist info."""
     id: uuid.UUID
     picklist_number: str
     status: str
     total_items: int
     pick_progress: float
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== PICK OPERATIONS ====================
 
 class PickScanRequest(BaseModel):

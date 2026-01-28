@@ -6,11 +6,12 @@ import uuid
 
 from app.models.shipment import ShipmentStatus, PaymentMode, PackagingType
 from app.schemas.transporter import TransporterBrief
+from app.schemas.base import BaseResponseSchema
 
 
 # ==================== TRACKING SCHEMAS ====================
 
-class ShipmentTrackingResponse(BaseModel):
+class ShipmentTrackingResponse(BaseResponseSchema):
     """Shipment tracking history entry."""
     id: uuid.UUID
     shipment_id: uuid.UUID
@@ -26,11 +27,6 @@ class ShipmentTrackingResponse(BaseModel):
     source: Optional[str] = None
     updated_by: Optional[uuid.UUID] = None
     created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== SHIPMENT SCHEMAS ====================
 
 class ShippingAddress(BaseModel):
@@ -82,7 +78,7 @@ class ShipmentUpdate(BaseModel):
     expected_delivery_date: Optional[date] = None
 
 
-class ShipmentResponse(BaseModel):
+class ShipmentResponse(BaseResponseSchema):
     """Shipment response schema."""
     id: uuid.UUID
     shipment_number: str
@@ -148,10 +144,6 @@ class ShipmentResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
-
 class ShipmentDetailResponse(ShipmentResponse):
     """Detailed shipment response with tracking history."""
     tracking_history: List[ShipmentTrackingResponse] = []
@@ -166,17 +158,12 @@ class ShipmentListResponse(BaseModel):
     pages: int
 
 
-class ShipmentBrief(BaseModel):
+class ShipmentBrief(BaseResponseSchema):
     """Brief shipment info."""
     id: uuid.UUID
     shipment_number: str
     awb_number: Optional[str] = None
     status: str
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== SHIPMENT OPERATIONS ====================
 
 class ShipmentPackRequest(BaseModel):

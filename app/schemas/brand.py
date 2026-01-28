@@ -1,4 +1,6 @@
 from pydantic import BaseModel, Field, EmailStr, computed_field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 from datetime import datetime
 import uuid
@@ -38,7 +40,7 @@ class BrandUpdate(BaseModel):
     is_featured: Optional[bool] = None
 
 
-class BrandResponse(BaseModel):
+class BrandResponse(BaseResponseSchema):
     """Brand response schema."""
     id: uuid.UUID
     name: str
@@ -61,10 +63,6 @@ class BrandResponse(BaseModel):
     def code(self) -> str:
         """Alias for slug - frontend expects 'code' field."""
         return self.slug
-
-    class Config:
-        from_attributes = True
-
 
 class BrandWithStats(BrandResponse):
     """Brand with product statistics."""

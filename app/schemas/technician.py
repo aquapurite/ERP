@@ -1,5 +1,7 @@
 """Technician schemas for API requests/responses."""
 from pydantic import BaseModel, Field, ConfigDict
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 from datetime import datetime, date
 import uuid
@@ -57,7 +59,7 @@ class TechnicianUpdate(BaseModel):
     notes: Optional[str] = None
 
 
-class TechnicianResponse(BaseModel):
+class TechnicianResponse(BaseResponseSchema):
     """Technician response schema."""
     id: uuid.UUID
     employee_code: str
@@ -83,9 +85,6 @@ class TechnicianResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
-
-
 class TechnicianDetail(TechnicianResponse):
     """Detailed technician response."""
     user_id: Optional[uuid.UUID] = None
@@ -107,7 +106,7 @@ class TechnicianDetail(TechnicianResponse):
     notes: Optional[str] = None
 
 
-class TechnicianBrief(BaseModel):
+class TechnicianBrief(BaseResponseSchema):
     """Brief technician info for dropdowns."""
     id: uuid.UUID
     employee_code: str
@@ -116,10 +115,6 @@ class TechnicianBrief(BaseModel):
     skill_level: str  # VARCHAR in DB
     is_available: bool
     average_rating: float
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class TechnicianListResponse(BaseModel):
     """Paginated technician list."""
     items: List[TechnicianResponse]
@@ -143,7 +138,7 @@ class TechnicianLeaveCreate(BaseModel):
     reason: Optional[str] = None
 
 
-class TechnicianLeaveResponse(BaseModel):
+class TechnicianLeaveResponse(BaseResponseSchema):
     """Technician leave response schema."""
     id: uuid.UUID
     technician_id: uuid.UUID
@@ -156,9 +151,6 @@ class TechnicianLeaveResponse(BaseModel):
     approved_at: Optional[datetime] = None
     rejection_reason: Optional[str] = None
     created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
 
 class TechnicianPerformance(BaseModel):
     """Technician performance metrics."""

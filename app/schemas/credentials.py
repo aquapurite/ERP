@@ -1,5 +1,7 @@
 """Credentials management schemas for API requests/responses."""
 from pydantic import BaseModel, Field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional
 from uuid import UUID
 from datetime import datetime

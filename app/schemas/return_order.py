@@ -10,6 +10,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.schemas.base import BaseResponseSchema
+
 
 # ==================== Enums ====================
 
@@ -101,7 +103,7 @@ class ReturnItemCreate(BaseModel):
     customer_images: Optional[List[str]] = None
 
 
-class ReturnItemResponse(BaseModel):
+class ReturnItemResponse(BaseResponseSchema):
     """Schema for return item response."""
     id: UUID
     order_item_id: UUID
@@ -120,11 +122,6 @@ class ReturnItemResponse(BaseModel):
     refund_amount: Decimal
     serial_number: Optional[str]
     customer_images: Optional[List[str]]
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== Pickup Address Schema ====================
 
 class PickupAddress(BaseModel):
@@ -178,7 +175,7 @@ class ReturnInspectionRequest(BaseModel):
     overall_notes: Optional[str] = None
 
 
-class ReturnStatusHistoryResponse(BaseModel):
+class ReturnStatusHistoryResponse(BaseResponseSchema):
     """Schema for return status history."""
     id: UUID
     from_status: Optional[str]
@@ -186,11 +183,7 @@ class ReturnStatusHistoryResponse(BaseModel):
     notes: Optional[str]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
-
-class ReturnOrderResponse(BaseModel):
+class ReturnOrderResponse(BaseResponseSchema):
     """Schema for return order response."""
     id: UUID
     rma_number: str
@@ -226,11 +219,7 @@ class ReturnOrderResponse(BaseModel):
     items: List[ReturnItemResponse] = []
     status_history: List[ReturnStatusHistoryResponse] = []
 
-    class Config:
-        from_attributes = True
-
-
-class ReturnOrderListResponse(BaseModel):
+class ReturnOrderListResponse(BaseResponseSchema):
     """Schema for return order list item (summary)."""
     id: UUID
     rma_number: str
@@ -243,11 +232,6 @@ class ReturnOrderListResponse(BaseModel):
     total_return_amount: Decimal
     net_refund_amount: Decimal
     items_count: int = 0
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== Refund Schemas ====================
 
 class RefundCreate(BaseModel):
@@ -265,7 +249,7 @@ class RefundCreate(BaseModel):
     bank_account_name: Optional[str] = None
 
 
-class RefundResponse(BaseModel):
+class RefundResponse(BaseResponseSchema):
     """Schema for refund response."""
     id: UUID
     refund_number: str
@@ -293,11 +277,7 @@ class RefundResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
-
-class RefundListResponse(BaseModel):
+class RefundListResponse(BaseResponseSchema):
     """Schema for refund list item (summary)."""
     id: UUID
     refund_number: str
@@ -308,11 +288,6 @@ class RefundListResponse(BaseModel):
     status: str
     initiated_at: datetime
     completed_at: Optional[datetime]
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== Customer-Facing Schemas ====================
 
 class CustomerReturnRequest(BaseModel):
@@ -325,7 +300,7 @@ class CustomerReturnRequest(BaseModel):
     pickup_address: Optional[PickupAddress] = None
 
 
-class CustomerReturnStatus(BaseModel):
+class CustomerReturnStatus(BaseResponseSchema):
     """Simplified return status for customers."""
     rma_number: str
     status: str
@@ -338,11 +313,6 @@ class CustomerReturnStatus(BaseModel):
     courier: Optional[str] = None
     items: List[ReturnItemResponse] = []
     timeline: List[ReturnStatusHistoryResponse] = []
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== Paginated Response ====================
 
 class PaginatedReturnOrdersResponse(BaseModel):

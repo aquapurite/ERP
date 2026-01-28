@@ -7,6 +7,8 @@ Request/response models for OTP-based customer authentication.
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, Field, field_validator
+
+from app.schemas.base import BaseResponseSchema
 import re
 
 
@@ -74,7 +76,7 @@ class VerifyOTPResponse(BaseModel):
     is_new_customer: bool = False
 
 
-class CustomerProfile(BaseModel):
+class CustomerProfile(BaseResponseSchema):
     """Customer profile information."""
     id: str
     phone: str
@@ -82,12 +84,7 @@ class CustomerProfile(BaseModel):
     first_name: str
     last_name: Optional[str] = None
     is_verified: bool = True
-
-    class Config:
-        from_attributes = True
-
-
-class CustomerAddress(BaseModel):
+class CustomerAddress(BaseResponseSchema):
     """Customer address."""
     id: str
     address_type: str
@@ -101,11 +98,6 @@ class CustomerAddress(BaseModel):
     pincode: str
     country: str = "India"
     is_default: bool = False
-
-    class Config:
-        from_attributes = True
-
-
 class UpdateProfileRequest(BaseModel):
     """Request to update customer profile."""
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
@@ -142,7 +134,7 @@ class AddAddressRequest(BaseModel):
         return v
 
 
-class CustomerOrderSummary(BaseModel):
+class CustomerOrderSummary(BaseResponseSchema):
     """Summary of a customer order."""
     id: str
     order_number: str
@@ -150,11 +142,6 @@ class CustomerOrderSummary(BaseModel):
     total_amount: float
     created_at: datetime
     items_count: int
-
-    class Config:
-        from_attributes = True
-
-
 class CustomerOrdersResponse(BaseModel):
     """Response with customer orders."""
     orders: List[CustomerOrderSummary]
@@ -163,7 +150,7 @@ class CustomerOrdersResponse(BaseModel):
     size: int
 
 
-class WishlistItemResponse(BaseModel):
+class WishlistItemResponse(BaseResponseSchema):
     """Wishlist item response."""
     id: str
     product_id: str
@@ -178,10 +165,6 @@ class WishlistItemResponse(BaseModel):
     is_in_stock: bool = True
     price_dropped: bool = False
     created_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class WishlistResponse(BaseModel):
     """Wishlist response with all items."""

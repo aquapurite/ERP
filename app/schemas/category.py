@@ -1,4 +1,6 @@
 from pydantic import BaseModel, Field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 from datetime import datetime
 import uuid
@@ -38,7 +40,7 @@ class CategoryUpdate(BaseModel):
     is_featured: Optional[bool] = None
 
 
-class CategoryResponse(BaseModel):
+class CategoryResponse(BaseResponseSchema):
     """Category response schema."""
     id: uuid.UUID
     name: str
@@ -54,10 +56,6 @@ class CategoryResponse(BaseModel):
     is_featured: bool
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class CategoryWithChildren(CategoryResponse):
     """Category with nested children."""

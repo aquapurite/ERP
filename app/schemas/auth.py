@@ -1,4 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional
 
 

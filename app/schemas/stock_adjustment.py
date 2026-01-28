@@ -1,5 +1,7 @@
 """Stock Adjustment schemas for API requests/responses."""
 from pydantic import BaseModel, Field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 from datetime import datetime
 import uuid
@@ -21,7 +23,7 @@ class AdjustmentItemCreate(BaseModel):
     reason: Optional[str] = None
 
 
-class AdjustmentItemResponse(BaseModel):
+class AdjustmentItemResponse(BaseResponseSchema):
     """Adjustment item response schema."""
     id: uuid.UUID
     adjustment_id: uuid.UUID
@@ -36,10 +38,6 @@ class AdjustmentItemResponse(BaseModel):
     value_impact: float
     reason: Optional[str] = None
     created_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class AdjustmentItemDetail(AdjustmentItemResponse):
     """Detailed adjustment item with product info."""
@@ -78,7 +76,7 @@ class AdjustmentRejection(BaseModel):
     reason: str = Field(..., min_length=10)
 
 
-class StockAdjustmentResponse(BaseModel):
+class StockAdjustmentResponse(BaseResponseSchema):
     """Stock adjustment response schema."""
     id: uuid.UUID
     adjustment_number: str
@@ -100,10 +98,6 @@ class StockAdjustmentResponse(BaseModel):
     notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class StockAdjustmentDetail(StockAdjustmentResponse):
     """Detailed adjustment with items and warehouse info."""
@@ -142,7 +136,7 @@ class InventoryAuditUpdate(BaseModel):
     notes: Optional[str] = None
 
 
-class InventoryAuditResponse(BaseModel):
+class InventoryAuditResponse(BaseResponseSchema):
     """Inventory audit response schema."""
     id: uuid.UUID
     audit_number: str
@@ -162,10 +156,6 @@ class InventoryAuditResponse(BaseModel):
     notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class InventoryAuditDetail(InventoryAuditResponse):
     """Detailed audit with warehouse info."""

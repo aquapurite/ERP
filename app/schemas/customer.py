@@ -1,4 +1,6 @@
 from pydantic import BaseModel, Field, EmailStr, computed_field, ConfigDict
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 from datetime import datetime, date
 from decimal import Decimal
@@ -46,7 +48,7 @@ class AddressUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class AddressResponse(BaseModel):
+class AddressResponse(BaseResponseSchema):
     """Address response schema."""
     id: uuid.UUID
     address_type: Optional[str] = None  # VARCHAR in DB
@@ -66,11 +68,6 @@ class AddressResponse(BaseModel):
     full_address: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== CUSTOMER SCHEMAS ====================
 
 class CustomerBase(BaseModel):
@@ -119,7 +116,7 @@ class CustomerUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class CustomerResponse(BaseModel):
+class CustomerResponse(BaseResponseSchema):
     """Customer response schema."""
     id: uuid.UUID
     customer_code: Optional[str] = None
@@ -150,11 +147,7 @@ class CustomerResponse(BaseModel):
         """Alias for full_name - frontend expects 'name'."""
         return self.full_name
 
-    class Config:
-        from_attributes = True
-
-
-class CustomerBrief(BaseModel):
+class CustomerBrief(BaseResponseSchema):
     """Brief customer info."""
     id: uuid.UUID
     customer_code: str
@@ -168,11 +161,6 @@ class CustomerBrief(BaseModel):
     def name(self) -> str:
         """Alias for full_name - frontend expects 'name'."""
         return self.full_name
-
-    class Config:
-        from_attributes = True
-
-
 class CustomerListResponse(BaseModel):
     """Paginated customer list."""
     items: List[CustomerResponse]
@@ -184,7 +172,7 @@ class CustomerListResponse(BaseModel):
 
 # ==================== CUSTOMER 360 SCHEMAS ====================
 
-class Customer360OrderSummary(BaseModel):
+class Customer360OrderSummary(BaseResponseSchema):
     """Order summary for Customer 360."""
     id: uuid.UUID
     order_number: str
@@ -193,24 +181,14 @@ class Customer360OrderSummary(BaseModel):
     payment_status: Optional[str] = None
     items_count: int = 0
     created_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
-
-class Customer360OrderStatusHistory(BaseModel):
+class Customer360OrderStatusHistory(BaseResponseSchema):
     """Order status history entry."""
     from_status: Optional[str] = None
     to_status: str
     notes: Optional[str] = None
     changed_by: Optional[str] = None
     created_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
-
-class Customer360ShipmentSummary(BaseModel):
+class Customer360ShipmentSummary(BaseResponseSchema):
     """Shipment summary for Customer 360."""
     id: uuid.UUID
     shipment_number: str
@@ -221,24 +199,14 @@ class Customer360ShipmentSummary(BaseModel):
     delivered_to: Optional[str] = None
     delivered_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
-
-class Customer360ShipmentTracking(BaseModel):
+class Customer360ShipmentTracking(BaseResponseSchema):
     """Shipment tracking entry."""
     status: str
     location: Optional[str] = None
     city: Optional[str] = None
     remarks: Optional[str] = None
     event_time: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
-
-class Customer360InstallationSummary(BaseModel):
+class Customer360InstallationSummary(BaseResponseSchema):
     """Installation summary for Customer 360."""
     id: uuid.UUID
     installation_number: str
@@ -251,12 +219,7 @@ class Customer360InstallationSummary(BaseModel):
     customer_rating: Optional[int] = None
     warranty_end_date: Optional[date] = None
     created_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
-
-class Customer360ServiceRequestSummary(BaseModel):
+class Customer360ServiceRequestSummary(BaseResponseSchema):
     """Service request summary for Customer 360."""
     id: uuid.UUID
     ticket_number: str
@@ -270,24 +233,14 @@ class Customer360ServiceRequestSummary(BaseModel):
     completed_at: Optional[datetime] = None
     customer_rating: Optional[int] = None
     created_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
-
-class Customer360ServiceStatusHistory(BaseModel):
+class Customer360ServiceStatusHistory(BaseResponseSchema):
     """Service request status history entry."""
     from_status: Optional[str] = None
     to_status: str
     notes: Optional[str] = None
     changed_by: Optional[str] = None
     created_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
-
-class Customer360CallSummary(BaseModel):
+class Customer360CallSummary(BaseResponseSchema):
     """Call summary for Customer 360."""
     id: uuid.UUID
     call_id: Optional[str] = None
@@ -299,12 +252,7 @@ class Customer360CallSummary(BaseModel):
     agent_name: Optional[str] = None
     call_start_time: Optional[datetime] = None
     sentiment: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
-
-class Customer360PaymentSummary(BaseModel):
+class Customer360PaymentSummary(BaseResponseSchema):
     """Payment summary for Customer 360."""
     id: uuid.UUID
     order_number: Optional[str] = None
@@ -315,12 +263,7 @@ class Customer360PaymentSummary(BaseModel):
     gateway: Optional[str] = None
     completed_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
-
-class Customer360AMCSummary(BaseModel):
+class Customer360AMCSummary(BaseResponseSchema):
     """AMC contract summary for Customer 360."""
     id: uuid.UUID
     contract_number: str
@@ -332,24 +275,14 @@ class Customer360AMCSummary(BaseModel):
     services_used: int
     services_remaining: int
     next_service_due: Optional[date] = None
-
-    class Config:
-        from_attributes = True
-
-
-class Customer360LeadSummary(BaseModel):
+class Customer360LeadSummary(BaseResponseSchema):
     """Lead summary (if converted from lead)."""
     id: uuid.UUID
     lead_number: str
     status: str
     source: str
     converted_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
-
-class Customer360LeadActivity(BaseModel):
+class Customer360LeadActivity(BaseResponseSchema):
     """Lead activity entry."""
     activity_type: str
     subject: str
@@ -357,11 +290,6 @@ class Customer360LeadActivity(BaseModel):
     old_status: Optional[str] = None
     new_status: Optional[str] = None
     activity_date: datetime
-
-    class Config:
-        from_attributes = True
-
-
 class Customer360Stats(BaseModel):
     """Customer statistics summary."""
     total_orders: int = 0
@@ -389,7 +317,7 @@ class Customer360Timeline(BaseModel):
     metadata: Optional[dict] = None
 
 
-class Customer360Response(BaseModel):
+class Customer360Response(BaseResponseSchema):
     """
     Complete Customer 360 view with all journey data.
     """
@@ -429,11 +357,6 @@ class Customer360Response(BaseModel):
     # Lead Info (if converted from lead)
     lead: Optional[Customer360LeadSummary] = None
     lead_activities: List[Customer360LeadActivity] = []
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== CUSTOMER LEDGER SCHEMAS ====================
 
 class CustomerLedgerBase(BaseModel):
@@ -459,10 +382,8 @@ class CustomerLedgerCreate(CustomerLedgerBase):
     pass
 
 
-class CustomerLedgerResponse(BaseModel):
+class CustomerLedgerResponse(BaseResponseSchema):
     """Response schema for customer ledger entry."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: uuid.UUID
     customer_id: uuid.UUID
     transaction_type: str  # VARCHAR in DB

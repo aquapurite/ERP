@@ -12,6 +12,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, ConfigDict
 
+from app.schemas.base import BaseResponseSchema
+
 
 # ==================== Enums ====================
 
@@ -109,10 +111,8 @@ class RecoveryEmailTriggerRequest(BaseModel):
 
 # ==================== Response Schemas ====================
 
-class CartSyncResponse(BaseModel):
+class CartSyncResponse(BaseResponseSchema):
     """Response after syncing cart."""
-    model_config = ConfigDict(from_attributes=True)
-
     cart_id: UUID
     session_id: str
     status: str
@@ -122,10 +122,8 @@ class CartSyncResponse(BaseModel):
     message: str = "Cart synced successfully"
 
 
-class CartItemResponse(BaseModel):
+class CartItemResponse(BaseResponseSchema):
     """Cart item in response."""
-    model_config = ConfigDict(from_attributes=True)
-
     product_id: str
     product_name: str
     sku: str
@@ -136,10 +134,8 @@ class CartItemResponse(BaseModel):
     image_url: Optional[str] = None
 
 
-class RecoveredCartResponse(BaseModel):
+class RecoveredCartResponse(BaseResponseSchema):
     """Response when recovering a cart."""
-    model_config = ConfigDict(from_attributes=True)
-
     cart_id: UUID
     items: List[CartItemResponse]
     subtotal: Decimal
@@ -152,10 +148,8 @@ class RecoveredCartResponse(BaseModel):
     message: str = "Cart recovered successfully"
 
 
-class AbandonedCartSummary(BaseModel):
+class AbandonedCartSummary(BaseResponseSchema):
     """Summary of abandoned cart for admin list."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     customer_id: Optional[UUID]
     customer_name: Optional[str]
@@ -188,10 +182,8 @@ class AbandonedCartDetail(AbandonedCartSummary):
     recovery_emails: List["RecoveryEmailResponse"]
 
 
-class RecoveryEmailResponse(BaseModel):
+class RecoveryEmailResponse(BaseResponseSchema):
     """Recovery email/notification record."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     sequence_number: int
     channel: str

@@ -5,6 +5,8 @@ from decimal import Decimal
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
+from app.schemas.base import BaseResponseSchema
+
 from app.models.call_center import (
     CallType, CallCategory, CallStatus, CallOutcome,
     CustomerSentiment, CallPriority, CallbackStatus, QAStatus
@@ -46,10 +48,8 @@ class CallDispositionUpdate(BaseModel):
     sort_order: Optional[int] = None
 
 
-class CallDispositionResponse(CallDispositionBase):
+class CallDispositionResponse(BaseResponseSchema):
     """Response schema for CallDisposition."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     created_at: datetime
     updated_at: datetime
@@ -127,10 +127,8 @@ class CallTransferRequest(BaseModel):
     notes: Optional[str] = None
 
 
-class CallResponse(BaseModel):
+class CallResponse(BaseResponseSchema):
     """Response schema for Call."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     call_id: str
     call_type: CallType
@@ -259,10 +257,8 @@ class CallbackRescheduleRequest(BaseModel):
     notes: Optional[str] = None
 
 
-class CallbackResponse(BaseModel):
+class CallbackResponse(BaseResponseSchema):
     """Response schema for CallbackSchedule."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     call_id: Optional[UUID] = None
     customer_id: Optional[UUID] = None
@@ -346,10 +342,8 @@ class CallQAReviewUpdate(BaseModel):
     reviewer_comments: Optional[str] = None
 
 
-class CallQAReviewResponse(BaseModel):
+class CallQAReviewResponse(BaseResponseSchema):
     """Response schema for CallQAReview."""
-    model_config = ConfigDict(from_attributes=True)
-
     id: UUID
     call_id: UUID
     reviewer_id: UUID

@@ -6,6 +6,7 @@ import uuid
 
 from app.models.service_request import ServiceType, ServicePriority, ServiceStatus, ServiceSource
 from app.schemas.customer import CustomerBrief
+from app.schemas.base import BaseResponseSchema
 
 
 # ==================== SERVICE REQUEST SCHEMAS ====================
@@ -83,7 +84,7 @@ class ServiceFeedback(BaseModel):
     feedback: Optional[str] = None
 
 
-class ServiceRequestResponse(BaseModel):
+class ServiceRequestResponse(BaseResponseSchema):
     """Service request response schema."""
     id: uuid.UUID
     ticket_number: str
@@ -106,10 +107,6 @@ class ServiceRequestResponse(BaseModel):
     total_charges: float
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class ServiceRequestDetail(ServiceRequestResponse):
     """Detailed service request response."""
@@ -156,7 +153,7 @@ class ServiceRequestListResponse(BaseModel):
     pages: int
 
 
-class ServiceStatusHistoryResponse(BaseModel):
+class ServiceStatusHistoryResponse(BaseResponseSchema):
     """Service status history response."""
     id: uuid.UUID
     from_status: Optional[str] = None  # VARCHAR in DB
@@ -164,11 +161,6 @@ class ServiceStatusHistoryResponse(BaseModel):
     changed_by: Optional[uuid.UUID] = None
     notes: Optional[str] = None
     created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
 # ==================== SERVICE STATS ====================
 
 class ServiceStats(BaseModel):

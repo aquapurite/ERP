@@ -6,6 +6,7 @@ import uuid
 
 from app.models.installation import InstallationStatus
 from app.schemas.customer import CustomerBrief
+from app.schemas.base import BaseResponseSchema
 
 
 # ==================== INSTALLATION SCHEMAS ====================
@@ -64,7 +65,7 @@ class InstallationCompletion(BaseModel):
     customer_rating: Optional[int] = Field(None, ge=1, le=5)
 
 
-class InstallationResponse(BaseModel):
+class InstallationResponse(BaseResponseSchema):
     """Installation response schema."""
     id: uuid.UUID
     installation_number: str
@@ -85,10 +86,6 @@ class InstallationResponse(BaseModel):
     customer_rating: Optional[int] = None
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class InstallationDetail(InstallationResponse):
     """Detailed installation response."""
@@ -179,7 +176,7 @@ class InstallationCompleteRequest(BaseModel):
     warranty_months: int = 12
 
 
-class InstallationEndpointResponse(BaseModel):
+class InstallationEndpointResponse(BaseResponseSchema):
     """Installation response schema for endpoint."""
     model_config = {"from_attributes": True}
 
@@ -321,7 +318,7 @@ class WarrantyClaimResolution(BaseModel):
     labor_cost: float = 0
 
 
-class WarrantyClaimResponse(BaseModel):
+class WarrantyClaimResponse(BaseResponseSchema):
     """Warranty claim response schema."""
     id: uuid.UUID
     claim_number: str
@@ -345,10 +342,6 @@ class WarrantyClaimResponse(BaseModel):
     resolved_date: Optional[date] = None
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class WarrantyClaimListResponse(BaseModel):
     """Paginated warranty claim list."""

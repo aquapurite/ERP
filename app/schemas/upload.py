@@ -1,5 +1,7 @@
 """Pydantic schemas for file uploads."""
 from pydantic import BaseModel, Field
+
+from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 from enum import Enum
 
