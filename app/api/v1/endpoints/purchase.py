@@ -2152,8 +2152,7 @@ async def approve_purchase_order(
     request: POApproveRequest = POApproveRequest(),
 ):
     """Approve or reject a purchase order."""
-    import logging
-    logging.info(f"PO APPROVE: po_id={po_id}, action={request.action}")
+    print(f"=== PO APPROVE START === po_id={po_id}, action={request.action}")
 
     result = await db.execute(
         select(PurchaseOrder)
@@ -2166,39 +2165,47 @@ async def approve_purchase_order(
     po = result.scalar_one_or_none()
 
     if not po:
+        print(f"=== PO APPROVE ERROR === PO not found: {po_id}")
         raise HTTPException(status_code=404, detail="Purchase Order not found")
 
-    logging.info(f"PO APPROVE: {po.po_number}, status='{po.status}', items={len(po.items) if po.items else 0}")
+    print(f"=== PO APPROVE === {po.po_number}, status='{po.status}', action={request.action}")
 
-    # Use state machine for validation
+    # Simple string comparison - no state machine for now
     if request.action == "APPROVE":
-        if not can_approve(po.status):
-            allowed = get_allowed_transitions(po.status)
+        if po.status not in ["DRAFT", "PENDING_APPROVAL"]:
+            print(f"=== PO APPROVE REJECTED === status '{po.status}' not valid for approval")
             raise HTTPException(
                 status_code=400,
-                detail=f"Cannot approve PO in '{po.status}' status. Allowed: {', '.join(allowed) if allowed else 'None'}"
+                detail=f"Cannot approve PO in '{po.status}' status. Must be DRAFT or PENDING_APPROVAL."
             )
     else:
-        if not can_reject(po.status):
+        if po.status != "PENDING_APPROVAL":
+            print(f"=== PO APPROVE REJECTED === status '{po.status}' not valid for rejection")
             raise HTTPException(
                 status_code=400,
                 detail=f"Cannot reject PO in '{po.status}' status. Only PENDING_APPROVAL POs can be rejected."
             )
+
+    print(f"=== PO APPROVE VALIDATED === proceeding with {request.action}")
 
     # Capture item data BEFORE commit (while po.items is still loaded)
     item_data_for_serials = None
     po_data_for_serials = None
 
     if request.action == "APPROVE":
-        # Use state machine for transition
-        transition_po(po, POStat.APPROVED, user_id=current_user.id)
+        # Direct status change - no state machine
+        po.status = "APPROVED"
+        po.approved_by = current_user.id
+        po.approved_at = datetime.now(timezone.utc)
+        print(f"=== PO APPROVE === Set status to APPROVED")
+
         # Update all delivery schedules to ADVANCE_PENDING status
         for schedule in po.delivery_schedules:
             schedule.status = DeliveryLotStatus.ADVANCE_PENDING.value
 
         # Capture data needed for serial generation (before commit, while items are loaded)
         if po.items:
-            logging.info(f"Capturing item data for serial generation: {po.po_number}, items={len(po.items)}")
+            print(f"=== PO APPROVE === Capturing {len(po.items)} items for serial generation")
             po_data_for_serials = {
                 "po_id": str(po.id),
                 "po_number": po.po_number,
@@ -2215,14 +2222,17 @@ async def approve_purchase_order(
                 for item in po.items
             ]
     else:
-        # Reject - transition back to DRAFT
-        transition_po(po, POStat.DRAFT, user_id=current_user.id)
+        # Reject - back to DRAFT
+        po.status = "DRAFT"
+        print(f"=== PO REJECT === Set status to DRAFT")
         # Cancel all delivery schedules
         for schedule in po.delivery_schedules:
             schedule.status = DeliveryLotStatus.CANCELLED.value
 
-    # Commit the approval/rejection first - this MUST succeed
+    # Commit the approval/rejection first
+    print(f"=== PO APPROVE === Committing to database")
     await db.commit()
+    print(f"=== PO APPROVE === Commit successful")
 
     # Now check for serial generation AFTER commit (in a clean transaction state)
     # This way, if serial check fails, the approval is already committed
