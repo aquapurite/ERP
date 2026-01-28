@@ -544,30 +544,50 @@ class OrderResponse(BaseModel):
 
 ### CRITICAL: Pydantic Schema UUID Fields with from_attributes
 
-When a schema has `from_attributes = True` (reads from ORM models), **NEVER use `str` for UUID fields**:
+When a schema reads from ORM models, **ALWAYS inherit from `BaseResponseSchema`**:
 
 ```python
-# ❌ BAD - Will fail when ORM returns UUID object
-class ModelCodeResponse(BaseModel):
-    id: str  # WRONG! ORM returns UUID, not str
-    product_id: Optional[str] = None  # WRONG!
-
-    class Config:
-        from_attributes = True  # Reads from ORM
-
-# ✅ GOOD - Use UUID type, let Pydantic serialize to string
-from uuid import UUID
-
+# ❌ BAD - Manual Config with from_attributes, individual json_encoders
 class ModelCodeResponse(BaseModel):
     id: UUID
     product_id: Optional[UUID] = None
 
     class Config:
         from_attributes = True
-        json_encoders = {UUID: str}  # Serialize UUID as string in JSON
+        json_encoders = {UUID: str}  # Repeated in every schema!
+
+# ❌ WORSE - Using str for UUID fields (validation fails silently)
+class ModelCodeResponse(BaseModel):
+    id: str  # WRONG! ORM returns UUID, not str
+    class Config:
+        from_attributes = True
+
+# ✅ CORRECT - Inherit from BaseResponseSchema (STRUCTURAL SOLUTION)
+from app.schemas.base import BaseResponseSchema
+
+class ModelCodeResponse(BaseResponseSchema):
+    """Response schema - inherits UUID serialization from base."""
+    id: UUID
+    product_id: Optional[UUID] = None
+    # No Config needed! BaseResponseSchema handles:
+    # - from_attributes = True
+    # - json_encoders = {UUID: str, datetime: ...}
+    # - populate_by_name = True
 ```
 
-**Why this matters:** When endpoint returns `result.scalars().all()`, Pydantic validates ORM objects. If schema expects `str` but ORM has `UUID`, validation fails silently or returns malformed data.
+**BaseResponseSchema location:** `app/schemas/base.py`
+
+**Why this matters:**
+1. Consistent UUID → string serialization across ALL response schemas
+2. No duplicate `Config` classes with repeated `json_encoders`
+3. When ORM returns UUID object, schema validation works correctly
+4. Prevents "Not mapped" / "Setup model code" type errors caused by silent validation failures
+
+**Migration Rule:** When creating new response schemas or fixing existing ones, ALWAYS:
+1. Import `BaseResponseSchema` from `app.schemas.base`
+2. Inherit from `BaseResponseSchema` instead of `BaseModel`
+3. Remove the `class Config:` block (it's inherited)
+4. Use `UUID` type for UUID fields, not `str`
 
 ---
 

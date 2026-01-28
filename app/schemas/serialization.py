@@ -16,6 +16,8 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator, model_validator
 from enum import Enum
 
+from app.schemas.base import BaseResponseSchema
+
 
 # ==================== Enums ====================
 
@@ -60,7 +62,8 @@ class SupplierCodeUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class SupplierCodeResponse(BaseModel):
+class SupplierCodeResponse(BaseResponseSchema):
+    """Response schema for supplier codes - inherits UUID serialization from base."""
     id: UUID
     code: str
     name: str
@@ -68,10 +71,6 @@ class SupplierCodeResponse(BaseModel):
     description: Optional[str] = None
     is_active: bool
     created_at: datetime
-
-    class Config:
-        from_attributes = True
-        json_encoders = {UUID: str}
 
 
 # ==================== Model Code Reference Schemas ====================
@@ -100,7 +99,8 @@ class ModelCodeUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class ModelCodeResponse(BaseModel):
+class ModelCodeResponse(BaseResponseSchema):
+    """Response schema for model codes - inherits UUID serialization from base."""
     id: UUID
     product_id: Optional[UUID] = None
     product_sku: Optional[str] = None
@@ -111,13 +111,6 @@ class ModelCodeResponse(BaseModel):
     description: Optional[str] = None
     is_active: bool
     created_at: datetime
-
-    class Config:
-        from_attributes = True
-        # Serialize UUIDs as strings in JSON output
-        json_encoders = {
-            UUID: str
-        }
 
     @model_validator(mode='after')
     def compute_item_type(self):
@@ -160,16 +153,13 @@ class GenerateSerialItem(BaseModel):
         return v.upper()
 
 
-class GenerateSerialsResponse(BaseModel):
-    """Response after generating serials"""
+class GenerateSerialsResponse(BaseResponseSchema):
+    """Response after generating serials - inherits UUID serialization from base."""
     po_id: UUID
     supplier_code: str
     total_generated: int
     items: List["GeneratedSerialSummary"]
     barcodes: List[str]
-
-    class Config:
-        json_encoders = {UUID: str}
 
 
 class GeneratedSerialSummary(BaseModel):
@@ -184,7 +174,8 @@ class GeneratedSerialSummary(BaseModel):
 
 # ==================== PO Serial Schemas ====================
 
-class POSerialResponse(BaseModel):
+class POSerialResponse(BaseResponseSchema):
+    """Response schema for PO serials - inherits UUID serialization from base."""
     id: UUID
     po_id: UUID
     po_item_id: Optional[UUID] = None
@@ -209,20 +200,13 @@ class POSerialResponse(BaseModel):
     warranty_end_date: Optional[datetime] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-        json_encoders = {UUID: str}
 
-
-class POSerialsListResponse(BaseModel):
-    """List of serials for a PO"""
+class POSerialsListResponse(BaseResponseSchema):
+    """List of serials for a PO - inherits UUID serialization from base."""
     po_id: UUID
     total: int
     by_status: dict
     serials: List[POSerialResponse]
-
-    class Config:
-        json_encoders = {UUID: str}
 
 
 # ==================== Serial Scan/Validation Schemas ====================
