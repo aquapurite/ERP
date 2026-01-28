@@ -337,13 +337,14 @@ async def create_product(
 
     # Commit orchestration changes
     await db.commit()
-    await db.refresh(product)
 
     # Invalidate product caches
     cache = get_cache()
     await cache.invalidate_products()
 
-    return _build_product_detail_response(product)
+    # Re-fetch with all relationships loaded (refresh strips relationships)
+    final_product = await service.get_product_by_id(product.id, include_all=True)
+    return _build_product_detail_response(final_product)
 
 
 @router.put(
@@ -399,13 +400,14 @@ async def update_product(
 
     # Commit orchestration changes
     await db.commit()
-    await db.refresh(updated)
 
     # Invalidate product caches
     cache = get_cache()
     await cache.invalidate_products()
 
-    return _build_product_detail_response(updated)
+    # Re-fetch with all relationships loaded (refresh strips relationships)
+    final_product = await service.get_product_by_id(product_id, include_all=True)
+    return _build_product_detail_response(final_product)
 
 
 @router.delete(
