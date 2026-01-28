@@ -590,13 +590,13 @@ class SerializationService:
                     item_type=item.item_type,
                 )
 
-                # Use native UUIDs - database columns are now native PostgreSQL UUID type
-                # Convert Enum to string value for VARCHAR columns in production
+                # Database columns are VARCHAR(36) for po_id, po_item_id, product_id
+                # Store as strings to match database schema
                 po_serial = POSerial(
                     id=str(uuid.uuid4()),
-                    po_id=request.po_id if isinstance(request.po_id, uuid.UUID) else uuid.UUID(str(request.po_id)),
-                    po_item_id=item.po_item_id if isinstance(item.po_item_id, uuid.UUID) else uuid.UUID(str(item.po_item_id)) if item.po_item_id else None,
-                    product_id=item.product_id if isinstance(item.product_id, uuid.UUID) else uuid.UUID(str(item.product_id)) if item.product_id else None,
+                    po_id=str(request.po_id),
+                    po_item_id=str(item.po_item_id) if item.po_item_id else None,
+                    product_id=str(item.product_id) if item.product_id else None,
                     product_sku=item.product_sku,
                     model_code=item.model_code.upper(),
                     item_type=item.item_type.value if hasattr(item.item_type, 'value') else str(item.item_type),
@@ -645,12 +645,10 @@ class SerializationService:
         offset: int = 0
     ) -> List[POSerial]:
         """Get all serials for a PO"""
-        from uuid import UUID as PyUUID
+        # po_id is VARCHAR(36) in database, use string comparison
+        po_id_str = str(po_id) if po_id else None
 
-        # Convert string to UUID if needed
-        po_uuid = PyUUID(po_id) if isinstance(po_id, str) else po_id
-
-        query = select(POSerial).where(POSerial.po_id == po_uuid)
+        query = select(POSerial).where(POSerial.po_id == po_id_str)
 
         if status:
             query = query.where(POSerial.status == status)
@@ -669,15 +667,14 @@ class SerializationService:
 
     async def get_serials_count_by_po(self, po_id: str) -> Dict[str, int]:
         """Get count of serials by status for a PO"""
-        from uuid import UUID as PyUUID
-
-        po_uuid = PyUUID(po_id) if isinstance(po_id, str) else po_id
+        # po_id is VARCHAR(36) in database, use string comparison
+        po_id_str = str(po_id) if po_id else None
 
         result = await self.db.execute(
             select(
                 POSerial.status,
                 func.count(POSerial.id).label("count")
-            ).where(POSerial.po_id == po_uuid)
+            ).where(POSerial.po_id == po_id_str)
             .group_by(POSerial.status)
         )
 
@@ -1056,14 +1053,13 @@ class SerializationService:
 
     async def mark_serials_sent_to_vendor(self, po_id: str) -> int:
         """Mark all serials for a PO as sent to vendor"""
-        from uuid import UUID as PyUUID
-
-        po_uuid = PyUUID(po_id) if isinstance(po_id, str) else po_id
+        # po_id is VARCHAR(36) in database
+        po_id_str = str(po_id) if po_id else None
 
         result = await self.db.execute(
             select(POSerial).where(
                 and_(
-                    POSerial.po_id == po_uuid,
+                    POSerial.po_id == po_id_str,
                     POSerial.status == SerialStatus.GENERATED
                 )
             )
@@ -1081,14 +1077,13 @@ class SerializationService:
 
     async def cancel_serials(self, po_id: str, reason: str = None) -> int:
         """Cancel all unreceived serials for a PO"""
-        from uuid import UUID as PyUUID
-
-        po_uuid = PyUUID(po_id) if isinstance(po_id, str) else po_id
+        # po_id is VARCHAR(36) in database
+        po_id_str = str(po_id) if po_id else None
 
         result = await self.db.execute(
             select(POSerial).where(
                 and_(
-                    POSerial.po_id == po_uuid,
+                    POSerial.po_id == po_id_str,
                     POSerial.status.in_([
                         SerialStatus.GENERATED,
                         SerialStatus.PRINTED,
