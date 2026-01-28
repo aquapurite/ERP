@@ -941,8 +941,16 @@ const transformVendorResponse = (vendor: Record<string, unknown>): Vendor => {
 };
 
 export const vendorsApi = {
-  list: async (params?: { page?: number; size?: number; status?: string; search?: string }) => {
-    const { data } = await apiClient.get<{ items: Record<string, unknown>[]; total: number; pages: number }>('/vendors', { params });
+  list: async (params?: { page?: number; size?: number; limit?: number; status?: string; search?: string }) => {
+    // Backend uses 'limit', not 'size'
+    const apiParams = {
+      ...params,
+      limit: params?.limit || params?.size || 100,
+      skip: params?.page ? (params.page - 1) * (params?.limit || params?.size || 100) : 0,
+    };
+    delete (apiParams as Record<string, unknown>).size;
+    delete (apiParams as Record<string, unknown>).page;
+    const { data } = await apiClient.get<{ items: Record<string, unknown>[]; total: number; pages: number }>('/vendors', { params: apiParams });
     return {
       ...data,
       items: data.items.map(transformVendorResponse),

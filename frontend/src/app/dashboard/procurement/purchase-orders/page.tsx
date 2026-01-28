@@ -1142,8 +1142,8 @@ export default function PurchaseOrdersPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="select" disabled>Select vendor</SelectItem>
-                        {vendors.filter((v: Vendor) => v.id && v.id.trim() !== '').map((v: Vendor) => (
-                          <SelectItem key={v.id} value={v.id}>{v.name} ({v.code})</SelectItem>
+                        {vendors.filter((v: Vendor) => v.id && v.name).map((v: Vendor) => (
+                          <SelectItem key={v.id} value={v.id}>{v.name} ({v.vendor_code || v.code || 'N/A'})</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -1187,7 +1187,7 @@ export default function PurchaseOrdersPage() {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="select" disabled>Select warehouse</SelectItem>
-                            {warehouses.filter((w: Warehouse) => w.id && w.id.trim() !== '').map((w: Warehouse) => (
+                            {warehouses.filter((w: Warehouse) => w.id && w.name).map((w: Warehouse) => (
                               <SelectItem key={w.id} value={w.id}>
                                 {w.name} {(w as any).city ? `- ${(w as any).city}` : ''}
                               </SelectItem>
@@ -1264,7 +1264,7 @@ export default function PurchaseOrdersPage() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="select" disabled>Select warehouse</SelectItem>
-                              {warehouses.filter((w: Warehouse) => w.id && w.id.trim() !== '').map((w: Warehouse) => (
+                              {warehouses.filter((w: Warehouse) => w.id && w.name).map((w: Warehouse) => (
                                 <SelectItem key={w.id} value={w.id}>
                                   {w.name} {(w as any).city ? `- ${(w as any).city}` : ''}
                                 </SelectItem>
