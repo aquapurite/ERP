@@ -446,6 +446,7 @@ export interface PurchaseOrder {
   id: string;
   po_number: string;
   vendor_id: string;
+  vendor_name?: string;
   warehouse_id: string;
   delivery_warehouse_id?: string;
   status: POStatus;
@@ -456,6 +457,15 @@ export interface PurchaseOrder {
   gst_amount: number;
   grand_total: number;
   expected_delivery_date?: string;
+  // Financial terms
+  payment_terms?: string;
+  freight_charges?: number;
+  packing_charges?: number;
+  other_charges?: number;
+  // Notes
+  terms_and_conditions?: string;
+  special_instructions?: string;
+  internal_notes?: string;
   notes?: string;
   created_at: string;
   vendor?: Vendor;

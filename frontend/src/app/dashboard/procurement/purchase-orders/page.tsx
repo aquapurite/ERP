@@ -417,19 +417,35 @@ export default function PurchaseOrdersPage() {
     onError: (error: Error) => toast.error(error.message || 'Failed to update PO status'),
   });
 
-  // Handle Edit PO
-  const handleEditPO = (po: PurchaseOrder) => {
+  // Handle Edit PO - Fetch full details first
+  const handleEditPO = async (po: PurchaseOrder) => {
     setSelectedPO(po);
-    setEditPOData({
-      expected_delivery_date: po.expected_delivery_date || '',
-      payment_terms: po.payment_terms || '',
-      freight_charges: po.freight_charges || 0,
-      packing_charges: po.packing_charges || 0,
-      other_charges: po.other_charges || 0,
-      terms_and_conditions: po.terms_and_conditions || '',
-      special_instructions: po.special_instructions || '',
-      internal_notes: po.internal_notes || '',
-    });
+    try {
+      // Fetch full PO details (list only returns POBrief without all fields)
+      const fullDetails = await purchaseOrdersApi.getById(po.id);
+      setEditPOData({
+        expected_delivery_date: fullDetails.expected_delivery_date || po.expected_delivery_date || '',
+        payment_terms: fullDetails.payment_terms || '',
+        freight_charges: fullDetails.freight_charges || 0,
+        packing_charges: fullDetails.packing_charges || 0,
+        other_charges: fullDetails.other_charges || 0,
+        terms_and_conditions: fullDetails.terms_and_conditions || '',
+        special_instructions: fullDetails.special_instructions || '',
+        internal_notes: fullDetails.internal_notes || '',
+      });
+    } catch {
+      // Fallback to basic data if fetch fails
+      setEditPOData({
+        expected_delivery_date: po.expected_delivery_date || '',
+        payment_terms: '',
+        freight_charges: 0,
+        packing_charges: 0,
+        other_charges: 0,
+        terms_and_conditions: '',
+        special_instructions: '',
+        internal_notes: '',
+      });
+    }
     setIsEditDialogOpen(true);
   };
 
