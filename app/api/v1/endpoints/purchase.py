@@ -1813,8 +1813,9 @@ async def list_purchase_orders(
         items=items,
         total=total,
         total_value=total_value,
-        skip=skip,
-        limit=limit
+        page=(skip // limit) + 1 if limit > 0 else 1,
+        size=limit,
+        pages=(total + limit - 1) // limit if limit > 0 else 1
     )
 
 
