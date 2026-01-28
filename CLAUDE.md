@@ -542,6 +542,33 @@ class OrderResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 ```
 
+### CRITICAL: Pydantic Schema UUID Fields with from_attributes
+
+When a schema has `from_attributes = True` (reads from ORM models), **NEVER use `str` for UUID fields**:
+
+```python
+# ❌ BAD - Will fail when ORM returns UUID object
+class ModelCodeResponse(BaseModel):
+    id: str  # WRONG! ORM returns UUID, not str
+    product_id: Optional[str] = None  # WRONG!
+
+    class Config:
+        from_attributes = True  # Reads from ORM
+
+# ✅ GOOD - Use UUID type, let Pydantic serialize to string
+from uuid import UUID
+
+class ModelCodeResponse(BaseModel):
+    id: UUID
+    product_id: Optional[UUID] = None
+
+    class Config:
+        from_attributes = True
+        json_encoders = {UUID: str}  # Serialize UUID as string in JSON
+```
+
+**Why this matters:** When endpoint returns `result.scalars().all()`, Pydantic validates ORM objects. If schema expects `str` but ORM has `UUID`, validation fails silently or returns malformed data.
+
 ---
 
 ## Rule 6: Response Schema Completeness
