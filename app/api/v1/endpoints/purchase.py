@@ -58,6 +58,12 @@ from app.schemas.purchase import (
 )
 from app.api.deps import DB, CurrentUser, get_current_user, require_permissions, Permissions
 from app.services.audit_service import AuditService
+from app.services.po_state_machine import (
+    POStatus as POStat,  # Use alias to avoid conflict with model enum
+    can_submit, can_approve, can_reject, can_send_to_vendor,
+    can_receive_goods, can_edit, can_delete, can_cancel,
+    transition_po, validate_transition, get_allowed_transitions
+)
 from app.services.approval_service import ApprovalService
 from app.services.document_sequence_service import DocumentSequenceService
 from app.models.approval import ApprovalEntityType
@@ -2093,7 +2099,7 @@ async def submit_purchase_order(
 ):
     """Submit a purchase order for approval (DRAFT -> PENDING_APPROVAL)."""
     import logging
-    logging.info(f"PO SUBMIT: Starting submit for po_id={po_id}")
+    logging.info(f"PO SUBMIT: po_id={po_id}")
 
     result = await db.execute(
         select(PurchaseOrder)
@@ -2106,21 +2112,20 @@ async def submit_purchase_order(
     po = result.scalar_one_or_none()
 
     if not po:
-        logging.error(f"PO SUBMIT: PO not found for id={po_id}")
         raise HTTPException(status_code=404, detail="Purchase Order not found")
 
-    logging.info(f"PO SUBMIT: Found PO {po.po_number}, current status='{po.status}', type={type(po.status)}")
+    logging.info(f"PO SUBMIT: {po.po_number}, status='{po.status}'")
 
-    # Compare with string value to avoid enum comparison issues
-    if po.status != "DRAFT":
-        logging.error(f"PO SUBMIT: Cannot submit - status is '{po.status}', not 'DRAFT'")
+    # Use state machine for validation and transition
+    if not can_submit(po.status):
+        allowed = get_allowed_transitions(po.status)
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot submit PO in '{po.status}' status. Only DRAFT POs can be submitted."
+            detail=f"Cannot submit PO in '{po.status}' status. Allowed actions: {', '.join(allowed) if allowed else 'None (terminal state)'}"
         )
 
-    po.status = POStatus.PENDING_APPROVAL.value
-    logging.info(f"PO SUBMIT: Updating status to PENDING_APPROVAL")
+    # Transition using state machine
+    transition_po(po, POStat.PENDING_APPROVAL, user_id=current_user.id)
 
     await db.commit()
 
@@ -2135,7 +2140,7 @@ async def submit_purchase_order(
     )
     po = result.scalar_one()
 
-    logging.info(f"PO SUBMIT: Successfully submitted PO {po.po_number}")
+    logging.info(f"PO SUBMIT: Success - {po.po_number} -> PENDING_APPROVAL")
     return po
 
 
@@ -2148,7 +2153,7 @@ async def approve_purchase_order(
 ):
     """Approve or reject a purchase order."""
     import logging
-    logging.info(f"PO APPROVE: Starting approval for po_id={po_id}, action={request.action}")
+    logging.info(f"PO APPROVE: po_id={po_id}, action={request.action}")
 
     result = await db.execute(
         select(PurchaseOrder)
@@ -2161,35 +2166,39 @@ async def approve_purchase_order(
     po = result.scalar_one_or_none()
 
     if not po:
-        logging.error(f"PO APPROVE: PO not found for id={po_id}")
         raise HTTPException(status_code=404, detail="Purchase Order not found")
 
-    logging.info(f"PO APPROVE: Found PO {po.po_number}, current status={po.status}, items_count={len(po.items) if po.items else 0}")
+    logging.info(f"PO APPROVE: {po.po_number}, status='{po.status}', items={len(po.items) if po.items else 0}")
 
-    # Compare with string values to avoid enum comparison issues
-    if po.status not in ["DRAFT", "PENDING_APPROVAL"]:
-        logging.error(f"PO APPROVE: Invalid status '{po.status}' for PO {po.po_number}")
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot {request.action.lower()} PO in '{po.status}' status. Only DRAFT or PENDING_APPROVAL POs can be approved."
-        )
+    # Use state machine for validation
+    if request.action == "APPROVE":
+        if not can_approve(po.status):
+            allowed = get_allowed_transitions(po.status)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot approve PO in '{po.status}' status. Allowed: {', '.join(allowed) if allowed else 'None'}"
+            )
+    else:
+        if not can_reject(po.status):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot reject PO in '{po.status}' status. Only PENDING_APPROVAL POs can be rejected."
+            )
 
     # Capture item data BEFORE commit (while po.items is still loaded)
-    import logging
     item_data_for_serials = None
     po_data_for_serials = None
 
     if request.action == "APPROVE":
-        po.status = POStatus.APPROVED.value
-        po.approved_by = current_user.id
-        po.approved_at = datetime.now(timezone.utc)
+        # Use state machine for transition
+        transition_po(po, POStat.APPROVED, user_id=current_user.id)
         # Update all delivery schedules to ADVANCE_PENDING status
         for schedule in po.delivery_schedules:
             schedule.status = DeliveryLotStatus.ADVANCE_PENDING.value
 
         # Capture data needed for serial generation (before commit, while items are loaded)
         if po.items:
-            logging.info(f"Capturing item data for serial generation: PO {po.po_number}, items_count={len(po.items)}")
+            logging.info(f"Capturing item data for serial generation: {po.po_number}, items={len(po.items)}")
             po_data_for_serials = {
                 "po_id": str(po.id),
                 "po_number": po.po_number,
@@ -2206,7 +2215,8 @@ async def approve_purchase_order(
                 for item in po.items
             ]
     else:
-        po.status = POStatus.CANCELLED.value
+        # Reject - transition back to DRAFT
+        transition_po(po, POStat.DRAFT, user_id=current_user.id)
         # Cancel all delivery schedules
         for schedule in po.delivery_schedules:
             schedule.status = DeliveryLotStatus.CANCELLED.value
@@ -2363,9 +2373,12 @@ async def send_po_to_vendor(
     current_user: User = Depends(get_current_user),
 ):
     """Send PO to vendor (via email/portal). Auto-generates serial numbers."""
+    import logging
     from app.services.serialization import SerializationService
     from app.schemas.serialization import GenerateSerialsRequest, GenerateSerialItem, ItemType
     from app.models.serialization import POSerial, ModelCodeReference
+
+    logging.info(f"PO SEND: po_id={po_id}")
 
     result = await db.execute(
         select(PurchaseOrder)
@@ -2380,10 +2393,14 @@ async def send_po_to_vendor(
     if not po:
         raise HTTPException(status_code=404, detail="Purchase Order not found")
 
-    if po.status not in ["APPROVED", "SENT_TO_VENDOR"]:
+    logging.info(f"PO SEND: {po.po_number}, status='{po.status}'")
+
+    # Use state machine for validation
+    if not can_send_to_vendor(po.status):
+        allowed = get_allowed_transitions(po.status)
         raise HTTPException(
             status_code=400,
-            detail=f"PO must be approved before sending to vendor. Current status: '{po.status}'"
+            detail=f"Cannot send PO to vendor in '{po.status}' status. Allowed: {', '.join(allowed) if allowed else 'None'}"
         )
 
     # Get vendor details to find supplier code
@@ -2480,12 +2497,14 @@ async def send_po_to_vendor(
                 # Log error but don't fail the send operation
                 print(f"Warning: Failed to generate serials for PO {po.po_number}: {e}")
 
-    po.status = POStatus.SENT_TO_VENDOR.value
-    po.sent_to_vendor_at = datetime.now(timezone.utc)
+    # Use state machine for transition (only if not already SENT_TO_VENDOR)
+    if po.status != POStat.SENT_TO_VENDOR:
+        transition_po(po, POStat.SENT_TO_VENDOR, user_id=current_user.id)
 
     await db.commit()
     await db.refresh(po)
 
+    logging.info(f"PO SEND: Success - {po.po_number} -> SENT_TO_VENDOR")
     return po
 
 
@@ -2495,7 +2514,10 @@ async def confirm_purchase_order(
     db: DB,
     current_user: User = Depends(get_current_user),
 ):
-    """Mark PO as confirmed by vendor."""
+    """Mark PO as acknowledged/confirmed by vendor."""
+    import logging
+    logging.info(f"PO CONFIRM: po_id={po_id}")
+
     result = await db.execute(
         select(PurchaseOrder)
         .options(
@@ -2509,12 +2531,23 @@ async def confirm_purchase_order(
     if not po:
         raise HTTPException(status_code=404, detail="Purchase Order not found")
 
-    po.status = POStatus.CONFIRMED.value
-    po.vendor_acknowledged_at = datetime.now(timezone.utc)
+    logging.info(f"PO CONFIRM: {po.po_number}, status='{po.status}'")
+
+    # Validate transition - must be SENT_TO_VENDOR to acknowledge
+    if po.status != POStat.SENT_TO_VENDOR:
+        allowed = get_allowed_transitions(po.status)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot confirm PO in '{po.status}' status. Only SENT_TO_VENDOR POs can be confirmed. Allowed: {', '.join(allowed) if allowed else 'None'}"
+        )
+
+    # Use state machine for transition
+    transition_po(po, POStat.ACKNOWLEDGED, user_id=current_user.id)
 
     await db.commit()
     await db.refresh(po)
 
+    logging.info(f"PO CONFIRM: Success - {po.po_number} -> ACKNOWLEDGED")
     return po
 
 
@@ -2662,6 +2695,9 @@ async def create_grn(
     current_user: User = Depends(get_current_user),
 ):
     """Create a Goods Receipt Note against a PO."""
+    import logging
+    logging.info(f"GRN CREATE: po_id={grn_in.purchase_order_id}")
+
     # Verify PO
     po_result = await db.execute(
         select(PurchaseOrder)
@@ -2673,11 +2709,14 @@ async def create_grn(
     if not po:
         raise HTTPException(status_code=404, detail="Purchase Order not found")
 
-    # Allow GRN creation for POs that have been sent/acknowledged or partially received
-    if po.status not in ["SENT_TO_VENDOR", "ACKNOWLEDGED", "PARTIALLY_RECEIVED"]:
+    logging.info(f"GRN CREATE: PO {po.po_number}, status='{po.status}'")
+
+    # Use state machine for validation
+    if not can_receive_goods(po.status):
+        allowed = get_allowed_transitions(po.status)
         raise HTTPException(
             status_code=400,
-            detail=f"PO must be sent to vendor before receiving goods. Current status: '{po.status}'"
+            detail=f"Cannot receive goods for PO in '{po.status}' status. Allowed: {', '.join(allowed) if allowed else 'None'}"
         )
 
     # Generate GRN number using atomic sequence service
@@ -2782,12 +2821,12 @@ async def create_grn(
     grn.total_quantity_rejected = total_rejected
     grn.total_value = total_value.quantize(Decimal("0.01"))
 
-    # Update PO status
+    # Update PO status using state machine
     all_closed = all(item.is_closed for item in po.items)
     if all_closed:
-        po.status = POStatus.FULLY_RECEIVED.value
+        transition_po(po, POStat.FULLY_RECEIVED, user_id=current_user.id)
     else:
-        po.status = POStatus.PARTIAL.value
+        transition_po(po, POStat.PARTIALLY_RECEIVED, user_id=current_user.id)
 
     po.total_received_value = (Decimal(str(po.total_received_value or 0)) + total_value).quantize(Decimal("0.01"))
 
@@ -3585,17 +3624,17 @@ async def get_po_summary_report(
         for row in vendor_result.all()
     ]
 
-    # Categorize
-    pending_statuses = [POStatus.DRAFT, POStatus.APPROVED, POStatus.SENT, POStatus.CONFIRMED]
-    received_statuses = [POStatus.PARTIAL, POStatus.FULLY_RECEIVED, POStatus.CLOSED]
-    cancelled_statuses = [POStatus.CANCELLED]
+    # Categorize using string values (avoid invalid enum references)
+    pending_statuses = ["DRAFT", "PENDING_APPROVAL", "APPROVED", "SENT_TO_VENDOR", "ACKNOWLEDGED"]
+    received_statuses = ["PARTIALLY_RECEIVED", "FULLY_RECEIVED", "CLOSED"]
+    cancelled_statuses = ["CANCELLED"]
 
-    pending_count = sum(status_data.get(s.value, {}).get("count", 0) for s in pending_statuses)
-    pending_value = sum(status_data.get(s.value, {}).get("value", 0) for s in pending_statuses)
-    received_count = sum(status_data.get(s.value, {}).get("count", 0) for s in received_statuses)
-    received_value = sum(status_data.get(s.value, {}).get("value", 0) for s in received_statuses)
-    cancelled_count = sum(status_data.get(s.value, {}).get("count", 0) for s in cancelled_statuses)
-    cancelled_value = sum(status_data.get(s.value, {}).get("value", 0) for s in cancelled_statuses)
+    pending_count = sum(status_data.get(s, {}).get("count", 0) for s in pending_statuses)
+    pending_value = sum(status_data.get(s, {}).get("value", 0) for s in pending_statuses)
+    received_count = sum(status_data.get(s, {}).get("count", 0) for s in received_statuses)
+    received_value = sum(status_data.get(s, {}).get("value", 0) for s in received_statuses)
+    cancelled_count = sum(status_data.get(s, {}).get("count", 0) for s in cancelled_statuses)
+    cancelled_value = sum(status_data.get(s, {}).get("value", 0) for s in cancelled_statuses)
 
     return POSummaryResponse(
         period_start=start_date,
