@@ -340,9 +340,9 @@ export default function PurchaseRequisitionsPage() {
     queryFn: () => vendorsApi.getDropdown(),
   });
 
-  const warehouses = warehousesData?.items ?? [];
-  const allProducts = productsData?.items ?? [];
-  const vendors = vendorsData ?? [];
+  const warehouses = Array.isArray(warehousesData?.items) ? warehousesData.items : [];
+  const allProducts = Array.isArray(productsData?.items) ? productsData.items : [];
+  const vendors = Array.isArray(vendorsData) ? vendorsData : [];
 
   // Filter products by selected category
   const products = useMemo(() => {
