@@ -1995,15 +1995,16 @@ async def update_purchase_order(
 
         for item_data in items_data:
             line_number += 1
-            qty = Decimal(str(item_data.quantity_ordered))
-            unit_price = Decimal(str(item_data.unit_price)).quantize(Decimal("0.01"))
-            discount_pct = Decimal(str(item_data.discount_percentage)).quantize(Decimal("0.01"))
+            # items_data is a list of dicts from model_dump(), use dict access
+            qty = Decimal(str(item_data['quantity_ordered']))
+            unit_price = Decimal(str(item_data['unit_price'])).quantize(Decimal("0.01"))
+            discount_pct = Decimal(str(item_data.get('discount_percentage', 0))).quantize(Decimal("0.01"))
 
             gross_amount = (qty * unit_price).quantize(Decimal("0.01"))
             discount_amount = (gross_amount * discount_pct / Decimal("100")).quantize(Decimal("0.01"))
             item_taxable = (gross_amount - discount_amount).quantize(Decimal("0.01"))
 
-            gst_rate = Decimal(str(item_data.gst_rate)).quantize(Decimal("0.01"))
+            gst_rate = Decimal(str(item_data.get('gst_rate', 18))).quantize(Decimal("0.01"))
             if is_inter_state:
                 igst_rate = gst_rate
                 cgst_rate = Decimal("0")
@@ -2021,13 +2022,13 @@ async def update_purchase_order(
             item = PurchaseOrderItem(
                 purchase_order_id=po.id,
                 line_number=line_number,
-                product_id=item_data.product_id,
-                variant_id=item_data.variant_id,
-                product_name=item_data.product_name,
-                sku=item_data.sku,
-                hsn_code=item_data.hsn_code,
-                quantity_ordered=item_data.quantity_ordered,
-                uom=item_data.uom,
+                product_id=item_data.get('product_id'),
+                variant_id=item_data.get('variant_id'),
+                product_name=item_data.get('product_name', ''),
+                sku=item_data.get('sku', ''),
+                hsn_code=item_data.get('hsn_code'),
+                quantity_ordered=item_data['quantity_ordered'],
+                uom=item_data.get('uom', 'PCS'),
                 unit_price=unit_price,
                 discount_percentage=discount_pct,
                 discount_amount=discount_amount,
