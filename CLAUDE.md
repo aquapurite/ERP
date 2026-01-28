@@ -437,20 +437,56 @@ Before pushing any code:
 
 Follow these practices for efficient and safe deployments:
 
-### 1. Test Locally First (Most Important)
+### MANDATORY PRE-DEPLOYMENT CHECKLIST
 
-Before pushing ANY changes to production:
+**NEVER push to production without completing ALL steps:**
+
+| Step | Action | Command/Location |
+|------|--------|------------------|
+| 1 | **Build Frontend** | `cd frontend && pnpm build` |
+| 2 | **Start Local Backend** | `uvicorn app.main:app --reload --port 8000` |
+| 3 | **Start Local Frontend** | `cd frontend && pnpm dev` |
+| 4 | **Test Affected Pages** | Open browser, test the specific feature |
+| 5 | **Test API Endpoints** | Use real data, check request/response |
+| 6 | **Verify Database Schema** | Check Supabase matches model (SINGLE SOURCE OF TRUTH) |
+| 7 | **Push to Production** | `git push origin main` |
+| 8 | **Verify Production** | Test on live site after deploy completes |
 
 ```bash
-# Terminal 1: Start backend
+# Complete workflow example:
 cd "/Users/mantosh/Desktop/Consumer durable 2"
+
+# Step 1: Build frontend
+cd frontend && pnpm build
+cd ..
+
+# Step 2-3: Start local servers (in separate terminals)
+# Terminal 1:
 uvicorn app.main:app --reload --port 8000
 
-# Terminal 2: Start frontend
+# Terminal 2:
 cd frontend && pnpm dev
+
+# Step 4-5: Test in browser at http://localhost:3000
+# - Navigate to affected pages
+# - Test with real data
+# - Check browser console for errors
+# - Check backend terminal for errors
+
+# Step 6: If database changes needed, verify Supabase schema first
+
+# Step 7: Only after ALL tests pass
+git add -A && git commit -m "message" && git push origin main
+
+# Step 8: Wait for deploy, then verify on production
 ```
 
-Verify your changes work locally before committing. This catches 90% of issues.
+### Why This Matters
+
+- **Step 1 (Build)**: Catches TypeScript errors before deploy
+- **Step 4-5 (Test Locally)**: Catches 90% of bugs
+- **Step 6 (Schema)**: Supabase is the source of truth - models must match
+- **Step 8 (Verify Production)**: Confirms deploy worked correctly
 
 ### 2. Use Smart Deployments
 
