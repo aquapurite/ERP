@@ -17,6 +17,7 @@ from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Num
 from sqlalchemy import UniqueConstraint, Index, CheckConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import inspect as sa_inspect
 
 from app.database import Base
 
@@ -285,7 +286,12 @@ class PurchaseRequisition(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<PurchaseRequisition(number='{self.requisition_number}')>"
+        try:
+            if sa_inspect(self).detached:
+                return f"<PurchaseRequisition(id={self.id})>"
+            return f"<PurchaseRequisition(number='{self.requisition_number}')>"
+        except Exception:
+            return f"<PurchaseRequisition(id={getattr(self, 'id', 'unknown')})>"
 
 
 class PurchaseRequisitionItem(Base):
@@ -640,7 +646,13 @@ class PurchaseOrder(Base):
         return Decimal("0")
 
     def __repr__(self) -> str:
-        return f"<PurchaseOrder(number='{self.po_number}', status='{self.status}')>"
+        try:
+            # Check if object is detached from session
+            if sa_inspect(self).detached:
+                return f"<PurchaseOrder(id={self.id})>"
+            return f"<PurchaseOrder(number='{self.po_number}', status='{self.status}')>"
+        except Exception:
+            return f"<PurchaseOrder(id={getattr(self, 'id', 'unknown')})>"
 
 
 class PurchaseOrderItem(Base):
@@ -780,7 +792,12 @@ class PurchaseOrderItem(Base):
     variant: Mapped[Optional["ProductVariant"]] = relationship("ProductVariant")
 
     def __repr__(self) -> str:
-        return f"<PurchaseOrderItem(sku='{self.sku}', qty={self.quantity_ordered})>"
+        try:
+            if sa_inspect(self).detached:
+                return f"<PurchaseOrderItem(id={self.id})>"
+            return f"<PurchaseOrderItem(sku='{self.sku}', qty={self.quantity_ordered})>"
+        except Exception:
+            return f"<PurchaseOrderItem(id={getattr(self, 'id', 'unknown')})>"
 
 
 # ==================== PO Delivery Schedule (Lot-wise) ====================
@@ -1027,7 +1044,12 @@ class PODeliverySchedule(Base):
         return None
 
     def __repr__(self) -> str:
-        return f"<PODeliverySchedule(lot={self.lot_name}, status={self.status})>"
+        try:
+            if sa_inspect(self).detached:
+                return f"<PODeliverySchedule(id={self.id})>"
+            return f"<PODeliverySchedule(lot={self.lot_name}, status={self.status})>"
+        except Exception:
+            return f"<PODeliverySchedule(id={getattr(self, 'id', 'unknown')})>"
 
 
 # ==================== Goods Receipt Note (GRN) ====================
@@ -1227,7 +1249,12 @@ class GoodsReceiptNote(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<GoodsReceiptNote(number='{self.grn_number}', status='{self.status}')>"
+        try:
+            if sa_inspect(self).detached:
+                return f"<GoodsReceiptNote(id={self.id})>"
+            return f"<GoodsReceiptNote(number='{self.grn_number}', status='{self.status}')>"
+        except Exception:
+            return f"<GoodsReceiptNote(id={getattr(self, 'id', 'unknown')})>"
 
 
 class GRNItem(Base):
@@ -1329,7 +1356,12 @@ class GRNItem(Base):
     bin: Mapped[Optional["WarehouseBin"]] = relationship("WarehouseBin")
 
     def __repr__(self) -> str:
-        return f"<GRNItem(sku='{self.sku}', received={self.quantity_received})>"
+        try:
+            if sa_inspect(self).detached:
+                return f"<GRNItem(id={self.id})>"
+            return f"<GRNItem(sku='{self.sku}', received={self.quantity_received})>"
+        except Exception:
+            return f"<GRNItem(id={getattr(self, 'id', 'unknown')})>"
 
 
 # ==================== Vendor Invoice ====================
@@ -1522,7 +1554,12 @@ class VendorInvoice(Base):
         return 0
 
     def __repr__(self) -> str:
-        return f"<VendorInvoice(ref='{self.our_reference}', vendor_inv='{self.invoice_number}')>"
+        try:
+            if sa_inspect(self).detached:
+                return f"<VendorInvoice(id={self.id})>"
+            return f"<VendorInvoice(ref='{self.our_reference}', vendor_inv='{self.invoice_number}')>"
+        except Exception:
+            return f"<VendorInvoice(id={getattr(self, 'id', 'unknown')})>"
 
 
 # ==================== Vendor Proforma Invoice ====================
@@ -1709,7 +1746,12 @@ class VendorProformaInvoice(Base):
         return -1  # No expiry set
 
     def __repr__(self) -> str:
-        return f"<VendorProformaInvoice(ref='{self.our_reference}', vendor_pi='{self.proforma_number}')>"
+        try:
+            if sa_inspect(self).detached:
+                return f"<VendorProformaInvoice(id={self.id})>"
+            return f"<VendorProformaInvoice(ref='{self.our_reference}', vendor_pi='{self.proforma_number}')>"
+        except Exception:
+            return f"<VendorProformaInvoice(id={getattr(self, 'id', 'unknown')})>"
 
 
 class VendorProformaItem(Base):
@@ -1773,7 +1815,13 @@ class VendorProformaItem(Base):
     product: Mapped[Optional["Product"]] = relationship("Product")
 
     def __repr__(self) -> str:
-        return f"<VendorProformaItem(desc='{self.description[:30]}...', qty={self.quantity})>"
+        try:
+            if sa_inspect(self).detached:
+                return f"<VendorProformaItem(id={self.id})>"
+            desc = self.description[:30] if self.description else ''
+            return f"<VendorProformaItem(desc='{desc}...', qty={self.quantity})>"
+        except Exception:
+            return f"<VendorProformaItem(id={getattr(self, 'id', 'unknown')})>"
 
 
 # ==================== Sales Return Note (SRN) ====================
@@ -1997,7 +2045,12 @@ class SalesReturnNote(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<SalesReturnNote(srn='{self.srn_number}', status='{self.status}')>"
+        try:
+            if sa_inspect(self).detached:
+                return f"<SalesReturnNote(id={self.id})>"
+            return f"<SalesReturnNote(srn='{self.srn_number}', status='{self.status}')>"
+        except Exception:
+            return f"<SalesReturnNote(id={getattr(self, 'id', 'unknown')})>"
 
 
 class SRNItem(Base):
@@ -2119,4 +2172,9 @@ class SRNItem(Base):
     bin: Mapped[Optional["WarehouseBin"]] = relationship("WarehouseBin")
 
     def __repr__(self) -> str:
-        return f"<SRNItem(sku='{self.sku}', qty_returned={self.quantity_returned})>"
+        try:
+            if sa_inspect(self).detached:
+                return f"<SRNItem(id={self.id})>"
+            return f"<SRNItem(sku='{self.sku}', qty_returned={self.quantity_returned})>"
+        except Exception:
+            return f"<SRNItem(id={getattr(self, 'id', 'unknown')})>"

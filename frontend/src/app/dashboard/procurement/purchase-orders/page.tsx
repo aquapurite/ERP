@@ -940,12 +940,12 @@ export default function PurchaseOrdersPage() {
     return { subtotal, gst, total: subtotal + gst };
   };
 
-  const vendors = vendorsData?.items ?? [];
-  const warehouses = warehousesData?.items ?? [];
-  const products = productsData?.items ?? [];
-  const openPRs = openPRsData ?? [];
-  const modelCodes = modelCodesData ?? [];
-  const supplierCodes = supplierCodesData ?? [];
+  const vendors = Array.isArray(vendorsData?.items) ? vendorsData.items : [];
+  const warehouses = Array.isArray(warehousesData?.items) ? warehousesData.items : [];
+  const products = Array.isArray(productsData?.items) ? productsData.items : [];
+  const openPRs = Array.isArray(openPRsData) ? openPRsData : [];
+  const modelCodes = Array.isArray(modelCodesData) ? modelCodesData : [];
+  const supplierCodes = Array.isArray(supplierCodesData) ? supplierCodesData : [];
   const totals = calculateTotals();
 
   // Helper to get model code for a product - prioritize product_id match over SKU match
