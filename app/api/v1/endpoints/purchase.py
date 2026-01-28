@@ -1953,6 +1953,7 @@ async def update_purchase_order(
 
     # Update simple fields
     simple_fields = ['expected_delivery_date', 'credit_days', 'payment_terms',
+                     'advance_required', 'advance_paid',
                      'freight_charges', 'packing_charges', 'other_charges',
                      'terms_and_conditions', 'special_instructions', 'internal_notes']
     for field in simple_fields:

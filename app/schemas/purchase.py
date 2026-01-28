@@ -330,6 +330,8 @@ class PurchaseOrderUpdate(BaseModel):
     expected_delivery_date: Optional[date] = None
     credit_days: Optional[int] = None
     payment_terms: Optional[str] = None
+    advance_required: Optional[Decimal] = None
+    advance_paid: Optional[Decimal] = None
     freight_charges: Optional[Decimal] = None
     packing_charges: Optional[Decimal] = None
     other_charges: Optional[Decimal] = None

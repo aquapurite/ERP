@@ -169,6 +169,8 @@ export default function PurchaseOrdersPage() {
     expected_delivery_date: string;
     credit_days: number;
     payment_terms: string;
+    advance_required: number;
+    advance_paid: number;
     freight_charges: number;
     packing_charges: number;
     other_charges: number;
@@ -181,6 +183,8 @@ export default function PurchaseOrdersPage() {
     expected_delivery_date: '',
     credit_days: 30,
     payment_terms: '',
+    advance_required: 0,
+    advance_paid: 0,
     freight_charges: 0,
     packing_charges: 0,
     other_charges: 0,
@@ -406,6 +410,8 @@ export default function PurchaseOrdersPage() {
         expected_delivery_date: '',
         credit_days: 30,
         payment_terms: '',
+        advance_required: 0,
+        advance_paid: 0,
         freight_charges: 0,
         packing_charges: 0,
         other_charges: 0,
@@ -444,9 +450,11 @@ export default function PurchaseOrdersPage() {
         expected_delivery_date: fullDetails.expected_delivery_date || po.expected_delivery_date || '',
         credit_days: fullDetails.credit_days ?? 30,
         payment_terms: fullDetails.payment_terms || '',
-        freight_charges: fullDetails.freight_charges || 0,
-        packing_charges: fullDetails.packing_charges || 0,
-        other_charges: fullDetails.other_charges || 0,
+        advance_required: Number(fullDetails.advance_required) || 0,
+        advance_paid: Number(fullDetails.advance_paid) || 0,
+        freight_charges: Number(fullDetails.freight_charges) || 0,
+        packing_charges: Number(fullDetails.packing_charges) || 0,
+        other_charges: Number(fullDetails.other_charges) || 0,
         terms_and_conditions: fullDetails.terms_and_conditions || '',
         special_instructions: fullDetails.special_instructions || '',
         internal_notes: fullDetails.internal_notes || '',
@@ -457,8 +465,8 @@ export default function PurchaseOrdersPage() {
           sku: item.sku || '',
           quantity: item.quantity_ordered || item.quantity || 0,
           quantity_ordered: item.quantity_ordered || item.quantity || 0,
-          unit_price: item.unit_price || 0,
-          gst_rate: item.gst_rate || 18,
+          unit_price: Number(item.unit_price) || 0,
+          gst_rate: Number(item.gst_rate) || 18,
           uom: item.uom || 'PCS',
         })),
       });
@@ -469,6 +477,8 @@ export default function PurchaseOrdersPage() {
         expected_delivery_date: po.expected_delivery_date || '',
         credit_days: 30,
         payment_terms: '',
+        advance_required: 0,
+        advance_paid: 0,
         freight_charges: 0,
         packing_charges: 0,
         other_charges: 0,
@@ -524,14 +534,21 @@ export default function PurchaseOrdersPage() {
   // Calculate totals for Edit modal
   const calculateEditTotals = () => {
     const subtotal = editPOData.items.reduce((sum, item) => {
-      const qty = item.quantity_ordered || item.quantity || 0;
-      return sum + (qty * (item.unit_price || 0));
+      const qty = Number(item.quantity_ordered) || Number(item.quantity) || 0;
+      const price = Number(item.unit_price) || 0;
+      return sum + (qty * price);
     }, 0);
     const gst = editPOData.items.reduce((sum, item) => {
-      const qty = item.quantity_ordered || item.quantity || 0;
-      return sum + (qty * (item.unit_price || 0) * ((item.gst_rate || 0) / 100));
+      const qty = Number(item.quantity_ordered) || Number(item.quantity) || 0;
+      const price = Number(item.unit_price) || 0;
+      const rate = Number(item.gst_rate) || 0;
+      return sum + (qty * price * (rate / 100));
     }, 0);
-    const charges = (editPOData.freight_charges || 0) + (editPOData.packing_charges || 0) + (editPOData.other_charges || 0);
+    // Ensure all charges are valid numbers, default to 0 if NaN
+    const freight = Number(editPOData.freight_charges) || 0;
+    const packing = Number(editPOData.packing_charges) || 0;
+    const other = Number(editPOData.other_charges) || 0;
+    const charges = freight + packing + other;
     return { subtotal, gst, charges, total: subtotal + gst + charges };
   };
 
@@ -548,6 +565,8 @@ export default function PurchaseOrdersPage() {
         expected_delivery_date: editPOData.expected_delivery_date || undefined,
         credit_days: editPOData.credit_days ?? undefined,
         payment_terms: editPOData.payment_terms || undefined,
+        advance_required: editPOData.advance_required ?? undefined,
+        advance_paid: editPOData.advance_paid ?? undefined,
         freight_charges: editPOData.freight_charges ?? undefined,
         packing_charges: editPOData.packing_charges ?? undefined,
         other_charges: editPOData.other_charges ?? undefined,
@@ -558,9 +577,9 @@ export default function PurchaseOrdersPage() {
           product_id: item.product_id,
           product_name: item.product_name || '',
           sku: item.sku || '',
-          quantity_ordered: item.quantity_ordered || item.quantity || 0,
-          unit_price: item.unit_price || 0,
-          gst_rate: item.gst_rate || 18,
+          quantity_ordered: Number(item.quantity_ordered) || Number(item.quantity) || 0,
+          unit_price: Number(item.unit_price) || 0,
+          gst_rate: Number(item.gst_rate) || 18,
           uom: item.uom || 'PCS',
           discount_percentage: 0,
           hsn_code: '',
@@ -2359,6 +2378,8 @@ export default function PurchaseOrdersPage() {
             expected_delivery_date: '',
             credit_days: 30,
             payment_terms: '',
+            advance_required: 0,
+            advance_paid: 0,
             freight_charges: 0,
             packing_charges: 0,
             other_charges: 0,
@@ -2378,8 +2399,8 @@ export default function PurchaseOrdersPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-6 py-4">
-            {/* Vendor & Basic Info */}
-            <div className="grid grid-cols-4 gap-4">
+            {/* Row 1: Vendor & Dates */}
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>Vendor <span className="text-red-500">*</span></Label>
                 <Select
@@ -2407,6 +2428,18 @@ export default function PurchaseOrdersPage() {
                 />
               </div>
               <div className="space-y-2">
+                <Label>Payment Terms</Label>
+                <Input
+                  value={editPOData.payment_terms}
+                  onChange={(e) => setEditPOData({ ...editPOData, payment_terms: e.target.value })}
+                  placeholder="e.g., Net 30, 50% Advance"
+                />
+              </div>
+            </div>
+
+            {/* Row 2: Credit & Advance */}
+            <div className="grid grid-cols-4 gap-4">
+              <div className="space-y-2">
                 <Label>Credit Days</Label>
                 <Input
                   type="number"
@@ -2416,12 +2449,31 @@ export default function PurchaseOrdersPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Payment Terms</Label>
+                <Label>Advance Required</Label>
                 <Input
-                  value={editPOData.payment_terms}
-                  onChange={(e) => setEditPOData({ ...editPOData, payment_terms: e.target.value })}
-                  placeholder="e.g., Net 30"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={editPOData.advance_required}
+                  onChange={(e) => setEditPOData({ ...editPOData, advance_required: parseFloat(e.target.value) || 0 })}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>Advance Paid</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={editPOData.advance_paid}
+                  onChange={(e) => setEditPOData({ ...editPOData, advance_paid: parseFloat(e.target.value) || 0 })}
+                  className={editPOData.advance_paid > 0 ? "border-green-500 bg-green-50" : ""}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Advance Balance</Label>
+                <div className={`h-9 px-3 py-2 border rounded-md text-sm ${editPOData.advance_paid >= editPOData.advance_required ? "bg-green-50 text-green-700" : "bg-orange-50 text-orange-700"}`}>
+                  {formatCurrency(Math.max(0, editPOData.advance_required - editPOData.advance_paid))}
+                </div>
               </div>
             </div>
 
