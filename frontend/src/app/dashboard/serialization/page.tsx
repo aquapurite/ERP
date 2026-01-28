@@ -397,8 +397,8 @@ export default function SerializationPage() {
     queryKey: ['vendors-for-supplier-codes'],
     queryFn: async () => {
       try {
-        const { data } = await apiClient.get('/vendors', { params: { limit: 500 } });
-        return data.items || data || [];
+        const { data } = await apiClient.get('/vendors/dropdown', { params: { active_only: true } });
+        return data || [];
       } catch {
         return [];
       }
@@ -409,7 +409,7 @@ export default function SerializationPage() {
     queryKey: ['categories-for-products'],
     queryFn: async () => {
       try {
-        const { data } = await apiClient.get('/categories', { params: { limit: 500 } });
+        const { data } = await apiClient.get('/categories', { params: { size: 100 } });
         return data.items || data || [];
       } catch {
         return [];
@@ -421,7 +421,7 @@ export default function SerializationPage() {
     queryKey: ['brands-for-products'],
     queryFn: async () => {
       try {
-        const { data } = await apiClient.get('/brands', { params: { limit: 500 } });
+        const { data } = await apiClient.get('/brands', { params: { size: 100 } });
         return data.items || data || [];
       } catch {
         return [];
