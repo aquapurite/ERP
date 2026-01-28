@@ -459,6 +459,8 @@ export interface PurchaseOrder {
   expected_delivery_date?: string;
   // Financial terms
   payment_terms?: string;
+  advance_required?: number;
+  advance_paid?: number;
   freight_charges?: number;
   packing_charges?: number;
   other_charges?: number;
