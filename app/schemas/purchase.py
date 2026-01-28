@@ -57,7 +57,17 @@ class PRItemUpdate(BaseModel):
 class PRItemResponse(BaseResponseSchema):
     """Response schema for PR item."""
     id: UUID
+    product_id: UUID
+    variant_id: Optional[UUID] = None
+    product_name: str
+    sku: str
+    quantity_requested: int
+    uom: str = "PCS"
+    estimated_unit_price: Decimal
     estimated_total: Decimal
+    preferred_vendor_id: Optional[UUID] = None
+    notes: Optional[str] = None
+    monthly_quantities: Optional[dict] = None
 
 
 class PurchaseRequisitionBase(BaseModel):
@@ -95,7 +105,13 @@ class PurchaseRequisitionResponse(BaseResponseSchema):
     request_date: date
     requested_by: UUID
     requested_by_name: Optional[str] = None  # Computed from relationship
+    requesting_department: Optional[str] = None
+    required_by_date: Optional[date] = None
+    delivery_warehouse_id: Optional[UUID] = None
     delivery_warehouse_name: Optional[str] = None  # Computed from relationship
+    priority: int = 5
+    reason: Optional[str] = None
+    notes: Optional[str] = None
     estimated_total: Decimal
     approved_by: Optional[UUID] = None
     approved_at: Optional[datetime] = None
