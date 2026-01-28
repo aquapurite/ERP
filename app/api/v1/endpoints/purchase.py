@@ -1838,7 +1838,36 @@ async def get_purchase_order(
     if not po:
         raise HTTPException(status_code=404, detail="Purchase Order not found")
 
-    return po
+    # Fetch vendor for nested object
+    vendor_brief = None
+    if po.vendor_id:
+        vendor_result = await db.execute(
+            select(Vendor).where(Vendor.id == po.vendor_id)
+        )
+        vendor = vendor_result.scalar_one_or_none()
+        if vendor:
+            vendor_brief = {"id": vendor.id, "name": vendor.name, "code": vendor.vendor_code}
+
+    # Fetch warehouse for nested object
+    warehouse_brief = None
+    if po.delivery_warehouse_id:
+        warehouse_result = await db.execute(
+            select(Warehouse).where(Warehouse.id == po.delivery_warehouse_id)
+        )
+        warehouse = warehouse_result.scalar_one_or_none()
+        if warehouse:
+            warehouse_brief = {"id": warehouse.id, "name": warehouse.name}
+
+    # Build response with nested objects
+    response_dict = {
+        **{c.name: getattr(po, c.name) for c in po.__table__.columns},
+        "items": po.items,
+        "delivery_schedules": po.delivery_schedules,
+        "vendor": vendor_brief,
+        "warehouse": warehouse_brief,
+    }
+
+    return PurchaseOrderResponse.model_validate(response_dict)
 
 
 @router.delete("/orders/{po_id}", status_code=status.HTTP_204_NO_CONTENT)

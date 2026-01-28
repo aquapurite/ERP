@@ -169,8 +169,25 @@ class POItemCreate(POItemBase):
 class POItemResponse(BaseResponseSchema):
     """Response schema for PO item."""
     id: UUID
+    # Product info
+    product_id: Optional[UUID] = None
+    variant_id: Optional[UUID] = None
+    product_name: str
+    sku: str
+    hsn_code: Optional[str] = None
+    # Quantity
     line_number: int
+    quantity_ordered: int
+    quantity_received: int
+    quantity_accepted: int
+    quantity_rejected: int
+    quantity_pending: int
+    uom: str = "PCS"
+    # Pricing
+    unit_price: Decimal
+    discount_percentage: Decimal = Decimal("0")
     discount_amount: Decimal
+    gst_rate: Decimal = Decimal("18")
     taxable_amount: Decimal
     cgst_rate: Decimal
     sgst_rate: Decimal
@@ -180,11 +197,11 @@ class POItemResponse(BaseResponseSchema):
     igst_amount: Decimal
     cess_amount: Decimal
     total_amount: Decimal
-    quantity_received: int
-    quantity_accepted: int
-    quantity_rejected: int
-    quantity_pending: int
+    # Status
     is_closed: bool
+    expected_date: Optional[date] = None
+    notes: Optional[str] = None
+    monthly_quantities: Optional[dict] = None
 
 
 # ==================== PO Delivery Schedule (Lot-wise) Schemas ====================
@@ -390,6 +407,10 @@ class PurchaseOrderResponse(BaseResponseSchema):
     created_at: datetime
     updated_at: datetime
     closed_at: Optional[datetime] = None
+
+    # Nested objects for frontend compatibility
+    vendor: Optional["POVendorBrief"] = None
+    warehouse: Optional["POWarehouseBrief"] = None
 
 
 class POVendorBrief(BaseModel):
