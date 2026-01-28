@@ -1,5 +1,12 @@
 # Render.com Blueprint Configuration
 # https://render.com/docs/blueprint-spec
+#
+# SMART DEPLOYMENT SETUP:
+# To skip backend deployment when only frontend files change:
+# 1. Go to Render Dashboard → aquapurite-erp-api service
+# 2. Settings → Build & Deploy → Auto-Deploy
+# 3. Add to "Ignored Paths": frontend/**
+# This prevents unnecessary backend rebuilds when only frontend changes.
 
 services:
   # FastAPI Backend Service
