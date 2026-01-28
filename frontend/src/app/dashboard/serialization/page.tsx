@@ -43,16 +43,25 @@ import { useAuth } from '@/providers/auth-provider';
 
 interface SerialItem {
   id: string;
-  serial_number: string;
+  po_id: string;
+  po_item_id?: string;
+  product_id?: string;
+  product_sku?: string;
+  model_code: string;
+  item_type: 'FG' | 'SP';
+  brand_prefix: string;
+  supplier_code: string;
+  year_code: string;
+  month_code: string;
+  serial_number: number;
   barcode: string;
-  product_id: string;
-  product?: { name: string; sku: string };
-  po_id?: string;
-  po_number?: string;
-  warehouse_id?: string;
-  warehouse?: { name: string };
-  status: 'GENERATED' | 'IN_STOCK' | 'ALLOCATED' | 'SHIPPED' | 'DELIVERED' | 'INSTALLED' | 'RETURNED' | 'SCRAPPED';
-  manufactured_date?: string;
+  status: string;
+  grn_id?: string;
+  received_at?: string;
+  stock_item_id?: string;
+  assigned_at?: string;
+  order_id?: string;
+  sold_at?: string;
   warranty_start_date?: string;
   warranty_end_date?: string;
   created_at: string;
@@ -102,9 +111,9 @@ interface CreateProductFormData {
 }
 
 const localSerializationApi = {
-  list: async (params?: { page?: number; size?: number; status?: string; product_id?: string }) => {
+  list: async (params?: { page?: number; size?: number; status?: string; item_type?: string; search?: string }) => {
     try {
-      const { data } = await apiClient.get('/inventory/stock-items', { params });
+      const { data } = await apiClient.get('/serialization/serials', { params });
       return data;
     } catch {
       return { items: [], total: 0, pages: 0 };
@@ -122,63 +131,63 @@ const localSerializationApi = {
 
 const serialColumns: ColumnDef<SerialItem>[] = [
   {
-    accessorKey: 'serial_number',
-    header: 'Serial Number',
+    accessorKey: 'barcode',
+    header: 'Barcode',
     cell: ({ row }) => (
       <div className="flex items-center gap-2">
         <Barcode className="h-4 w-4 text-muted-foreground" />
         <div>
-          <div className="font-mono font-medium">{row.original.serial_number}</div>
-          <div className="text-xs text-muted-foreground font-mono">
-            {row.original.barcode}
+          <div className="font-mono font-medium">{row.original.barcode}</div>
+          <div className="text-xs text-muted-foreground">
+            Serial #{row.original.serial_number.toString().padStart(8, '0')}
           </div>
         </div>
       </div>
     ),
   },
   {
-    accessorKey: 'product',
-    header: 'Product',
+    accessorKey: 'model_code',
+    header: 'Model',
     cell: ({ row }) => (
       <div className="text-sm">
-        <div>{row.original.product?.name || 'N/A'}</div>
-        <div className="text-muted-foreground font-mono text-xs">
-          {row.original.product?.sku}
+        <Badge variant="secondary" className="font-mono">
+          {row.original.model_code}
+        </Badge>
+        <div className="text-muted-foreground font-mono text-xs mt-1">
+          {row.original.product_sku || '-'}
         </div>
       </div>
     ),
   },
   {
-    accessorKey: 'po_number',
-    header: 'PO Reference',
+    accessorKey: 'item_type',
+    header: 'Type',
     cell: ({ row }) => (
-      <span className="text-sm">{row.original.po_number || '-'}</span>
+      <Badge variant={row.original.item_type === 'FG' ? 'default' : 'outline'}>
+        {row.original.item_type === 'FG' ? 'Finished Good' : 'Spare Part'}
+      </Badge>
     ),
   },
   {
-    accessorKey: 'warehouse',
-    header: 'Location',
+    accessorKey: 'supplier_code',
+    header: 'Supplier',
     cell: ({ row }) => (
-      <span className="text-sm">{row.original.warehouse?.name || '-'}</span>
-    ),
-  },
-  {
-    accessorKey: 'warranty',
-    header: 'Warranty',
-    cell: ({ row }) => (
-      row.original.warranty_end_date ? (
-        <div className="text-sm">
-          <div>Till {formatDate(row.original.warranty_end_date)}</div>
-        </div>
-      ) : (
-        <span className="text-sm text-muted-foreground">-</span>
-      )
+      <span className="font-mono text-sm">{row.original.supplier_code}</span>
     ),
   },
   {
     accessorKey: 'status',
     header: 'Status',
     cell: ({ row }) => <StatusBadge status={row.original.status} />,
+  },
+  {
+    accessorKey: 'created_at',
+    header: 'Generated',
+    cell: ({ row }) => (
+      <span className="text-sm text-muted-foreground">
+        {formatDate(row.original.created_at)}
+      </span>
+    ),
   },
   {
     id: 'actions',
@@ -194,7 +203,7 @@ const serialColumns: ColumnDef<SerialItem>[] = [
           <DropdownMenuSeparator />
           <DropdownMenuItem>
             <Eye className="mr-2 h-4 w-4" />
-            View History
+            View Details
           </DropdownMenuItem>
           <DropdownMenuItem>
             <QrCode className="mr-2 h-4 w-4" />
@@ -358,13 +367,13 @@ export default function SerializationPage() {
 
   // Queries
   const { data: serialData, isLoading: serialsLoading } = useQuery({
-    queryKey: ['serial-items', page, pageSize],
-    queryFn: () => localSerializationApi.list({ page: page + 1, size: pageSize }),
+    queryKey: ['serial-items', page, pageSize, itemTypeFilter],
+    queryFn: () => localSerializationApi.list({ page: page + 1, size: pageSize, item_type: itemTypeFilter }),
   });
 
   const { data: modelCodes = [], isLoading: modelCodesLoading } = useQuery({
-    queryKey: ['model-codes'],
-    queryFn: () => serializationApi.getModelCodes(false),
+    queryKey: ['model-codes', itemTypeFilter],
+    queryFn: () => serializationApi.getModelCodes(false, itemTypeFilter),
   });
 
   const { data: supplierCodes = [], isLoading: supplierCodesLoading } = useQuery({
@@ -761,11 +770,9 @@ export default function SerializationPage() {
                   </div>
                   {validationResult.item && (
                     <div className="mt-2 text-sm text-muted-foreground">
-                      <div>Product: {validationResult.item.product?.name}</div>
+                      <div>Model: {validationResult.item.model_code} ({validationResult.item.product_sku || 'N/A'})</div>
                       <div>Status: {validationResult.item.status}</div>
-                      {validationResult.item.warehouse && (
-                        <div>Location: {validationResult.item.warehouse.name}</div>
-                      )}
+                      <div>Type: {validationResult.item.item_type === 'FG' ? 'Finished Good' : 'Spare Part'}</div>
                     </div>
                   )}
                 </div>
@@ -776,8 +783,8 @@ export default function SerializationPage() {
           <DataTable
             columns={serialColumns}
             data={serialData?.items ?? []}
-            searchKey="serial_number"
-            searchPlaceholder="Search serial numbers..."
+            searchKey="barcode"
+            searchPlaceholder="Search by barcode..."
             isLoading={serialsLoading}
             manualPagination
             pageCount={serialData?.pages ?? 0}

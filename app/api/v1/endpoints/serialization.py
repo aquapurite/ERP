@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, String, and_
 
 from app.api.deps import get_db, get_current_user, Permissions
 from app.models.user import User
@@ -548,6 +548,71 @@ async def preview_codes(
 
 
 # ==================== PO Serials ====================
+
+
+@router.get("/serials")
+async def list_all_serials(
+    page: int = Query(1, ge=1, description="Page number"),
+    size: int = Query(50, ge=1, le=100, description="Page size"),
+    item_type: Optional[str] = Query(None, description="Filter by item type (FG or SP)"),
+    status: Optional[str] = Query(None, description="Filter by status"),
+    search: Optional[str] = Query(None, description="Search by barcode or serial number"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    List all serial numbers with pagination and filtering.
+
+    This endpoint lists all po_serials (generated barcodes) across all POs.
+    Use this for the Serial Numbers tab in Serialization section.
+    """
+    # Build query
+    query = select(POSerial)
+    count_query = select(func.count(POSerial.id))
+
+    # Apply filters
+    filters = []
+
+    if item_type:
+        filters.append(POSerial.item_type == item_type.upper())
+
+    if status:
+        filters.append(func.upper(POSerial.status) == status.upper())
+
+    if search:
+        search_filter = f"%{search}%"
+        filters.append(
+            (POSerial.barcode.ilike(search_filter)) |
+            (POSerial.serial_number.cast(String).ilike(search_filter))
+        )
+
+    if filters:
+        query = query.where(and_(*filters))
+        count_query = count_query.where(and_(*filters))
+
+    # Get total count
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Apply pagination and ordering
+    offset = (page - 1) * size
+    query = query.order_by(POSerial.created_at.desc()).offset(offset).limit(size)
+
+    # Execute query
+    result = await db.execute(query)
+    serials = result.scalars().all()
+
+    # Calculate pages
+    pages = (total + size - 1) // size if total > 0 else 0
+
+    return {
+        "items": [POSerialResponse.model_validate(s) for s in serials],
+        "total": total,
+        "page": page,
+        "size": size,
+        "pages": pages,
+    }
+
 
 @router.get("/po/{po_id}", response_model=POSerialsListResponse)
 async def get_po_serials(
