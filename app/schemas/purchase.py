@@ -325,8 +325,10 @@ class PurchaseOrderCreate(PurchaseOrderBase):
 
 
 class PurchaseOrderUpdate(BaseModel):
-    """Schema for updating PO."""
+    """Schema for updating PO - supports full editing including vendor and items."""
+    vendor_id: Optional[UUID] = None
     expected_delivery_date: Optional[date] = None
+    credit_days: Optional[int] = None
     payment_terms: Optional[str] = None
     freight_charges: Optional[Decimal] = None
     packing_charges: Optional[Decimal] = None
@@ -334,6 +336,8 @@ class PurchaseOrderUpdate(BaseModel):
     terms_and_conditions: Optional[str] = None
     special_instructions: Optional[str] = None
     internal_notes: Optional[str] = None
+    # Items - if provided, replaces all existing items
+    items: Optional[List[POItemCreate]] = None
 
 
 class PurchaseOrderResponse(BaseResponseSchema):

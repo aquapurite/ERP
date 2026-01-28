@@ -1915,7 +1915,7 @@ async def update_purchase_order(
     db: DB,
     current_user: User = Depends(get_current_user),
 ):
-    """Update a purchase order. Only DRAFT and PENDING_APPROVAL POs can be edited."""
+    """Update a purchase order. Supports full editing including vendor and items."""
     result = await db.execute(
         select(PurchaseOrder)
         .options(
@@ -1930,7 +1930,6 @@ async def update_purchase_order(
         raise HTTPException(status_code=404, detail="Purchase Order not found")
 
     # Only allow editing of DRAFT or PENDING_APPROVAL POs
-    # Use string values for comparison since po.status is VARCHAR from DB
     allowed_statuses = [POStatus.DRAFT.value, POStatus.PENDING_APPROVAL.value]
     if po.status not in allowed_statuses:
         raise HTTPException(
@@ -1938,13 +1937,148 @@ async def update_purchase_order(
             detail=f"Cannot edit PO with status '{po.status}'. Only DRAFT or PENDING_APPROVAL POs can be edited."
         )
 
-    # Update fields
     update_dict = update_data.model_dump(exclude_unset=True)
-    for field, value in update_dict.items():
-        setattr(po, field, value)
+    items_data = update_dict.pop('items', None)
+
+    # Handle vendor change
+    if 'vendor_id' in update_dict and update_dict['vendor_id']:
+        vendor_result = await db.execute(
+            select(Vendor).where(Vendor.id == update_dict['vendor_id'])
+        )
+        vendor = vendor_result.scalar_one_or_none()
+        if vendor:
+            po.vendor_id = vendor.id
+            po.vendor_name = vendor.name
+            po.vendor_gstin = vendor.gstin
+
+    # Update simple fields
+    simple_fields = ['expected_delivery_date', 'credit_days', 'payment_terms',
+                     'freight_charges', 'packing_charges', 'other_charges',
+                     'terms_and_conditions', 'special_instructions', 'internal_notes']
+    for field in simple_fields:
+        if field in update_dict and update_dict[field] is not None:
+            setattr(po, field, update_dict[field])
+
+    # Handle items replacement
+    if items_data is not None:
+        # Delete existing items
+        await db.execute(
+            delete(PurchaseOrderItem).where(PurchaseOrderItem.purchase_order_id == po_id)
+        )
+
+        # Get warehouse for GST calculation
+        wh_result = await db.execute(
+            select(Warehouse).where(Warehouse.id == po.delivery_warehouse_id)
+        )
+        warehouse = wh_result.scalar_one_or_none()
+
+        # Determine if inter-state
+        vendor_result = await db.execute(
+            select(Vendor).where(Vendor.id == po.vendor_id)
+        )
+        vendor = vendor_result.scalar_one_or_none()
+        is_inter_state = False
+        if warehouse and vendor and vendor.gst_state_code:
+            wh_state = getattr(warehouse, 'state_code', None)
+            if wh_state and wh_state != vendor.gst_state_code:
+                is_inter_state = True
+
+        # Create new items and calculate totals
+        subtotal = Decimal("0")
+        total_discount = Decimal("0")
+        taxable_amount = Decimal("0")
+        cgst_total = Decimal("0")
+        sgst_total = Decimal("0")
+        igst_total = Decimal("0")
+        line_number = 0
+
+        for item_data in items_data:
+            line_number += 1
+            qty = Decimal(str(item_data.quantity_ordered))
+            unit_price = Decimal(str(item_data.unit_price)).quantize(Decimal("0.01"))
+            discount_pct = Decimal(str(item_data.discount_percentage)).quantize(Decimal("0.01"))
+
+            gross_amount = (qty * unit_price).quantize(Decimal("0.01"))
+            discount_amount = (gross_amount * discount_pct / Decimal("100")).quantize(Decimal("0.01"))
+            item_taxable = (gross_amount - discount_amount).quantize(Decimal("0.01"))
+
+            gst_rate = Decimal(str(item_data.gst_rate)).quantize(Decimal("0.01"))
+            if is_inter_state:
+                igst_rate = gst_rate
+                cgst_rate = Decimal("0")
+                sgst_rate = Decimal("0")
+            else:
+                igst_rate = Decimal("0")
+                cgst_rate = (gst_rate / Decimal("2")).quantize(Decimal("0.01"))
+                sgst_rate = (gst_rate / Decimal("2")).quantize(Decimal("0.01"))
+
+            cgst_amount = (item_taxable * cgst_rate / Decimal("100")).quantize(Decimal("0.01"))
+            sgst_amount = (item_taxable * sgst_rate / Decimal("100")).quantize(Decimal("0.01"))
+            igst_amount = (item_taxable * igst_rate / Decimal("100")).quantize(Decimal("0.01"))
+            item_total = (item_taxable + cgst_amount + sgst_amount + igst_amount).quantize(Decimal("0.01"))
+
+            item = PurchaseOrderItem(
+                purchase_order_id=po.id,
+                line_number=line_number,
+                product_id=item_data.product_id,
+                variant_id=item_data.variant_id,
+                product_name=item_data.product_name,
+                sku=item_data.sku,
+                hsn_code=item_data.hsn_code,
+                quantity_ordered=item_data.quantity_ordered,
+                uom=item_data.uom,
+                unit_price=unit_price,
+                discount_percentage=discount_pct,
+                discount_amount=discount_amount,
+                taxable_amount=item_taxable,
+                gst_rate=gst_rate,
+                cgst_rate=cgst_rate,
+                sgst_rate=sgst_rate,
+                igst_rate=igst_rate,
+                cgst_amount=cgst_amount,
+                sgst_amount=sgst_amount,
+                igst_amount=igst_amount,
+                cess_amount=Decimal("0"),
+                total_amount=item_total,
+            )
+            db.add(item)
+
+            subtotal += gross_amount
+            total_discount += discount_amount
+            taxable_amount += item_taxable
+            cgst_total += cgst_amount
+            sgst_total += sgst_amount
+            igst_total += igst_amount
+
+        # Update PO totals
+        total_tax = (cgst_total + sgst_total + igst_total).quantize(Decimal("0.01"))
+        freight = Decimal(str(po.freight_charges or 0)).quantize(Decimal("0.01"))
+        packing = Decimal(str(po.packing_charges or 0)).quantize(Decimal("0.01"))
+        other = Decimal(str(po.other_charges or 0)).quantize(Decimal("0.01"))
+        grand_total = (taxable_amount + total_tax + freight + packing + other).quantize(Decimal("0.01"))
+
+        po.subtotal = subtotal.quantize(Decimal("0.01"))
+        po.discount_amount = total_discount.quantize(Decimal("0.01"))
+        po.taxable_amount = taxable_amount.quantize(Decimal("0.01"))
+        po.cgst_amount = cgst_total.quantize(Decimal("0.01"))
+        po.sgst_amount = sgst_total.quantize(Decimal("0.01"))
+        po.igst_amount = igst_total.quantize(Decimal("0.01"))
+        po.cess_amount = Decimal("0")
+        po.total_tax = total_tax
+        po.grand_total = grand_total
 
     await db.commit()
-    await db.refresh(po)
+
+    # Refresh to get updated items
+    result = await db.execute(
+        select(PurchaseOrder)
+        .options(
+            selectinload(PurchaseOrder.items),
+            selectinload(PurchaseOrder.delivery_schedules)
+        )
+        .where(PurchaseOrder.id == po_id)
+    )
+    po = result.scalar_one()
 
     return po
 

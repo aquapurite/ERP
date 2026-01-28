@@ -162,10 +162,12 @@ export default function PurchaseOrdersPage() {
   const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [isRecordingPayment, setIsRecordingPayment] = useState(false);
 
-  // Edit PO state
+  // Edit PO state - comprehensive editing of all fields
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editPOData, setEditPOData] = useState<{
+    vendor_id: string;
     expected_delivery_date: string;
+    credit_days: number;
     payment_terms: string;
     freight_charges: number;
     packing_charges: number;
@@ -173,8 +175,11 @@ export default function PurchaseOrdersPage() {
     terms_and_conditions: string;
     special_instructions: string;
     internal_notes: string;
+    items: POItem[];
   }>({
+    vendor_id: '',
     expected_delivery_date: '',
+    credit_days: 30,
     payment_terms: '',
     freight_charges: 0,
     packing_charges: 0,
@@ -182,6 +187,13 @@ export default function PurchaseOrdersPage() {
     terms_and_conditions: '',
     special_instructions: '',
     internal_notes: '',
+    items: [],
+  });
+  const [editNewItem, setEditNewItem] = useState({
+    product_id: '',
+    quantity: 1,
+    unit_price: 0,
+    gst_rate: 18,
   });
 
   // Admin status edit state (Super Admin only)
@@ -390,7 +402,9 @@ export default function PurchaseOrdersPage() {
       setIsEditDialogOpen(false);
       setSelectedPO(null);
       setEditPOData({
+        vendor_id: '',
         expected_delivery_date: '',
+        credit_days: 30,
         payment_terms: '',
         freight_charges: 0,
         packing_charges: 0,
@@ -398,7 +412,9 @@ export default function PurchaseOrdersPage() {
         terms_and_conditions: '',
         special_instructions: '',
         internal_notes: '',
+        items: [],
       });
+      setEditNewItem({ product_id: '', quantity: 1, unit_price: 0, gst_rate: 18 });
     },
     onError: (error: Error) => toast.error(error.message || 'Failed to update PO'),
   });
@@ -417,14 +433,16 @@ export default function PurchaseOrdersPage() {
     onError: (error: Error) => toast.error(error.message || 'Failed to update PO status'),
   });
 
-  // Handle Edit PO - Fetch full details first
+  // Handle Edit PO - Fetch full details including items
   const handleEditPO = async (po: PurchaseOrder) => {
     setSelectedPO(po);
     try {
-      // Fetch full PO details (list only returns POBrief without all fields)
+      // Fetch full PO details with items
       const fullDetails = await purchaseOrdersApi.getById(po.id);
       setEditPOData({
+        vendor_id: fullDetails.vendor_id || po.vendor_id || '',
         expected_delivery_date: fullDetails.expected_delivery_date || po.expected_delivery_date || '',
+        credit_days: fullDetails.credit_days ?? 30,
         payment_terms: fullDetails.payment_terms || '',
         freight_charges: fullDetails.freight_charges || 0,
         packing_charges: fullDetails.packing_charges || 0,
@@ -432,11 +450,24 @@ export default function PurchaseOrdersPage() {
         terms_and_conditions: fullDetails.terms_and_conditions || '',
         special_instructions: fullDetails.special_instructions || '',
         internal_notes: fullDetails.internal_notes || '',
+        items: (fullDetails.items || []).map((item: any) => ({
+          id: item.id,
+          product_id: item.product_id || '',
+          product_name: item.product_name || '',
+          sku: item.sku || '',
+          quantity: item.quantity_ordered || item.quantity || 0,
+          quantity_ordered: item.quantity_ordered || item.quantity || 0,
+          unit_price: item.unit_price || 0,
+          gst_rate: item.gst_rate || 18,
+          uom: item.uom || 'PCS',
+        })),
       });
     } catch {
       // Fallback to basic data if fetch fails
       setEditPOData({
+        vendor_id: po.vendor_id || '',
         expected_delivery_date: po.expected_delivery_date || '',
+        credit_days: 30,
         payment_terms: '',
         freight_charges: 0,
         packing_charges: 0,
@@ -444,25 +475,96 @@ export default function PurchaseOrdersPage() {
         terms_and_conditions: '',
         special_instructions: '',
         internal_notes: '',
+        items: [],
       });
     }
     setIsEditDialogOpen(true);
   };
 
+  // Helper functions for editing items in Edit modal
+  const handleEditAddItem = () => {
+    if (!editNewItem.product_id) {
+      toast.error('Please select a product');
+      return;
+    }
+    const product = products.find((p: Product) => p.id === editNewItem.product_id);
+    if (!product) return;
+
+    const newItem: POItem = {
+      product_id: product.id,
+      product_name: product.name,
+      sku: product.sku,
+      quantity: editNewItem.quantity,
+      quantity_ordered: editNewItem.quantity,
+      unit_price: editNewItem.unit_price,
+      gst_rate: editNewItem.gst_rate,
+      uom: 'PCS',
+    };
+
+    setEditPOData({
+      ...editPOData,
+      items: [...editPOData.items, newItem],
+    });
+    setEditNewItem({ product_id: '', quantity: 1, unit_price: 0, gst_rate: 18 });
+  };
+
+  const handleEditRemoveItem = (index: number) => {
+    setEditPOData({
+      ...editPOData,
+      items: editPOData.items.filter((_, i) => i !== index),
+    });
+  };
+
+  const handleEditUpdateItem = (index: number, field: string, value: any) => {
+    const updatedItems = [...editPOData.items];
+    updatedItems[index] = { ...updatedItems[index], [field]: value };
+    setEditPOData({ ...editPOData, items: updatedItems });
+  };
+
+  // Calculate totals for Edit modal
+  const calculateEditTotals = () => {
+    const subtotal = editPOData.items.reduce((sum, item) => {
+      const qty = item.quantity_ordered || item.quantity || 0;
+      return sum + (qty * (item.unit_price || 0));
+    }, 0);
+    const gst = editPOData.items.reduce((sum, item) => {
+      const qty = item.quantity_ordered || item.quantity || 0;
+      return sum + (qty * (item.unit_price || 0) * ((item.gst_rate || 0) / 100));
+    }, 0);
+    const charges = (editPOData.freight_charges || 0) + (editPOData.packing_charges || 0) + (editPOData.other_charges || 0);
+    return { subtotal, gst, charges, total: subtotal + gst + charges };
+  };
+
   const handleUpdatePO = () => {
     if (!selectedPO) return;
+    if (editPOData.items.length === 0) {
+      toast.error('Please add at least one item');
+      return;
+    }
     updateMutation.mutate({
       id: selectedPO.id,
       data: {
+        vendor_id: editPOData.vendor_id || undefined,
         expected_delivery_date: editPOData.expected_delivery_date || undefined,
+        credit_days: editPOData.credit_days ?? undefined,
         payment_terms: editPOData.payment_terms || undefined,
-        // Use nullish coalescing for numbers to preserve 0 values
         freight_charges: editPOData.freight_charges ?? undefined,
         packing_charges: editPOData.packing_charges ?? undefined,
         other_charges: editPOData.other_charges ?? undefined,
         terms_and_conditions: editPOData.terms_and_conditions || undefined,
         special_instructions: editPOData.special_instructions || undefined,
         internal_notes: editPOData.internal_notes || undefined,
+        items: editPOData.items.map(item => ({
+          product_id: item.product_id,
+          product_name: item.product_name || '',
+          sku: item.sku || '',
+          quantity_ordered: item.quantity_ordered || item.quantity || 0,
+          unit_price: item.unit_price || 0,
+          gst_rate: item.gst_rate || 18,
+          uom: item.uom || 'PCS',
+          discount_percentage: 0,
+          hsn_code: '',
+        })),
       },
     });
   };
@@ -2247,13 +2349,15 @@ export default function PurchaseOrdersPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Edit PO Dialog */}
+      {/* Edit PO Dialog - Comprehensive editing */}
       <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
         if (!open) {
           setIsEditDialogOpen(false);
           setSelectedPO(null);
           setEditPOData({
+            vendor_id: '',
             expected_delivery_date: '',
+            credit_days: 30,
             payment_terms: '',
             freight_charges: 0,
             packing_charges: 0,
@@ -2261,101 +2365,322 @@ export default function PurchaseOrdersPage() {
             terms_and_conditions: '',
             special_instructions: '',
             internal_notes: '',
+            items: [],
           });
+          setEditNewItem({ product_id: '', quantity: 1, unit_price: 0, gst_rate: 18 });
         }
       }}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Purchase Order</DialogTitle>
             <DialogDescription>
-              Update PO {selectedPO?.po_number}
+              Update PO {selectedPO?.po_number} - Edit vendor, items, prices, and all details
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-6 py-4">
+            {/* Vendor & Basic Info */}
+            <div className="grid grid-cols-4 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-expected-date">Expected Delivery Date</Label>
+                <Label>Vendor <span className="text-red-500">*</span></Label>
+                <Select
+                  value={editPOData.vendor_id}
+                  onValueChange={(value) => setEditPOData({ ...editPOData, vendor_id: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select vendor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {vendors.filter((v: Vendor) => v.id && v.name).map((vendor: Vendor) => (
+                      <SelectItem key={vendor.id} value={vendor.id}>
+                        {vendor.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Expected Delivery</Label>
                 <Input
-                  id="edit-expected-date"
                   type="date"
                   value={editPOData.expected_delivery_date}
                   onChange={(e) => setEditPOData({ ...editPOData, expected_delivery_date: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-payment-terms">Payment Terms</Label>
+                <Label>Credit Days</Label>
                 <Input
-                  id="edit-payment-terms"
+                  type="number"
+                  min="0"
+                  value={editPOData.credit_days}
+                  onChange={(e) => setEditPOData({ ...editPOData, credit_days: parseInt(e.target.value) || 0 })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Payment Terms</Label>
+                <Input
                   value={editPOData.payment_terms}
                   onChange={(e) => setEditPOData({ ...editPOData, payment_terms: e.target.value })}
-                  placeholder="e.g., Net 30, 50% Advance"
+                  placeholder="e.g., Net 30"
                 />
               </div>
             </div>
+
+            <Separator />
+
+            {/* Line Items Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-semibold">Line Items</Label>
+                <Badge variant="secondary">{editPOData.items.length} item(s)</Badge>
+              </div>
+
+              {/* Existing Items Table */}
+              {editPOData.items.length > 0 && (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted">
+                      <tr>
+                        <th className="text-left p-2 font-medium">Product</th>
+                        <th className="text-left p-2 font-medium w-20">Qty</th>
+                        <th className="text-left p-2 font-medium w-28">Unit Price</th>
+                        <th className="text-left p-2 font-medium w-20">GST %</th>
+                        <th className="text-right p-2 font-medium w-28">Total</th>
+                        <th className="w-10"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {editPOData.items.map((item, index) => {
+                        const qty = item.quantity_ordered || item.quantity || 0;
+                        const total = qty * (item.unit_price || 0);
+                        const gstAmt = total * ((item.gst_rate || 0) / 100);
+                        return (
+                          <tr key={index} className="border-t">
+                            <td className="p-2">
+                              <div className="font-medium">{item.product_name || 'Unknown'}</div>
+                              <div className="text-xs text-muted-foreground">{item.sku}</div>
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                type="number"
+                                min="1"
+                                className="w-20 h-8"
+                                value={qty}
+                                onChange={(e) => handleEditUpdateItem(index, 'quantity_ordered', parseInt(e.target.value) || 1)}
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                className="w-28 h-8"
+                                value={item.unit_price || 0}
+                                onChange={(e) => handleEditUpdateItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                type="number"
+                                min="0"
+                                max="100"
+                                className="w-20 h-8"
+                                value={item.gst_rate || 0}
+                                onChange={(e) => handleEditUpdateItem(index, 'gst_rate', parseFloat(e.target.value) || 0)}
+                              />
+                            </td>
+                            <td className="p-2 text-right">
+                              <div>{formatCurrency(total + gstAmt)}</div>
+                              <div className="text-xs text-muted-foreground">GST: {formatCurrency(gstAmt)}</div>
+                            </td>
+                            <td className="p-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-red-500 hover:text-red-700"
+                                onClick={() => handleEditRemoveItem(index)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Add New Item */}
+              <div className="border rounded-lg p-4 bg-muted/50">
+                <Label className="text-sm font-medium mb-3 block">Add New Item</Label>
+                <div className="flex gap-3 items-end">
+                  <div className="flex-1">
+                    <Label className="text-xs">Product</Label>
+                    <Select
+                      value={editNewItem.product_id}
+                      onValueChange={(value) => {
+                        const product = products.find((p: Product) => p.id === value);
+                        setEditNewItem({
+                          ...editNewItem,
+                          product_id: value,
+                          unit_price: product?.mrp || 0,
+                        });
+                      }}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Select product" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {products.map((product: Product) => (
+                          <SelectItem key={product.id} value={product.id}>
+                            {product.name} ({product.sku})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="w-20">
+                    <Label className="text-xs">Qty</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      className="h-9"
+                      value={editNewItem.quantity}
+                      onChange={(e) => setEditNewItem({ ...editNewItem, quantity: parseInt(e.target.value) || 1 })}
+                    />
+                  </div>
+                  <div className="w-28">
+                    <Label className="text-xs">Unit Price</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="h-9"
+                      value={editNewItem.unit_price}
+                      onChange={(e) => setEditNewItem({ ...editNewItem, unit_price: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <div className="w-20">
+                    <Label className="text-xs">GST %</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      className="h-9"
+                      value={editNewItem.gst_rate}
+                      onChange={(e) => setEditNewItem({ ...editNewItem, gst_rate: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <Button onClick={handleEditAddItem} size="sm" className="h-9">
+                    <Plus className="h-4 w-4 mr-1" /> Add
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Charges & Totals */}
+            <div className="grid grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <Label className="text-base font-semibold">Additional Charges</Label>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Freight</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={editPOData.freight_charges}
+                      onChange={(e) => setEditPOData({ ...editPOData, freight_charges: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Packing</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={editPOData.packing_charges}
+                      onChange={(e) => setEditPOData({ ...editPOData, packing_charges: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Other</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={editPOData.other_charges}
+                      onChange={(e) => setEditPOData({ ...editPOData, other_charges: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-base font-semibold">Order Summary</Label>
+                <Card className="bg-muted/50">
+                  <CardContent className="p-4 space-y-2 text-sm">
+                    {(() => {
+                      const totals = calculateEditTotals();
+                      return (
+                        <>
+                          <div className="flex justify-between">
+                            <span>Subtotal:</span>
+                            <span>{formatCurrency(totals.subtotal)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>GST:</span>
+                            <span>{formatCurrency(totals.gst)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Charges:</span>
+                            <span>{formatCurrency(totals.charges)}</span>
+                          </div>
+                          <Separator />
+                          <div className="flex justify-between font-bold text-base">
+                            <span>Grand Total:</span>
+                            <span>{formatCurrency(totals.total)}</span>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Notes Section */}
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-freight">Freight Charges</Label>
-                <Input
-                  id="edit-freight"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={editPOData.freight_charges}
-                  onChange={(e) => setEditPOData({ ...editPOData, freight_charges: parseFloat(e.target.value) || 0 })}
+                <Label>Terms & Conditions</Label>
+                <Textarea
+                  value={editPOData.terms_and_conditions}
+                  onChange={(e) => setEditPOData({ ...editPOData, terms_and_conditions: e.target.value })}
+                  placeholder="Enter terms"
+                  rows={3}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-packing">Packing Charges</Label>
-                <Input
-                  id="edit-packing"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={editPOData.packing_charges}
-                  onChange={(e) => setEditPOData({ ...editPOData, packing_charges: parseFloat(e.target.value) || 0 })}
+                <Label>Special Instructions</Label>
+                <Textarea
+                  value={editPOData.special_instructions}
+                  onChange={(e) => setEditPOData({ ...editPOData, special_instructions: e.target.value })}
+                  placeholder="Instructions for vendor"
+                  rows={3}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-other">Other Charges</Label>
-                <Input
-                  id="edit-other"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={editPOData.other_charges}
-                  onChange={(e) => setEditPOData({ ...editPOData, other_charges: parseFloat(e.target.value) || 0 })}
+                <Label>Internal Notes</Label>
+                <Textarea
+                  value={editPOData.internal_notes}
+                  onChange={(e) => setEditPOData({ ...editPOData, internal_notes: e.target.value })}
+                  placeholder="Not visible to vendor"
+                  rows={3}
                 />
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-terms">Terms & Conditions</Label>
-              <Textarea
-                id="edit-terms"
-                value={editPOData.terms_and_conditions}
-                onChange={(e) => setEditPOData({ ...editPOData, terms_and_conditions: e.target.value })}
-                placeholder="Enter terms and conditions"
-                rows={3}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-instructions">Special Instructions</Label>
-              <Textarea
-                id="edit-instructions"
-                value={editPOData.special_instructions}
-                onChange={(e) => setEditPOData({ ...editPOData, special_instructions: e.target.value })}
-                placeholder="Enter special instructions for vendor"
-                rows={2}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-notes">Internal Notes</Label>
-              <Textarea
-                id="edit-notes"
-                value={editPOData.internal_notes}
-                onChange={(e) => setEditPOData({ ...editPOData, internal_notes: e.target.value })}
-                placeholder="Internal notes (not visible to vendor)"
-                rows={2}
-              />
             </div>
           </div>
           <DialogFooter>
@@ -2365,7 +2690,9 @@ export default function PurchaseOrdersPage() {
                 setIsEditDialogOpen(false);
                 setSelectedPO(null);
                 setEditPOData({
+                  vendor_id: '',
                   expected_delivery_date: '',
+                  credit_days: 30,
                   payment_terms: '',
                   freight_charges: 0,
                   packing_charges: 0,
@@ -2373,6 +2700,7 @@ export default function PurchaseOrdersPage() {
                   terms_and_conditions: '',
                   special_instructions: '',
                   internal_notes: '',
+                  items: [],
                 });
               }}
             >
@@ -2380,7 +2708,7 @@ export default function PurchaseOrdersPage() {
             </Button>
             <Button
               onClick={handleUpdatePO}
-              disabled={updateMutation.isPending}
+              disabled={updateMutation.isPending || editPOData.items.length === 0}
             >
               {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Update PO
