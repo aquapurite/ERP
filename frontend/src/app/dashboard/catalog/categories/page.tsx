@@ -1,9 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Pencil, Trash2, FolderTree, ChevronRight, Loader2 } from 'lucide-react';
+import { MoreHorizontal, Plus, Pencil, Trash2, FolderTree, ChevronRight, ChevronDown, Loader2, Folder, FolderOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -44,10 +43,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { DataTable } from '@/components/data-table/data-table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import { Card, CardContent } from '@/components/ui/card';
 import { PageHeader, StatusBadge } from '@/components/common';
+import { Skeleton } from '@/components/ui/skeleton';
 import { categoriesApi } from '@/lib/api';
 import { Category } from '@/types';
+import { cn } from '@/lib/utils';
 
 interface CategoryFormData {
   name: string;
@@ -67,10 +81,15 @@ const defaultFormData: CategoryFormData = {
   is_active: true,
 };
 
+interface CategoryTree {
+  root: Category;
+  children: Category[];
+}
+
 export default function CategoriesPage() {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(10);
+  const [expandedRoots, setExpandedRoots] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Create dialog state
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -85,10 +104,85 @@ export default function CategoriesPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
 
+  // Fetch all categories (increase size to get all)
   const { data, isLoading } = useQuery({
-    queryKey: ['categories', page, pageSize],
-    queryFn: () => categoriesApi.list({ page: page + 1, size: pageSize }),
+    queryKey: ['categories-all'],
+    queryFn: () => categoriesApi.list({ page: 1, size: 100 }),
   });
+
+  // Build category tree structure
+  const categoryTree = useMemo(() => {
+    if (!data?.items) return [];
+
+    const categories = data.items as Category[];
+    const rootCategories = categories.filter(c => !c.parent_id);
+    const childCategories = categories.filter(c => c.parent_id);
+
+    // Sort roots by sort_order, then by name
+    const sortedRoots = [...rootCategories].sort((a, b) => {
+      if ((a.sort_order ?? 0) !== (b.sort_order ?? 0)) {
+        return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+    return sortedRoots.map(root => ({
+      root,
+      children: childCategories
+        .filter(c => c.parent_id === root.id)
+        .sort((a, b) => {
+          if ((a.sort_order ?? 0) !== (b.sort_order ?? 0)) {
+            return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+          }
+          return a.name.localeCompare(b.name);
+        }),
+    })) as CategoryTree[];
+  }, [data]);
+
+  // Filter categories based on search
+  const filteredTree = useMemo(() => {
+    if (!searchQuery.trim()) return categoryTree;
+
+    const query = searchQuery.toLowerCase();
+    return categoryTree
+      .map(tree => ({
+        root: tree.root,
+        children: tree.children.filter(c =>
+          c.name.toLowerCase().includes(query) ||
+          c.slug.toLowerCase().includes(query)
+        ),
+      }))
+      .filter(tree =>
+        tree.root.name.toLowerCase().includes(query) ||
+        tree.root.slug.toLowerCase().includes(query) ||
+        tree.children.length > 0
+      );
+  }, [categoryTree, searchQuery]);
+
+  // Get root categories for parent selection
+  const rootCategories = useMemo(() => {
+    return data?.items?.filter((c: Category) => !c.parent_id) ?? [];
+  }, [data]);
+
+  const toggleRoot = (rootId: string) => {
+    setExpandedRoots(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(rootId)) {
+        newSet.delete(rootId);
+      } else {
+        newSet.add(rootId);
+      }
+      return newSet;
+    });
+  };
+
+  const expandAll = () => {
+    setExpandedRoots(new Set(categoryTree.map(t => t.root.id)));
+  };
+
+  const collapseAll = () => {
+    setExpandedRoots(new Set());
+  };
 
   const createMutation = useMutation({
     mutationFn: categoriesApi.create,
@@ -119,35 +213,14 @@ export default function CategoriesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => categoriesApi.delete(id),
-    // Optimistic update: immediately remove from UI
-    onMutate: async (deletedId: string) => {
-      await queryClient.cancelQueries({ queryKey: ['categories'] });
-      const previousData = queryClient.getQueryData(['categories', page, pageSize]);
-
-      queryClient.setQueryData(['categories', page, pageSize], (old: any) => {
-        if (!old?.items) return old;
-        return {
-          ...old,
-          items: old.items.filter((c: Category) => c.id !== deletedId),
-          total: (old.total || 0) - 1,
-        };
-      });
-
-      return { previousData };
-    },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
       toast.success('Category deleted successfully');
       setIsDeleteDialogOpen(false);
       setCategoryToDelete(null);
     },
-    onError: (error: Error, _deletedId, context) => {
-      if (context?.previousData) {
-        queryClient.setQueryData(['categories', page, pageSize], context.previousData);
-      }
+    onError: (error: Error) => {
       toast.error(error.message || 'Failed to delete category');
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
     },
   });
 
@@ -208,75 +281,40 @@ export default function CategoriesPage() {
     }
   };
 
-  // Get root categories for parent selection
-  const rootCategories = data?.items?.filter((c: Category) => !c.parent_id) ?? [];
-
-  const columns: ColumnDef<Category>[] = [
-    {
-      accessorKey: 'name',
-      header: 'Category',
-      size: 200,
-      cell: ({ row }) => (
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted flex-shrink-0">
-            <FolderTree className="h-5 w-5 text-muted-foreground" />
+  const CategoryRow = ({ category, isChild = false }: { category: Category; isChild?: boolean }) => (
+    <TableRow className={cn(isChild && "bg-muted/30")}>
+      <TableCell>
+        <div className={cn("flex items-center gap-3", isChild && "pl-8")}>
+          <div className={cn(
+            "flex h-9 w-9 items-center justify-center rounded-lg flex-shrink-0",
+            isChild ? "bg-muted" : "bg-primary/10"
+          )}>
+            {isChild ? (
+              <FolderTree className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <Folder className="h-4 w-4 text-primary" />
+            )}
           </div>
           <div className="min-w-0">
-            <div className="font-medium truncate">{row.original.name}</div>
-            <div className="text-sm text-muted-foreground truncate">{row.original.slug}</div>
+            <div className={cn("font-medium truncate", !isChild && "text-primary")}>
+              {category.name}
+            </div>
+            <div className="text-xs text-muted-foreground truncate">{category.slug}</div>
           </div>
         </div>
-      ),
-    },
-    {
-      accessorKey: 'parent',
-      header: 'Parent',
-      size: 100,
-      cell: ({ row }) => {
-        const parentId = row.original.parent_id;
-        return parentId ? (
-          <span className="flex items-center gap-1 text-sm text-muted-foreground">
-            <ChevronRight className="h-3 w-3" />
-            Sub
-          </span>
-        ) : (
-          <span className="text-sm font-medium">Root</span>
-        );
-      },
-    },
-    {
-      accessorKey: 'description',
-      header: 'Description',
-      size: 250,
-      maxSize: 300,
-      cell: ({ row }) => (
-        <div className="max-w-[250px]">
-          <span className="text-sm text-muted-foreground line-clamp-1 truncate block" title={row.original.description || ''}>
-            {row.original.description || '-'}
-          </span>
-        </div>
-      ),
-    },
-    {
-      accessorKey: 'sort_order',
-      header: 'Order',
-      size: 70,
-      cell: ({ row }) => (
-        <span className="text-sm">{row.original.sort_order ?? 0}</span>
-      ),
-    },
-    {
-      accessorKey: 'is_active',
-      header: 'Status',
-      size: 80,
-      cell: ({ row }) => (
-        <StatusBadge status={row.original.is_active ? 'ACTIVE' : 'INACTIVE'} />
-      ),
-    },
-    {
-      id: 'actions',
-      size: 50,
-      cell: ({ row }) => (
+      </TableCell>
+      <TableCell className="max-w-[200px]">
+        <span className="text-sm text-muted-foreground line-clamp-1" title={category.description || ''}>
+          {category.description || '-'}
+        </span>
+      </TableCell>
+      <TableCell className="text-center">
+        <span className="text-sm">{category.sort_order ?? 0}</span>
+      </TableCell>
+      <TableCell>
+        <StatusBadge status={category.is_active ? 'ACTIVE' : 'INACTIVE'} />
+      </TableCell>
+      <TableCell>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -286,22 +324,22 @@ export default function CategoriesPage() {
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>Actions</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => handleEdit(row.original)}>
+            <DropdownMenuItem onClick={() => handleEdit(category)}>
               <Pencil className="mr-2 h-4 w-4" />
               Edit
             </DropdownMenuItem>
             <DropdownMenuItem
               className="text-destructive focus:text-destructive"
-              onClick={() => handleDelete(row.original)}
+              onClick={() => handleDelete(category)}
             >
               <Trash2 className="mr-2 h-4 w-4" />
               Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      ),
-    },
-  ];
+      </TableCell>
+    </TableRow>
+  );
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -417,19 +455,160 @@ export default function CategoriesPage() {
         }
       />
 
-      <DataTable
-        columns={columns}
-        data={data?.items ?? []}
-        searchKey="name"
-        searchPlaceholder="Search categories..."
-        isLoading={isLoading}
-        manualPagination
-        pageCount={data?.pages ?? 0}
-        pageIndex={page}
-        pageSize={pageSize}
-        onPageChange={setPage}
-        onPageSizeChange={setPageSize}
-      />
+      {/* Search and Actions */}
+      <div className="flex items-center justify-between gap-4">
+        <Input
+          placeholder="Search categories..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="max-w-sm"
+        />
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={expandAll}>
+            Expand All
+          </Button>
+          <Button variant="outline" size="sm" onClick={collapseAll}>
+            Collapse All
+          </Button>
+        </div>
+      </div>
+
+      {/* Category Tree */}
+      <Card>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-6 space-y-4">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="space-y-2">
+                  <Skeleton className="h-12 w-full" />
+                  <div className="pl-8 space-y-2">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filteredTree.length === 0 ? (
+            <div className="p-12 text-center text-muted-foreground">
+              <FolderTree className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No categories found</p>
+              {searchQuery && (
+                <p className="text-sm mt-1">Try a different search term</p>
+              )}
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[300px]">Category</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="w-[80px] text-center">Order</TableHead>
+                  <TableHead className="w-[100px]">Status</TableHead>
+                  <TableHead className="w-[60px]"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredTree.map(({ root, children }) => (
+                  <Collapsible
+                    key={root.id}
+                    open={expandedRoots.has(root.id)}
+                    onOpenChange={() => toggleRoot(root.id)}
+                    asChild
+                  >
+                    <>
+                      {/* Root Category Row */}
+                      <TableRow className="bg-muted/50 hover:bg-muted/70">
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <CollapsibleTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                {children.length > 0 ? (
+                                  expandedRoots.has(root.id) ? (
+                                    <ChevronDown className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4" />
+                                  )
+                                ) : (
+                                  <span className="w-4" />
+                                )}
+                              </Button>
+                            </CollapsibleTrigger>
+                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 flex-shrink-0">
+                              {expandedRoots.has(root.id) ? (
+                                <FolderOpen className="h-4 w-4 text-primary" />
+                              ) : (
+                                <Folder className="h-4 w-4 text-primary" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-semibold text-primary truncate">{root.name}</div>
+                              <div className="text-xs text-muted-foreground truncate">{root.slug}</div>
+                            </div>
+                            {children.length > 0 && (
+                              <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                                {children.length} sub
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-[200px]">
+                          <span className="text-sm text-muted-foreground line-clamp-1" title={root.description || ''}>
+                            {root.description || '-'}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="text-sm">{root.sort_order ?? 0}</span>
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge status={root.is_active ? 'ACTIVE' : 'INACTIVE'} />
+                        </TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => handleEdit(root)}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => handleDelete(root)}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+
+                      {/* Child Categories */}
+                      <CollapsibleContent asChild>
+                        <>
+                          {children.map(child => (
+                            <CategoryRow key={child.id} category={child} isChild />
+                          ))}
+                        </>
+                      </CollapsibleContent>
+                    </>
+                  </Collapsible>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Summary */}
+      <div className="text-sm text-muted-foreground">
+        {categoryTree.length} root categories, {data?.items?.filter((c: Category) => c.parent_id).length ?? 0} subcategories
+      </div>
 
       {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
@@ -541,7 +720,7 @@ export default function CategoriesPage() {
             <AlertDialogTitle>Delete Category</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete "{categoryToDelete?.name}"? This action cannot be undone.
-              {categoryToDelete?.parent_id === undefined && (
+              {!categoryToDelete?.parent_id && (
                 <span className="block mt-2 text-amber-600">
                   Warning: This is a root category. Deleting it may affect subcategories.
                 </span>
