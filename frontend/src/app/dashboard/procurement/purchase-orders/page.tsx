@@ -100,6 +100,8 @@ interface PurchaseOrder {
   grand_total: number;
   notes?: string;
   payment_terms?: string;
+  advance_required?: number;
+  advance_paid?: number;
   freight_charges?: number;
   packing_charges?: number;
   other_charges?: number;
