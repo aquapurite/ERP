@@ -2748,6 +2748,8 @@ export default function PurchaseOrdersPage() {
                   expected_delivery_date: '',
                   credit_days: 30,
                   payment_terms: '',
+                  advance_required: 0,
+                  advance_paid: 0,
                   freight_charges: 0,
                   packing_charges: 0,
                   other_charges: 0,
