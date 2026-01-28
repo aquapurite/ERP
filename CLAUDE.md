@@ -534,43 +534,102 @@ git push
 
 ## Deployment
 
+> **CRITICAL**: Always deploy from the PROJECT ROOT directory, NOT from frontend/
+
 ### Git Repository
 
 ```
-Repository: github.com:aquapurite/ERP.git
-Branch: main (auto-deploys to production)
+Repository: git@github.com:aquapurite/ERP.git
+Branch: main
+Remote: origin
 ```
 
-### Backend (Render.com)
+### Vercel Configuration (Frontend)
 
-- Auto-deploys on push to main
-- Environment variables configured in Render dashboard
-- Health check: `/health`
+**IMPORTANT: There are 3 Vercel projects - use the CORRECT one!**
 
-### Frontend (Vercel)
+| Project Name | Domain | Purpose | Deploy From |
+|--------------|--------|---------|-------------|
+| `erp` | **www.aquapurite.org** | ERP Admin Panel | Project Root |
+| `d2c` | www.aquapurite.com | D2C Storefront | Project Root |
+| `frontend` | ❌ DO NOT USE | Old/test project | - |
+
+**Vercel Account Details:**
+- Team/Scope: `anupam-singhs-projects-ffea0ac8`
+- Account: Run `npx vercel whoami` to verify
+
+### Deploy ERP Frontend (www.aquapurite.org)
 
 ```bash
-# Deploy from project root
+# ALWAYS run from project root, NOT from frontend/
 cd "/Users/mantosh/Desktop/Consumer durable 2"
 
-# Verify Vercel account
-npx vercel whoami  # Should show: aquapurite-4359
-
-# Deploy ERP (www.aquapurite.org)
+# Step 1: Link to the correct project (erp, NOT frontend)
 npx vercel link --project=erp --yes
+
+# Step 2: Deploy to production
 npx vercel --prod
 
-# Deploy D2C (www.aquapurite.com)
+# Expected output should show:
+# Aliased: https://www.aquapurite.org
+```
+
+### Deploy D2C Storefront (www.aquapurite.com)
+
+```bash
+cd "/Users/mantosh/Desktop/Consumer durable 2"
 npx vercel link --project=d2c --yes
 npx vercel --prod
 ```
 
-### Vercel Project Mapping
+### Backend (Render.com)
 
-| Project | Domain | Purpose |
-|---------|--------|---------|
-| `erp` | www.aquapurite.org | ERP Admin Panel |
-| `d2c` | www.aquapurite.com | D2C Storefront |
+**Service Details:**
+- Service Name: `aquapurite-erp-api`
+- URL: https://aquapurite-erp-api.onrender.com
+- Health Check: https://aquapurite-erp-api.onrender.com/health
+- API Docs: https://aquapurite-erp-api.onrender.com/docs
+
+**Deployment:**
+- Render auto-deploys when code is pushed to `main` branch on GitHub
+- If auto-deploy is not working, manually trigger from Render Dashboard:
+  1. Go to https://dashboard.render.com
+  2. Select `aquapurite-erp-api` service
+  3. Click "Manual Deploy" → "Deploy latest commit"
+
+### Complete Deployment Checklist
+
+```bash
+# 1. Commit and push changes
+cd "/Users/mantosh/Desktop/Consumer durable 2"
+git add .
+git commit -m "your message"
+git push origin main
+
+# 2. Deploy frontend to Vercel (ERP)
+npx vercel link --project=erp --yes
+npx vercel --prod
+# Verify: https://www.aquapurite.org
+
+# 3. Backend auto-deploys to Render
+# Verify: curl https://aquapurite-erp-api.onrender.com/health
+```
+
+### Troubleshooting Deployment Issues
+
+**Wrong Vercel project?**
+```bash
+# Check current linked project
+cat .vercel/project.json
+
+# Re-link to correct project
+npx vercel link --project=erp --yes
+```
+
+**Render not auto-deploying?**
+1. Check GitHub connection in Render Dashboard
+2. Verify branch is set to `main`
+3. Use Manual Deploy as fallback
 
 ---
 
