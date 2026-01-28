@@ -1930,7 +1930,8 @@ async def update_purchase_order(
         raise HTTPException(status_code=404, detail="Purchase Order not found")
 
     # Only allow editing of DRAFT or PENDING_APPROVAL POs
-    allowed_statuses = [POStatus.DRAFT, POStatus.PENDING_APPROVAL]
+    # Use string values for comparison since po.status is VARCHAR from DB
+    allowed_statuses = [POStatus.DRAFT.value, POStatus.PENDING_APPROVAL.value]
     if po.status not in allowed_statuses:
         raise HTTPException(
             status_code=400,

@@ -456,9 +456,10 @@ export default function PurchaseOrdersPage() {
       data: {
         expected_delivery_date: editPOData.expected_delivery_date || undefined,
         payment_terms: editPOData.payment_terms || undefined,
-        freight_charges: editPOData.freight_charges || undefined,
-        packing_charges: editPOData.packing_charges || undefined,
-        other_charges: editPOData.other_charges || undefined,
+        // Use nullish coalescing for numbers to preserve 0 values
+        freight_charges: editPOData.freight_charges ?? undefined,
+        packing_charges: editPOData.packing_charges ?? undefined,
+        other_charges: editPOData.other_charges ?? undefined,
         terms_and_conditions: editPOData.terms_and_conditions || undefined,
         special_instructions: editPOData.special_instructions || undefined,
         internal_notes: editPOData.internal_notes || undefined,
