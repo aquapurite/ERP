@@ -985,6 +985,110 @@ Cross-referencing the same page in multiple navigation sections is OK when:
 - Same menu item appearing without clear business justification
 - Copy-pasted components that should be shared
 
+### Coding Rules Compliance Check (MANDATORY BEFORE DEPLOY)
+
+**Every new feature MUST be verified against these coding rules:**
+
+#### Rule 1: Response Schema Completeness Check
+```bash
+# For each new backend endpoint, verify frontend interface includes ALL returned fields
+# Backend returns: { total_orders, total_customers, pending_amount }
+# Frontend interface MUST have: total_orders, total_customers, pending_amount
+# Missing fields = Data silently dropped = BUG!
+
+# How to check:
+# 1. Read backend schema/response model
+# 2. Read frontend TypeScript interface
+# 3. Ensure EVERY backend field exists in frontend interface
+```
+
+#### Rule 2: Validator Placement Check
+```bash
+# Validators should ONLY be on Create/Update schemas, NEVER on Base schemas
+# Check that no @field_validator decorators exist on Base schemas
+grep -n "@field_validator" app/schemas/*.py | grep "Base"
+# If output is NOT empty → VIOLATION! Move validators to Create/Update schemas
+```
+
+#### Rule 3: Timezone-Aware Datetime Check
+```bash
+# Search for deprecated datetime.utcnow() usage
+grep -rn "datetime.utcnow()" app/
+# If output is NOT empty → VIOLATION! Replace with datetime.now(timezone.utc)
+```
+
+#### Rule 4: Field Naming Consistency Check (CRITICAL)
+```bash
+# EXACT same field names must be used across:
+# Backend Pydantic Schema ↔ Frontend TypeScript Interface
+
+# Example of CORRECT naming:
+# Backend: cgst_itc: float      → Frontend: cgst_itc: number     ✓ MATCH
+# Backend: total_amount: Decimal → Frontend: total_amount: number ✓ MATCH
+
+# Example of VIOLATION:
+# Backend: cgst_itc: float      → Frontend: cgst: number         ✗ MISMATCH!
+# Backend: invoice_value: Decimal → Frontend: amount: number     ✗ MISMATCH!
+
+# How to verify:
+# 1. Read backend response schema (app/schemas/*.py or inline in endpoints)
+# 2. Read frontend interface (in page.tsx or types/)
+# 3. Compare field names EXACTLY - they must match character-for-character
+```
+
+#### Rule 5: Category Hierarchy Check
+```bash
+# Products should be assigned to LEAF categories only
+# Verify no direct parent category assignment in product creation
+```
+
+#### Rule 6: Database Structure Check
+```bash
+# Before using any new model field, verify column exists in Supabase
+python3 -c "
+import asyncio
+import asyncpg
+
+async def main():
+    conn = await asyncpg.connect(
+        host='db.aavjhutqzwusgdwrczds.supabase.co',
+        port=6543,
+        user='postgres',
+        password='Aquapurite2026',
+        database='postgres',
+        statement_cache_size=0
+    )
+    cols = await conn.fetch('''
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'YOUR_TABLE_NAME'
+    ''')
+    print([c['column_name'] for c in cols])
+    await conn.close()
+
+asyncio.run(main())
+"
+```
+
+### Quick Compliance Verification Script
+```bash
+# Run this before EVERY deployment to catch common violations
+
+echo "=== Rule 2: Checking for validators on Base schemas ==="
+grep -rn "@field_validator" app/schemas/ | grep "Base" || echo "✓ No violations"
+
+echo ""
+echo "=== Rule 3: Checking for deprecated utcnow() ==="
+grep -rn "datetime.utcnow()" app/ || echo "✓ No violations"
+
+echo ""
+echo "=== Rule 4: Field Naming - Manual Review Required ==="
+echo "Compare backend schemas with frontend interfaces for new features"
+
+echo ""
+echo "=== Build Check ==="
+cd frontend && pnpm build && echo "✓ Build passed" || echo "✗ Build FAILED"
+```
+
 ### Post-Deployment Verification
 
 After deployment, verify on production:

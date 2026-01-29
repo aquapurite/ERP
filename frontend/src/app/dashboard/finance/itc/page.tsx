@@ -56,17 +56,23 @@ import { itcApi, periodsApi } from '@/lib/api';
 
 interface ITCEntry {
   id: string;
+  period: string;
   vendor_gstin: string;
   vendor_name: string;
   invoice_number: string;
   invoice_date: string;
-  cgst: number;
-  sgst: number;
-  igst: number;
+  invoice_value: number;
+  taxable_value: number;
+  cgst_itc: number;       // Matches backend field name
+  sgst_itc: number;       // Matches backend field name
+  igst_itc: number;       // Matches backend field name
+  cess_itc: number;
   total_itc: number;
   status: 'AVAILABLE' | 'UTILIZED' | 'REVERSED' | 'MISMATCH';
   gstr2a_matched: boolean;
   gstr2b_matched: boolean;
+  match_status: string;
+  available_itc: number;
 }
 
 const statusColors: Record<string, string> = {
@@ -199,45 +205,63 @@ export default function ITCManagementPage() {
   const ledgerItems: ITCEntry[] = (itcLedger?.items || [
     {
       id: '1',
+      period: '012026',
       vendor_gstin: '29AAACU1234F1Z5',
       vendor_name: 'ABC Suppliers Pvt Ltd',
       invoice_number: 'INV-2026-001',
       invoice_date: '2026-01-15',
-      cgst: 4500,
-      sgst: 4500,
-      igst: 0,
+      invoice_value: 59000,
+      taxable_value: 50000,
+      cgst_itc: 4500,
+      sgst_itc: 4500,
+      igst_itc: 0,
+      cess_itc: 0,
       total_itc: 9000,
       status: 'AVAILABLE',
       gstr2a_matched: true,
       gstr2b_matched: true,
+      match_status: 'MATCHED',
+      available_itc: 9000,
     },
     {
       id: '2',
+      period: '012026',
       vendor_gstin: '29BBBCU5678F1Z5',
       vendor_name: 'XYZ Trading Co',
       invoice_number: 'INV-2026-045',
       invoice_date: '2026-01-18',
-      cgst: 2500,
-      sgst: 2500,
-      igst: 0,
+      invoice_value: 30500,
+      taxable_value: 25500,
+      cgst_itc: 2500,
+      sgst_itc: 2500,
+      igst_itc: 0,
+      cess_itc: 0,
       total_itc: 5000,
       status: 'UTILIZED',
       gstr2a_matched: true,
       gstr2b_matched: true,
+      match_status: 'MATCHED',
+      available_itc: 0,
     },
     {
       id: '3',
+      period: '012026',
       vendor_gstin: '29CCCCU9012F1Z5',
       vendor_name: 'PQR Industries',
       invoice_number: 'INV-2026-078',
       invoice_date: '2026-01-20',
-      cgst: 0,
-      sgst: 0,
-      igst: 8000,
+      invoice_value: 48000,
+      taxable_value: 40000,
+      cgst_itc: 0,
+      sgst_itc: 0,
+      igst_itc: 8000,
+      cess_itc: 0,
       total_itc: 8000,
       status: 'MISMATCH',
       gstr2a_matched: false,
       gstr2b_matched: false,
+      match_status: 'NOT_FOUND',
+      available_itc: 0,
     },
   ]) as ITCEntry[];
 
@@ -265,19 +289,19 @@ export default function ITCManagementPage() {
       ),
     },
     {
-      accessorKey: 'cgst',
+      accessorKey: 'cgst_itc',
       header: 'CGST',
-      cell: ({ row }) => formatCurrency(row.original.cgst),
+      cell: ({ row }) => formatCurrency(row.original.cgst_itc),
     },
     {
-      accessorKey: 'sgst',
+      accessorKey: 'sgst_itc',
       header: 'SGST',
-      cell: ({ row }) => formatCurrency(row.original.sgst),
+      cell: ({ row }) => formatCurrency(row.original.sgst_itc),
     },
     {
-      accessorKey: 'igst',
+      accessorKey: 'igst_itc',
       header: 'IGST',
-      cell: ({ row }) => formatCurrency(row.original.igst),
+      cell: ({ row }) => formatCurrency(row.original.igst_itc),
     },
     {
       accessorKey: 'total_itc',
