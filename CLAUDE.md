@@ -912,6 +912,8 @@ Use this matrix to track feature completeness:
 3. ❌ New page exists but not in navigation menu
 4. ❌ Action endpoint exists but no button triggers it
 5. ❌ Feature not tested end-to-end locally
+6. ❌ **Duplicate navigation items exist** (same href in multiple places without intentional cross-reference)
+7. ❌ **Duplicate page files exist** (same functionality in different directories)
 
 ### Quick Verification Commands
 
@@ -925,11 +927,63 @@ grep -c "async\|export const" frontend/src/lib/api/index.ts
 # Check navigation items
 grep -c "href:" frontend/src/config/navigation.ts
 
+# ========== DUPLICATION CHECKS (MANDATORY BEFORE DEPLOY) ==========
+
+# Check for duplicate navigation hrefs (same URL appearing multiple times)
+grep -o "href: '[^']*'" frontend/src/config/navigation.ts | sort | uniq -d
+# If output is NOT empty, investigate duplicates!
+
+# Check for duplicate page titles in navigation
+grep -o "title: '[^']*'" frontend/src/config/navigation.ts | sort | uniq -d
+# If output is NOT empty, verify if intentional cross-reference
+
+# Find duplicate page.tsx files (same page name in different directories)
+find frontend/src/app -name "page.tsx" | xargs -I {} dirname {} | xargs -I {} basename {} | sort | uniq -d
+# If output shows duplicates, verify they serve different purposes
+
 # Verify a specific endpoint has frontend integration
 # Backend endpoint: /gst/file/gstr1
 grep "gst/file/gstr1" frontend/src/lib/api/index.ts
 # If no result → FRONTEND INTEGRATION MISSING!
 ```
+
+### Duplication Prevention Rules (CRITICAL)
+
+**Before EVERY deployment, check for duplications:**
+
+#### 1. Navigation Duplication Check
+```
+ALLOWED DUPLICATIONS (Intentional Cross-References):
+- Vendor Invoices: Can appear in both Procurement AND Finance > Payables
+  (Same page accessible from different business contexts)
+
+NOT ALLOWED DUPLICATIONS:
+- Same feature appearing in multiple sections without clear purpose
+- E.g., "E-Way Bills" should only be in Finance > Tax Compliance, NOT also in Logistics
+```
+
+#### 2. Types of Duplication to Check
+
+| Check | Command | Action if Found |
+|-------|---------|-----------------|
+| **Duplicate hrefs** | `grep -o "href: '[^']*'" navigation.ts \| sort \| uniq -d` | Remove redundant entry or document why cross-reference is needed |
+| **Duplicate titles** | `grep -o "title: '[^']*'" navigation.ts \| sort \| uniq -d` | Rename to clarify purpose or remove |
+| **Duplicate pages** | `find frontend/src/app -name "page.tsx" \| ...` | Consolidate into single page |
+| **Duplicate API methods** | Review `index.ts` for similar endpoints | Consolidate into single method |
+
+#### 3. When Duplication IS Acceptable
+
+Cross-referencing the same page in multiple navigation sections is OK when:
+- The page serves multiple business functions (e.g., Vendor Invoices for both Procurement and Accounts Payable)
+- Users from different departments need quick access
+- **Document the reason** in a comment in navigation.ts
+
+#### 4. When Duplication is NOT Acceptable
+
+- Same functionality in different page files
+- Same API endpoint wrapped in multiple methods
+- Same menu item appearing without clear business justification
+- Copy-pasted components that should be shared
 
 ### Post-Deployment Verification
 

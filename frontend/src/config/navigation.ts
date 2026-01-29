@@ -156,7 +156,7 @@ export const navigation: NavItem[] = [
       { title: 'Pricing Tiers', href: '/dashboard/distribution/pricing-tiers', icon: Layers, permissions: ['ORDERS_VIEW'] },
       // Promotions
       { title: 'Promotions', href: '/dashboard/marketing/promotions', icon: BadgePercent, permissions: ['MARKETING_VIEW'] },
-      { title: 'Commissions', href: '/dashboard/marketing/commissions', icon: Banknote, permissions: ['MARKETING_VIEW'] },
+      { title: 'Sales Commissions', href: '/dashboard/marketing/commissions', icon: Banknote, permissions: ['MARKETING_VIEW'] },
     ],
   },
 
@@ -183,7 +183,7 @@ export const navigation: NavItem[] = [
       { title: 'Partner Dashboard', href: '/dashboard/partners', icon: BarChart3, permissions: [] },
       { title: 'All Partners', href: '/dashboard/partners/list', icon: UsersRound, permissions: [] },
       { title: 'Partner Tiers', href: '/dashboard/partners/tiers', icon: Trophy, permissions: [] },
-      { title: 'Commissions', href: '/dashboard/partners/commissions', icon: Wallet, permissions: [] },
+      { title: 'Partner Commissions', href: '/dashboard/partners/commissions', icon: Wallet, permissions: [] },
       { title: 'Payouts', href: '/dashboard/partners/payouts', icon: Banknote, permissions: [] },
       { title: 'Partner Orders', href: '/dashboard/partners/orders', icon: ShoppingCart, permissions: [] },
     ],
@@ -250,7 +250,6 @@ export const navigation: NavItem[] = [
       { title: 'Rate Cards - B2B', href: '/dashboard/logistics/rate-cards/b2b', permissions: ['LOGISTICS_VIEW'] },
       { title: 'Rate Cards - FTL', href: '/dashboard/logistics/rate-cards/ftl', permissions: ['LOGISTICS_VIEW'] },
       { title: 'Serviceability', href: '/dashboard/logistics/serviceability', icon: MapPin, permissions: ['LOGISTICS_VIEW'] },
-      { title: 'E-Way Bills', href: '/dashboard/billing/eway-bills', icon: ScrollText, permissions: ['FINANCE_VIEW'] },
       { title: 'SLA Dashboard', href: '/dashboard/logistics/sla-dashboard', icon: Gauge, permissions: ['LOGISTICS_VIEW'] },
     ],
   },
