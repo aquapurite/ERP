@@ -500,13 +500,37 @@ class PaymentReceiptResponse(BaseResponseSchema):
     """Response schema for PaymentReceipt."""
     id: UUID
     receipt_number: str
+    invoice_id: Optional[UUID] = None
+    customer_id: Optional[UUID] = None
+
+    # Payment details
+    payment_date: Optional[date] = None
+    payment_mode: Optional[str] = None
+    amount: Optional[Decimal] = None
+    currency: str = "INR"
+
+    # Bank details
+    bank_name: Optional[str] = None
+    bank_branch: Optional[str] = None
+    cheque_number: Optional[str] = None
+    cheque_date: Optional[date] = None
+    transaction_reference: Optional[str] = None
+
+    # TDS
+    tds_applicable: bool = False
+    tds_rate: Optional[Decimal] = None
     tds_amount: Optional[Decimal] = None
+    tds_section: Optional[str] = None
     net_amount: Decimal
+
+    # Status
     is_confirmed: bool
     confirmed_at: Optional[datetime] = None
     is_bounced: bool
     bounced_at: Optional[datetime] = None
     bounce_reason: Optional[str] = None
+
+    remarks: Optional[str] = None
     created_by: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime

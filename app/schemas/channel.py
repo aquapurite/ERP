@@ -106,6 +106,53 @@ class SalesChannelUpdate(BaseModel):
 class SalesChannelResponse(BaseResponseSchema):
     """Response schema for SalesChannel."""
     id: UUID
+    code: Optional[str] = None
+    name: Optional[str] = None
+    display_name: Optional[str] = None
+    channel_type: Optional[str] = None
+    status: Optional[str] = None
+
+    # Marketplace Integration
+    seller_id: Optional[str] = None
+    api_endpoint: Optional[str] = None
+    webhook_url: Optional[str] = None
+
+    # Fulfillment Settings
+    default_warehouse_id: Optional[UUID] = None
+    fulfillment_type: Optional[str] = None
+    auto_confirm_orders: bool = False
+    auto_allocate_inventory: bool = True
+
+    # Commission & Fees
+    commission_percentage: Optional[Decimal] = None
+    fixed_fee_per_order: Optional[Decimal] = None
+    payment_cycle_days: int = 7
+
+    # Pricing Rules
+    price_markup_percentage: Optional[Decimal] = None
+    price_discount_percentage: Optional[Decimal] = None
+    use_channel_specific_pricing: bool = False
+
+    # Return Policy
+    return_window_days: int = 7
+    replacement_window_days: int = 7
+    supports_return_pickup: bool = True
+
+    # Tax Settings
+    tax_inclusive_pricing: bool = True
+    collect_tcs: bool = False
+    tcs_rate: Optional[Decimal] = None
+
+    # Contact
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+
+    # Sync Settings
+    sync_enabled: bool = True
+    sync_interval_minutes: int = 30
+
+    # Config & timestamps
     config: Optional[dict] = None
     last_sync_at: Optional[datetime] = None
     created_at: datetime

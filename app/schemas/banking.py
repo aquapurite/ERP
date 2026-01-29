@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from app.schemas.base import BaseResponseSchema
 from typing import Optional, List
 from uuid import UUID
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 
@@ -15,9 +15,11 @@ class BankAccountCreate(BaseModel):
     bank_name: str = Field(..., description="Bank name")
     branch_name: Optional[str] = Field(None, description="Branch name")
     ifsc_code: Optional[str] = Field(None, description="IFSC code")
+    swift_code: Optional[str] = Field(None, description="SWIFT code for international transfers")
     account_type: str = Field("CURRENT", description="Account type: CURRENT, SAVINGS, CASH_CREDIT, OVERDRAFT")
     opening_balance: Decimal = Field(Decimal("0"), description="Opening balance")
     ledger_account_id: Optional[UUID] = Field(None, description="Linked ledger account ID")
+    credit_limit: Optional[Decimal] = Field(None, description="Credit limit for OD/CC accounts")
 
 
 class BankAccountResponse(BaseResponseSchema):
@@ -28,9 +30,19 @@ class BankAccountResponse(BaseResponseSchema):
     bank_name: str
     branch_name: Optional[str] = None
     ifsc_code: Optional[str] = None
+    swift_code: Optional[str] = None
     account_type: str
+    opening_balance: Decimal = Decimal("0")
     current_balance: Decimal
+    ledger_account_id: Optional[UUID] = None
+    credit_limit: Optional[Decimal] = None
+    available_limit: Optional[Decimal] = None
+    last_reconciled_date: Optional[date] = None
+    last_reconciled_balance: Optional[Decimal] = None
     is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    created_by: Optional[UUID] = None
 
 class BankTransactionResponse(BaseResponseSchema):
     """Bank transaction response."""

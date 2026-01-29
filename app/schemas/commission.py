@@ -185,15 +185,38 @@ class CommissionEarnerUpdate(BaseModel):
 class CommissionEarnerResponse(BaseResponseSchema):
     """Response schema for CommissionEarner."""
     id: UUID
+    earner_type: Optional[str] = None
+    earner_name: Optional[str] = None
+    earner_email: Optional[str] = None
+    earner_phone: Optional[str] = None
     user_id: Optional[UUID] = None
     dealer_id: Optional[UUID] = None
     referral_code: Optional[str] = None
-    is_verified: bool
+    plan_id: Optional[UUID] = None
+    custom_rate: Optional[Decimal] = None
+
+    # Bank Details
+    bank_name: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    bank_account_name: Optional[str] = None
+    upi_id: Optional[str] = None
+
+    # TDS
+    pan_number: Optional[str] = None
+    tds_rate_override: Optional[Decimal] = None
+
+    # Status
+    is_active: bool = True
+    is_verified: bool = False
     verified_at: Optional[datetime] = None
-    total_earnings: Decimal
-    total_paid: Decimal
-    pending_payout: Decimal
-    total_orders: int
+
+    # Performance
+    total_earnings: Decimal = Decimal("0")
+    total_paid: Decimal = Decimal("0")
+    pending_payout: Decimal = Decimal("0")
+    total_orders: int = 0
+
     created_at: datetime
     updated_at: datetime
 

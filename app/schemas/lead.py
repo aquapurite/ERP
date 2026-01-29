@@ -232,12 +232,27 @@ class LeadDetailResponse(LeadResponse):
     employee_count: Optional[str] = None
     gst_number: Optional[str] = None
 
+    # Source & Campaign
+    campaign_id: Optional[UUID] = None
+    referral_code: Optional[str] = None
+    source_call_id: Optional[UUID] = None
+
     # Full scoring
     score_breakdown: Optional[dict] = None
     qualification_date: Optional[datetime] = None
+    qualified_by_id: Optional[UUID] = None
+
+    # Assignment details
+    assigned_by_id: Optional[UUID] = None
+    team_id: Optional[UUID] = None
+    region_id: Optional[UUID] = None
+    dealer_id: Optional[UUID] = None
+    next_follow_up_notes: Optional[str] = None
 
     # Conversion details
     converted_order_id: Optional[UUID] = None
+    converted_by_id: Optional[UUID] = None
+    actual_value: Optional[Decimal] = None
 
     # Lost details
     lost_reason: Optional[LostReason] = None
@@ -250,6 +265,9 @@ class LeadDetailResponse(LeadResponse):
     internal_notes: Optional[str] = None
     special_requirements: Optional[str] = None
     tags: Optional[List[str]] = None
+
+    # Audit
+    created_by_id: Optional[UUID] = None
 
     # Related data
     interested_products: Optional[List[UUID]] = None
