@@ -6,21 +6,68 @@ import CompareBarWrapper from '@/components/storefront/product/compare-bar-wrapp
 import WhatsAppButton from '@/components/storefront/layout/whatsapp-button';
 import { ServiceabilityProvider } from '@/components/storefront/serviceability-provider';
 
+const siteUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.aquapurite.com';
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: {
     default: 'AQUAPURITE - Pure Water, Healthy Life',
     template: '%s | AQUAPURITE',
   },
   description:
-    'India\'s trusted water purifier brand. Advanced RO, UV, and UF water purification systems for homes and offices.',
+    "India's trusted water purifier brand. Advanced RO, UV, and UF water purification systems for homes and offices. Shop now for clean, safe drinking water solutions.",
   keywords: [
     'water purifier',
     'RO purifier',
     'UV purifier',
+    'UF purifier',
     'water filter',
     'drinking water',
     'aquapurite',
+    'water purification',
+    'RO water purifier',
+    'water purifier India',
   ],
+  authors: [{ name: 'Aquapurite' }],
+  creator: 'Aquapurite Private Limited',
+  publisher: 'Aquapurite Private Limited',
+  alternates: {
+    canonical: '/',
+  },
+  openGraph: {
+    type: 'website',
+    locale: 'en_IN',
+    siteName: 'AQUAPURITE',
+    title: 'AQUAPURITE - Pure Water, Healthy Life',
+    description:
+      "India's trusted water purifier brand. Advanced RO, UV, and UF water purification systems for homes and offices.",
+    images: [
+      {
+        url: '/logo.png',
+        width: 512,
+        height: 512,
+        alt: 'Aquapurite Logo',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'AQUAPURITE - Pure Water, Healthy Life',
+    description:
+      "India's trusted water purifier brand. Advanced RO, UV, and UF water purification systems.",
+    images: ['/logo.png'],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
 };
 
 export default function StorefrontLayout({

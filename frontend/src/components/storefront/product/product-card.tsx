@@ -156,7 +156,10 @@ export default function ProductCard({
             <img
               src={primaryImage.thumbnail_url || primaryImage.image_url}
               alt={primaryImage.alt_text || product.name}
+              width={400}
+              height={400}
               className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+              loading="lazy"
             />
           ) : (
             <div className="h-full w-full flex items-center justify-center">
@@ -192,6 +195,7 @@ export default function ProductCard({
               size="icon"
               className={`h-8 w-8 bg-background/80 hover:bg-background ${isInWishlist ? 'text-red-500' : ''}`}
               onClick={handleWishlist}
+              aria-label={isInWishlist ? `Remove ${product.name} from wishlist` : `Add ${product.name} to wishlist`}
               title={isInWishlist ? 'Remove from wishlist' : 'Add to wishlist'}
             >
               <Heart className={`h-4 w-4 ${isInWishlist ? 'fill-current' : ''}`} />
@@ -203,6 +207,7 @@ export default function ProductCard({
               size="icon"
               className={`h-8 w-8 bg-background/80 hover:bg-background ${isInCompare ? 'text-primary' : ''}`}
               onClick={handleCompare}
+              aria-label={isInCompare ? `Remove ${product.name} from compare` : `Add ${product.name} to compare`}
               title={isInCompare ? 'Remove from compare' : 'Add to compare'}
             >
               {isInCompare ? (

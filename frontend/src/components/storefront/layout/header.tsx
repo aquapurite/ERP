@@ -142,6 +142,7 @@ export default function StorefrontHeader() {
               size="icon"
               className="md:hidden"
               onClick={() => setMobileMenuOpen(true)}
+              aria-label="Open navigation menu"
             >
               <Menu className="h-6 w-6" />
             </Button>
@@ -182,6 +183,7 @@ export default function StorefrontHeader() {
                 size="icon"
                 className="md:hidden"
                 onClick={() => setMobileSearchOpen(true)}
+                aria-label="Open search"
               >
                 <Search className="h-5 w-5" />
               </Button>
@@ -192,6 +194,7 @@ export default function StorefrontHeader() {
                   variant="ghost"
                   size="icon"
                   onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                  aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
                   title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
                 >
                   {theme === 'dark' ? (
@@ -205,7 +208,7 @@ export default function StorefrontHeader() {
               {/* Account */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="hidden md:flex">
+                  <Button variant="ghost" size="icon" className="hidden md:flex" aria-label="Account menu">
                     <User className="h-5 w-5" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -250,6 +253,7 @@ export default function StorefrontHeader() {
                 size="icon"
                 className="relative"
                 onClick={openCart}
+                aria-label={`Shopping cart${cartItemCount > 0 ? ` with ${cartItemCount} items` : ''}`}
               >
                 <ShoppingCart className="h-5 w-5" />
                 {cartItemCount > 0 && (

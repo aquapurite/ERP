@@ -230,12 +230,15 @@ export default function StorefrontFooter() {
               {settings['newsletter_text'] || 'Subscribe to our newsletter for exclusive offers and updates.'}
             </p>
             <form className="space-y-3">
+              <label htmlFor="newsletter-email" className="sr-only">Email address for newsletter</label>
               <Input
+                id="newsletter-email"
                 type="email"
                 placeholder="Enter your email"
                 className="bg-gray-800 border-gray-700 text-white placeholder:text-gray-500"
+                aria-label="Email address for newsletter"
               />
-              <Button className="w-full">Subscribe</Button>
+              <Button type="submit" className="w-full">Subscribe</Button>
             </form>
             <div className="mt-6">
               <p className="text-sm mb-3">Follow Us</p>
@@ -246,6 +249,7 @@ export default function StorefrontFooter() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors"
+                    aria-label="Follow us on Facebook"
                   >
                     <Facebook className="h-5 w-5" />
                   </a>
@@ -256,6 +260,7 @@ export default function StorefrontFooter() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors"
+                    aria-label="Follow us on Twitter"
                   >
                     <Twitter className="h-5 w-5" />
                   </a>
@@ -266,6 +271,7 @@ export default function StorefrontFooter() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors"
+                    aria-label="Follow us on Instagram"
                   >
                     <Instagram className="h-5 w-5" />
                   </a>
@@ -276,6 +282,7 @@ export default function StorefrontFooter() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors"
+                    aria-label="Subscribe on YouTube"
                   >
                     <Youtube className="h-5 w-5" />
                   </a>
@@ -286,6 +293,7 @@ export default function StorefrontFooter() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors"
+                    aria-label="Connect on LinkedIn"
                   >
                     <Linkedin className="h-5 w-5" />
                   </a>
@@ -293,16 +301,16 @@ export default function StorefrontFooter() {
                 {/* Fallback if no social links configured */}
                 {!socialLinks.facebook && !socialLinks.twitter && !socialLinks.instagram && !socialLinks.youtube && (
                   <>
-                    <a href="#" className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors">
+                    <a href="#" className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors" aria-label="Follow us on Facebook">
                       <Facebook className="h-5 w-5" />
                     </a>
-                    <a href="#" className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors">
+                    <a href="#" className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors" aria-label="Follow us on Twitter">
                       <Twitter className="h-5 w-5" />
                     </a>
-                    <a href="#" className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors">
+                    <a href="#" className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors" aria-label="Follow us on Instagram">
                       <Instagram className="h-5 w-5" />
                     </a>
-                    <a href="#" className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors">
+                    <a href="#" className="bg-gray-800 p-2 rounded-full hover:bg-primary transition-colors" aria-label="Subscribe on YouTube">
                       <Youtube className="h-5 w-5" />
                     </a>
                   </>
@@ -323,18 +331,24 @@ export default function StorefrontFooter() {
             <div className="flex items-center gap-4">
               <img
                 src="https://razorpay.com/build/browser/static/razorpay-logo-new.svg"
-                alt="Razorpay"
-                className="h-6 opacity-50 hover:opacity-100 transition-opacity"
+                alt="Payment secured by Razorpay"
+                width={80}
+                height={24}
+                className="h-6 w-auto opacity-50 hover:opacity-100 transition-opacity"
               />
               <img
                 src="https://upload.wikimedia.org/wikipedia/commons/5/5e/Visa_Inc._logo.svg"
-                alt="Visa"
-                className="h-4 opacity-50 hover:opacity-100 transition-opacity"
+                alt="Visa accepted"
+                width={50}
+                height={16}
+                className="h-4 w-auto opacity-50 hover:opacity-100 transition-opacity"
               />
               <img
                 src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg"
-                alt="Mastercard"
-                className="h-6 opacity-50 hover:opacity-100 transition-opacity"
+                alt="Mastercard accepted"
+                width={40}
+                height={24}
+                className="h-6 w-auto opacity-50 hover:opacity-100 transition-opacity"
               />
             </div>
           </div>
