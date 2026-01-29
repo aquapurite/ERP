@@ -779,6 +779,166 @@ Always check:
 - Will existing API consumers break?
 - Are response schemas compatible?
 
+### Rule 5: Full-Stack Completion (CRITICAL)
+
+**NEVER deploy backend-only changes. Every backend feature MUST have corresponding frontend integration.**
+
+---
+
+## Full-Stack Feature Development Checklist (MANDATORY)
+
+> **CRITICAL**: This checklist MUST be completed for EVERY new feature before deployment. Backend-only deployments are FORBIDDEN.
+
+### The Full-Stack Completion Rule
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  BACKEND FEATURE WITHOUT FRONTEND = INCOMPLETE FEATURE          │
+│  ============================================================   │
+│  Every API endpoint MUST have:                                  │
+│  1. Frontend API client method in frontend/src/lib/api/         │
+│  2. UI component/page that uses the endpoint                    │
+│  3. Navigation link (if new page)                               │
+│  4. User-facing button/action (if new action)                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Pre-Development Checklist
+
+Before starting ANY feature:
+
+| Step | Check | Action |
+|------|-------|--------|
+| 1 | **Identify all layers** | List: DB tables, Models, Schemas, APIs, Frontend pages, Components |
+| 2 | **Plan full stack** | Document what needs to be created/modified at EACH layer |
+| 3 | **Estimate scope** | If backend has 5 endpoints, frontend needs 5 API client methods + UI |
+
+### Development Order (MANDATORY)
+
+Always develop in this order to ensure completeness:
+
+```
+1. DATABASE     → Create/modify tables in Supabase
+2. MODELS       → Update SQLAlchemy models to match
+3. SCHEMAS      → Create Pydantic request/response schemas
+4. SERVICES     → Implement business logic
+5. ENDPOINTS    → Create API routes
+6. API CLIENT   → Add methods to frontend/src/lib/api/index.ts
+7. UI PAGE      → Create/update page component
+8. NAVIGATION   → Add menu item if new page
+9. TEST         → Verify full flow works
+```
+
+### Post-Development Verification Checklist
+
+**BEFORE committing, verify ALL items:**
+
+#### Backend Verification
+- [ ] All new endpoints documented in Swagger (`/docs`)
+- [ ] All endpoints return proper response schemas
+- [ ] Error handling implemented
+- [ ] Authorization checks in place
+
+#### Frontend API Client Verification
+- [ ] Every new backend endpoint has a corresponding method in `frontend/src/lib/api/index.ts`
+- [ ] API client method names match endpoint purpose
+- [ ] TypeScript types defined for request/response
+
+#### Frontend UI Verification
+- [ ] Page exists for viewing data (if applicable)
+- [ ] Form exists for creating/editing (if applicable)
+- [ ] Action buttons exist for operations (if applicable)
+- [ ] Loading states implemented
+- [ ] Error handling with user-friendly messages
+- [ ] Success toast notifications
+
+#### Navigation Verification
+- [ ] New pages added to `frontend/src/config/navigation.ts`
+- [ ] Permissions configured correctly
+- [ ] Menu hierarchy is logical
+
+### Feature Completion Matrix
+
+Use this matrix to track feature completeness:
+
+| Layer | File Location | Status |
+|-------|---------------|--------|
+| Database Table | Supabase | ☐ |
+| SQLAlchemy Model | `app/models/*.py` | ☐ |
+| Pydantic Schema | `app/schemas/*.py` | ☐ |
+| Service Logic | `app/services/*.py` | ☐ |
+| API Endpoint | `app/api/v1/endpoints/*.py` | ☐ |
+| Router Registration | `app/api/v1/router.py` | ☐ |
+| Frontend API Client | `frontend/src/lib/api/index.ts` | ☐ |
+| Frontend Page | `frontend/src/app/dashboard/**/page.tsx` | ☐ |
+| Navigation Menu | `frontend/src/config/navigation.ts` | ☐ |
+| Local Testing | Browser + API | ☐ |
+
+### Common Mistakes to AVOID
+
+```
+❌ WRONG: Create backend API → Deploy → "Frontend will come later"
+✅ RIGHT: Create backend API → Create frontend integration → Test → Deploy
+
+❌ WRONG: Add 5 new endpoints → Add 0 frontend methods
+✅ RIGHT: Add 5 new endpoints → Add 5 frontend methods → Add UI to use them
+
+❌ WRONG: Create service with new feature → No button to trigger it
+✅ RIGHT: Create service → Create API → Create frontend method → Add button
+```
+
+### Example: Correct Full-Stack Development
+
+**Feature: GST e-Filing**
+
+| Layer | What to Create | File |
+|-------|----------------|------|
+| Model | `GSTFiling`, `ITCLedger` | `app/models/itc.py` |
+| Schema | `GSTFilingCreate`, `GSTFilingResponse` | `app/schemas/gst_filing.py` |
+| Service | `GSTFilingService` | `app/services/gst_filing_service.py` |
+| Endpoint | `POST /gst/file/gstr1` | `app/api/v1/endpoints/gst_filing.py` |
+| Router | Register in router | `app/api/v1/router.py` |
+| API Client | `gstFilingApi.fileGSTR1()` | `frontend/src/lib/api/index.ts` |
+| Page | GST Filing Dashboard | `frontend/src/app/dashboard/finance/gst-filing/page.tsx` |
+| Button | "File GSTR-1" button | In the page component |
+| Navigation | Add to Finance menu | `frontend/src/config/navigation.ts` |
+
+### Deployment Gate
+
+**DO NOT DEPLOY if any of these are true:**
+
+1. ❌ Backend endpoint exists but no frontend API client method
+2. ❌ Frontend API client method exists but no UI uses it
+3. ❌ New page exists but not in navigation menu
+4. ❌ Action endpoint exists but no button triggers it
+5. ❌ Feature not tested end-to-end locally
+
+### Quick Verification Commands
+
+```bash
+# Check backend endpoints
+curl http://localhost:8000/docs | grep "POST\|GET\|PUT\|DELETE"
+
+# Check frontend API methods (count)
+grep -c "async\|export const" frontend/src/lib/api/index.ts
+
+# Check navigation items
+grep -c "href:" frontend/src/config/navigation.ts
+
+# Verify a specific endpoint has frontend integration
+# Backend endpoint: /gst/file/gstr1
+grep "gst/file/gstr1" frontend/src/lib/api/index.ts
+# If no result → FRONTEND INTEGRATION MISSING!
+```
+
+### Post-Deployment Verification
+
+After deployment, verify on production:
+
+1. **Backend**: Check `/docs` shows new endpoints
+2. **Frontend**: Navigate to new page, test all buttons
+3. **Integration**: Perform full user flow from UI to database
+
 ---
 
 ## Quick Reference

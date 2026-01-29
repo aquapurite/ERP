@@ -1662,6 +1662,31 @@ export const shipmentsApi = {
     const { data } = await apiClient.get<string>(`/shipments/${id}/invoice/download`);
     return data;
   },
+  // E-Way Bill Integration
+  generateEwayBill: async (id: string, ewayBillData: {
+    transporter_id?: string;
+    transporter_name?: string;
+    transporter_gstin?: string;
+    vehicle_number?: string;
+    vehicle_type?: string;
+    transport_mode?: string;
+    distance_km?: number;
+  }) => {
+    const { data } = await apiClient.post(`/shipments/${id}/generate-eway-bill`, ewayBillData);
+    return data;
+  },
+  updateEwayBillVehicle: async (id: string, vehicleData: {
+    vehicle_number: string;
+    vehicle_type?: string;
+    reason?: string;
+  }) => {
+    const { data } = await apiClient.post(`/shipments/${id}/update-eway-bill-vehicle`, vehicleData);
+    return data;
+  },
+  getEwayBillStatus: async (id: string) => {
+    const { data } = await apiClient.get(`/shipments/${id}/eway-bill-status`);
+    return data;
+  },
 };
 
 // Manifests API
@@ -5231,6 +5256,36 @@ export const bankingApi = {
     const { data } = await apiClient.post(`/banking/accounts/${accountId}/reconcile`, { reconcile_date: reconcileDate });
     return data;
   },
+  // ML-Powered Auto-Reconciliation
+  getReconciliationSuggestions: async (accountId: string, params?: {
+    start_date?: string;
+    end_date?: string;
+    min_confidence?: number;
+    limit?: number;
+  }) => {
+    const { data } = await apiClient.get(`/banking/accounts/${accountId}/reconciliation-suggestions`, { params });
+    return data;
+  },
+  autoReconcile: async (accountId: string, options?: {
+    start_date?: string;
+    end_date?: string;
+    confidence_threshold?: number;
+    dry_run?: boolean;
+  }) => {
+    const { data } = await apiClient.post(`/banking/accounts/${accountId}/auto-reconcile`, options);
+    return data;
+  },
+  getReconciliationStats: async (accountId: string, params?: {
+    start_date?: string;
+    end_date?: string;
+  }) => {
+    const { data } = await apiClient.get(`/banking/accounts/${accountId}/reconciliation-stats`, { params });
+    return data;
+  },
+  trainReconciliationModel: async (accountId: string) => {
+    const { data } = await apiClient.post(`/banking/accounts/${accountId}/train-reconciliation-model`);
+    return data;
+  },
 };
 
 // ==================== CREDENTIALS API ====================
@@ -5700,6 +5755,156 @@ export const gstReportsApi = {
   // Finance Dashboard Stats
   getFinanceDashboard: async () => {
     const { data } = await apiClient.get('/billing/reports/finance-dashboard');
+    return data;
+  },
+};
+
+// ==================== GST E-FILING API ====================
+
+export interface GSTFilingStatus {
+  return_type: string;
+  period: string;
+  status: string;
+  arn?: string;
+  filed_at?: string;
+  acknowledgement_number?: string;
+}
+
+export interface ITCEntry {
+  id: string;
+  vendor_gstin: string;
+  vendor_name?: string;
+  invoice_number: string;
+  invoice_date: string;
+  cgst_itc: number;
+  sgst_itc: number;
+  igst_itc: number;
+  cess_itc: number;
+  status: string;
+  gstr2a_matched: boolean;
+  gstr2b_matched: boolean;
+}
+
+export const gstFilingApi = {
+  // GST Portal Authentication
+  authenticate: async () => {
+    const { data } = await apiClient.post('/gst/authenticate');
+    return data;
+  },
+
+  // File GSTR-1 (Outward Supplies)
+  fileGSTR1: async (month: number, year: number, options?: { preview?: boolean }) => {
+    const { data } = await apiClient.post('/gst/file/gstr1', { month, year, ...options });
+    return data;
+  },
+
+  // File GSTR-3B (Monthly Summary)
+  fileGSTR3B: async (month: number, year: number, options?: { preview?: boolean }) => {
+    const { data } = await apiClient.post('/gst/file/gstr3b', { month, year, ...options });
+    return data;
+  },
+
+  // Get Filing Status
+  getFilingStatus: async (returnType: string, period: string) => {
+    const { data } = await apiClient.get<GSTFilingStatus>('/gst/filing-status', {
+      params: { return_type: returnType, period }
+    });
+    return data;
+  },
+
+  // Download GSTR-2A (Inward Supplies from Portal)
+  downloadGSTR2A: async (month: number, year: number) => {
+    const { data } = await apiClient.get('/gst/download/gstr2a', { params: { month, year } });
+    return data;
+  },
+
+  // GST Filing Dashboard
+  getDashboard: async (params?: { year?: number }) => {
+    const { data } = await apiClient.get('/gst/dashboard', { params });
+    return data;
+  },
+
+  // Filing History
+  getFilingHistory: async (params?: { page?: number; size?: number; limit?: number; return_type?: string }) => {
+    // Normalize: use 'size' as the standard param, allow 'limit' as alias
+    const normalizedParams = params ? {
+      page: params.page,
+      size: params.size || params.limit,
+      return_type: params.return_type,
+    } : undefined;
+    const { data } = await apiClient.get('/gst/filing-history', { params: normalizedParams });
+    return data;
+  },
+};
+
+// ==================== ITC (INPUT TAX CREDIT) API ====================
+
+export const itcApi = {
+  // Get Available ITC
+  getAvailableITC: async (period: string) => {
+    const { data } = await apiClient.get('/gst/itc/available', { params: { period } });
+    return data;
+  },
+
+  // Reconcile ITC with GSTR-2A
+  reconcileWithGSTR2A: async (month: number, year: number) => {
+    const { data } = await apiClient.post('/gst/itc/reconcile', { month, year, source: 'GSTR2A' });
+    return data;
+  },
+
+  // Reconcile ITC with GSTR-2B
+  reconcileWithGSTR2B: async (month: number, year: number) => {
+    const { data } = await apiClient.post('/gst/itc/reconcile', { month, year, source: 'GSTR2B' });
+    return data;
+  },
+
+  // Get ITC Ledger
+  getLedger: async (params?: {
+    page?: number;
+    size?: number;
+    limit?: number;
+    period?: string;
+    status?: string;
+    vendor_gstin?: string;
+  }) => {
+    // Normalize: use 'size' as the standard param, allow 'limit' as alias
+    const normalizedParams = params ? {
+      page: params.page,
+      size: params.size || params.limit,
+      period: params.period,
+      status: params.status,
+      vendor_gstin: params.vendor_gstin,
+    } : undefined;
+    const { data } = await apiClient.get('/gst/itc/ledger', { params: normalizedParams });
+    return data;
+  },
+
+  // Get ITC Summary
+  getSummary: async (period: string) => {
+    const { data } = await apiClient.get('/gst/itc/summary', { params: { period } });
+    return data;
+  },
+
+  // Utilize ITC
+  utilizeITC: async (utilizationData: {
+    period: string;
+    cgst_utilized: number;
+    sgst_utilized: number;
+    igst_utilized: number;
+  }) => {
+    const { data } = await apiClient.post('/gst/itc/utilize', utilizationData);
+    return data;
+  },
+
+  // Reverse ITC
+  reverseITC: async (entryId: string, reason: string, amount?: number) => {
+    const { data } = await apiClient.post(`/gst/itc/${entryId}/reverse`, { reason, amount });
+    return data;
+  },
+
+  // Get Mismatch Report (ITC vs GSTR-2A/2B)
+  getMismatchReport: async (period: string) => {
+    const { data } = await apiClient.get('/gst/itc/mismatch-report', { params: { period } });
     return data;
   },
 };

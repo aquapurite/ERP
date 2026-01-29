@@ -35,7 +35,7 @@ import {
 } from '@/components/ui/dialog';
 import { PageHeader } from '@/components/common';
 import { formatCurrency } from '@/lib/utils';
-import { gstReportsApi, periodsApi } from '@/lib/api';
+import { gstReportsApi, periodsApi, gstFilingApi } from '@/lib/api';
 
 interface GSTR3BSummary {
   return_period: string;
@@ -232,9 +232,24 @@ export default function GSTR3BPage() {
     toast.success('GSTR-3B data exported');
   };
 
-  const handleFileReturn = () => {
-    toast.info('GST portal filing integration coming soon. Please file directly on the GST portal.');
-    setIsPaymentOpen(false);
+  const [isFiling, setIsFiling] = useState(false);
+
+  const handleFileReturn = async () => {
+    try {
+      setIsFiling(true);
+      const result = await gstFilingApi.fileGSTR3B(month, year);
+      if (result.success) {
+        toast.success(`GSTR-3B filed successfully! ARN: ${result.arn || 'Pending'}`);
+        setIsPaymentOpen(false);
+        queryClient.invalidateQueries({ queryKey: ['gstr3b-report'] });
+      } else {
+        toast.error(result.message || 'Filing failed');
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to file GSTR-3B');
+    } finally {
+      setIsFiling(false);
+    }
   };
 
   const totalTaxPayable = (summary?.tax_payable_igst ?? 0) + (summary?.tax_payable_cgst ?? 0) +
@@ -709,10 +724,14 @@ export default function GSTR3BPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsPaymentOpen(false)}>Cancel</Button>
-            <Button onClick={handleFileReturn}>
-              <CreditCard className="mr-2 h-4 w-4" />
-              Pay & File
+            <Button variant="outline" onClick={() => setIsPaymentOpen(false)} disabled={isFiling}>Cancel</Button>
+            <Button onClick={handleFileReturn} disabled={isFiling}>
+              {isFiling ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <CreditCard className="mr-2 h-4 w-4" />
+              )}
+              {isFiling ? 'Filing...' : 'Pay & File'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -315,9 +315,11 @@ export const navigation: NavItem[] = [
 
       // -------- TAX COMPLIANCE (GST/TDS) --------
       { title: '── Tax Compliance ──', href: '#', permissions: ['GST_VIEW'] },
+      { title: 'GST Filing Dashboard', href: '/dashboard/finance/gst-filing', icon: FileCheck, permissions: ['GST_VIEW'] },
       { title: 'GSTR-1 (Outward)', href: '/dashboard/finance/gstr1', icon: FileCheck, permissions: ['GST_VIEW'] },
       { title: 'GSTR-2A (Inward)', href: '/dashboard/finance/gstr2a', icon: FileCheck, permissions: ['GST_VIEW'] },
       { title: 'GSTR-3B (Summary)', href: '/dashboard/finance/gstr3b', icon: FileCheck, permissions: ['GST_VIEW'] },
+      { title: 'ITC Management', href: '/dashboard/finance/itc', icon: Calculator, permissions: ['GST_VIEW'] },
       { title: 'HSN Summary', href: '/dashboard/finance/hsn-summary', icon: ClipboardList, permissions: ['GST_VIEW'] },
       { title: 'TDS Management', href: '/dashboard/finance/tds', icon: IndianRupee, permissions: ['TDS_VIEW'] },
       { title: 'E-Way Bills', href: '/dashboard/billing/eway-bills', icon: Truck, permissions: ['FINANCE_VIEW'] },

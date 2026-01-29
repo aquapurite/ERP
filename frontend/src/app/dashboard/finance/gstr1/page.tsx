@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { FileText, Download, Upload, CheckCircle, AlertTriangle, Calendar, Building2, RefreshCw, ExternalLink, FileJson, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { FileText, Download, Upload, CheckCircle, AlertTriangle, Calendar, Building2, RefreshCw, ExternalLink, FileJson, FileSpreadsheet, Loader2, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,10 +25,18 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader } from '@/components/common';
 import { formatDate, formatCurrency } from '@/lib/utils';
-import { gstReportsApi, periodsApi } from '@/lib/api';
+import { gstReportsApi, periodsApi, gstFilingApi } from '@/lib/api';
 
 // API response types
 interface B2BInvoiceAPI {
@@ -251,8 +259,39 @@ export default function GSTR1Page() {
     toast.success('GSTR-1 data exported');
   };
 
-  const handleFileReturn = () => {
-    toast.info('GST portal filing integration coming soon. Please file directly on the GST portal.');
+  const [isFiling, setIsFiling] = useState(false);
+  const [showFilingDialog, setShowFilingDialog] = useState(false);
+  const [filingPreview, setFilingPreview] = useState<any>(null);
+
+  const handlePreviewFiling = async () => {
+    try {
+      setIsFiling(true);
+      const preview = await gstFilingApi.fileGSTR1(month, year, { preview: true });
+      setFilingPreview(preview);
+      setShowFilingDialog(true);
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to preview GSTR-1 filing');
+    } finally {
+      setIsFiling(false);
+    }
+  };
+
+  const handleFileReturn = async () => {
+    try {
+      setIsFiling(true);
+      const result = await gstFilingApi.fileGSTR1(month, year);
+      if (result.success) {
+        toast.success(`GSTR-1 filed successfully! ARN: ${result.arn || 'Pending'}`);
+        setShowFilingDialog(false);
+        queryClient.invalidateQueries({ queryKey: ['gstr1-report'] });
+      } else {
+        toast.error(result.message || 'Filing failed');
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to file GSTR-1');
+    } finally {
+      setIsFiling(false);
+    }
   };
 
   const b2bColumns: ColumnDef<B2BInvoiceDisplay>[] = [
@@ -402,9 +441,13 @@ export default function GSTR1Page() {
               <FileJson className="mr-2 h-4 w-4" />
               Export JSON
             </Button>
-            <Button onClick={handleFileReturn}>
-              <Upload className="mr-2 h-4 w-4" />
-              File Return
+            <Button onClick={handlePreviewFiling} disabled={isFiling}>
+              {isFiling ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="mr-2 h-4 w-4" />
+              )}
+              {isFiling ? 'Processing...' : 'File Return'}
             </Button>
           </div>
         }
@@ -659,6 +702,69 @@ export default function GSTR1Page() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Filing Confirmation Dialog */}
+      <Dialog open={showFilingDialog} onOpenChange={setShowFilingDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirm GSTR-1 Filing</DialogTitle>
+            <DialogDescription>
+              Review the details before filing to GST portal
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-muted-foreground">Period</p>
+                <p className="font-medium">{summary?.return_period}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Invoices</p>
+                <p className="font-medium">{summary?.total_invoices}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-muted-foreground">Taxable Value</p>
+                <p className="font-medium">{formatCurrency(summary?.total_taxable_value ?? 0)}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Tax</p>
+                <p className="font-medium">{formatCurrency((summary?.total_igst ?? 0) + (summary?.total_cgst ?? 0) + (summary?.total_sgst ?? 0))}</p>
+              </div>
+            </div>
+            {errorInvoices > 0 && (
+              <div className="bg-red-50 p-3 rounded-md">
+                <p className="text-sm text-red-600 flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  {errorInvoices} invoice(s) have errors. Please fix before filing.
+                </p>
+              </div>
+            )}
+            <div className="border-t pt-4">
+              <p className="text-sm text-muted-foreground">
+                By clicking "File to GST Portal", you confirm that the data is accurate and authorize filing.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowFilingDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleFileReturn}
+              disabled={isFiling || errorInvoices > 0}
+            >
+              {isFiling ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="mr-2 h-4 w-4" />
+              )}
+              {isFiling ? 'Filing...' : 'File to GST Portal'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

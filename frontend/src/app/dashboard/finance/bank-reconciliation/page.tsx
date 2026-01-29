@@ -50,6 +50,7 @@ import { PageHeader } from '@/components/common';
 import apiClient from '@/lib/api/client';
 import { bankingApi } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
+import { Sparkles, Brain, TrendingUp } from 'lucide-react';
 
 interface BankAccount {
   id: string;
@@ -171,6 +172,20 @@ export default function BankReconciliationPage() {
   const [selectedStatementLine, setSelectedStatementLine] = useState<BankStatementLine | null>(null);
   const [selectedGLEntry, setSelectedGLEntry] = useState<GLEntry | null>(null);
   const [isMatchDialogOpen, setIsMatchDialogOpen] = useState(false);
+  const [isAutoReconciling, setIsAutoReconciling] = useState(false);
+  const [autoReconcileResults, setAutoReconcileResults] = useState<{
+    matched_count: number;
+    total_amount: number;
+    suggestions: Array<{
+      bank_txn_id: string;
+      journal_entry_id: string;
+      confidence: number;
+      bank_description: string;
+      journal_narration: string;
+      amount: number;
+    }>;
+  } | null>(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -271,6 +286,63 @@ export default function BankReconciliationPage() {
     toast.success('Reconciliation report exported');
   };
 
+  // ML Auto-Reconciliation handlers
+  const handleGetSuggestions = async () => {
+    if (!selectedAccount) {
+      toast.error('Please select a bank account first');
+      return;
+    }
+    setIsAutoReconciling(true);
+    try {
+      const suggestions = await bankingApi.getReconciliationSuggestions(selectedAccount, {
+        start_date: periodStart,
+        end_date: periodEnd,
+        min_confidence: 0.7,
+        limit: 50,
+      });
+      setAutoReconcileResults(suggestions);
+      setShowSuggestions(true);
+      toast.success(`Found ${suggestions.suggestions?.length || 0} potential matches`);
+    } catch (error) {
+      toast.error('Failed to get reconciliation suggestions');
+    } finally {
+      setIsAutoReconciling(false);
+    }
+  };
+
+  const handleAutoReconcile = async (dryRun = true) => {
+    if (!selectedAccount) {
+      toast.error('Please select a bank account first');
+      return;
+    }
+    setIsAutoReconciling(true);
+    try {
+      const result = await bankingApi.autoReconcile(selectedAccount, {
+        start_date: periodStart,
+        end_date: periodEnd,
+        confidence_threshold: 0.85,
+        dry_run: dryRun,
+      });
+
+      if (dryRun) {
+        setAutoReconcileResults(result);
+        setShowSuggestions(true);
+        toast.success(`Preview: ${result.matched_count} entries can be auto-matched`);
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['bank-statements'] });
+        queryClient.invalidateQueries({ queryKey: ['gl-entries'] });
+        queryClient.invalidateQueries({ queryKey: ['reconciliation-summary'] });
+        setShowSuggestions(false);
+        setAutoReconcileResults(null);
+        toast.success(`Successfully auto-reconciled ${result.matched_count} entries`);
+      }
+    } catch (error) {
+      toast.error('Failed to auto-reconcile');
+    } finally {
+      setIsAutoReconciling(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -285,6 +357,23 @@ export default function BankReconciliationPage() {
             <Button variant="outline" onClick={handleExportReport}>
               <Download className="mr-2 h-4 w-4" />
               Export Report
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleGetSuggestions}
+              disabled={!selectedAccount || isAutoReconciling}
+              className="border-purple-200 text-purple-700 hover:bg-purple-50"
+            >
+              <Brain className="mr-2 h-4 w-4" />
+              Get Suggestions
+            </Button>
+            <Button
+              onClick={() => handleAutoReconcile(true)}
+              disabled={!selectedAccount || isAutoReconciling}
+              className="bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700"
+            >
+              <Sparkles className="mr-2 h-4 w-4" />
+              {isAutoReconciling ? 'Processing...' : 'Auto-Reconcile'}
             </Button>
           </div>
         }
@@ -402,6 +491,92 @@ export default function BankReconciliationPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* ML Auto-Reconcile Suggestions */}
+          {showSuggestions && autoReconcileResults && (
+            <Card className="border-purple-200 bg-gradient-to-r from-purple-50 to-blue-50">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-purple-600" />
+                  AI-Powered Match Suggestions
+                </CardTitle>
+                <CardDescription>
+                  Found {autoReconcileResults.suggestions?.length || 0} potential matches with high confidence
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {autoReconcileResults.suggestions?.length > 0 ? (
+                  <>
+                    <div className="max-h-[300px] overflow-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Bank Description</TableHead>
+                            <TableHead>Book Narration</TableHead>
+                            <TableHead className="text-right">Amount</TableHead>
+                            <TableHead>Confidence</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {autoReconcileResults.suggestions.slice(0, 10).map((suggestion, idx) => (
+                            <TableRow key={idx}>
+                              <TableCell className="max-w-[200px] truncate text-sm">
+                                {suggestion.bank_description}
+                              </TableCell>
+                              <TableCell className="max-w-[200px] truncate text-sm">
+                                {suggestion.journal_narration}
+                              </TableCell>
+                              <TableCell className="text-right font-medium">
+                                {formatCurrency(suggestion.amount)}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-16 bg-gray-200 rounded-full h-2">
+                                    <div
+                                      className="bg-gradient-to-r from-purple-600 to-blue-600 h-2 rounded-full"
+                                      style={{ width: `${suggestion.confidence * 100}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-xs text-muted-foreground">
+                                    {Math.round(suggestion.confidence * 100)}%
+                                  </span>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                      <div className="text-sm text-muted-foreground">
+                        <TrendingUp className="inline h-4 w-4 mr-1" />
+                        Total matched amount: <span className="font-semibold">{formatCurrency(autoReconcileResults.total_amount || 0)}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => setShowSuggestions(false)}>
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={() => handleAutoReconcile(false)}
+                          disabled={isAutoReconciling}
+                          className="bg-gradient-to-r from-green-600 to-emerald-600 text-white"
+                        >
+                          <CheckCircle2 className="mr-2 h-4 w-4" />
+                          Apply {autoReconcileResults.matched_count} Matches
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <AlertCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p>No high-confidence matches found</p>
+                    <p className="text-sm">Try adjusting the date range or matching manually</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Side-by-side view */}
           <div className="grid gap-4 lg:grid-cols-2">

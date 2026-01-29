@@ -7,7 +7,7 @@ import {
   ArrowLeft, Package, Truck, MapPin, Clock, CheckCircle, XCircle,
   AlertTriangle, Send, Download, Upload, Camera, FileText, Printer,
   Navigation, Phone, User, Calendar, Weight, Ruler, DollarSign,
-  QrCode, RotateCcw, Eye
+  QrCode, RotateCcw, Eye, ScrollText, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -144,6 +144,22 @@ const shipmentApi = {
     const { data } = await apiClient.get<string>(`/shipments/${id}/invoice/download`);
     return data;
   },
+  generateEwayBill: async (id: string, ewayBillData: {
+    transporter_id?: string;
+    transporter_name?: string;
+    transporter_gstin?: string;
+    vehicle_number?: string;
+    vehicle_type?: string;
+    transport_mode?: string;
+    distance_km?: number;
+  }) => {
+    const { data } = await apiClient.post(`/shipments/${id}/generate-eway-bill`, ewayBillData);
+    return data;
+  },
+  getEwayBillStatus: async (id: string) => {
+    const { data } = await apiClient.get(`/shipments/${id}/eway-bill-status`);
+    return data;
+  },
 };
 
 const statusColors: Record<string, string> = {
@@ -177,6 +193,16 @@ export default function ShipmentDetailPage() {
   const [isDeliveryDialogOpen, setIsDeliveryDialogOpen] = useState(false);
   const [isPodDialogOpen, setIsPodDialogOpen] = useState(false);
   const [isRtoDialogOpen, setIsRtoDialogOpen] = useState(false);
+  const [isEwayBillDialogOpen, setIsEwayBillDialogOpen] = useState(false);
+
+  const [ewayBillForm, setEwayBillForm] = useState({
+    transporter_name: '',
+    transporter_gstin: '',
+    vehicle_number: '',
+    vehicle_type: 'REGULAR',
+    transport_mode: 'ROAD',
+    distance_km: 0,
+  });
 
   const [packForm, setPackForm] = useState({
     weight_kg: 0,
@@ -260,6 +286,24 @@ export default function ShipmentDetailPage() {
     onError: () => toast.error('Failed to initiate RTO'),
   });
 
+  const ewayBillMutation = useMutation({
+    mutationFn: () => shipmentApi.generateEwayBill(shipmentId, ewayBillForm),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['shipment', shipmentId] });
+      toast.success(`E-Way Bill generated! Number: ${data.eway_bill_number || 'Pending'}`);
+      setIsEwayBillDialogOpen(false);
+      setEwayBillForm({
+        transporter_name: '',
+        transporter_gstin: '',
+        vehicle_number: '',
+        vehicle_type: 'REGULAR',
+        transport_mode: 'ROAD',
+        distance_km: 0,
+      });
+    },
+    onError: (error: any) => toast.error(error.message || 'Failed to generate E-Way Bill'),
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -285,6 +329,7 @@ export default function ShipmentDetailPage() {
   const canUpdateTracking = ['SHIPPED', 'IN_TRANSIT', 'OUT_FOR_DELIVERY'].includes(shipment.status);
   const canDeliver = shipment.status === 'OUT_FOR_DELIVERY';
   const canInitiateRto = ['IN_TRANSIT', 'OUT_FOR_DELIVERY'].includes(shipment.status);
+  const canGenerateEwayBill = ['PACKED', 'READY_FOR_PICKUP', 'MANIFESTED'].includes(shipment.status) && shipment.awb_number;
 
   return (
     <div className="space-y-6">
@@ -369,6 +414,11 @@ export default function ShipmentDetailPage() {
           {canPack && (
             <Button variant="outline" onClick={() => setIsPackDialogOpen(true)}>
               <Package className="mr-2 h-4 w-4" /> Update Pack
+            </Button>
+          )}
+          {canGenerateEwayBill && (
+            <Button variant="outline" onClick={() => setIsEwayBillDialogOpen(true)}>
+              <ScrollText className="mr-2 h-4 w-4" /> Generate E-Way Bill
             </Button>
           )}
           {canUpdateTracking && (
@@ -847,6 +897,112 @@ export default function ShipmentDetailPage() {
             <Button variant="outline" onClick={() => setIsRtoDialogOpen(false)}>Cancel</Button>
             <Button variant="destructive" onClick={() => rtoMutation.mutate()} disabled={!rtoReason}>
               <RotateCcw className="mr-2 h-4 w-4" /> Initiate RTO
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* E-Way Bill Dialog */}
+      <Dialog open={isEwayBillDialogOpen} onOpenChange={setIsEwayBillDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Generate E-Way Bill</DialogTitle>
+            <DialogDescription>
+              Generate E-Way Bill for inter-state or intra-state movement of goods above Rs. 50,000
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Transporter Name</label>
+                <Input
+                  value={ewayBillForm.transporter_name}
+                  onChange={(e) => setEwayBillForm({ ...ewayBillForm, transporter_name: e.target.value })}
+                  placeholder="Enter transporter name"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Transporter GSTIN</label>
+                <Input
+                  value={ewayBillForm.transporter_gstin}
+                  onChange={(e) => setEwayBillForm({ ...ewayBillForm, transporter_gstin: e.target.value })}
+                  placeholder="15-digit GSTIN"
+                  maxLength={15}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Vehicle Number *</label>
+                <Input
+                  value={ewayBillForm.vehicle_number}
+                  onChange={(e) => setEwayBillForm({ ...ewayBillForm, vehicle_number: e.target.value.toUpperCase() })}
+                  placeholder="e.g., MH12AB1234"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Distance (km) *</label>
+                <Input
+                  type="number"
+                  value={ewayBillForm.distance_km}
+                  onChange={(e) => setEwayBillForm({ ...ewayBillForm, distance_km: parseInt(e.target.value) || 0 })}
+                  placeholder="Approx. distance"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Transport Mode</label>
+                <Select
+                  value={ewayBillForm.transport_mode}
+                  onValueChange={(v) => setEwayBillForm({ ...ewayBillForm, transport_mode: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ROAD">Road</SelectItem>
+                    <SelectItem value="RAIL">Rail</SelectItem>
+                    <SelectItem value="AIR">Air</SelectItem>
+                    <SelectItem value="SHIP">Ship</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Vehicle Type</label>
+                <Select
+                  value={ewayBillForm.vehicle_type}
+                  onValueChange={(v) => setEwayBillForm({ ...ewayBillForm, vehicle_type: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="REGULAR">Regular</SelectItem>
+                    <SelectItem value="ODC">Over Dimensional Cargo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="p-4 bg-muted rounded-lg text-sm">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <ScrollText className="h-4 w-4" />
+                E-Way Bill is mandatory for goods movement above Rs. 50,000
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEwayBillDialogOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => ewayBillMutation.mutate()}
+              disabled={ewayBillMutation.isPending || !ewayBillForm.vehicle_number || ewayBillForm.distance_km <= 0}
+            >
+              {ewayBillMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <ScrollText className="mr-2 h-4 w-4" />
+              )}
+              {ewayBillMutation.isPending ? 'Generating...' : 'Generate E-Way Bill'}
             </Button>
           </DialogFooter>
         </DialogContent>
