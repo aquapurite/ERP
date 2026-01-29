@@ -612,7 +612,15 @@ export default function ITCManagementPage() {
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-2">
-                            <Button size="sm" variant="outline">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                // Copy vendor GSTIN to clipboard for easy lookup
+                                navigator.clipboard.writeText(item.vendor_gstin);
+                                toast.info(`Vendor GSTIN ${item.vendor_gstin} copied. Contact vendor to file their GSTR-1.`);
+                              }}
+                            >
                               Contact Vendor
                             </Button>
                             <Button
