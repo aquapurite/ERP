@@ -219,6 +219,90 @@ class CompanyUpdate(BaseModel):
 class CompanyResponse(BaseResponseSchema):
     """Response schema for Company."""
     id: UUID
+
+    # Basic Info
+    legal_name: Optional[str] = None
+    trade_name: Optional[str] = None
+    code: Optional[str] = None
+    company_type: Optional[str] = None
+
+    # Tax Registration
+    gstin: Optional[str] = None
+    gst_registration_type: Optional[str] = None
+    state_code: Optional[str] = None
+    pan: Optional[str] = None
+    tan: Optional[str] = None
+    cin: Optional[str] = None
+    llpin: Optional[str] = None
+
+    # MSME
+    msme_registered: bool = False
+    udyam_number: Optional[str] = None
+    msme_category: Optional[str] = None
+
+    # Address
+    address_line1: Optional[str] = None
+    address_line2: Optional[str] = None
+    city: Optional[str] = None
+    district: Optional[str] = None
+    state: Optional[str] = None
+    pincode: Optional[str] = None
+    country: Optional[str] = None
+
+    # Contact
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    mobile: Optional[str] = None
+    fax: Optional[str] = None
+    website: Optional[str] = None
+
+    # Bank Details
+    bank_name: Optional[str] = None
+    bank_branch: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    bank_account_type: Optional[str] = None
+    bank_account_name: Optional[str] = None
+
+    # Branding
+    logo_url: Optional[str] = None
+    logo_small_url: Optional[str] = None
+    favicon_url: Optional[str] = None
+    signature_url: Optional[str] = None
+
+    # E-Invoice Config
+    einvoice_enabled: bool = False
+    einvoice_username: Optional[str] = None
+    einvoice_api_mode: Optional[str] = None
+
+    # E-Way Bill Config
+    ewb_enabled: bool = False
+    ewb_username: Optional[str] = None
+    ewb_api_mode: Optional[str] = None
+
+    # Invoice Settings
+    invoice_prefix: Optional[str] = None
+    invoice_suffix: Optional[str] = None
+    financial_year_start_month: int = 4
+    invoice_terms: Optional[str] = None
+    invoice_notes: Optional[str] = None
+    invoice_footer: Optional[str] = None
+
+    # PO Settings
+    po_prefix: Optional[str] = None
+    po_terms: Optional[str] = None
+
+    # Currency
+    currency_code: Optional[str] = None
+    currency_symbol: Optional[str] = None
+
+    # Tax Defaults
+    default_cgst_rate: Optional[Decimal] = None
+    default_sgst_rate: Optional[Decimal] = None
+    default_igst_rate: Optional[Decimal] = None
+    tds_deductor: bool = True
+    default_tds_rate: Optional[Decimal] = None
+
     is_active: bool
     is_primary: bool
     created_at: datetime

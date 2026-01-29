@@ -215,25 +215,75 @@ class CommunityPartnerResponse(BaseResponseSchema):
     status: str
     tier_id: Optional[UUID] = None
 
+    # Basic Info
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+    mobile: Optional[str] = None
+
+    # Address
+    address_line1: Optional[str] = None
+    address_line2: Optional[str] = None
+    city: Optional[str] = None
+    district: Optional[str] = None
+    state: Optional[str] = None
+    pincode: Optional[str] = None
+
+    # Profile
+    date_of_birth: Optional[date] = None
+    gender: Optional[str] = None
+    profile_photo_url: Optional[str] = None
+    partner_type: Optional[str] = None
+    occupation: Optional[str] = None
+    language_preference: Optional[str] = None
+
     # KYC Status
     kyc_status: str
     kyc_verified_at: Optional[datetime] = None
+    kyc_submitted_at: Optional[datetime] = None
     kyc_rejection_reason: Optional[str] = None
     aadhaar_verified: bool = False
     pan_verified: bool = False
     bank_verified: bool = False
 
+    # KYC Documents (for admin view)
+    aadhaar_number: Optional[str] = None
+    pan_number: Optional[str] = None
+
+    # Bank Details
+    bank_account_number: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    bank_account_name: Optional[str] = None
+    bank_name: Optional[str] = None
+    bank_branch: Optional[str] = None
+    bank_account_holder_name: Optional[str] = None
+    upi_id: Optional[str] = None
+    upi_verified: bool = False
+
+    # Referral
+    referred_by: Optional[UUID] = None
+    referred_by_id: Optional[UUID] = None
+    referred_by_code: Optional[str] = None
+
     # Performance Metrics (match model field names)
+    total_orders: int = 0
+    total_sales: Decimal = Decimal("0")
     total_sales_count: int = 0
     total_sales_value: Decimal = Decimal("0")
     total_commission_earned: Decimal = Decimal("0")
     total_commission_paid: Decimal = Decimal("0")
+    pending_commission: Decimal = Decimal("0")
     current_month_sales: int = 0
     current_month_value: Decimal = Decimal("0")
     wallet_balance: Decimal = Decimal("0")
+    average_rating: Decimal = Decimal("0")
+    rating_count: int = 0
 
     # Training
     training_completed: bool = False
+    training_completed_at: Optional[datetime] = None
+    certification_level: Optional[str] = None
 
     # Timestamps
     registered_at: Optional[datetime] = None
@@ -241,6 +291,10 @@ class CommunityPartnerResponse(BaseResponseSchema):
     updated_at: datetime
     activated_at: Optional[datetime] = None
     last_login_at: Optional[datetime] = None
+    last_active_at: Optional[datetime] = None
+
+    # Notes
+    notes: Optional[str] = None
 
     # Related
     tier: Optional[PartnerTierResponse] = None
