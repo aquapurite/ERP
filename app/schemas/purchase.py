@@ -406,6 +406,12 @@ class PurchaseOrderResponse(BaseResponseSchema):
     items: List[POItemResponse] = []
     delivery_schedules: List[PODeliveryScheduleResponse] = []
 
+    # Approval workflow
+    approval_request_id: Optional[UUID] = None
+    approval_level: Optional[str] = None
+    submitted_for_approval_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
+
     # Audit fields
     created_by: UUID
     approved_by: Optional[UUID] = None

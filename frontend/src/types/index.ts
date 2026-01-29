@@ -585,6 +585,32 @@ export interface Dealer {
   bank_account_number?: string;
   bank_ifsc?: string;
   bank_branch?: string;
+  bank_account_name?: string;
+  // Business details
+  business_type?: string;
+  establishment_year?: number;
+  annual_turnover?: number;
+  shop_area_sqft?: number;
+  no_of_employees?: number;
+  existing_brands?: string[];
+  // Shipping address
+  shipping_address_line1?: string;
+  shipping_address_line2?: string;
+  shipping_city?: string;
+  shipping_state?: string;
+  shipping_pincode?: string;
+  // Territory
+  territory?: string;
+  // KYC
+  kyc_verified?: boolean;
+  kyc_verified_at?: string;
+  // Agreement
+  agreement_start_date?: string;
+  agreement_end_date?: string;
+  // Settings
+  can_place_orders?: boolean;
+  receive_promotions?: boolean;
+  portal_access?: boolean;
   // Additional fields
   assigned_pincodes?: string[];
   total_orders?: number;

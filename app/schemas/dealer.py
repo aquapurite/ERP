@@ -171,6 +171,65 @@ class DealerResponse(BaseResponseSchema):
     parent_dealer_id: Optional[UUID] = None
     user_id: Optional[UUID] = None
 
+    # Basic Info
+    name: Optional[str] = None
+    legal_name: Optional[str] = None
+    display_name: Optional[str] = None
+    dealer_type: Optional[str] = None
+    tier: Optional[str] = None
+
+    # GST & Tax
+    gstin: Optional[str] = None
+    pan: Optional[str] = None
+    tan: Optional[str] = None
+    gst_registration_type: Optional[str] = None
+    is_msme: Optional[bool] = None
+    msme_number: Optional[str] = None
+
+    # Contact
+    contact_person: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    alternate_phone: Optional[str] = None
+    whatsapp: Optional[str] = None
+
+    # Registered Address
+    registered_address_line1: Optional[str] = None
+    registered_address_line2: Optional[str] = None
+    registered_city: Optional[str] = None
+    registered_district: Optional[str] = None
+    registered_state: Optional[str] = None
+    registered_state_code: Optional[str] = None
+    registered_pincode: Optional[str] = None
+
+    # Shipping Address
+    shipping_address_line1: Optional[str] = None
+    shipping_address_line2: Optional[str] = None
+    shipping_city: Optional[str] = None
+    shipping_state: Optional[str] = None
+    shipping_pincode: Optional[str] = None
+
+    # Territory
+    region: Optional[str] = None
+    state: Optional[str] = None
+    territory: Optional[str] = None
+    assigned_pincodes: Optional[List[str]] = None
+
+    # Business Details
+    business_type: Optional[str] = None
+    establishment_year: Optional[int] = None
+    annual_turnover: Optional[Decimal] = None
+    shop_area_sqft: Optional[int] = None
+    no_of_employees: Optional[int] = None
+    existing_brands: Optional[List[str]] = None
+
+    # Bank Details
+    bank_name: Optional[str] = None
+    bank_branch: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    bank_account_name: Optional[str] = None
+
     # Credit
     credit_limit: Decimal
     credit_days: int
@@ -179,6 +238,7 @@ class DealerResponse(BaseResponseSchema):
     overdue_amount: Decimal
     available_credit: Decimal
     credit_utilization_percentage: Decimal
+    opening_balance: Optional[Decimal] = None
 
     # Security
     security_deposit: Decimal
@@ -189,9 +249,20 @@ class DealerResponse(BaseResponseSchema):
     sales_rep_id: Optional[UUID] = None
     area_sales_manager_id: Optional[UUID] = None
 
+    # Agreement
+    agreement_start_date: Optional[date] = None
+    agreement_end_date: Optional[date] = None
+
+    # Settings
+    can_place_orders: Optional[bool] = None
+    receive_promotions: Optional[bool] = None
+    portal_access: Optional[bool] = None
+    internal_notes: Optional[str] = None
+
     # KYC
     kyc_verified: bool
     kyc_verified_at: Optional[datetime] = None
+    kyc_verified_by: Optional[UUID] = None
 
     # Performance
     total_orders: int
@@ -206,6 +277,7 @@ class DealerResponse(BaseResponseSchema):
     pan_card_url: Optional[str] = None
     shop_photo_url: Optional[str] = None
     agreement_document_url: Optional[str] = None
+    cancelled_cheque_url: Optional[str] = None
 
     # Timestamps
     onboarded_at: Optional[datetime] = None
@@ -223,13 +295,35 @@ class DealerListResponse(BaseModel):
 
 
 class DealerBrief(BaseModel):
-    """Brief dealer for dropdowns."""
+    """Brief dealer for dropdowns and list views."""
     id: UUID
     dealer_code: str
     name: str
-    dealer_type: DealerType
+    legal_name: Optional[str] = None
+    dealer_type: Optional[str] = None
     tier: Optional[str] = None
     status: str
+    # Contact
+    contact_person: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    # Location
+    registered_city: Optional[str] = None
+    registered_state: Optional[str] = None
+    region: Optional[str] = None
+    # Tax IDs
+    gstin: Optional[str] = None
+    pan: Optional[str] = None
+    # Credit
+    credit_limit: Optional[Decimal] = None
+    outstanding_amount: Optional[Decimal] = None
+    available_credit: Optional[Decimal] = None
+    # Bank Details (for edit)
+    bank_name: Optional[str] = None
+    bank_branch: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    bank_account_name: Optional[str] = None
 
 
 class DealerApproveRequest(BaseModel):
