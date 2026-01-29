@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from pydantic import BaseModel
 from sqlalchemy import select, func, and_, or_, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -2047,6 +2048,12 @@ async def post_journal_entry(
     return journal
 
 
+class JournalReversalBody(BaseModel):
+    """Request body for journal reversal."""
+    reversal_date: date
+    reason: Optional[str] = None
+
+
 @router.post(
     "/journals/{journal_id}/reverse",
     response_model=JournalEntryResponse,
@@ -2054,11 +2061,13 @@ async def post_journal_entry(
 )
 async def reverse_journal_entry(
     journal_id: UUID,
-    reversal_date: date,
+    body: JournalReversalBody,
     db: DB,
     current_user: User = Depends(get_current_user),
 ):
     """Create a reversal journal entry."""
+    reversal_date = body.reversal_date
+    reason = body.reason
     result = await db.execute(
         select(JournalEntry)
         .options(selectinload(JournalEntry.lines))
@@ -2101,12 +2110,16 @@ async def reverse_journal_entry(
     reversal_number = f"JV-{today.strftime('%Y%m%d')}-{str(count + 1).zfill(4)}"
 
     # Create reversal journal
+    narration_text = f"Reversal of {original.entry_number}"
+    if reason:
+        narration_text += f" - {reason}"
+
     reversal = JournalEntry(
         entry_number=reversal_number,
         entry_type="REVERSAL",
         entry_date=reversal_date,
         period_id=period.id,
-        narration=f"Reversal of {original.entry_number}",
+        narration=narration_text,
         source_type="REVERSAL",
         source_number=original.entry_number,
         source_id=original.id,
