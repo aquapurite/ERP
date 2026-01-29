@@ -8,12 +8,13 @@ import { Button } from '@/components/ui/button';
 import { contentApi, StorefrontBanner } from '@/lib/storefront/api';
 
 // Fallback banners for when API fails or returns empty
+// High-quality water/clean living themed images from Unsplash
 const fallbackBanners: StorefrontBanner[] = [
   {
     id: '1',
     title: 'Pure Water, Healthy Life',
-    subtitle: 'Advanced 7-Stage RO Purification with Mineral Enrichment',
-    image_url: 'https://images.unsplash.com/photo-1559839914-17aae19cec71?q=80&w=2070',
+    subtitle: 'Advanced 7-Stage RO Purification with Mineral Enrichment for Your Family',
+    image_url: 'https://images.unsplash.com/photo-1564419320461-6870880221ad?q=80&w=2070&auto=format&fit=crop',
     cta_text: 'Shop Now',
     cta_link: '/products',
     text_position: 'left',
@@ -21,21 +22,31 @@ const fallbackBanners: StorefrontBanner[] = [
   },
   {
     id: '2',
-    title: 'New Arrivals',
-    subtitle: 'Discover our latest water purifiers with smart features',
-    image_url: 'https://images.unsplash.com/photo-1548839140-29a749e1cf4d?q=80&w=2076',
-    cta_text: 'Explore',
+    title: 'Smart Water Purifiers',
+    subtitle: 'IoT-enabled purifiers with real-time water quality monitoring',
+    image_url: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?q=80&w=2070&auto=format&fit=crop',
+    cta_text: 'Explore New Arrivals',
     cta_link: '/products?is_new_arrival=true',
     text_position: 'left',
     text_color: 'white',
   },
   {
     id: '3',
-    title: 'Free Installation',
-    subtitle: 'Get free installation on all water purifiers',
-    image_url: 'https://images.unsplash.com/photo-1562016600-ece13e8ba570?q=80&w=2069',
+    title: 'Free Expert Installation',
+    subtitle: 'Professional setup by certified technicians within 48 hours of delivery',
+    image_url: 'https://images.unsplash.com/photo-1544027993-37dbfe43562a?q=80&w=2070&auto=format&fit=crop',
     cta_text: 'Learn More',
     cta_link: '/products',
+    text_position: 'left',
+    text_color: 'white',
+  },
+  {
+    id: '4',
+    title: 'Bestselling Purifiers',
+    subtitle: 'Trusted by 50,000+ happy families across India',
+    image_url: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?q=80&w=2070&auto=format&fit=crop',
+    cta_text: 'View Bestsellers',
+    cta_link: '/products?is_bestseller=true',
     text_position: 'left',
     text_color: 'white',
   },
