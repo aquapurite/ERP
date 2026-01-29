@@ -4,6 +4,7 @@ import uuid
 from uuid import UUID
 from datetime import date, timezone
 from decimal import Decimal
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import select, func, and_, or_
@@ -15,6 +16,7 @@ from app.models.vendor import (
     VendorLedger, VendorTransactionType, VendorContact
 )
 from app.models.user import User
+from app.models.accounting import ChartOfAccount, AccountType, AccountSubType
 from app.schemas.vendor import (
     VendorCreate, VendorUpdate, VendorResponse, VendorBrief, VendorListResponse,
     VendorLedgerCreate, VendorLedgerResponse, VendorLedgerListResponse,
@@ -26,6 +28,9 @@ from app.api.deps import DB, CurrentUser, get_current_user, require_permissions
 from app.services.audit_service import AuditService
 from app.services.approval_service import ApprovalService
 from app.models.approval import ApprovalEntityType
+
+# Sundry Creditors parent account ID (2101)
+SUNDRY_CREDITORS_PARENT_ID = "a8178c89-9c40-49c7-85cb-4fbd879660f5"
 
 router = APIRouter()
 
@@ -70,6 +75,69 @@ async def get_next_global_vendor_number(db: DB) -> int:
             continue
 
     return max_num + 1
+
+
+async def get_next_vendor_gl_account_code(db: DB) -> str:
+    """Get the next available GL account code for vendors (under 2101 Sundry Creditors).
+
+    Format: 21XX where XX starts from 12 (since 2111 is Trade Creditors)
+    """
+    # Find the highest vendor GL account code in 21XX range
+    result = await db.execute(
+        select(ChartOfAccount.account_code)
+        .where(
+            and_(
+                ChartOfAccount.account_code.like("21%"),
+                ChartOfAccount.parent_id == uuid.UUID(SUNDRY_CREDITORS_PARENT_ID)
+            )
+        )
+        .order_by(ChartOfAccount.account_code.desc())
+    )
+    existing_codes = result.scalars().all()
+
+    max_num = 2111  # Start after Trade Creditors (2111)
+    for code in existing_codes:
+        try:
+            num = int(code)
+            if num > max_num:
+                max_num = num
+        except ValueError:
+            continue
+
+    return str(max_num + 1)
+
+
+async def create_vendor_gl_account(db: DB, vendor: Vendor) -> ChartOfAccount:
+    """Create a GL account for a vendor under Sundry Creditors (2101).
+
+    This allows the vendor to appear in journal entries for payments.
+    """
+    # Get next account code
+    account_code = await get_next_vendor_gl_account_code(db)
+
+    # Create GL account
+    gl_account = ChartOfAccount(
+        account_code=account_code,
+        account_name=vendor.legal_name or vendor.name,
+        description=f"Vendor: {vendor.vendor_code} - {vendor.name}",
+        account_type=AccountType.LIABILITY.value,
+        account_sub_type=AccountSubType.ACCOUNTS_PAYABLE.value,
+        parent_id=uuid.UUID(SUNDRY_CREDITORS_PARENT_ID),
+        level=2,  # Child of Sundry Creditors
+        is_group=False,
+        opening_balance=vendor.opening_balance or Decimal("0"),
+        current_balance=vendor.current_balance or Decimal("0"),
+    )
+
+    db.add(gl_account)
+    await db.flush()  # Get the ID without committing
+
+    # Link GL account to vendor
+    vendor.gl_account_id = gl_account.id
+
+    logging.info(f"Created GL account {account_code} - {gl_account.account_name} for vendor {vendor.vendor_code}")
+
+    return gl_account
 
 
 @router.get("/next-code")
@@ -129,6 +197,16 @@ async def create_vendor(
     )
 
     db.add(vendor)
+    await db.flush()  # Get vendor ID without committing
+
+    # Auto-create GL account for vendor under Sundry Creditors
+    try:
+        gl_account = await create_vendor_gl_account(db, vendor)
+        logging.info(f"Auto-created GL account {gl_account.account_code} for vendor {vendor_code}")
+    except Exception as e:
+        logging.warning(f"Failed to create GL account for vendor {vendor_code}: {e}")
+        # Continue without GL account - can be linked later
+
     await db.commit()
     await db.refresh(vendor)
 
@@ -613,6 +691,89 @@ async def add_vendor_contact(
     await db.refresh(contact)
 
     return contact
+
+
+# ==================== Vendor GL Account Management ====================
+
+@router.post("/create-gl-accounts", status_code=status.HTTP_200_OK)
+async def create_gl_accounts_for_existing_vendors(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    One-time migration: Create GL accounts for all existing vendors that don't have one.
+
+    This creates a GL account under Sundry Creditors (2101) for each vendor,
+    allowing them to appear in journal entries for payment tracking.
+    """
+    # Find vendors without GL accounts
+    result = await db.execute(
+        select(Vendor).where(Vendor.gl_account_id.is_(None))
+    )
+    vendors_without_gl = result.scalars().all()
+
+    if not vendors_without_gl:
+        return {"message": "All vendors already have GL accounts", "created": 0}
+
+    created_count = 0
+    errors = []
+
+    for vendor in vendors_without_gl:
+        try:
+            gl_account = await create_vendor_gl_account(db, vendor)
+            created_count += 1
+            logging.info(f"Created GL account {gl_account.account_code} for vendor {vendor.vendor_code}")
+        except Exception as e:
+            errors.append({"vendor_code": vendor.vendor_code, "error": str(e)})
+            logging.error(f"Failed to create GL account for vendor {vendor.vendor_code}: {e}")
+
+    await db.commit()
+
+    return {
+        "message": f"Created GL accounts for {created_count} vendors",
+        "created": created_count,
+        "errors": errors if errors else None
+    }
+
+
+@router.get("/{vendor_id}/gl-account")
+async def get_vendor_gl_account(
+    vendor_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get the GL account details for a vendor including bank information."""
+    result = await db.execute(
+        select(Vendor)
+        .options(selectinload(Vendor.gl_account))
+        .where(Vendor.id == vendor_id)
+    )
+    vendor = result.scalar_one_or_none()
+
+    if not vendor:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+
+    gl_info = None
+    if vendor.gl_account:
+        gl_info = {
+            "account_code": vendor.gl_account.account_code,
+            "account_name": vendor.gl_account.account_name,
+            "current_balance": float(vendor.gl_account.current_balance or 0),
+        }
+
+    return {
+        "vendor_code": vendor.vendor_code,
+        "vendor_name": vendor.name,
+        "gl_account": gl_info,
+        "bank_details": {
+            "bank_name": vendor.bank_name,
+            "bank_branch": vendor.bank_branch,
+            "account_number": vendor.bank_account_number,
+            "ifsc_code": vendor.bank_ifsc,
+            "account_type": vendor.bank_account_type,
+            "beneficiary_name": vendor.beneficiary_name,
+        } if vendor.bank_name else None
+    }
 
 
 # ==================== Vendor Aging Report ====================
