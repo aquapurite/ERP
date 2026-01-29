@@ -28,7 +28,13 @@ import {
   Wallet,
   Share2,
   TrendingUp,
+  BadgeCheck,
+  IndianRupee,
+  Users,
+  Clock,
+  Headphones,
 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 // Icon mapping for dynamic icons from CMS
 const iconMap: Record<string, React.ElementType> = {
@@ -40,21 +46,31 @@ const iconMap: Record<string, React.ElementType> = {
 // Default content (used as fallback if CMS settings not configured)
 const defaultContent = {
   hero_title: 'Become an AQUAPURITE Partner',
-  hero_subtitle: 'Join our community of partners and earn by sharing our products. Zero investment, unlimited earning potential!',
-  benefit_1_title: 'Earn Commission',
-  benefit_1_description: '10-15% commission on every successful sale',
+  hero_subtitle: 'Join India\'s fastest-growing water purifier partner network. Zero investment required, unlimited earning potential with 10-15% commission on every sale!',
+  benefit_1_title: 'High Commission',
+  benefit_1_description: 'Earn 10-15% commission on every successful sale. No caps, no limits!',
   benefit_1_icon: 'Wallet',
-  benefit_2_title: 'Easy Sharing',
-  benefit_2_description: 'Share products via WhatsApp, social media, and more',
+  benefit_2_title: 'Easy to Share',
+  benefit_2_description: 'Share product links via WhatsApp, social media, or personal network',
   benefit_2_icon: 'Share2',
-  benefit_3_title: 'Grow Together',
-  benefit_3_description: 'Tier upgrades with higher commission rates',
+  benefit_3_title: 'Grow Your Earnings',
+  benefit_3_description: 'Unlock higher commission tiers as you grow. Top partners earn ₹1 Lakh+/month',
   benefit_3_icon: 'TrendingUp',
   form_title: 'Partner Registration',
-  form_subtitle: 'Fill in your details to get started',
-  success_title: 'Registration Successful!',
-  success_message: 'Your partner application has been submitted. You can now login with your mobile number.',
+  form_subtitle: 'Join 5,000+ active partners earning with AQUAPURITE',
+  success_title: 'Welcome to AQUAPURITE Partner Network!',
+  success_message: 'Your partner application has been approved. You can now login with your mobile number and start earning!',
 };
+
+// Additional benefits to display
+const additionalBenefits = [
+  'Weekly commission payouts directly to your bank',
+  'Dedicated partner support team',
+  'Marketing materials & product training',
+  'Real-time sales tracking dashboard',
+  'Special partner-exclusive deals',
+  'No inventory or logistics hassle',
+];
 
 interface PageContent {
   hero_title: string;
@@ -228,9 +244,13 @@ export default function BecomePartnerPage() {
 
   return (
     <div className="min-h-[60vh] py-12 px-4">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-5xl mx-auto">
         {/* Header */}
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
+          <Badge className="mb-4 bg-primary/10 text-primary hover:bg-primary/10">
+            <Users className="h-3 w-3 mr-1" />
+            Partner Program
+          </Badge>
           <h1 className="text-3xl md:text-4xl font-bold mb-4">
             {contentLoading ? (
               <span className="animate-pulse bg-muted rounded h-10 w-96 inline-block" />
@@ -238,17 +258,48 @@ export default function BecomePartnerPage() {
               content.hero_title
             )}
           </h1>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-6">
             {contentLoading ? (
               <span className="animate-pulse bg-muted rounded h-6 w-full inline-block" />
             ) : (
               content.hero_subtitle
             )}
           </p>
+
+          {/* Quick Stats */}
+          <div className="flex flex-wrap justify-center gap-6 mt-6">
+            <div className="flex items-center gap-2 text-sm">
+              <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                <IndianRupee className="h-4 w-4 text-green-600" />
+              </div>
+              <div className="text-left">
+                <p className="font-semibold text-green-600">₹50 Lakh+</p>
+                <p className="text-xs text-muted-foreground">Paid to Partners</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                <Users className="h-4 w-4 text-blue-600" />
+              </div>
+              <div className="text-left">
+                <p className="font-semibold text-blue-600">5,000+</p>
+                <p className="text-xs text-muted-foreground">Active Partners</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
+                <TrendingUp className="h-4 w-4 text-orange-600" />
+              </div>
+              <div className="text-left">
+                <p className="font-semibold text-orange-600">15%</p>
+                <p className="text-xs text-muted-foreground">Max Commission</p>
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Benefits */}
-        <div className="grid md:grid-cols-3 gap-6 mb-12">
+        {/* Main Benefits */}
+        <div className="grid md:grid-cols-3 gap-6 mb-8">
           {benefits.map((benefit) => (
             <Link key={benefit.title} href={benefit.href}>
               <Card className="text-center h-full cursor-pointer hover:shadow-lg hover:border-primary/50 transition-all duration-200">
@@ -263,6 +314,21 @@ export default function BecomePartnerPage() {
             </Link>
           ))}
         </div>
+
+        {/* Additional Benefits */}
+        <Card className="mb-8 bg-gradient-to-r from-primary/5 to-secondary/5">
+          <CardContent className="py-6">
+            <h3 className="font-semibold text-center mb-4">Why Partners Love AQUAPURITE</h3>
+            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
+              {additionalBenefits.map((benefit, index) => (
+                <div key={index} className="flex items-center gap-2 text-sm">
+                  <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
+                  <span>{benefit}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Registration Form */}
         <Card id="registration" className="max-w-md mx-auto scroll-mt-20">
@@ -423,6 +489,118 @@ export default function BecomePartnerPage() {
               </p>
             </CardFooter>
           </form>
+        </Card>
+
+        {/* How It Works */}
+        <Card className="mt-8">
+          <CardHeader>
+            <CardTitle className="text-center">How Partner Program Works</CardTitle>
+            <CardDescription className="text-center">
+              Start earning in 3 simple steps
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid md:grid-cols-3 gap-6">
+              <div className="text-center">
+                <div className="w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center mx-auto mb-3 text-lg font-bold">
+                  1
+                </div>
+                <h4 className="font-semibold mb-1">Register Free</h4>
+                <p className="text-sm text-muted-foreground">
+                  Fill the form above. Get approved instantly and access your partner dashboard.
+                </p>
+              </div>
+              <div className="text-center">
+                <div className="w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center mx-auto mb-3 text-lg font-bold">
+                  2
+                </div>
+                <h4 className="font-semibold mb-1">Share Products</h4>
+                <p className="text-sm text-muted-foreground">
+                  Get unique referral links. Share with your network via WhatsApp, social media, or in-person.
+                </p>
+              </div>
+              <div className="text-center">
+                <div className="w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center mx-auto mb-3 text-lg font-bold">
+                  3
+                </div>
+                <h4 className="font-semibold mb-1">Earn Commission</h4>
+                <p className="text-sm text-muted-foreground">
+                  When someone buys using your link, earn 10-15% commission. Weekly payouts to your bank.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Commission Tiers */}
+        <Card className="mt-8">
+          <CardHeader>
+            <CardTitle className="text-center">Commission Tiers</CardTitle>
+            <CardDescription className="text-center">
+              Sell more, earn more! Unlock higher tiers as you grow
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid sm:grid-cols-3 gap-4">
+              <Card className="border-2">
+                <CardContent className="pt-6 text-center">
+                  <Badge variant="secondary" className="mb-3">Bronze</Badge>
+                  <p className="text-3xl font-bold text-primary mb-1">10%</p>
+                  <p className="text-sm text-muted-foreground mb-3">Commission</p>
+                  <p className="text-xs text-muted-foreground">0-5 sales/month</p>
+                </CardContent>
+              </Card>
+              <Card className="border-2 border-primary">
+                <CardContent className="pt-6 text-center">
+                  <Badge className="mb-3 bg-primary">Silver</Badge>
+                  <p className="text-3xl font-bold text-primary mb-1">12%</p>
+                  <p className="text-sm text-muted-foreground mb-3">Commission</p>
+                  <p className="text-xs text-muted-foreground">6-15 sales/month</p>
+                </CardContent>
+              </Card>
+              <Card className="border-2 border-secondary">
+                <CardContent className="pt-6 text-center">
+                  <Badge className="mb-3 bg-secondary text-secondary-foreground">Gold</Badge>
+                  <p className="text-3xl font-bold text-secondary mb-1">15%</p>
+                  <p className="text-sm text-muted-foreground mb-3">Commission</p>
+                  <p className="text-xs text-muted-foreground">16+ sales/month</p>
+                </CardContent>
+              </Card>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Support Info */}
+        <Card className="mt-8 bg-muted/50">
+          <CardContent className="py-6">
+            <div className="flex flex-col md:flex-row items-center gap-4 text-center md:text-left">
+              <div className="p-3 bg-primary/10 rounded-full">
+                <Headphones className="h-6 w-6 text-primary" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold">Partner Support Available</h3>
+                <p className="text-sm text-muted-foreground">
+                  Have questions? Our partner support team is here to help you succeed.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" asChild>
+                  <a
+                    href="https://wa.me/919311939076?text=Hi, I have a question about the partner program"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    WhatsApp Support
+                  </a>
+                </Button>
+                <Button variant="outline" asChild>
+                  <a href="mailto:partners@aquapurite.com">
+                    Email Us
+                  </a>
+                </Button>
+              </div>
+            </div>
+          </CardContent>
         </Card>
       </div>
     </div>

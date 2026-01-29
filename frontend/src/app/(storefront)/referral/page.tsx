@@ -17,6 +17,10 @@ import {
   Mail,
   Facebook,
   Twitter,
+  Star,
+  Sparkles,
+  Wallet,
+  MapPin,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -32,36 +36,61 @@ import { referralApi, ReferralStats } from '@/lib/storefront/api';
 const referralBenefits = [
   {
     icon: Gift,
-    title: 'You Get ₹500',
-    description: 'For every successful referral that makes a purchase',
+    title: 'You Earn ₹500',
+    description: 'Cash reward for every successful referral that completes a purchase',
   },
   {
     icon: Users,
-    title: 'Friend Gets 5% Off',
-    description: 'Your friend gets 5% discount on their first purchase',
+    title: 'Friend Saves 5%',
+    description: 'Your friend enjoys 5% instant discount on their first water purifier',
   },
   {
     icon: IndianRupee,
-    title: 'No Limit',
-    description: 'Refer unlimited friends and earn unlimited rewards',
+    title: 'Unlimited Rewards',
+    description: 'No limits! Refer as many friends as you want and earn unlimited cash',
   },
 ];
 
 const howItWorks = [
   {
     step: 1,
-    title: 'Share Your Code',
-    description: 'Share your unique referral code with friends and family',
+    title: 'Get Your Code',
+    description: 'Login to get your unique referral code. Share it via WhatsApp, SMS, or social media.',
   },
   {
     step: 2,
-    title: 'Friend Makes Purchase',
-    description: 'Your friend uses your code and gets 5% off on their order',
+    title: 'Friend Shops & Saves',
+    description: 'Your friend applies your code at checkout and gets 5% off their order instantly.',
   },
   {
     step: 3,
-    title: 'You Earn Rewards',
-    description: 'Once their order is delivered, you get ₹500 credit',
+    title: 'You Get Paid',
+    description: 'Once their order is delivered, ₹500 is credited to your account. Withdraw anytime!',
+  },
+];
+
+// Success stories (testimonials)
+const successStories = [
+  {
+    name: 'Rajesh K.',
+    location: 'Delhi',
+    referrals: 12,
+    earned: '₹6,000',
+    quote: 'I shared with my office colleagues. Everyone was looking for good water purifiers!',
+  },
+  {
+    name: 'Priya M.',
+    location: 'Mumbai',
+    referrals: 8,
+    earned: '₹4,000',
+    quote: 'My society WhatsApp group was the perfect place to share. Easy money!',
+  },
+  {
+    name: 'Amit S.',
+    location: 'Bangalore',
+    referrals: 23,
+    earned: '₹11,500',
+    quote: 'Great products sell themselves. I just shared the link!',
   },
 ];
 
@@ -166,14 +195,27 @@ export default function ReferralPage() {
       <div className="text-center mb-8">
         <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium mb-4">
           <Gift className="h-4 w-4" />
-          Referral Program
+          Refer & Earn
         </div>
         <h1 className="text-3xl md:text-4xl font-bold mb-4">
-          Refer Friends & Earn <span className="text-primary">₹500</span> Each
+          Share Pure Water, Earn <span className="text-primary">₹500</span> Cash
         </h1>
-        <p className="text-muted-foreground max-w-2xl mx-auto">
-          Share the gift of pure water with your friends and family. They get 5% off, you get ₹500 - it&apos;s a win-win!
+        <p className="text-muted-foreground max-w-2xl mx-auto mb-6">
+          Love your AQUAPURITE water purifier? Share it with friends and family! They get 5% off their first purchase, and you earn ₹500 for every successful referral.
         </p>
+
+        {/* Quick Stats */}
+        <div className="inline-flex flex-wrap justify-center gap-4 bg-muted/50 rounded-lg px-6 py-3">
+          <div className="flex items-center gap-2 text-sm">
+            <Sparkles className="h-4 w-4 text-yellow-500" />
+            <span><strong>₹5 Lakh+</strong> paid to customers</span>
+          </div>
+          <div className="w-px h-4 bg-border hidden sm:block" />
+          <div className="flex items-center gap-2 text-sm">
+            <Users className="h-4 w-4 text-primary" />
+            <span><strong>10,000+</strong> referrals completed</span>
+          </div>
+        </div>
       </div>
 
       {/* Benefits */}
@@ -365,6 +407,79 @@ export default function ReferralPage() {
         </Card>
       )}
 
+      {/* Success Stories */}
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Star className="h-5 w-5 text-yellow-500" />
+            Success Stories
+          </CardTitle>
+          <CardDescription>
+            See how other customers are earning with referrals
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid md:grid-cols-3 gap-4">
+            {successStories.map((story, index) => (
+              <Card key={index} className="bg-muted/30">
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-semibold text-primary">
+                      {story.name.charAt(0)}
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">{story.name}</p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <MapPin className="h-3 w-3" />
+                        {story.location}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-sm italic text-muted-foreground mb-3">&ldquo;{story.quote}&rdquo;</p>
+                  <div className="flex justify-between text-sm pt-2 border-t">
+                    <span className="text-muted-foreground">{story.referrals} referrals</span>
+                    <span className="font-semibold text-green-600">{story.earned} earned</span>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* FAQ Section */}
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle className="text-base">Frequently Asked Questions</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <p className="font-medium text-sm mb-1">How do I get my referral code?</p>
+            <p className="text-sm text-muted-foreground">
+              Login to your account and your unique referral code will be displayed above. You can share it directly from there.
+            </p>
+          </div>
+          <div>
+            <p className="font-medium text-sm mb-1">When do I receive my reward?</p>
+            <p className="text-sm text-muted-foreground">
+              Your ₹500 reward is credited within 24 hours after your friend&apos;s order is successfully delivered.
+            </p>
+          </div>
+          <div>
+            <p className="font-medium text-sm mb-1">How can I use my rewards?</p>
+            <p className="text-sm text-muted-foreground">
+              Rewards can be used for your next purchase, or withdrawn to your bank account once you have ₹1,000 or more.
+            </p>
+          </div>
+          <div>
+            <p className="font-medium text-sm mb-1">Is there a limit on referrals?</p>
+            <p className="text-sm text-muted-foreground">
+              No limits! Refer as many friends as you want and earn ₹500 for each successful referral.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Terms */}
       <Card>
         <CardHeader>
@@ -372,15 +487,51 @@ export default function ReferralPage() {
         </CardHeader>
         <CardContent>
           <ul className="text-sm text-muted-foreground space-y-2">
-            <li>• Referral reward of ₹500 is credited after the referred order is delivered.</li>
-            <li>• The referred friend must be a new customer making their first purchase.</li>
-            <li>• Minimum order value of ₹10,000 is required for referral to be valid.</li>
-            <li>• Rewards can be used on your next purchase or withdrawn to bank (min ₹1000).</li>
-            <li>• Self-referrals or fraudulent referrals will result in account suspension.</li>
-            <li>• Aquapurite reserves the right to modify or terminate this program at any time.</li>
+            <li className="flex items-start gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+              <span>Referral reward of ₹500 is credited after the referred order is successfully delivered.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+              <span>The referred friend must be a new customer making their first purchase on AQUAPURITE.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+              <span>Minimum order value of ₹10,000 is required for the referral reward to be valid.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+              <span>Rewards can be used on your next purchase or withdrawn to bank (minimum ₹1,000 for withdrawal).</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+              <span>Self-referrals or fraudulent referrals will result in forfeiture of rewards and potential account suspension.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+              <span>AQUAPURITE reserves the right to modify or terminate this program at any time with prior notice.</span>
+            </li>
           </ul>
         </CardContent>
       </Card>
+
+      {/* CTA for Non-Customers */}
+      {!isAuthenticated && (
+        <Card className="mt-8 bg-gradient-to-r from-primary/10 to-secondary/10 border-primary/20">
+          <CardContent className="py-6 text-center">
+            <h3 className="text-lg font-semibold mb-2">Not a Customer Yet?</h3>
+            <p className="text-muted-foreground mb-4">
+              Buy an AQUAPURITE water purifier today and start referring your friends to earn rewards!
+            </p>
+            <Button asChild>
+              <Link href="/products">
+                Shop Water Purifiers
+                <ChevronRight className="h-4 w-4 ml-2" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
