@@ -91,58 +91,65 @@ export default function GSTFilingDashboardPage() {
     }
   };
 
-  // Mock data for demonstration
+  // Default empty state when no data from API
   const filingStats = dashboardData || {
-    total_returns: 24,
-    filed_on_time: 22,
-    filed_late: 2,
+    total_returns: 0,
+    filed_on_time: 0,
+    filed_late: 0,
     pending: 0,
-    compliance_rate: 91.67,
-    total_tax_paid: 1245000,
-    total_itc_claimed: 890000,
+    compliance_rate: 0,
+    total_tax_paid: 0,
+    total_itc_claimed: 0,
   };
 
-  const upcomingDueDates = [
-    { return_type: 'GSTR-1', period: 'January 2026', due_date: '2026-02-11', status: 'PENDING' },
-    { return_type: 'GSTR-3B', period: 'January 2026', due_date: '2026-02-20', status: 'PENDING' },
-    { return_type: 'GSTR-1', period: 'February 2026', due_date: '2026-03-11', status: 'UPCOMING' },
-  ];
+  // Calculate upcoming due dates dynamically based on current date
+  const getUpcomingDueDates = () => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
 
-  const recentFilings: FilingRecord[] = (filingHistory?.items || [
-    {
-      id: '1',
+    // GSTR-1 due on 11th of next month, GSTR-3B due on 20th of next month
+    const dates = [];
+
+    // Current month returns (if not yet due)
+    const gstr1DueDate = new Date(currentYear, currentMonth + 1, 11);
+    const gstr3bDueDate = new Date(currentYear, currentMonth + 1, 20);
+
+    if (gstr1DueDate > now) {
+      dates.push({
+        return_type: 'GSTR-1',
+        period: now.toLocaleString('default', { month: 'long', year: 'numeric' }),
+        due_date: gstr1DueDate.toISOString().split('T')[0],
+        status: 'PENDING',
+      });
+    }
+
+    if (gstr3bDueDate > now) {
+      dates.push({
+        return_type: 'GSTR-3B',
+        period: now.toLocaleString('default', { month: 'long', year: 'numeric' }),
+        due_date: gstr3bDueDate.toISOString().split('T')[0],
+        status: 'PENDING',
+      });
+    }
+
+    // Next month GSTR-1
+    const nextMonth = new Date(currentYear, currentMonth + 1, 1);
+    const nextGstr1DueDate = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 11);
+    dates.push({
       return_type: 'GSTR-1',
-      period: 'December 2025',
-      status: 'FILED',
-      due_date: '2026-01-11',
-      filed_date: '2026-01-10',
-      arn: 'AA290126000001234',
-      taxable_value: 4500000,
-      tax_liability: 810000,
-    },
-    {
-      id: '2',
-      return_type: 'GSTR-3B',
-      period: 'December 2025',
-      status: 'FILED',
-      due_date: '2026-01-20',
-      filed_date: '2026-01-19',
-      arn: 'AA290126000001235',
-      taxable_value: 4500000,
-      tax_liability: 810000,
-    },
-    {
-      id: '3',
-      return_type: 'GSTR-1',
-      period: 'November 2025',
-      status: 'FILED',
-      due_date: '2025-12-11',
-      filed_date: '2025-12-13',
-      arn: 'AA291125000001234',
-      taxable_value: 4200000,
-      tax_liability: 756000,
-    },
-  ]) as FilingRecord[];
+      period: nextMonth.toLocaleString('default', { month: 'long', year: 'numeric' }),
+      due_date: nextGstr1DueDate.toISOString().split('T')[0],
+      status: 'UPCOMING',
+    });
+
+    return dates.slice(0, 3); // Show max 3
+  };
+
+  const upcomingDueDates = getUpcomingDueDates();
+
+  // Use actual API data, empty array if no data
+  const recentFilings: FilingRecord[] = (filingHistory?.items || []) as FilingRecord[];
 
   return (
     <div className="space-y-6">

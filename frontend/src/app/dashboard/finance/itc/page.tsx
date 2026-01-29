@@ -187,85 +187,26 @@ export default function ITCManagementPage() {
     });
   };
 
-  // Mock data for demonstration
+  // Default empty state when no data from API
   const summary = itcSummary || {
-    total_available: 234567,
-    total_utilized: 189000,
-    total_reversed: 12000,
-    balance: 33567,
-    cgst_available: 78189,
-    sgst_available: 78189,
-    igst_available: 78189,
-    matched_with_gstr2a: 95.5,
-    matched_with_gstr2b: 98.2,
-    mismatch_count: 12,
-    mismatch_value: 45678,
+    total_available: 0,
+    total_utilized: 0,
+    total_reversed: 0,
+    balance: 0,
+    cgst_available: 0,
+    sgst_available: 0,
+    igst_available: 0,
+    matched_with_gstr2a: 0,
+    matched_with_gstr2b: 0,
+    mismatch_count: 0,
+    mismatch_value: 0,
   };
 
-  const ledgerItems: ITCEntry[] = (itcLedger?.items || [
-    {
-      id: '1',
-      period: '012026',
-      vendor_gstin: '29AAACU1234F1Z5',
-      vendor_name: 'ABC Suppliers Pvt Ltd',
-      invoice_number: 'INV-2026-001',
-      invoice_date: '2026-01-15',
-      invoice_value: 59000,
-      taxable_value: 50000,
-      cgst_itc: 4500,
-      sgst_itc: 4500,
-      igst_itc: 0,
-      cess_itc: 0,
-      total_itc: 9000,
-      status: 'AVAILABLE',
-      gstr2a_matched: true,
-      gstr2b_matched: true,
-      match_status: 'MATCHED',
-      available_itc: 9000,
-    },
-    {
-      id: '2',
-      period: '012026',
-      vendor_gstin: '29BBBCU5678F1Z5',
-      vendor_name: 'XYZ Trading Co',
-      invoice_number: 'INV-2026-045',
-      invoice_date: '2026-01-18',
-      invoice_value: 30500,
-      taxable_value: 25500,
-      cgst_itc: 2500,
-      sgst_itc: 2500,
-      igst_itc: 0,
-      cess_itc: 0,
-      total_itc: 5000,
-      status: 'UTILIZED',
-      gstr2a_matched: true,
-      gstr2b_matched: true,
-      match_status: 'MATCHED',
-      available_itc: 0,
-    },
-    {
-      id: '3',
-      period: '012026',
-      vendor_gstin: '29CCCCU9012F1Z5',
-      vendor_name: 'PQR Industries',
-      invoice_number: 'INV-2026-078',
-      invoice_date: '2026-01-20',
-      invoice_value: 48000,
-      taxable_value: 40000,
-      cgst_itc: 0,
-      sgst_itc: 0,
-      igst_itc: 8000,
-      cess_itc: 0,
-      total_itc: 8000,
-      status: 'MISMATCH',
-      gstr2a_matched: false,
-      gstr2b_matched: false,
-      match_status: 'NOT_FOUND',
-      available_itc: 0,
-    },
-  ]) as ITCEntry[];
+  // Use actual API data, empty array if no data
+  const ledgerItems: ITCEntry[] = (itcLedger?.items || []) as ITCEntry[];
 
-  const mismatchItems = (mismatchReport?.items || ledgerItems.filter(i => i.status === 'MISMATCH')) as ITCEntry[];
+  // Use actual mismatch data from API
+  const mismatchItems = (mismatchReport?.items || []) as ITCEntry[];
 
   const ledgerColumns: ColumnDef<ITCEntry>[] = [
     {
