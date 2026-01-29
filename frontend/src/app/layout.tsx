@@ -26,6 +26,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Preconnect to CDN domains for faster image loading */}
+        <link rel="preconnect" href="https://aavjhutqzwusgdwrczds.supabase.co" />
+        <link rel="dns-prefetch" href="https://aavjhutqzwusgdwrczds.supabase.co" />
+        <link rel="preconnect" href="https://images.unsplash.com" />
+        <link rel="dns-prefetch" href="https://images.unsplash.com" />
+        {/* Preconnect to payment provider */}
+        <link rel="preconnect" href="https://razorpay.com" />
+        <link rel="dns-prefetch" href="https://razorpay.com" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

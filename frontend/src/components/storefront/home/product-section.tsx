@@ -55,9 +55,14 @@ export default function ProductSection({
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h2 className="text-2xl md:text-3xl font-bold">{title}</h2>
+            <h2
+              className="text-2xl md:text-3xl font-bold"
+              style={{ textWrap: 'balance' } as React.CSSProperties}
+            >
+              {title}
+            </h2>
             {subtitle && (
-              <p className="text-muted-foreground mt-1">{subtitle}</p>
+              <p className="text-muted-foreground mt-1 max-w-lg">{subtitle}</p>
             )}
           </div>
           {viewAllLink && (

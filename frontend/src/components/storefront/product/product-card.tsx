@@ -263,11 +263,11 @@ export default function ProductCard({
 
           {/* Price */}
           <div className="flex items-center gap-2 mt-2">
-            <span className="text-lg font-bold text-primary">
+            <span className="text-lg font-bold text-primary tabular-nums">
               {formatCurrency(sellingPrice)}
             </span>
             {product.mrp > sellingPrice && (
-              <span className="text-sm text-muted-foreground line-through">
+              <span className="text-sm text-muted-foreground line-through tabular-nums">
                 {formatCurrency(product.mrp)}
               </span>
             )}
@@ -275,7 +275,7 @@ export default function ProductCard({
 
           {/* EMI Option - Show for products above ₹5,000 */}
           {sellingPrice >= 5000 && (
-            <p className="text-xs text-green-600 font-medium mt-1">
+            <p className="text-xs text-green-600 font-medium mt-1 tabular-nums">
               No-cost EMI from {formatCurrency(Math.round(sellingPrice / 6))}/mo
             </p>
           )}

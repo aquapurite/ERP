@@ -69,11 +69,14 @@ export default function CategoryGrid({ categories }: CategoryGridProps) {
     <section className="py-12 md:py-16">
       <div className="container mx-auto px-4">
         <div className="text-center mb-10">
-          <h2 className="text-2xl md:text-3xl font-bold mb-2">
+          <h2
+            className="text-2xl md:text-3xl font-bold mb-2"
+            style={{ textWrap: 'balance' } as React.CSSProperties}
+          >
             Shop by Category
           </h2>
-          <p className="text-muted-foreground">
-            Find the perfect water purification solution
+          <p className="text-muted-foreground max-w-md mx-auto">
+            Find the perfect water purification solution for your home or office
           </p>
         </div>
 
@@ -89,15 +92,18 @@ export default function CategoryGrid({ categories }: CategoryGridProps) {
                 className="group flex flex-col items-center text-center"
               >
                 {/* Icon Container */}
-                <div className="w-24 h-24 md:w-28 md:h-28 rounded-2xl bg-primary/10 flex items-center justify-center mb-3 group-hover:bg-primary group-hover:scale-105 transition-all duration-300 shadow-sm">
+                <div className="w-24 h-24 md:w-28 md:h-28 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center mb-3 group-hover:from-primary group-hover:to-primary/90 group-hover:scale-105 transition-all duration-300 shadow-sm group-hover:shadow-lg border border-primary/10 group-hover:border-primary/20">
                   {category.image_url ? (
                     <img
                       src={category.image_url}
-                      alt={category.name}
+                      alt=""
+                      width={64}
+                      height={64}
                       className="w-14 h-14 md:w-16 md:h-16 object-contain"
+                      loading="lazy"
                     />
                   ) : (
-                    <Icon className="w-12 h-12 md:w-14 md:h-14 text-primary group-hover:text-primary-foreground transition-colors" />
+                    <Icon className="w-12 h-12 md:w-14 md:h-14 text-primary group-hover:text-primary-foreground transition-colors drop-shadow-sm" />
                   )}
                 </div>
                 {/* Category Name */}
