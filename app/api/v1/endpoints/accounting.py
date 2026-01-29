@@ -197,9 +197,22 @@ async def get_accounts_dropdown(
     db: DB,
     account_type: Optional[AccountType] = None,
     postable_only: bool = True,
+    include_vendors: bool = True,
+    include_dealers: bool = True,
     current_user: User = Depends(get_current_user),
 ):
-    """Get accounts for dropdown selection."""
+    """Get accounts for dropdown selection including vendor/dealer subledgers.
+
+    Args:
+        account_type: Filter by account type
+        postable_only: Only return non-group accounts (default: True)
+        include_vendors: Include vendor subledger accounts (default: True)
+        include_dealers: Include dealer subledger accounts (default: True)
+    """
+    from app.models.vendor import Vendor
+    from app.models.dealer import Dealer
+
+    # Get regular GL accounts
     query = select(ChartOfAccount).where(ChartOfAccount.is_active == True)
 
     if account_type:
@@ -211,16 +224,172 @@ async def get_accounts_dropdown(
     result = await db.execute(query)
     accounts = result.scalars().all()
 
-    return [
+    dropdown_items = [
         {
             "id": str(a.id),
             "code": a.account_code,
             "name": a.account_name,
             "full_name": f"{a.account_code} - {a.account_name}",
             "type": a.account_type,
+            "subledger_type": None,
         }
         for a in accounts
     ]
+
+    # Include vendor subledger accounts if requested
+    # Note: Only vendors with linked GL accounts are included.
+    # Use POST /accounts/sync-vendor-subledgers to create GL accounts for vendors.
+    if include_vendors and (account_type is None or account_type == AccountType.LIABILITY):
+        vendor_result = await db.execute(
+            select(Vendor).where(
+                Vendor.status == "ACTIVE",
+                Vendor.gl_account_id.isnot(None)
+            ).order_by(Vendor.name)
+        )
+        vendors = vendor_result.scalars().all()
+
+        for v in vendors:
+            # Get the linked GL account details
+            gl_result = await db.execute(
+                select(ChartOfAccount).where(ChartOfAccount.id == v.gl_account_id)
+            )
+            gl_account = gl_result.scalar_one_or_none()
+
+            if gl_account:
+                dropdown_items.append({
+                    "id": str(gl_account.id),
+                    "code": gl_account.account_code,
+                    "name": f"Vendor: {v.name}",
+                    "full_name": f"{gl_account.account_code} - Vendor: {v.name}",
+                    "type": "LIABILITY",
+                    "subledger_type": "VENDOR",
+                    "entity_id": str(v.id),
+                })
+
+    # Include dealer subledger accounts if requested
+    # Note: Only dealers with linked GL accounts are included.
+    # Dealers need a gl_account_id column linked to a Trade Debtors subledger.
+    if include_dealers and (account_type is None or account_type == AccountType.ASSET):
+        # Check if Dealer model has gl_account_id attribute
+        if hasattr(Dealer, 'gl_account_id'):
+            dealer_result = await db.execute(
+                select(Dealer).where(
+                    Dealer.status == "ACTIVE",
+                    Dealer.gl_account_id.isnot(None)
+                ).order_by(Dealer.name)
+            )
+            dealers = dealer_result.scalars().all()
+
+            for d in dealers:
+                # Get the linked GL account details
+                gl_result = await db.execute(
+                    select(ChartOfAccount).where(ChartOfAccount.id == d.gl_account_id)
+                )
+                gl_account = gl_result.scalar_one_or_none()
+
+                if gl_account:
+                    dropdown_items.append({
+                        "id": str(gl_account.id),
+                        "code": gl_account.account_code,
+                        "name": f"Dealer: {d.name}",
+                        "full_name": f"{gl_account.account_code} - Dealer: {d.name}",
+                        "type": "ASSET",
+                        "subledger_type": "DEALER",
+                        "entity_id": str(d.id),
+                    })
+
+    return dropdown_items
+
+
+@router.post(
+    "/accounts/sync-vendor-subledgers",
+    dependencies=[Depends(require_permissions("accounts:create"))]
+)
+async def sync_vendor_subledger_accounts(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Auto-create GL subledger accounts for all active vendors.
+
+    This creates a child account under Sundry Creditors (2101) for each vendor
+    and links it via the vendor's gl_account_id field.
+
+    Returns:
+        dict with count of accounts created
+    """
+    from app.models.vendor import Vendor
+    import uuid as uuid_module
+
+    # Get Sundry Creditors parent account (2101)
+    parent_result = await db.execute(
+        select(ChartOfAccount).where(ChartOfAccount.account_code == "2101")
+    )
+    parent_account = parent_result.scalar_one_or_none()
+
+    if not parent_account:
+        raise HTTPException(
+            status_code=400,
+            detail="Sundry Creditors (2101) account not found. Please create it first."
+        )
+
+    # Get active vendors without GL account linked
+    vendor_result = await db.execute(
+        select(Vendor).where(
+            Vendor.status == "ACTIVE",
+            Vendor.gl_account_id.is_(None)
+        ).order_by(Vendor.name)
+    )
+    vendors = vendor_result.scalars().all()
+
+    created = []
+    for vendor in vendors:
+        # Generate account code: 2101-VND001, 2101-VND002, etc.
+        # Use vendor code suffix for readability
+        vendor_suffix = vendor.vendor_code.replace("VND-", "").replace("-", "")[:6]
+        account_code = f"2101-{vendor_suffix}"
+
+        # Check if account code already exists
+        existing = await db.execute(
+            select(ChartOfAccount).where(ChartOfAccount.account_code == account_code)
+        )
+        if existing.scalar_one_or_none():
+            # Code exists, add UUID suffix
+            account_code = f"2101-{vendor_suffix[:4]}{str(vendor.id)[:4].upper()}"
+
+        # Create the GL account
+        gl_account = ChartOfAccount(
+            id=uuid_module.uuid4(),
+            account_code=account_code,
+            account_name=f"Vendor: {vendor.name[:100]}",
+            account_type=AccountType.LIABILITY,
+            description=f"Subledger account for vendor {vendor.vendor_code}",
+            parent_id=parent_account.id,
+            level=parent_account.level + 1 if hasattr(parent_account, 'level') else 3,
+            is_group=False,
+            is_system=False,
+            is_active=True,
+            allow_direct_posting=True,
+        )
+        db.add(gl_account)
+
+        # Link vendor to this GL account
+        vendor.gl_account_id = gl_account.id
+
+        created.append({
+            "vendor_code": vendor.vendor_code,
+            "vendor_name": vendor.name,
+            "gl_account_code": account_code,
+            "gl_account_id": str(gl_account.id),
+        })
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "total_created": len(created),
+        "accounts": created,
+        "message": f"Created {len(created)} GL subledger accounts for vendors"
+    }
 
 
 @router.get(

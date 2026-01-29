@@ -317,10 +317,21 @@ class JournalEntryResponse(BaseResponseSchema):
     status: str
     total_debit: Decimal
     total_credit: Decimal
-    # Fields that match the JournalEntry model exactly
+
+    # Entry details - REQUIRED for list display
+    entry_type: Optional[str] = None
+    entry_date: Optional[date] = None
+    narration: Optional[str] = None
+    source_type: Optional[str] = None
+    source_id: Optional[UUID] = None
+    source_number: Optional[str] = None
+
+    # Reversal fields
     is_reversed: bool = False
     reversal_of_id: Optional[UUID] = None
     reversed_by_id: Optional[UUID] = None
+
+    # Workflow audit fields
     created_by: Optional[UUID] = None
     submitted_by: Optional[UUID] = None
     submitted_at: Optional[datetime] = None
@@ -330,7 +341,11 @@ class JournalEntryResponse(BaseResponseSchema):
     rejection_reason: Optional[str] = None
     posted_by: Optional[UUID] = None
     posted_at: Optional[datetime] = None
+
+    # Related data
     lines: List[JournalEntryLineResponse] = []
+
+    # Timestamps
     created_at: datetime
     updated_at: datetime
 
