@@ -365,6 +365,59 @@ Products are assigned to LEAF categories (subcategories), not parent categories.
 
 Implement cascading dropdowns: Parent Category → Subcategory → Products
 
+### Rule 6: Database Structure Verification (CRITICAL)
+
+**Before implementing any new feature or modification, ALWAYS verify the database structure in Supabase:**
+
+1. **Check if required tables exist** in production database
+2. **Check if required columns exist** with correct data types
+3. **Supabase is the SINGLE SOURCE OF TRUTH** - SQLAlchemy models must match
+
+```bash
+# Verify database structure using Python script:
+python3 -c "
+import asyncio
+import asyncpg
+
+async def main():
+    conn = await asyncpg.connect(
+        host='db.aavjhutqzwusgdwrczds.supabase.co',
+        port=6543,
+        user='postgres',
+        password='Aquapurite2026',
+        database='postgres',
+        statement_cache_size=0
+    )
+
+    # Check table columns
+    cols = await conn.fetch('''
+        SELECT column_name, data_type, is_nullable
+        FROM information_schema.columns
+        WHERE table_name = 'YOUR_TABLE_NAME'
+        ORDER BY ordinal_position
+    ''')
+    for c in cols:
+        print(f'{c[\"column_name\"]}: {c[\"data_type\"]}')
+
+    await conn.close()
+
+asyncio.run(main())
+"
+```
+
+**If table/column doesn't exist:**
+- Create migration in Supabase SQL Editor first
+- Then update SQLAlchemy model to match
+- NEVER assume database schema matches model
+
+**Common checks:**
+| Change Type | Verify |
+|------------|--------|
+| New model field | Column exists in table |
+| Foreign key | Referenced table/column exists |
+| New table | Table created in Supabase |
+| Data type change | Column type matches |
+
 ---
 
 ## Development Guide

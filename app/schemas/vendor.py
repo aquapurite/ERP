@@ -171,6 +171,13 @@ class VendorResponse(BaseResponseSchema):
     last_payment_date: Optional[datetime] = None
     gl_account_id: Optional[UUID] = None  # Linked GL account
     supplier_code: Optional[str] = None  # Auto-generated 2-char code for barcode (SPARE_PARTS vendors)
+    # Bank Details
+    bank_name: Optional[str] = None
+    bank_branch: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    bank_account_type: Optional[str] = None
+    beneficiary_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -193,6 +200,13 @@ class VendorBrief(BaseResponseSchema):
     current_balance: Decimal
     credit_limit: Decimal
     supplier_code: Optional[str] = None  # 2-char code for barcode (SPARE_PARTS vendors)
+    # Bank Details (for edit)
+    bank_name: Optional[str] = None
+    bank_branch: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    bank_account_type: Optional[str] = None
+    beneficiary_name: Optional[str] = None
 
 
 class VendorListResponse(BaseModel):

@@ -935,6 +935,15 @@ const transformVendorResponse = (vendor: Record<string, unknown>): Vendor => {
     state: vendor.state as string | undefined,
     pincode: vendor.pincode as string | undefined,
     country: vendor.country as string | undefined,
+    // Bank Details
+    bank_name: vendor.bank_name as string | undefined,
+    bank_branch: vendor.bank_branch as string | undefined,
+    bank_account_number: vendor.bank_account_number as string | undefined,
+    bank_ifsc: vendor.bank_ifsc as string | undefined,
+    bank_account_type: vendor.bank_account_type as Vendor['bank_account_type'],
+    beneficiary_name: vendor.beneficiary_name as string | undefined,
+    // Supplier code for barcode
+    supplier_code: vendor.supplier_code as string | undefined,
     // Timestamps
     created_at: vendor.created_at as string,
   };
