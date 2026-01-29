@@ -354,7 +354,30 @@ Backend Service → Pydantic Schema → Frontend Type
 total_orders      total_orders       total_orders   ✓ SAME
 ```
 
-### Rule 5: Category Hierarchy
+### Rule 5: NO Mock Data in Production Code (CRITICAL)
+
+**NEVER use hardcoded mock/placeholder data as fallback values in frontend.**
+
+```typescript
+// ❌ BAD - Shows fake data when API returns empty
+const stats = apiData || {
+  total_sales: 1245000,    // FAKE! Will show even if no real sales
+  customers: 150,          // FAKE! Misleading to users
+};
+
+// ✅ GOOD - Shows zeros/empty when no real data
+const stats = apiData || {
+  total_sales: 0,
+  customers: 0,
+};
+
+// ✅ GOOD - Show "No data" message instead
+if (!apiData) return <EmptyState message="No data available" />;
+```
+
+**This rule exists because:** Mock data in fallback values causes users to see fake financial figures, compliance rates, or inventory counts that don't reflect actual system state.
+
+### Rule 6: Category Hierarchy
 
 Products are assigned to LEAF categories (subcategories), not parent categories.
 
@@ -365,7 +388,7 @@ Products are assigned to LEAF categories (subcategories), not parent categories.
 
 Implement cascading dropdowns: Parent Category → Subcategory → Products
 
-### Rule 6: Database Structure Verification (CRITICAL)
+### Rule 7: Database Structure Verification (CRITICAL)
 
 **Before implementing any new feature or modification, ALWAYS verify the database structure in Supabase:**
 
