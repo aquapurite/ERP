@@ -103,6 +103,18 @@ class Transporter(Base):
     # Priority (for auto-selection)
     priority: Mapped[int] = mapped_column(Integer, default=100)
 
+    # GST Details (for E-Way Bill)
+    transporter_gstin: Mapped[Optional[str]] = mapped_column(
+        String(15),
+        nullable=True,
+        comment="Transporter GSTIN for E-Way Bill"
+    )
+    transporter_id_nic: Mapped[Optional[str]] = mapped_column(
+        String(15),
+        nullable=True,
+        comment="Transporter ID registered on NIC E-Way Bill portal"
+    )
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

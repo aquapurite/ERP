@@ -206,6 +206,39 @@ class Shipment(Base):
     shipping_label_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     invoice_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
+    # E-Way Bill Integration Fields
+    eway_bill_number: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        index=True,
+        comment="E-Way Bill number if generated"
+    )
+    eway_bill_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        comment="Reference to E-Way Bill record"
+    )
+    distance_km: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Approximate distance in KM for E-Way Bill"
+    )
+    vehicle_number: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="Vehicle registration number"
+    )
+    transport_doc_number: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="LR/RR/AWB number for E-Way Bill"
+    )
+    transport_doc_date: Mapped[Optional[date]] = mapped_column(
+        Date,
+        nullable=True,
+        comment="Transport document date"
+    )
+
     # RTO (Return to Origin) details
     rto_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     rto_initiated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

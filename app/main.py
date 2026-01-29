@@ -174,31 +174,113 @@ async def lifespan(app: FastAPI):
     print("Shutting down...")
 
 
+# OpenAPI Tags with detailed descriptions
+OPENAPI_TAGS = [
+    {"name": "Authentication", "description": "JWT-based authentication with access/refresh tokens"},
+    {"name": "Users", "description": "User management with role assignments"},
+    {"name": "Roles", "description": "Role-based access control (RBAC) management"},
+    {"name": "Permissions", "description": "Granular permission management"},
+    {"name": "Products", "description": "Product catalog with variants, specifications, and images"},
+    {"name": "Categories", "description": "Hierarchical product categories"},
+    {"name": "Brands", "description": "Brand management"},
+    {"name": "Orders", "description": "Order management, status tracking, and fulfillment"},
+    {"name": "Customers", "description": "Customer profiles, addresses, and communication"},
+    {"name": "Inventory", "description": "Stock management, movements, and reservations"},
+    {"name": "Warehouses", "description": "Warehouse and storage location management"},
+    {"name": "Stock Transfers", "description": "Inter-warehouse stock transfers"},
+    {"name": "Vendors/Suppliers", "description": "Vendor management and ledger"},
+    {"name": "Purchase/Procurement", "description": "Purchase orders and procurement workflow"},
+    {"name": "Goods Receipt Notes", "description": "GRN processing and quality checks"},
+    {"name": "Billing/E-Invoice", "description": "GST-compliant invoicing with e-invoice and e-way bill"},
+    {"name": "GST e-Filing & ITC", "description": "GSTR-1, GSTR-3B filing and ITC management"},
+    {"name": "Banking/Reconciliation", "description": "Bank statement import and ML-powered reconciliation"},
+    {"name": "Accounting", "description": "General ledger, journal entries, and financial reports"},
+    {"name": "Service Requests", "description": "Service and warranty management"},
+    {"name": "Technicians", "description": "Technician assignment and scheduling"},
+    {"name": "Shipments", "description": "Shipment creation, tracking, and E-Way Bill integration"},
+    {"name": "AI Services", "description": "AI-powered forecasting and analytics"},
+    {"name": "S&OP (Sales & Operations Planning)", "description": "Demand forecasting and scenario planning"},
+]
+
+FULL_API_DESCRIPTION = """
+## Aquapurite ERP API v2.0
+
+A comprehensive **Consumer Durable ERP System** with full GST compliance for water purifier manufacturing and distribution.
+
+### Core Modules
+
+| Module | Description |
+|--------|-------------|
+| **Authentication** | JWT-based auth with access/refresh tokens |
+| **RBAC** | Hierarchical roles with granular permissions |
+| **Product Catalog** | Products, variants, categories, brands |
+| **Orders** | Multi-channel order management |
+| **Inventory** | Real-time stock tracking with serialization |
+| **Procurement** | P2P cycle with 3-way matching |
+| **Finance** | GL, invoicing, banking, GST compliance |
+| **Logistics** | Shipments, manifests, E-Way Bill |
+| **Service** | Service requests, warranty, AMC |
+
+### GST Compliance Features
+
+- **E-Invoice**: IRN generation via NIC portal
+- **E-Way Bill**: Automatic generation for goods > ₹50,000
+- **GSTR-1**: Outward supplies auto-filing
+- **GSTR-3B**: Summary return filing
+- **ITC Management**: GSTR-2A/2B reconciliation
+
+### AI & Analytics
+
+- **Demand Forecasting**: Holt-Winters, ensemble methods
+- **External Factors**: Weather, promotions, festivals
+- **Bank Reconciliation**: ML-powered auto-matching
+
+### Authentication
+
+All endpoints (except `/storefront/*`) require JWT authentication.
+Include token in Authorization header: `Bearer <token>`
+
+### Rate Limiting
+
+- Standard: 100 requests/minute
+- Bulk operations: 10 requests/minute
+
+### Error Codes
+
+| Code | Description |
+|------|-------------|
+| 400 | Bad Request - Validation failed |
+| 401 | Unauthorized - Invalid/expired token |
+| 403 | Forbidden - Insufficient permissions |
+| 404 | Not Found - Resource doesn't exist |
+| 409 | Conflict - Duplicate resource |
+| 422 | Unprocessable Entity - Business rule violation |
+| 500 | Internal Server Error |
+
+### Support
+
+- **API Docs**: /docs (Swagger UI)
+- **ReDoc**: /redoc (Alternative docs)
+- **Health Check**: /health
+"""
+
 # Create FastAPI application
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    description="""
-    ## Consumer Durable Backend API
-
-    This API provides backend services for a Consumer Durable brand management system.
-
-    ### Features:
-    - **Authentication**: JWT-based authentication with access/refresh tokens
-    - **Role-Based Access Control (RBAC)**: Hierarchical roles with granular permissions
-    - **User Management**: Create, update, and manage users with role assignments
-    - **Audit Logging**: Track all access control changes
-
-    ### Role Hierarchy:
-    1. SUPER_ADMIN - Full system access
-    2. DIRECTOR - Strategic oversight
-    3. HEAD - Department leadership
-    4. MANAGER - Operational management
-    5. EXECUTIVE - Task execution
-    """,
+    description=FULL_API_DESCRIPTION,
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
+    openapi_tags=OPENAPI_TAGS,
+    swagger_ui_parameters={
+        "deepLinking": True,
+        "persistAuthorization": True,
+        "displayOperationId": False,
+        "filter": True,
+        "showExtensions": True,
+        "showCommonExtensions": True,
+    },
 )
 
 # Add CORS middleware

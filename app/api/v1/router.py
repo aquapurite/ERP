@@ -7,6 +7,8 @@ from app.api.v1.endpoints import (
     permissions,
     users,
     access_control,
+    # GST e-Filing & ITC
+    gst_filing,
     # CMS (D2C Content Management)
     cms,
     # File Uploads
@@ -259,6 +261,13 @@ api_router.include_router(
     tds.router,
     prefix="/tds",
     tags=["TDS Certificates"]
+)
+
+# ==================== GST e-Filing & ITC ====================
+api_router.include_router(
+    gst_filing.router,
+    prefix="/gst",
+    tags=["GST e-Filing & ITC"]
 )
 
 # ==================== Dealer/Distributor ====================

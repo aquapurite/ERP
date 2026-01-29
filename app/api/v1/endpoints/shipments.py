@@ -1602,3 +1602,298 @@ async def upload_pod_file(
         } if latitude and longitude else None,
         "message": f"Shipment delivered successfully to {delivered_to}"
     }
+
+
+# ==================== E-WAY BILL INTEGRATION ====================
+
+@router.post(
+    "/{shipment_id}/generate-eway-bill",
+    summary="Generate E-Way Bill for shipment",
+    description="""
+    Generate E-Way Bill from NIC portal for a shipment.
+
+    **Requirements:**
+    - Invoice value must be > ₹50,000
+    - Shipment must have an associated invoice
+    - Company must have E-Way Bill credentials configured
+
+    **Returns:**
+    - E-Way Bill number
+    - Validity period based on distance
+    """,
+    dependencies=[Depends(require_permissions("logistics:manage"))]
+)
+async def generate_eway_bill_for_shipment(
+    shipment_id: uuid.UUID,
+    company_id: Optional[uuid.UUID] = None,
+    db: DB = None,
+    current_user: CurrentUser = None,
+):
+    """Generate E-Way Bill for a shipment."""
+    from app.services.gst_ewaybill_service import GSTEWayBillService, GSTEWayBillError
+    from app.models.billing import TaxInvoice, EWayBill, EWayBillItem
+
+    # Get shipment
+    query = select(Shipment).where(Shipment.id == shipment_id)
+    result = await db.execute(query)
+    shipment = result.scalar_one_or_none()
+
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+
+    if shipment.eway_bill_number:
+        raise HTTPException(status_code=400, detail="E-Way Bill already generated for this shipment")
+
+    # Get associated invoice
+    invoice_query = (
+        select(TaxInvoice)
+        .where(TaxInvoice.shipment_id == shipment_id)
+    )
+    invoice_result = await db.execute(invoice_query)
+    invoice = invoice_result.scalar_one_or_none()
+
+    if not invoice:
+        raise HTTPException(
+            status_code=400,
+            detail="No invoice found for this shipment. Generate invoice first."
+        )
+
+    if float(invoice.taxable_amount or 0) < 50000:
+        raise HTTPException(
+            status_code=400,
+            detail="E-Way Bill not required for invoice value below ₹50,000"
+        )
+
+    # Check if E-Way Bill record exists for invoice
+    ewb_query = select(EWayBill).where(EWayBill.invoice_id == invoice.id)
+    ewb_result = await db.execute(ewb_query)
+    ewb = ewb_result.scalar_one_or_none()
+
+    effective_company_id = company_id or current_user.company_id
+
+    if not effective_company_id:
+        raise HTTPException(status_code=400, detail="Company ID is required")
+
+    try:
+        if not ewb:
+            # Create E-Way Bill record from shipment data
+            ewb = EWayBill(
+                invoice_id=invoice.id,
+                document_number=invoice.invoice_number,
+                document_date=invoice.invoice_date,
+                supply_type="O",  # Outward
+                sub_supply_type="1",  # Supply
+                document_type="INV",
+                from_gstin=invoice.seller_gstin,
+                from_name=invoice.seller_name,
+                from_address1=invoice.seller_address[:255] if invoice.seller_address else "",
+                from_place=invoice.billing_city,
+                from_pincode=invoice.billing_pincode,
+                from_state_code=invoice.seller_state_code,
+                to_gstin=invoice.customer_gstin,
+                to_name=shipment.ship_to_name,
+                to_address1=shipment.ship_to_address.get("address_line1", "")[:255] if shipment.ship_to_address else "",
+                to_place=shipment.ship_to_city or "",
+                to_pincode=shipment.ship_to_pincode,
+                to_state_code=invoice.place_of_supply_code,
+                total_value=invoice.grand_total,
+                cgst_amount=invoice.cgst_amount,
+                sgst_amount=invoice.sgst_amount,
+                igst_amount=invoice.igst_amount,
+                cess_amount=invoice.cess_amount,
+                distance_km=shipment.distance_km or 100,
+                vehicle_number=shipment.vehicle_number,
+                transport_doc_number=shipment.transport_doc_number or shipment.awb_number,
+            )
+
+            # Get transporter details
+            if shipment.transporter_id:
+                transporter_query = select(Transporter).where(Transporter.id == shipment.transporter_id)
+                transporter_result = await db.execute(transporter_query)
+                transporter = transporter_result.scalar_one_or_none()
+                if transporter:
+                    ewb.transporter_name = transporter.name
+                    ewb.transporter_gstin = getattr(transporter, 'transporter_gstin', None)
+
+            db.add(ewb)
+            await db.flush()
+
+            # Add items from invoice
+            for item in invoice.items:
+                ewb_item = EWayBillItem(
+                    eway_bill_id=ewb.id,
+                    product_name=item.item_name,
+                    hsn_code=item.hsn_code,
+                    quantity=item.quantity,
+                    uom=item.uom,
+                    taxable_value=item.taxable_value,
+                    gst_rate=item.gst_rate,
+                    cgst_amount=item.cgst_amount,
+                    sgst_amount=item.sgst_amount,
+                    igst_amount=item.igst_amount,
+                )
+                db.add(ewb_item)
+
+        # Generate E-Way Bill via NIC portal
+        ewaybill_service = GSTEWayBillService(db, effective_company_id)
+        ewb_result = await ewaybill_service.generate_ewaybill(ewb.id)
+
+        # Update shipment with E-Way Bill details
+        shipment.eway_bill_number = ewb_result.get("ewb_number")
+        shipment.eway_bill_id = ewb.id
+
+        await db.commit()
+
+        return {
+            "success": True,
+            "shipment_id": str(shipment_id),
+            "eway_bill_number": ewb_result.get("ewb_number"),
+            "eway_bill_date": ewb_result.get("ewb_date"),
+            "valid_until": ewb_result.get("valid_until"),
+            "message": "E-Way Bill generated successfully"
+        }
+
+    except GSTEWayBillError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": e.message, "error_code": e.error_code, "details": e.details}
+        )
+
+
+@router.post(
+    "/{shipment_id}/update-eway-bill-vehicle",
+    summary="Update E-Way Bill vehicle details (Part-B)",
+    description="""
+    Update Part-B (vehicle/transporter details) of E-Way Bill.
+
+    Use this when:
+    - Vehicle breakdown requires change
+    - Transshipment to another vehicle
+    - First time vehicle assignment
+
+    **Reason Codes:**
+    - 1: Due to breakdown
+    - 2: Due to transshipment
+    - 3: Others
+    - 4: First time
+    """,
+    dependencies=[Depends(require_permissions("logistics:manage"))]
+)
+async def update_eway_bill_vehicle(
+    shipment_id: uuid.UUID,
+    vehicle_number: str,
+    reason_code: str = "4",
+    reason_remarks: str = "",
+    company_id: Optional[uuid.UUID] = None,
+    db: DB = None,
+    current_user: CurrentUser = None,
+):
+    """Update E-Way Bill Part-B (vehicle details)."""
+    from app.services.gst_ewaybill_service import GSTEWayBillService, GSTEWayBillError
+    from app.models.billing import EWayBill
+
+    # Get shipment
+    query = select(Shipment).where(Shipment.id == shipment_id)
+    result = await db.execute(query)
+    shipment = result.scalar_one_or_none()
+
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+
+    if not shipment.eway_bill_id:
+        raise HTTPException(status_code=400, detail="No E-Way Bill found for this shipment")
+
+    effective_company_id = company_id or current_user.company_id
+
+    if not effective_company_id:
+        raise HTTPException(status_code=400, detail="Company ID is required")
+
+    try:
+        ewaybill_service = GSTEWayBillService(db, effective_company_id)
+        result = await ewaybill_service.update_part_b(
+            ewb_id=shipment.eway_bill_id,
+            vehicle_number=vehicle_number,
+            reason_code=reason_code,
+            reason_remarks=reason_remarks
+        )
+
+        # Update shipment vehicle number
+        shipment.vehicle_number = vehicle_number
+        await db.commit()
+
+        return {
+            "success": True,
+            "shipment_id": str(shipment_id),
+            "eway_bill_number": result.get("ewb_number"),
+            "vehicle_number": result.get("vehicle_number"),
+            "valid_until": result.get("valid_until"),
+            "message": "E-Way Bill vehicle updated successfully"
+        }
+
+    except GSTEWayBillError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": e.message, "error_code": e.error_code, "details": e.details}
+        )
+
+
+@router.get(
+    "/{shipment_id}/eway-bill-status",
+    summary="Get E-Way Bill status for shipment",
+    description="Get current status and validity of E-Way Bill.",
+    dependencies=[Depends(require_permissions("logistics:view"))]
+)
+async def get_eway_bill_status(
+    shipment_id: uuid.UUID,
+    company_id: Optional[uuid.UUID] = None,
+    db: DB = None,
+    current_user: CurrentUser = None,
+):
+    """Get E-Way Bill status for a shipment."""
+    from app.services.gst_ewaybill_service import GSTEWayBillService, GSTEWayBillError
+    from app.models.billing import EWayBill
+
+    # Get shipment
+    query = select(Shipment).where(Shipment.id == shipment_id)
+    result = await db.execute(query)
+    shipment = result.scalar_one_or_none()
+
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+
+    if not shipment.eway_bill_number:
+        return {
+            "shipment_id": str(shipment_id),
+            "has_eway_bill": False,
+            "message": "No E-Way Bill generated for this shipment"
+        }
+
+    # Get E-Way Bill record
+    ewb_query = select(EWayBill).where(EWayBill.id == shipment.eway_bill_id)
+    ewb_result = await db.execute(ewb_query)
+    ewb = ewb_result.scalar_one_or_none()
+
+    if not ewb:
+        return {
+            "shipment_id": str(shipment_id),
+            "has_eway_bill": True,
+            "eway_bill_number": shipment.eway_bill_number,
+            "status": "UNKNOWN",
+            "message": "E-Way Bill record not found in database"
+        }
+
+    # Check validity
+    is_valid = ewb.is_valid if hasattr(ewb, 'is_valid') else True
+
+    return {
+        "shipment_id": str(shipment_id),
+        "has_eway_bill": True,
+        "eway_bill_number": ewb.eway_bill_number,
+        "status": ewb.status,
+        "generated_at": ewb.generated_at.isoformat() if ewb.generated_at else None,
+        "valid_from": ewb.valid_from.isoformat() if ewb.valid_from else None,
+        "valid_until": ewb.valid_until.isoformat() if ewb.valid_until else None,
+        "is_valid": is_valid,
+        "vehicle_number": ewb.vehicle_number,
+        "distance_km": ewb.distance_km,
+    }

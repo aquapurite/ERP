@@ -806,3 +806,184 @@ async def get_petty_cash_book(
         entries=entries,
         category_summary=dict(category_summary),
     )
+
+
+# ==================== ML-Based Auto-Reconciliation ====================
+
+class ReconciliationSuggestion(BaseModel):
+    """ML reconciliation suggestion."""
+    bank_transaction_id: str
+    bank_transaction_date: str
+    bank_description: str
+    bank_amount: float
+    journal_entry_id: str
+    journal_entry_number: str
+    journal_entry_date: str
+    journal_narration: Optional[str] = None
+    confidence_score: float
+    is_auto_match: bool
+    features: Dict[str, float]
+
+
+class AutoReconcileResponse(BaseModel):
+    """Auto reconciliation result."""
+    auto_matched_count: int
+    skipped_count: int
+    auto_matched: List[Dict[str, Any]]
+    requires_review: List[Dict[str, Any]]
+    low_confidence: List[Dict[str, Any]]
+
+
+class ReconciliationStatsResponse(BaseModel):
+    """Reconciliation statistics."""
+    total_transactions: int
+    reconciled_count: int
+    unreconciled_count: int
+    auto_matched_count: int
+    manual_matched_count: int
+    reconciliation_rate: float
+    auto_match_rate: float
+
+
+@router.get(
+    "/accounts/{account_id}/reconciliation-suggestions",
+    response_model=List[ReconciliationSuggestion],
+    summary="Get ML-powered reconciliation suggestions",
+    description="""
+    Get AI-powered suggestions for matching bank transactions with journal entries.
+
+    Uses machine learning features:
+    - TF-IDF text similarity for description matching
+    - Date proximity analysis
+    - Party name extraction and matching
+    - Reference number detection
+
+    Suggestions are ranked by confidence score (0-1).
+    """,
+)
+async def get_reconciliation_suggestions(
+    account_id: UUID,
+    limit: int = Query(50, ge=1, le=200),
+    db: DB = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Get ML-powered reconciliation suggestions."""
+    from app.services.bank_reconciliation_ml import BankReconciliationMLService
+
+    # Verify account exists
+    account_result = await db.execute(
+        select(BankAccount).where(BankAccount.id == account_id)
+    )
+    account = account_result.scalar_one_or_none()
+
+    if not account:
+        raise HTTPException(status_code=404, detail="Bank account not found")
+
+    ml_service = BankReconciliationMLService(db)
+    suggestions = await ml_service.get_reconciliation_suggestions(account_id, limit)
+
+    return [ReconciliationSuggestion(**s) for s in suggestions]
+
+
+@router.post(
+    "/accounts/{account_id}/auto-reconcile",
+    response_model=AutoReconcileResponse,
+    summary="Run auto-reconciliation",
+    description="""
+    Automatically reconcile transactions above the confidence threshold.
+
+    **Thresholds:**
+    - Auto-match: >= 0.85 confidence
+    - Requires review: 0.60 - 0.85 confidence
+    - Low confidence: < 0.60 confidence
+
+    Only transactions with confidence >= threshold are auto-matched.
+    """,
+)
+async def auto_reconcile(
+    account_id: UUID,
+    threshold: float = Query(0.85, ge=0.5, le=1.0, description="Confidence threshold for auto-matching"),
+    db: DB = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Run ML-based auto-reconciliation."""
+    from app.services.bank_reconciliation_ml import BankReconciliationMLService
+
+    # Verify account exists
+    account_result = await db.execute(
+        select(BankAccount).where(BankAccount.id == account_id)
+    )
+    account = account_result.scalar_one_or_none()
+
+    if not account:
+        raise HTTPException(status_code=404, detail="Bank account not found")
+
+    ml_service = BankReconciliationMLService(db)
+    result = await ml_service.auto_reconcile(account_id, threshold)
+
+    return AutoReconcileResponse(**result)
+
+
+@router.get(
+    "/accounts/{account_id}/reconciliation-stats",
+    response_model=ReconciliationStatsResponse,
+    summary="Get reconciliation statistics",
+    description="Get reconciliation statistics for a bank account.",
+)
+async def get_reconciliation_stats(
+    account_id: UUID,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    db: DB = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Get reconciliation statistics."""
+    from app.services.bank_reconciliation_ml import BankReconciliationMLService
+
+    # Verify account exists
+    account_result = await db.execute(
+        select(BankAccount).where(BankAccount.id == account_id)
+    )
+    account = account_result.scalar_one_or_none()
+
+    if not account:
+        raise HTTPException(status_code=404, detail="Bank account not found")
+
+    ml_service = BankReconciliationMLService(db)
+    stats = await ml_service.get_reconciliation_stats(account_id, start_date, end_date)
+
+    return ReconciliationStatsResponse(**stats)
+
+
+@router.post(
+    "/accounts/{account_id}/train-reconciliation-model",
+    summary="Train reconciliation model on historical matches",
+    description="""
+    Analyze historical successful matches to optimize matching weights.
+
+    Requires at least 10 historical matches for training.
+    Returns optimized weights based on past reconciliation patterns.
+    """,
+)
+async def train_reconciliation_model(
+    account_id: UUID,
+    limit: int = Query(1000, ge=100, le=5000),
+    db: DB = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Train ML model on historical matches."""
+    from app.services.bank_reconciliation_ml import BankReconciliationMLService
+
+    # Verify account exists
+    account_result = await db.execute(
+        select(BankAccount).where(BankAccount.id == account_id)
+    )
+    account = account_result.scalar_one_or_none()
+
+    if not account:
+        raise HTTPException(status_code=404, detail="Bank account not found")
+
+    ml_service = BankReconciliationMLService(db)
+    result = await ml_service.train_on_historical_matches(account_id, limit)
+
+    return result
