@@ -123,10 +123,12 @@ class VendorUpdate(BaseModel):
     state: Optional[str] = None
     pincode: Optional[str] = None
 
-    # Bank
+    # Bank Details
     bank_name: Optional[str] = None
+    bank_branch: Optional[str] = None
     bank_account_number: Optional[str] = None
     bank_ifsc: Optional[str] = None
+    bank_account_type: Optional[str] = None
     beneficiary_name: Optional[str] = None
 
     # Payment

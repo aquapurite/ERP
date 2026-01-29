@@ -208,6 +208,13 @@ type VendorFormData = {
   city: string;
   state: string;
   pincode: string;
+  // Bank Details
+  bank_name: string;
+  bank_branch: string;
+  bank_account_number: string;
+  bank_ifsc: string;
+  bank_account_type: 'SAVINGS' | 'CURRENT' | 'OD' | '';
+  beneficiary_name: string;
 };
 
 const emptyFormData: VendorFormData = {
@@ -224,6 +231,13 @@ const emptyFormData: VendorFormData = {
   city: '',
   state: '',
   pincode: '',
+  // Bank Details
+  bank_name: '',
+  bank_branch: '',
+  bank_account_number: '',
+  bank_ifsc: '',
+  bank_account_type: '',
+  beneficiary_name: '',
 };
 
 export default function VendorsPage() {
@@ -326,6 +340,10 @@ export default function VendorsPage() {
       toast.error('Vendor name is required');
       return;
     }
+    if (!newVendor.pan_number.trim() || newVendor.pan_number.length !== 10) {
+      toast.error('Valid PAN number (10 characters) is required');
+      return;
+    }
     if (!newVendor.address_line1.trim()) {
       toast.error('Address is required');
       return;
@@ -353,6 +371,13 @@ export default function VendorsPage() {
       city: vendor.city || '',
       state: vendor.state || '',
       pincode: '',
+      // Bank Details
+      bank_name: vendor.bank_name || '',
+      bank_branch: vendor.bank_branch || '',
+      bank_account_number: vendor.bank_account_number || '',
+      bank_ifsc: vendor.bank_ifsc || '',
+      bank_account_type: (vendor.bank_account_type as VendorFormData['bank_account_type']) || '',
+      beneficiary_name: vendor.beneficiary_name || '',
     });
     setIsEditDialogOpen(true);
   };
@@ -386,6 +411,13 @@ export default function VendorsPage() {
       contact_person: editFormData.contact_person || undefined,
       city: editFormData.city || undefined,
       state: editFormData.state || undefined,
+      // Bank Details
+      bank_name: editFormData.bank_name || undefined,
+      bank_branch: editFormData.bank_branch || undefined,
+      bank_account_number: editFormData.bank_account_number || undefined,
+      bank_ifsc: editFormData.bank_ifsc || undefined,
+      bank_account_type: editFormData.bank_account_type || undefined,
+      beneficiary_name: editFormData.beneficiary_name || undefined,
     };
 
     updateMutation.mutate({ id: editingVendor.id, data: updateData });
@@ -543,7 +575,7 @@ export default function VendorsPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="pan_number">PAN (10 characters)</Label>
+                    <Label htmlFor="pan_number">PAN (10 characters) *</Label>
                     <Input
                       id="pan_number"
                       placeholder="AAAAA0000A"
@@ -552,6 +584,7 @@ export default function VendorsPage() {
                       onChange={(e) =>
                         setNewVendor({ ...newVendor, pan_number: e.target.value.toUpperCase() })
                       }
+                      required
                     />
                   </div>
                 </div>
@@ -605,6 +638,89 @@ export default function VendorsPage() {
                     />
                   </div>
                 </div>
+
+                {/* Bank Details */}
+                <div className="text-sm font-medium text-muted-foreground mt-2">Bank Details (for Payment)</div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="bank_name">Bank Name</Label>
+                    <Input
+                      id="bank_name"
+                      placeholder="e.g., HDFC Bank"
+                      value={newVendor.bank_name}
+                      onChange={(e) =>
+                        setNewVendor({ ...newVendor, bank_name: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="bank_branch">Branch</Label>
+                    <Input
+                      id="bank_branch"
+                      placeholder="e.g., Connaught Place"
+                      value={newVendor.bank_branch}
+                      onChange={(e) =>
+                        setNewVendor({ ...newVendor, bank_branch: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="bank_account_number">Account Number</Label>
+                    <Input
+                      id="bank_account_number"
+                      placeholder="e.g., 50100123456789"
+                      value={newVendor.bank_account_number}
+                      onChange={(e) =>
+                        setNewVendor({ ...newVendor, bank_account_number: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="bank_ifsc">IFSC Code</Label>
+                    <Input
+                      id="bank_ifsc"
+                      placeholder="e.g., HDFC0001234"
+                      maxLength={11}
+                      value={newVendor.bank_ifsc}
+                      onChange={(e) =>
+                        setNewVendor({ ...newVendor, bank_ifsc: e.target.value.toUpperCase() })
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="bank_account_type">Account Type</Label>
+                    <Select
+                      value={newVendor.bank_account_type}
+                      onValueChange={(value: 'SAVINGS' | 'CURRENT' | 'OD') =>
+                        setNewVendor({ ...newVendor, bank_account_type: value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select account type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CURRENT">Current Account</SelectItem>
+                        <SelectItem value="SAVINGS">Savings Account</SelectItem>
+                        <SelectItem value="OD">Overdraft (OD)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="beneficiary_name">Beneficiary Name</Label>
+                    <Input
+                      id="beneficiary_name"
+                      placeholder="Name as per bank records"
+                      value={newVendor.beneficiary_name}
+                      onChange={(e) =>
+                        setNewVendor({ ...newVendor, beneficiary_name: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
@@ -635,7 +751,7 @@ export default function VendorsPage() {
 
       {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Vendor</DialogTitle>
             <DialogDescription>
@@ -643,43 +759,128 @@ export default function VendorsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label>Vendor Code</Label>
-              <Input value={editFormData.code} disabled className="bg-muted font-mono" />
+            <div className="text-sm font-medium text-muted-foreground">Basic Information</div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Vendor Code</Label>
+                <Input value={editFormData.code} disabled className="bg-muted font-mono" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-name">Name *</Label>
+                <Input
+                  id="edit-name"
+                  value={editFormData.name}
+                  onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Name</Label>
-              <Input
-                id="edit-name"
-                value={editFormData.name}
-                onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-email">Email</Label>
+                <Input
+                  id="edit-email"
+                  type="email"
+                  value={editFormData.email}
+                  onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-phone">Phone</Label>
+                <Input
+                  id="edit-phone"
+                  value={editFormData.phone}
+                  onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-email">Email</Label>
-              <Input
-                id="edit-email"
-                type="email"
-                value={editFormData.email}
-                onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
-              />
+
+            <div className="text-sm font-medium text-muted-foreground mt-2">Tax Information</div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-gst">GSTIN</Label>
+                <Input
+                  id="edit-gst"
+                  value={editFormData.gst_number}
+                  maxLength={15}
+                  onChange={(e) => setEditFormData({ ...editFormData, gst_number: e.target.value.toUpperCase() })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-pan">PAN *</Label>
+                <Input
+                  id="edit-pan"
+                  value={editFormData.pan_number}
+                  maxLength={10}
+                  onChange={(e) => setEditFormData({ ...editFormData, pan_number: e.target.value.toUpperCase() })}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-phone">Phone</Label>
-              <Input
-                id="edit-phone"
-                value={editFormData.phone}
-                onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
-              />
+
+            <div className="text-sm font-medium text-muted-foreground mt-2">Bank Details</div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-bank-name">Bank Name</Label>
+                <Input
+                  id="edit-bank-name"
+                  value={editFormData.bank_name}
+                  onChange={(e) => setEditFormData({ ...editFormData, bank_name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-bank-branch">Branch</Label>
+                <Input
+                  id="edit-bank-branch"
+                  value={editFormData.bank_branch}
+                  onChange={(e) => setEditFormData({ ...editFormData, bank_branch: e.target.value })}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-gst">GSTIN</Label>
-              <Input
-                id="edit-gst"
-                value={editFormData.gst_number}
-                maxLength={15}
-                onChange={(e) => setEditFormData({ ...editFormData, gst_number: e.target.value.toUpperCase() })}
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-account-number">Account Number</Label>
+                <Input
+                  id="edit-account-number"
+                  value={editFormData.bank_account_number}
+                  onChange={(e) => setEditFormData({ ...editFormData, bank_account_number: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-ifsc">IFSC Code</Label>
+                <Input
+                  id="edit-ifsc"
+                  value={editFormData.bank_ifsc}
+                  maxLength={11}
+                  onChange={(e) => setEditFormData({ ...editFormData, bank_ifsc: e.target.value.toUpperCase() })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-account-type">Account Type</Label>
+                <Select
+                  value={editFormData.bank_account_type}
+                  onValueChange={(value: 'SAVINGS' | 'CURRENT' | 'OD') =>
+                    setEditFormData({ ...editFormData, bank_account_type: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select account type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CURRENT">Current Account</SelectItem>
+                    <SelectItem value="SAVINGS">Savings Account</SelectItem>
+                    <SelectItem value="OD">Overdraft (OD)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-beneficiary">Beneficiary Name</Label>
+                <Input
+                  id="edit-beneficiary"
+                  value={editFormData.beneficiary_name}
+                  onChange={(e) => setEditFormData({ ...editFormData, beneficiary_name: e.target.value })}
+                />
+              </div>
             </div>
           </div>
           <DialogFooter>

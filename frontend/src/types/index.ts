@@ -428,6 +428,13 @@ export interface Vendor {
   state?: string;
   pincode?: string;
   country?: string;
+  // Bank Details
+  bank_name?: string;
+  bank_branch?: string;
+  bank_account_number?: string;
+  bank_ifsc?: string;
+  bank_account_type?: 'SAVINGS' | 'CURRENT' | 'OD';
+  beneficiary_name?: string;
 }
 
 // Purchase Order Types

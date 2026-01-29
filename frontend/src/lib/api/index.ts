@@ -990,6 +990,13 @@ export const vendorsApi = {
     state: string;
     pincode: string;
     country?: string;
+    // Bank Details
+    bank_name?: string;
+    bank_branch?: string;
+    bank_account_number?: string;
+    bank_ifsc?: string;
+    bank_account_type?: string;
+    beneficiary_name?: string;
   }) => {
     // Transform frontend fields to backend required fields
     // Handle field name aliases (frontend -> backend)
@@ -1010,6 +1017,13 @@ export const vendorsApi = {
       gstin: vendor.gstin || vendor.gst_number || undefined,
       pan: vendor.pan || vendor.pan_number || undefined,
       grade: vendor.grade || vendor.tier || undefined,
+      // Bank Details
+      bank_name: vendor.bank_name || undefined,
+      bank_branch: vendor.bank_branch || undefined,
+      bank_account_number: vendor.bank_account_number || undefined,
+      bank_ifsc: vendor.bank_ifsc || undefined,
+      bank_account_type: vendor.bank_account_type || undefined,
+      beneficiary_name: vendor.beneficiary_name || undefined,
     };
     const { data } = await apiClient.post<Record<string, unknown>>('/vendors', payload);
     return transformVendorResponse(data);
