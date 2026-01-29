@@ -2140,15 +2140,13 @@ async def reverse_journal_entry(
     for orig_line in original.lines:
         line_number += 1
         line = JournalEntryLine(
-            journal_id=reversal.id,
+            journal_entry_id=reversal.id,
             line_number=line_number,
             account_id=orig_line.account_id,
-            account_code=orig_line.account_code,
-            account_name=orig_line.account_name,
             debit_amount=orig_line.credit_amount,  # Swap
             credit_amount=orig_line.debit_amount,
             cost_center_id=orig_line.cost_center_id,
-            narration=f"Reversal: {orig_line.narration or ''}",
+            description=f"Reversal: {orig_line.description or ''}",
         )
         db.add(line)
 
