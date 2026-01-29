@@ -582,3 +582,326 @@ async def get_itc_dashboard(
 
     itc_service = ITCService(db, effective_company_id)
     return await itc_service.get_itc_dashboard()
+
+
+# ==================== MISSING ENDPOINTS FOR FRONTEND INTEGRATION ====================
+
+class GSTAuthenticateResponse(BaseModel):
+    """Response schema for GST portal authentication."""
+    success: bool
+    message: str
+    session_id: Optional[str] = None
+    expiry: Optional[str] = None
+
+
+class ITCSummaryResponse(BaseModel):
+    """Response schema for ITC summary."""
+    total_available: float
+    total_utilized: float
+    total_reversed: float
+    balance: float
+    cgst_available: float
+    sgst_available: float
+    igst_available: float
+    cess_available: float
+    matched_with_gstr2a: int
+    matched_with_gstr2b: int
+    mismatch_count: int
+    mismatch_value: float
+
+
+class ITCUtilizeRequest(BaseModel):
+    """Request schema for ITC utilization."""
+    period: str = Field(..., description="Period in YYYYMM format")
+    cgst_utilized: float = 0
+    sgst_utilized: float = 0
+    igst_utilized: float = 0
+    cess_utilized: float = 0
+
+
+class ITCUtilizeResponse(BaseModel):
+    """Response schema for ITC utilization."""
+    period: str
+    cgst_utilized: float
+    sgst_utilized: float
+    igst_utilized: float
+    cess_utilized: float
+    total_utilized: float
+    remaining_balance: float
+
+
+class ITCReverseRequest(BaseModel):
+    """Request schema for ITC reversal."""
+    reason: str
+    amount: Optional[float] = None
+
+
+class ITCReverseResponse(BaseModel):
+    """Response schema for ITC reversal."""
+    id: UUID
+    reversed_amount: float
+    new_status: str
+    reason: str
+
+
+class FilingHistoryItem(BaseModel):
+    """Filing history item."""
+    id: str
+    return_type: str
+    period: str
+    status: str
+    due_date: str
+    filed_date: Optional[str] = None
+    arn: Optional[str] = None
+    taxable_value: float
+    tax_liability: float
+
+
+class FilingHistoryResponse(BaseModel):
+    """Response schema for filing history."""
+    items: List[FilingHistoryItem]
+    total: int
+    page: int
+    size: int
+
+
+class ITCMismatchItem(BaseModel):
+    """ITC mismatch item."""
+    id: UUID
+    vendor_gstin: str
+    vendor_name: str
+    invoice_number: str
+    invoice_date: date
+    books_amount: float
+    portal_amount: float
+    difference: float
+    mismatch_type: str  # MISSING_IN_PORTAL, AMOUNT_MISMATCH, EXTRA_IN_PORTAL
+
+
+class ITCMismatchReportResponse(BaseModel):
+    """Response schema for ITC mismatch report."""
+    period: str
+    items: List[ITCMismatchItem]
+    total_mismatch_count: int
+    total_mismatch_value: float
+    missing_in_portal: int
+    amount_mismatches: int
+    extra_in_portal: int
+
+
+@router.post(
+    "/authenticate",
+    response_model=GSTAuthenticateResponse,
+    summary="Authenticate with GST Portal",
+    description="""
+    Authenticate with the GST portal using configured GSP credentials.
+
+    **Note:** This endpoint initiates a session with the GST portal for
+    subsequent filing operations. The session typically expires after 30 minutes.
+
+    **Permissions Required:** gst:authenticate
+    """,
+)
+async def authenticate_gst_portal(
+    company_id: Optional[UUID] = None,
+    db: DB = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Authenticate with GST portal."""
+    effective_company_id = company_id or current_user.company_id
+
+    if not effective_company_id:
+        raise HTTPException(status_code=400, detail="Company ID is required")
+
+    try:
+        filing_service = GSTFilingService(db, effective_company_id)
+        result = await filing_service.authenticate_gst_portal()
+        return GSTAuthenticateResponse(**result)
+
+    except GSTFilingError as e:
+        raise HTTPException(status_code=400, detail=e.message)
+
+
+@router.get(
+    "/filing-history",
+    response_model=FilingHistoryResponse,
+    summary="Get GST filing history",
+    description="Get the history of GST return filings with pagination.",
+)
+async def get_filing_history(
+    page: int = Query(1, ge=1, description="Page number"),
+    size: int = Query(12, ge=1, le=100, description="Items per page"),
+    return_type: Optional[str] = Query(None, description="Filter by return type: GSTR1, GSTR3B"),
+    company_id: Optional[UUID] = None,
+    db: DB = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Get filing history with pagination."""
+    effective_company_id = company_id or current_user.company_id
+
+    if not effective_company_id:
+        raise HTTPException(status_code=400, detail="Company ID is required")
+
+    try:
+        filing_service = GSTFilingService(db, effective_company_id)
+        result = await filing_service.get_filing_history(
+            page=page,
+            size=size,
+            return_type=return_type
+        )
+        return FilingHistoryResponse(**result)
+
+    except GSTFilingError as e:
+        raise HTTPException(status_code=400, detail=e.message)
+
+
+# Add alias route for frontend compatibility: /gst/download/gstr2a
+@router.get(
+    "/download/gstr2a",
+    summary="Download GSTR-2A data (alias)",
+    description="Download GSTR-2A (auto-populated inward supplies) from GST portal. Alias for /gstr2a/download.",
+)
+async def download_gstr2a_alias(
+    month: int = Query(..., ge=1, le=12),
+    year: int = Query(..., ge=2017),
+    company_id: Optional[UUID] = None,
+    db: DB = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Download GSTR-2A for ITC reconciliation (alias endpoint)."""
+    return await download_gstr2a(month, year, company_id, db, current_user)
+
+
+@router.get(
+    "/itc/summary",
+    response_model=ITCSummaryResponse,
+    summary="Get ITC summary",
+    description="Get summarized ITC data including available, utilized, and reversed amounts.",
+)
+async def get_itc_summary(
+    period: Optional[str] = Query(None, description="Period in YYYYMM format"),
+    company_id: Optional[UUID] = None,
+    db: DB = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Get ITC summary for a period."""
+    effective_company_id = company_id or current_user.company_id
+
+    if not effective_company_id:
+        raise HTTPException(status_code=400, detail="Company ID is required")
+
+    itc_service = ITCService(db, effective_company_id)
+    result = await itc_service.get_itc_summary(period)
+    return ITCSummaryResponse(**result)
+
+
+@router.post(
+    "/itc/utilize",
+    response_model=ITCUtilizeResponse,
+    summary="Utilize ITC against tax liability",
+    description="""
+    Utilize available Input Tax Credit against GST liability.
+
+    **Business Rules:**
+    - IGST credit is utilized first against IGST liability
+    - Then CGST and SGST credits against respective liabilities
+    - Cross-utilization follows GST rules (IGST → CGST → SGST)
+
+    **Permissions Required:** gst:itc:utilize
+    """,
+)
+async def utilize_itc(
+    request: ITCUtilizeRequest,
+    company_id: Optional[UUID] = None,
+    db: DB = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Utilize ITC against tax liability."""
+    effective_company_id = company_id or current_user.company_id
+
+    if not effective_company_id:
+        raise HTTPException(status_code=400, detail="Company ID is required")
+
+    itc_service = ITCService(db, effective_company_id)
+    result = await itc_service.utilize_itc(
+        period=request.period,
+        cgst_utilized=request.cgst_utilized,
+        sgst_utilized=request.sgst_utilized,
+        igst_utilized=request.igst_utilized,
+        cess_utilized=request.cess_utilized,
+        utilized_by=current_user.id,
+    )
+
+    await db.commit()
+    return ITCUtilizeResponse(**result)
+
+
+@router.post(
+    "/itc/{entry_id}/reverse",
+    response_model=ITCReverseResponse,
+    summary="Reverse ITC entry",
+    description="""
+    Reverse an ITC entry due to various reasons like vendor non-compliance,
+    goods returned, credit note received, etc.
+
+    **Business Rules:**
+    - Only AVAILABLE status ITC can be reversed
+    - Reversal reason is mandatory
+    - Partial reversal is allowed by specifying amount
+
+    **Permissions Required:** gst:itc:reverse
+    """,
+)
+async def reverse_itc_entry(
+    entry_id: UUID,
+    request: ITCReverseRequest,
+    company_id: Optional[UUID] = None,
+    db: DB = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Reverse an ITC entry."""
+    effective_company_id = company_id or current_user.company_id
+
+    if not effective_company_id:
+        raise HTTPException(status_code=400, detail="Company ID is required")
+
+    itc_service = ITCService(db, effective_company_id)
+    result = await itc_service.reverse_itc_entry(
+        entry_id=entry_id,
+        reason=request.reason,
+        amount=request.amount,
+        reversed_by=current_user.id,
+    )
+
+    await db.commit()
+    return ITCReverseResponse(**result)
+
+
+@router.get(
+    "/itc/mismatch-report",
+    response_model=ITCMismatchReportResponse,
+    summary="Get ITC mismatch report",
+    description="""
+    Get report of mismatches between ITC ledger and GSTR-2A/2B data.
+
+    **Mismatch Types:**
+    - MISSING_IN_PORTAL: Invoice in books but not in GSTR-2A/2B
+    - AMOUNT_MISMATCH: Invoice exists but amounts differ
+    - EXTRA_IN_PORTAL: Invoice in portal but not in books
+    """,
+)
+async def get_itc_mismatch_report(
+    period: str = Query(..., description="Period in YYYYMM format"),
+    company_id: Optional[UUID] = None,
+    db: DB = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Get ITC mismatch report for a period."""
+    effective_company_id = company_id or current_user.company_id
+
+    if not effective_company_id:
+        raise HTTPException(status_code=400, detail="Company ID is required")
+
+    itc_service = ITCService(db, effective_company_id)
+    result = await itc_service.get_mismatch_report(period)
+    return ITCMismatchReportResponse(**result)

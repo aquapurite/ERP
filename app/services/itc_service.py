@@ -302,10 +302,11 @@ class ITCService:
     async def utilize_itc(
         self,
         period: str,
-        cgst_utilized: Decimal,
-        sgst_utilized: Decimal,
-        igst_utilized: Decimal,
-        cess_utilized: Decimal,
+        cgst_utilized: float,
+        sgst_utilized: float,
+        igst_utilized: float,
+        cess_utilized: float = 0,
+        utilized_by: Optional[UUID] = None,
     ) -> Dict:
         """
         Utilize ITC against output tax liability.
@@ -331,10 +332,10 @@ class ITCService:
 
         utilized_entries = []
         remaining = {
-            "cgst": cgst_utilized,
-            "sgst": sgst_utilized,
-            "igst": igst_utilized,
-            "cess": cess_utilized,
+            "cgst": Decimal(str(cgst_utilized)),
+            "sgst": Decimal(str(sgst_utilized)),
+            "igst": Decimal(str(igst_utilized)),
+            "cess": Decimal(str(cess_utilized)),
         }
 
         for entry in entries:
@@ -380,14 +381,22 @@ class ITCService:
 
         await self.db.commit()
 
+        # Calculate remaining balance
+        available = await self.get_available_itc(period)
+
         return {
             "period": period,
-            "cgst_utilized": float(cgst_utilized - remaining["cgst"]),
-            "sgst_utilized": float(sgst_utilized - remaining["sgst"]),
-            "igst_utilized": float(igst_utilized - remaining["igst"]),
-            "cess_utilized": float(cess_utilized - remaining["cess"]),
-            "entries_updated": len(utilized_entries),
-            "utilized_entries": utilized_entries,
+            "cgst_utilized": float(cgst_utilized - float(remaining["cgst"])),
+            "sgst_utilized": float(sgst_utilized - float(remaining["sgst"])),
+            "igst_utilized": float(igst_utilized - float(remaining["igst"])),
+            "cess_utilized": float(cess_utilized - float(remaining["cess"])),
+            "total_utilized": float(
+                (cgst_utilized - float(remaining["cgst"])) +
+                (sgst_utilized - float(remaining["sgst"])) +
+                (igst_utilized - float(remaining["igst"])) +
+                (cess_utilized - float(remaining["cess"]))
+            ),
+            "remaining_balance": available["total_available"],
         }
 
     async def reverse_itc(
@@ -424,8 +433,100 @@ class ITCService:
 
         return entry
 
-    async def get_itc_summary(self, period: str) -> Optional[ITCSummary]:
-        """Get or create ITC summary for a period."""
+    async def get_itc_summary(self, period: Optional[str] = None) -> Dict:
+        """
+        Get ITC summary for frontend display.
+
+        Returns aggregated ITC data including available, utilized, and reversed amounts.
+        """
+        # Get current period if not specified
+        if not period:
+            current_date = datetime.now(timezone.utc)
+            period = self._get_period(current_date.year, current_date.month)
+
+        # Get aggregated values from ITC ledger
+        query = (
+            select(
+                func.sum(ITCLedger.cgst_itc).label("cgst_available"),
+                func.sum(ITCLedger.sgst_itc).label("sgst_available"),
+                func.sum(ITCLedger.igst_itc).label("igst_available"),
+                func.sum(ITCLedger.cess_itc).label("cess_available"),
+                func.sum(ITCLedger.total_itc).label("total_available"),
+                func.sum(ITCLedger.utilized_amount).label("total_utilized"),
+                func.sum(ITCLedger.reversed_amount).label("total_reversed"),
+                func.count(ITCLedger.id).label("total_invoices"),
+                func.sum(func.cast(ITCLedger.gstr2a_matched, type_=Decimal)).label("gstr2a_matched"),
+                func.sum(func.cast(ITCLedger.gstr2b_matched, type_=Decimal)).label("gstr2b_matched"),
+            )
+            .where(
+                and_(
+                    ITCLedger.company_id == self.company_id,
+                    ITCLedger.status == ITCStatus.AVAILABLE.value,
+                )
+            )
+        )
+
+        if period:
+            query = query.where(ITCLedger.period <= period)
+
+        result = await self.db.execute(query)
+        row = result.one()
+
+        total_available = float(row.total_available or 0)
+        total_utilized = float(row.total_utilized or 0)
+        total_reversed = float(row.total_reversed or 0)
+        cgst_available = float(row.cgst_available or 0)
+        sgst_available = float(row.sgst_available or 0)
+        igst_available = float(row.igst_available or 0)
+        cess_available = float(row.cess_available or 0)
+
+        total_invoices = row.total_invoices or 0
+        gstr2a_matched = int(row.gstr2a_matched or 0)
+        gstr2b_matched = int(row.gstr2b_matched or 0)
+
+        # Get mismatch count
+        mismatch_query = (
+            select(func.count(ITCLedger.id))
+            .where(
+                and_(
+                    ITCLedger.company_id == self.company_id,
+                    ITCLedger.match_status == ITCMatchStatus.PARTIAL_MATCH.value,
+                )
+            )
+        )
+        mismatch_result = await self.db.execute(mismatch_query)
+        mismatch_count = mismatch_result.scalar() or 0
+
+        # Get mismatch value
+        mismatch_value_query = (
+            select(func.sum(ITCLedger.total_itc))
+            .where(
+                and_(
+                    ITCLedger.company_id == self.company_id,
+                    ITCLedger.match_status == ITCMatchStatus.PARTIAL_MATCH.value,
+                )
+            )
+        )
+        mismatch_value_result = await self.db.execute(mismatch_value_query)
+        mismatch_value = float(mismatch_value_result.scalar() or 0)
+
+        return {
+            "total_available": total_available,
+            "total_utilized": total_utilized,
+            "total_reversed": total_reversed,
+            "balance": total_available - total_utilized - total_reversed,
+            "cgst_available": cgst_available,
+            "sgst_available": sgst_available,
+            "igst_available": igst_available,
+            "cess_available": cess_available,
+            "matched_with_gstr2a": gstr2a_matched,
+            "matched_with_gstr2b": gstr2b_matched,
+            "mismatch_count": mismatch_count,
+            "mismatch_value": mismatch_value,
+        }
+
+    async def get_itc_summary_model(self, period: str) -> Optional[ITCSummary]:
+        """Get or create ITC summary model for a period."""
         result = await self.db.execute(
             select(ITCSummary)
             .where(
@@ -559,4 +660,137 @@ class ITCService:
                 "unmatched": total_invoices - gstr2a_matched,
                 "match_rate": round(gstr2a_matched / total_invoices * 100, 2) if total_invoices > 0 else 0,
             },
+        }
+
+    async def reverse_itc_entry(
+        self,
+        entry_id: UUID,
+        reason: str,
+        amount: Optional[float] = None,
+        reversed_by: Optional[UUID] = None,
+    ) -> Dict:
+        """
+        Reverse an ITC entry.
+
+        Args:
+            entry_id: ID of the ITC entry to reverse
+            reason: Reason for reversal
+            amount: Optional amount to reverse (full reversal if not specified)
+            reversed_by: User ID who initiated the reversal
+
+        Returns:
+            Dict with reversal details
+        """
+        result = await self.db.execute(
+            select(ITCLedger).where(
+                and_(
+                    ITCLedger.id == entry_id,
+                    ITCLedger.company_id == self.company_id,
+                )
+            )
+        )
+        entry = result.scalar_one_or_none()
+
+        if not entry:
+            raise ValueError("ITC entry not found")
+
+        if entry.status != ITCStatus.AVAILABLE.value:
+            raise ValueError(f"Cannot reverse ITC with status {entry.status}")
+
+        # Determine reversal amount
+        available = float(entry.total_itc - entry.utilized_amount - entry.reversed_amount)
+        reversal_amount = amount if amount is not None else available
+
+        if reversal_amount > available:
+            raise ValueError(f"Reversal amount ({reversal_amount}) exceeds available ITC ({available})")
+
+        # Update entry
+        entry.reversed_amount = Decimal(str(entry.reversed_amount)) + Decimal(str(reversal_amount))
+        entry.reversal_reason = reason
+        entry.reversed_at = datetime.now(timezone.utc)
+
+        # Update status if fully reversed
+        if float(entry.reversed_amount) >= float(entry.total_itc - entry.utilized_amount):
+            entry.status = ITCStatus.REVERSED.value
+
+        await self.db.flush()
+        await self.db.refresh(entry)
+
+        return {
+            "id": entry.id,
+            "reversed_amount": float(reversal_amount),
+            "new_status": entry.status,
+            "reason": reason,
+        }
+
+    async def get_mismatch_report(self, period: str) -> Dict:
+        """
+        Get ITC mismatch report for a period.
+
+        Finds discrepancies between:
+        - ITC in books but not in GSTR-2A/2B (MISSING_IN_PORTAL)
+        - ITC with amount differences (AMOUNT_MISMATCH)
+        - ITC in portal but not in books (EXTRA_IN_PORTAL - requires GSTR2A data)
+
+        Returns:
+            Dict with mismatch details and counts
+        """
+        # Get entries with mismatches
+        query = (
+            select(ITCLedger)
+            .where(
+                and_(
+                    ITCLedger.company_id == self.company_id,
+                    ITCLedger.period == period,
+                    ITCLedger.match_status.in_([
+                        ITCMatchStatus.UNMATCHED.value,
+                        ITCMatchStatus.PARTIAL_MATCH.value,
+                    ])
+                )
+            )
+            .order_by(ITCLedger.invoice_date.desc())
+        )
+
+        result = await self.db.execute(query)
+        entries = list(result.scalars().all())
+
+        items = []
+        missing_in_portal = 0
+        amount_mismatches = 0
+        extra_in_portal = 0
+        total_mismatch_value = Decimal("0")
+
+        for entry in entries:
+            mismatch_type = "MISSING_IN_PORTAL"
+            difference = float(entry.total_itc)
+
+            if entry.match_status == ITCMatchStatus.PARTIAL_MATCH.value:
+                mismatch_type = "AMOUNT_MISMATCH"
+                difference = float(entry.match_difference or 0)
+                amount_mismatches += 1
+            else:
+                missing_in_portal += 1
+
+            total_mismatch_value += abs(Decimal(str(difference)))
+
+            items.append({
+                "id": entry.id,
+                "vendor_gstin": entry.vendor_gstin,
+                "vendor_name": entry.vendor_name,
+                "invoice_number": entry.invoice_number,
+                "invoice_date": entry.invoice_date,
+                "books_amount": float(entry.total_itc),
+                "portal_amount": float(entry.total_itc) - difference if mismatch_type == "AMOUNT_MISMATCH" else 0,
+                "difference": difference,
+                "mismatch_type": mismatch_type,
+            })
+
+        return {
+            "period": period,
+            "items": items,
+            "total_mismatch_count": len(items),
+            "total_mismatch_value": float(total_mismatch_value),
+            "missing_in_portal": missing_in_portal,
+            "amount_mismatches": amount_mismatches,
+            "extra_in_portal": extra_in_portal,
         }
