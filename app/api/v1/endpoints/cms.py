@@ -32,6 +32,8 @@ from app.models.cms import (
     CMSMenuItem,
     CMSFeatureBar,
     CMSMegaMenuItem,
+    CMSFaqCategory,
+    CMSFaqItem,
 )
 from app.models import Category
 from app.schemas.cms import (
@@ -87,6 +89,16 @@ from app.schemas.cms import (
     CMSMegaMenuItemUpdate,
     CMSMegaMenuItemResponse,
     CMSMegaMenuItemListResponse,
+    # FAQ Category schemas
+    CMSFaqCategoryCreate,
+    CMSFaqCategoryUpdate,
+    CMSFaqCategoryResponse,
+    CMSFaqCategoryListResponse,
+    # FAQ Item schemas
+    CMSFaqItemCreate,
+    CMSFaqItemUpdate,
+    CMSFaqItemResponse,
+    CMSFaqItemListResponse,
     # Common schemas
     CMSReorderRequest,
 )
@@ -1795,3 +1807,379 @@ async def reorder_mega_menu_items(
     await cache.delete("storefront:mega-menu")
 
     return {"success": True, "message": "Mega menu items reordered"}
+
+
+# ==================== FAQ Category Endpoints ====================
+
+@router.get("/faq-categories", response_model=CMSFaqCategoryListResponse)
+async def list_faq_categories(
+    db: DB,
+    current_user: CurrentUser,
+    is_active: Optional[bool] = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    _: bool = Depends(require_permissions(["CMS_VIEW"])),
+):
+    """List all FAQ categories (admin view - includes inactive)."""
+    query = select(CMSFaqCategory).order_by(CMSFaqCategory.sort_order.asc())
+
+    if is_active is not None:
+        query = query.where(CMSFaqCategory.is_active == is_active)
+
+    # Count total
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Fetch items with item counts
+    query = query.offset(skip).limit(limit)
+    result = await db.execute(query)
+    categories = result.scalars().all()
+
+    # Get item counts for each category
+    response_items = []
+    for cat in categories:
+        item_count_result = await db.execute(
+            select(func.count()).where(CMSFaqItem.category_id == cat.id)
+        )
+        items_count = item_count_result.scalar() or 0
+        cat_data = CMSFaqCategoryResponse.model_validate(cat)
+        cat_data.items_count = items_count
+        response_items.append(cat_data)
+
+    return CMSFaqCategoryListResponse(items=response_items, total=total)
+
+
+@router.post("/faq-categories", response_model=CMSFaqCategoryResponse, status_code=201)
+async def create_faq_category(
+    data: CMSFaqCategoryCreate,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_CREATE"])),
+):
+    """Create a new FAQ category."""
+    # Check for duplicate slug
+    existing = await db.execute(
+        select(CMSFaqCategory).where(CMSFaqCategory.slug == data.slug)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="A category with this slug already exists")
+
+    category = CMSFaqCategory(
+        **data.model_dump(),
+        created_by=current_user.id,
+    )
+    db.add(category)
+    await db.commit()
+    await db.refresh(category)
+
+    # Invalidate FAQ cache
+    cache = get_cache()
+    await cache.delete("storefront:faq")
+
+    response = CMSFaqCategoryResponse.model_validate(category)
+    response.items_count = 0
+    return response
+
+
+@router.get("/faq-categories/{category_id}", response_model=CMSFaqCategoryResponse)
+async def get_faq_category(
+    category_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_VIEW"])),
+):
+    """Get a specific FAQ category by ID."""
+    result = await db.execute(
+        select(CMSFaqCategory).where(CMSFaqCategory.id == category_id)
+    )
+    category = result.scalar_one_or_none()
+    if not category:
+        raise HTTPException(status_code=404, detail="FAQ category not found")
+
+    # Get items count
+    item_count_result = await db.execute(
+        select(func.count()).where(CMSFaqItem.category_id == category.id)
+    )
+    items_count = item_count_result.scalar() or 0
+
+    response = CMSFaqCategoryResponse.model_validate(category)
+    response.items_count = items_count
+    return response
+
+
+@router.put("/faq-categories/{category_id}", response_model=CMSFaqCategoryResponse)
+async def update_faq_category(
+    category_id: UUID,
+    data: CMSFaqCategoryUpdate,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_EDIT"])),
+):
+    """Update a FAQ category."""
+    result = await db.execute(
+        select(CMSFaqCategory).where(CMSFaqCategory.id == category_id)
+    )
+    category = result.scalar_one_or_none()
+    if not category:
+        raise HTTPException(status_code=404, detail="FAQ category not found")
+
+    # Check for duplicate slug if slug is being changed
+    if data.slug and data.slug != category.slug:
+        existing = await db.execute(
+            select(CMSFaqCategory).where(
+                CMSFaqCategory.slug == data.slug,
+                CMSFaqCategory.id != category_id
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="A category with this slug already exists")
+
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(category, field, value)
+
+    await db.commit()
+    await db.refresh(category)
+
+    # Invalidate FAQ cache
+    cache = get_cache()
+    await cache.delete("storefront:faq")
+
+    # Get items count
+    item_count_result = await db.execute(
+        select(func.count()).where(CMSFaqItem.category_id == category.id)
+    )
+    items_count = item_count_result.scalar() or 0
+
+    response = CMSFaqCategoryResponse.model_validate(category)
+    response.items_count = items_count
+    return response
+
+
+@router.delete("/faq-categories/{category_id}", status_code=204)
+async def delete_faq_category(
+    category_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_DELETE"])),
+):
+    """Delete a FAQ category and all its items."""
+    result = await db.execute(
+        select(CMSFaqCategory).where(CMSFaqCategory.id == category_id)
+    )
+    category = result.scalar_one_or_none()
+    if not category:
+        raise HTTPException(status_code=404, detail="FAQ category not found")
+
+    await db.delete(category)
+    await db.commit()
+
+    # Invalidate FAQ cache
+    cache = get_cache()
+    await cache.delete("storefront:faq")
+
+
+@router.put("/faq-categories/reorder", status_code=200)
+async def reorder_faq_categories(
+    data: CMSReorderRequest,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_EDIT"])),
+):
+    """Reorder FAQ categories."""
+    for idx, category_id in enumerate(data.ids):
+        result = await db.execute(
+            select(CMSFaqCategory).where(CMSFaqCategory.id == category_id)
+        )
+        category = result.scalar_one_or_none()
+        if category:
+            category.sort_order = idx
+
+    await db.commit()
+
+    # Invalidate FAQ cache
+    cache = get_cache()
+    await cache.delete("storefront:faq")
+
+    return {"success": True, "message": "FAQ categories reordered"}
+
+
+# ==================== FAQ Item Endpoints ====================
+
+@router.get("/faq-items", response_model=CMSFaqItemListResponse)
+async def list_faq_items(
+    db: DB,
+    current_user: CurrentUser,
+    category_id: Optional[UUID] = None,
+    is_active: Optional[bool] = None,
+    is_featured: Optional[bool] = None,
+    search: Optional[str] = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    _: bool = Depends(require_permissions(["CMS_VIEW"])),
+):
+    """List all FAQ items (admin view - includes inactive)."""
+    query = select(CMSFaqItem).order_by(CMSFaqItem.sort_order.asc(), CMSFaqItem.created_at.desc())
+
+    if category_id:
+        query = query.where(CMSFaqItem.category_id == category_id)
+    if is_active is not None:
+        query = query.where(CMSFaqItem.is_active == is_active)
+    if is_featured is not None:
+        query = query.where(CMSFaqItem.is_featured == is_featured)
+    if search:
+        search_filter = f"%{search}%"
+        query = query.where(
+            CMSFaqItem.question.ilike(search_filter) |
+            CMSFaqItem.answer.ilike(search_filter)
+        )
+
+    # Count total
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Fetch items
+    query = query.offset(skip).limit(limit)
+    result = await db.execute(query)
+    items = result.scalars().all()
+
+    return CMSFaqItemListResponse(
+        items=[CMSFaqItemResponse.model_validate(item) for item in items],
+        total=total
+    )
+
+
+@router.post("/faq-items", response_model=CMSFaqItemResponse, status_code=201)
+async def create_faq_item(
+    data: CMSFaqItemCreate,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_CREATE"])),
+):
+    """Create a new FAQ item."""
+    # Verify category exists
+    cat_result = await db.execute(
+        select(CMSFaqCategory).where(CMSFaqCategory.id == data.category_id)
+    )
+    if not cat_result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="FAQ category not found")
+
+    item = CMSFaqItem(
+        **data.model_dump(),
+        created_by=current_user.id,
+    )
+    db.add(item)
+    await db.commit()
+    await db.refresh(item)
+
+    # Invalidate FAQ cache
+    cache = get_cache()
+    await cache.delete("storefront:faq")
+
+    return CMSFaqItemResponse.model_validate(item)
+
+
+@router.get("/faq-items/{item_id}", response_model=CMSFaqItemResponse)
+async def get_faq_item(
+    item_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_VIEW"])),
+):
+    """Get a specific FAQ item by ID."""
+    result = await db.execute(
+        select(CMSFaqItem).where(CMSFaqItem.id == item_id)
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="FAQ item not found")
+
+    return CMSFaqItemResponse.model_validate(item)
+
+
+@router.put("/faq-items/{item_id}", response_model=CMSFaqItemResponse)
+async def update_faq_item(
+    item_id: UUID,
+    data: CMSFaqItemUpdate,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_EDIT"])),
+):
+    """Update a FAQ item."""
+    result = await db.execute(
+        select(CMSFaqItem).where(CMSFaqItem.id == item_id)
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="FAQ item not found")
+
+    # Verify new category exists if changing
+    if data.category_id and data.category_id != item.category_id:
+        cat_result = await db.execute(
+            select(CMSFaqCategory).where(CMSFaqCategory.id == data.category_id)
+        )
+        if not cat_result.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="FAQ category not found")
+
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(item, field, value)
+
+    await db.commit()
+    await db.refresh(item)
+
+    # Invalidate FAQ cache
+    cache = get_cache()
+    await cache.delete("storefront:faq")
+
+    return CMSFaqItemResponse.model_validate(item)
+
+
+@router.delete("/faq-items/{item_id}", status_code=204)
+async def delete_faq_item(
+    item_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_DELETE"])),
+):
+    """Delete a FAQ item."""
+    result = await db.execute(
+        select(CMSFaqItem).where(CMSFaqItem.id == item_id)
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="FAQ item not found")
+
+    await db.delete(item)
+    await db.commit()
+
+    # Invalidate FAQ cache
+    cache = get_cache()
+    await cache.delete("storefront:faq")
+
+
+@router.put("/faq-items/reorder", status_code=200)
+async def reorder_faq_items(
+    data: CMSReorderRequest,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_EDIT"])),
+):
+    """Reorder FAQ items."""
+    for idx, item_id in enumerate(data.ids):
+        result = await db.execute(
+            select(CMSFaqItem).where(CMSFaqItem.id == item_id)
+        )
+        item = result.scalar_one_or_none()
+        if item:
+            item.sort_order = idx
+
+    await db.commit()
+
+    # Invalidate FAQ cache
+    cache = get_cache()
+    await cache.delete("storefront:faq")
+
+    return {"success": True, "message": "FAQ items reordered"}

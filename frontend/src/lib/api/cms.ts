@@ -348,6 +348,59 @@ export interface CMSMegaMenuItemCreate {
   highlight_text?: string;
 }
 
+// FAQ Categories
+export interface CMSFaqCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  icon: string;
+  icon_color?: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by?: string;
+  items_count: number;
+}
+
+export interface CMSFaqCategoryCreate {
+  name: string;
+  slug: string;
+  description?: string;
+  icon?: string;
+  icon_color?: string;
+  sort_order?: number;
+  is_active?: boolean;
+}
+
+// FAQ Items
+export interface CMSFaqItem {
+  id: string;
+  category_id: string;
+  question: string;
+  answer: string;
+  keywords: string[];
+  sort_order: number;
+  is_featured: boolean;
+  is_active: boolean;
+  view_count: number;
+  helpful_count: number;
+  created_at: string;
+  updated_at: string;
+  created_by?: string;
+}
+
+export interface CMSFaqItemCreate {
+  category_id: string;
+  question: string;
+  answer: string;
+  keywords?: string[];
+  sort_order?: number;
+  is_featured?: boolean;
+  is_active?: boolean;
+}
+
 export interface ListResponse<T> {
   items: T[];
   total: number;
@@ -561,6 +614,48 @@ export const cmsApi = {
 
     reorder: (ids: string[]) =>
       apiClient.put<CMSMegaMenuItem[]>('/cms/mega-menu-items/reorder', { ids }),
+  },
+
+  // FAQ Categories
+  faqCategories: {
+    list: (params?: { is_active?: boolean; skip?: number; limit?: number }) =>
+      apiClient.get<ListResponse<CMSFaqCategory>>('/cms/faq-categories', { params }),
+
+    get: (id: string) =>
+      apiClient.get<CMSFaqCategory>(`/cms/faq-categories/${id}`),
+
+    create: (data: CMSFaqCategoryCreate) =>
+      apiClient.post<CMSFaqCategory>('/cms/faq-categories', data),
+
+    update: (id: string, data: Partial<CMSFaqCategoryCreate>) =>
+      apiClient.put<CMSFaqCategory>(`/cms/faq-categories/${id}`, data),
+
+    delete: (id: string) =>
+      apiClient.delete(`/cms/faq-categories/${id}`),
+
+    reorder: (ids: string[]) =>
+      apiClient.put('/cms/faq-categories/reorder', { ids }),
+  },
+
+  // FAQ Items
+  faqItems: {
+    list: (params?: { category_id?: string; is_active?: boolean; is_featured?: boolean; search?: string; skip?: number; limit?: number }) =>
+      apiClient.get<ListResponse<CMSFaqItem>>('/cms/faq-items', { params }),
+
+    get: (id: string) =>
+      apiClient.get<CMSFaqItem>(`/cms/faq-items/${id}`),
+
+    create: (data: CMSFaqItemCreate) =>
+      apiClient.post<CMSFaqItem>('/cms/faq-items', data),
+
+    update: (id: string, data: Partial<CMSFaqItemCreate>) =>
+      apiClient.put<CMSFaqItem>(`/cms/faq-items/${id}`, data),
+
+    delete: (id: string) =>
+      apiClient.delete(`/cms/faq-items/${id}`),
+
+    reorder: (ids: string[]) =>
+      apiClient.put('/cms/faq-items/reorder', { ids }),
   },
 };
 

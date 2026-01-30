@@ -847,7 +847,8 @@ async def check_serviceability(
 
 from app.models.cms import (
     CMSBanner, CMSUsp, CMSTestimonial, CMSAnnouncement, CMSPage,
-    CMSSiteSetting, CMSMenuItem, CMSFeatureBar, CMSMegaMenuItem
+    CMSSiteSetting, CMSMenuItem, CMSFeatureBar, CMSMegaMenuItem,
+    CMSFaqCategory, CMSFaqItem,
 )
 from app.schemas.cms import (
     StorefrontBannerResponse,
@@ -860,6 +861,9 @@ from app.schemas.cms import (
     StorefrontFeatureBarResponse,
     StorefrontMegaMenuItemResponse,
     StorefrontSubcategoryResponse,
+    StorefrontFaqResponse,
+    StorefrontFaqCategoryResponse,
+    StorefrontFaqItemResponse,
 )
 
 
@@ -2504,5 +2508,96 @@ async def track_shipment_by_awb(
         cod_amount=shipment.cod_amount if shipment.payment_mode == "COD" else None,
     )
 
+    response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+    return result_data
+
+
+# ==================== FAQ Endpoint ====================
+
+@router.get("/faq", response_model=StorefrontFaqResponse)
+async def get_faq(
+    db: DB,
+    response: Response,
+    category_slug: Optional[str] = None,
+):
+    """
+    Get FAQ categories and items for the storefront.
+    Returns all active FAQ categories with their active items.
+
+    Optionally filter by category_slug to get items from a specific category.
+    No authentication required. Cached for 10 minutes.
+    """
+    start_time = time.time()
+    cache = get_cache()
+
+    # Build cache key
+    cache_key = f"storefront:faq:{category_slug or 'all'}"
+    cached_result = await cache.get(cache_key)
+    if cached_result:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
+        return StorefrontFaqResponse(**cached_result)
+
+    # Build query for categories
+    category_query = (
+        select(CMSFaqCategory)
+        .where(CMSFaqCategory.is_active == True)
+        .order_by(CMSFaqCategory.sort_order.asc())
+    )
+
+    if category_slug:
+        category_query = category_query.where(CMSFaqCategory.slug == category_slug)
+
+    result = await db.execute(category_query)
+    categories = result.scalars().all()
+
+    # Build response with items for each category
+    response_categories = []
+    total_items = 0
+
+    for cat in categories:
+        # Get active items for this category
+        items_query = (
+            select(CMSFaqItem)
+            .where(
+                CMSFaqItem.category_id == cat.id,
+                CMSFaqItem.is_active == True,
+            )
+            .order_by(CMSFaqItem.sort_order.asc())
+        )
+        items_result = await db.execute(items_query)
+        items = items_result.scalars().all()
+
+        # Convert keywords from JSONB to list if needed
+        item_responses = []
+        for item in items:
+            keywords = item.keywords if isinstance(item.keywords, list) else []
+            item_responses.append(StorefrontFaqItemResponse(
+                id=str(item.id),
+                question=item.question,
+                answer=item.answer,
+                keywords=keywords,
+            ))
+
+        total_items += len(item_responses)
+
+        response_categories.append(StorefrontFaqCategoryResponse(
+            id=str(cat.id),
+            name=cat.name,
+            slug=cat.slug,
+            icon=cat.icon,
+            icon_color=cat.icon_color,
+            items=item_responses,
+        ))
+
+    result_data = StorefrontFaqResponse(
+        categories=response_categories,
+        total_items=total_items,
+    )
+
+    # Cache for 10 minutes
+    await cache.set(cache_key, result_data.model_dump(), ttl=600)
+
+    response.headers["X-Cache"] = "MISS"
     response.headers["X-Response-Time"] = f"{(time.time() - start_time) * 1000:.2f}ms"
     return result_data

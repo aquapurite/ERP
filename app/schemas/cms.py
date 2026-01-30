@@ -698,3 +698,160 @@ class StorefrontFeatureBarResponse(BaseModel):
     icon: str
     title: str
     subtitle: Optional[str] = None
+
+
+# ==================== FAQ Category Schemas ====================
+
+class CMSFaqCategoryBase(BaseModel):
+    """Base schema for FAQ Category."""
+    name: str = Field(..., min_length=1, max_length=100)
+    slug: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9-]+$")
+    description: Optional[str] = Field(None, max_length=500)
+    icon: str = Field("HelpCircle", min_length=1, max_length=50, description="Lucide icon name")
+    icon_color: Optional[str] = Field(None, max_length=50)
+    sort_order: int = Field(0, ge=0)
+    is_active: bool = True
+
+
+class CMSFaqCategoryCreate(CMSFaqCategoryBase):
+    """Schema for creating a FAQ category."""
+    pass
+
+
+class CMSFaqCategoryUpdate(BaseModel):
+    """Schema for updating a FAQ category."""
+    name: Optional[str] = Field(None, max_length=100)
+    slug: Optional[str] = Field(None, max_length=100, pattern=r"^[a-z0-9-]+$")
+    description: Optional[str] = Field(None, max_length=500)
+    icon: Optional[str] = Field(None, max_length=50)
+    icon_color: Optional[str] = Field(None, max_length=50)
+    sort_order: Optional[int] = Field(None, ge=0)
+    is_active: Optional[bool] = None
+
+
+class CMSFaqCategoryResponse(BaseResponseSchema):
+    """Response schema for FAQ category."""
+    id: UUID
+    name: str
+    slug: str
+    description: Optional[str] = None
+    icon: str
+    icon_color: Optional[str] = None
+    sort_order: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    created_by: Optional[UUID] = None
+    items_count: int = 0  # Computed field for number of items
+
+
+class CMSFaqCategoryBrief(BaseModel):
+    """Brief FAQ category info for lists."""
+    id: UUID
+    name: str
+    slug: str
+    icon: str
+    is_active: bool
+    sort_order: int
+    items_count: int = 0
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CMSFaqCategoryListResponse(BaseModel):
+    """Paginated list of FAQ categories."""
+    items: List[CMSFaqCategoryResponse]
+    total: int
+
+
+# ==================== FAQ Item Schemas ====================
+
+class CMSFaqItemBase(BaseModel):
+    """Base schema for FAQ Item."""
+    category_id: UUID
+    question: str = Field(..., min_length=1, max_length=500)
+    answer: str = Field(..., min_length=1)
+    keywords: List[str] = Field(default_factory=list, description="Search keywords")
+    sort_order: int = Field(0, ge=0)
+    is_featured: bool = False
+    is_active: bool = True
+
+
+class CMSFaqItemCreate(CMSFaqItemBase):
+    """Schema for creating a FAQ item."""
+    pass
+
+
+class CMSFaqItemUpdate(BaseModel):
+    """Schema for updating a FAQ item."""
+    category_id: Optional[UUID] = None
+    question: Optional[str] = Field(None, max_length=500)
+    answer: Optional[str] = None
+    keywords: Optional[List[str]] = None
+    sort_order: Optional[int] = Field(None, ge=0)
+    is_featured: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+
+class CMSFaqItemResponse(BaseResponseSchema):
+    """Response schema for FAQ item."""
+    id: UUID
+    category_id: UUID
+    question: str
+    answer: str
+    keywords: List[str] = []
+    sort_order: int
+    is_featured: bool
+    is_active: bool
+    view_count: int = 0
+    helpful_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+    created_by: Optional[UUID] = None
+
+
+class CMSFaqItemBrief(BaseModel):
+    """Brief FAQ item info for lists."""
+    id: UUID
+    question: str
+    is_featured: bool
+    is_active: bool
+    sort_order: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CMSFaqItemListResponse(BaseModel):
+    """Paginated list of FAQ items."""
+    items: List[CMSFaqItemResponse]
+    total: int
+
+
+# ==================== Storefront FAQ Schemas ====================
+
+class StorefrontFaqItemResponse(BaseModel):
+    """Public FAQ item for storefront."""
+    id: str
+    question: str
+    answer: str
+    keywords: List[str] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class StorefrontFaqCategoryResponse(BaseModel):
+    """Public FAQ category with items for storefront."""
+    id: str
+    name: str
+    slug: str
+    icon: str
+    icon_color: Optional[str] = None
+    items: List[StorefrontFaqItemResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class StorefrontFaqResponse(BaseModel):
+    """Complete FAQ response for storefront."""
+    categories: List[StorefrontFaqCategoryResponse] = []
+    total_items: int = 0

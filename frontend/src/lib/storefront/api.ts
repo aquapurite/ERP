@@ -1538,6 +1538,28 @@ export interface StorefrontMegaMenuItem {
   subcategories: StorefrontMegaMenuSubcategory[];
 }
 
+// FAQ Types (CMS-managed FAQ content)
+export interface StorefrontFaqItem {
+  id: string;
+  question: string;
+  answer: string;
+  keywords: string[];
+}
+
+export interface StorefrontFaqCategory {
+  id: string;
+  name: string;
+  slug: string;
+  icon: string;
+  icon_color?: string;
+  items: StorefrontFaqItem[];
+}
+
+export interface StorefrontFaqResponse {
+  categories: StorefrontFaqCategory[];
+  total_items: number;
+}
+
 export const contentApi = {
   getBanners: async (): Promise<StorefrontBanner[]> => {
     try {
@@ -1628,6 +1650,16 @@ export const contentApi = {
       return data || [];
     } catch {
       return [];
+    }
+  },
+
+  getFaq: async (categorySlug?: string): Promise<StorefrontFaqResponse> => {
+    try {
+      const params = categorySlug ? `?category_slug=${categorySlug}` : '';
+      const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/faq${params}`);
+      return data || { categories: [], total_items: 0 };
+    } catch {
+      return { categories: [], total_items: 0 };
     }
   },
 };

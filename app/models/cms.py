@@ -9,6 +9,8 @@ Content types:
 - CMSPage: Static pages with rich text content
 - CMSPageVersion: Version history for pages
 - CMSSeo: SEO settings per page
+- CMSFaqCategory: FAQ categories for organization
+- CMSFaqItem: FAQ questions and answers
 """
 
 import uuid
@@ -1463,3 +1465,190 @@ class VideoGuide(Base):
 
     def __repr__(self) -> str:
         return f"<VideoGuide(title='{self.title}', category={self.category})>"
+
+
+# ==================== FAQ Category Model ====================
+
+class CMSFaqCategory(Base):
+    """
+    FAQ categories for organizing FAQ items by topic.
+    E.g., "Orders & Shopping", "Shipping & Delivery", "Payment & EMI"
+    """
+    __tablename__ = "cms_faq_categories"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Content
+    name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        comment="Category display name"
+    )
+    slug: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        unique=True,
+        comment="URL-friendly identifier"
+    )
+    description: Mapped[Optional[str]] = mapped_column(
+        String(500),
+        nullable=True,
+        comment="Category description"
+    )
+    icon: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="HelpCircle",
+        comment="Lucide icon name"
+    )
+    icon_color: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Optional icon color"
+    )
+
+    # Display
+    sort_order: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False
+    )
+
+    # Audit
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Relationships
+    items: Mapped[List["CMSFaqItem"]] = relationship(
+        "CMSFaqItem",
+        back_populates="category",
+        cascade="all, delete-orphan",
+        order_by="CMSFaqItem.sort_order"
+    )
+    creator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[created_by])
+
+    def __repr__(self) -> str:
+        return f"<CMSFaqCategory(name='{self.name}', slug='{self.slug}')>"
+
+
+# ==================== FAQ Item Model ====================
+
+class CMSFaqItem(Base):
+    """
+    Individual FAQ question and answer.
+    Belongs to a FAQ category for organization.
+    """
+    __tablename__ = "cms_faq_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Category relationship
+    category_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cms_faq_categories.id", ondelete="CASCADE"),
+        nullable=False
+    )
+
+    # Content
+    question: Mapped[str] = mapped_column(
+        String(500),
+        nullable=False,
+        comment="FAQ question"
+    )
+    answer: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="FAQ answer (supports rich text)"
+    )
+    keywords: Mapped[Optional[dict]] = mapped_column(
+        JSONB,
+        default=list,
+        nullable=True,
+        comment="Search keywords as JSON array"
+    )
+
+    # Display
+    sort_order: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False
+    )
+    is_featured: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        comment="Show in featured/popular section"
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False
+    )
+
+    # Stats
+    view_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False
+    )
+    helpful_count: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+        comment="Users who found this helpful"
+    )
+
+    # Audit
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Relationships
+    category: Mapped["CMSFaqCategory"] = relationship(
+        "CMSFaqCategory",
+        back_populates="items"
+    )
+    creator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[created_by])
+
+    def __repr__(self) -> str:
+        return f"<CMSFaqItem(question='{self.question[:50]}...')>"
