@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -33,7 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { companyApi } from '@/lib/storefront/api';
+import { companyApi, contentApi } from '@/lib/storefront/api';
 
 interface ContactForm {
   name: string;
@@ -42,6 +42,38 @@ interface ContactForm {
   subject: string;
   message: string;
 }
+
+interface ContactSettings {
+  contact_phone?: string;
+  contact_phone_toll_free?: string;
+  contact_whatsapp?: string;
+  contact_email?: string;
+  contact_email_sales?: string;
+  contact_address?: string;
+  contact_city?: string;
+  contact_state?: string;
+  contact_pincode?: string;
+  contact_country?: string;
+  contact_google_maps_url?: string;
+  support_hours_weekday?: string;
+  support_hours_weekend?: string;
+  support_response_time?: string;
+}
+
+// Fallback values
+const DEFAULT_SETTINGS: ContactSettings = {
+  contact_phone: '+91 93119 39076',
+  contact_whatsapp: '919311939076',
+  contact_email: 'support@aquapurite.com',
+  contact_address: 'AQUAPURITE Water Solutions',
+  contact_city: 'Delhi',
+  contact_state: 'Delhi',
+  contact_pincode: '110001',
+  contact_country: 'India',
+  support_hours_weekday: '9:00 AM - 8:00 PM IST',
+  support_hours_weekend: 'Emergency Only',
+  support_response_time: '5 min',
+};
 
 // Quick contact options for common queries
 const quickContactOptions = [
@@ -81,11 +113,42 @@ export default function ContactPage() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [settings, setSettings] = useState<ContactSettings>(DEFAULT_SETTINGS);
+
+  // Fetch contact settings
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const data = await contentApi.getSettings('contact');
+        if (data && Object.keys(data).length > 0) {
+          setSettings((prev) => ({ ...prev, ...data }));
+        }
+      } catch {
+        console.error('Failed to fetch contact settings');
+      }
+    };
+    fetchSettings();
+  }, []);
 
   const { data: company } = useQuery({
     queryKey: ['company-info'],
     queryFn: companyApi.getInfo,
   });
+
+  // Merge company data with settings (settings take priority)
+  const contactInfo = {
+    phone: settings.contact_phone || company?.phone || DEFAULT_SETTINGS.contact_phone,
+    whatsapp: settings.contact_whatsapp || DEFAULT_SETTINGS.contact_whatsapp,
+    email: settings.contact_email || company?.email || DEFAULT_SETTINGS.contact_email,
+    address: settings.contact_address || company?.address || DEFAULT_SETTINGS.contact_address,
+    city: settings.contact_city || company?.city || DEFAULT_SETTINGS.contact_city,
+    state: settings.contact_state || company?.state || DEFAULT_SETTINGS.contact_state,
+    pincode: settings.contact_pincode || company?.pincode || DEFAULT_SETTINGS.contact_pincode,
+    mapsUrl: settings.contact_google_maps_url || `https://maps.google.com/?q=${settings.contact_city || 'Delhi'},India`,
+    weekdayHours: settings.support_hours_weekday || DEFAULT_SETTINGS.support_hours_weekday,
+    weekendHours: settings.support_hours_weekend || DEFAULT_SETTINGS.support_hours_weekend,
+    responseTime: settings.support_response_time || DEFAULT_SETTINGS.support_response_time,
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -166,17 +229,17 @@ export default function ContactPage() {
                   Need Quick Help? Chat on WhatsApp
                 </h3>
                 <p className="text-sm text-green-700">
-                  Get instant support from our team. Available Mon-Sat, 9 AM - 8 PM IST.
+                  Get instant support from our team. Available Mon-Sat, {contactInfo.weekdayHours}.
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="outline" className="bg-white text-green-700 border-green-300">
                   <Zap className="h-3 w-3 mr-1" />
-                  Avg. response: 5 min
+                  Avg. response: {contactInfo.responseTime}
                 </Badge>
                 <Button className="bg-green-600 hover:bg-green-700" asChild>
                   <a
-                    href="https://wa.me/919311939076?text=Hi, I need help with AQUAPURITE water purifiers"
+                    href={`https://wa.me/${contactInfo.whatsapp}?text=Hi, I need help with AQUAPURITE water purifiers`}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
@@ -231,13 +294,13 @@ export default function ContactPage() {
                     Sales & Support Helpline
                   </p>
                   <a
-                    href={`tel:${company?.phone || '+919311939076'}`}
+                    href={`tel:${contactInfo.phone?.replace(/\s/g, '')}`}
                     className="text-primary hover:underline font-medium text-lg"
                   >
-                    {company?.phone || '+91 93119 39076'}
+                    {contactInfo.phone}
                   </a>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Mon-Sat, 9:00 AM - 8:00 PM IST
+                    Mon-Sat, {contactInfo.weekdayHours}
                   </p>
                 </div>
               </div>
@@ -257,12 +320,12 @@ export default function ContactPage() {
                     Quick chat support
                   </p>
                   <a
-                    href="https://wa.me/919311939076"
+                    href={`https://wa.me/${contactInfo.whatsapp}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-green-600 hover:underline font-medium text-lg"
                   >
-                    +91 93119 39076
+                    +{contactInfo.whatsapp?.slice(0, 2)} {contactInfo.whatsapp?.slice(2, 7)} {contactInfo.whatsapp?.slice(7)}
                   </a>
                   <Badge variant="outline" className="ml-2 text-xs bg-white border-green-300 text-green-700">
                     Fastest
@@ -285,10 +348,10 @@ export default function ContactPage() {
                     For detailed queries & documents
                   </p>
                   <a
-                    href={`mailto:${company?.email || 'support@aquapurite.com'}`}
+                    href={`mailto:${contactInfo.email}`}
                     className="text-primary hover:underline font-medium"
                   >
-                    {company?.email || 'support@aquapurite.com'}
+                    {contactInfo.email}
                   </a>
                   <p className="text-xs text-muted-foreground mt-1">
                     Response within 24 hours
@@ -308,15 +371,15 @@ export default function ContactPage() {
                 <div>
                   <h3 className="font-semibold mb-1">Corporate Office</h3>
                   <p className="text-muted-foreground text-sm">
-                    {company?.address || 'AQUAPURITE Water Solutions'}
+                    {contactInfo.address}
                     <br />
-                    {company?.city || 'Delhi'}, {company?.state || 'Delhi'}
+                    {contactInfo.city}, {contactInfo.state}
                     <br />
-                    {company?.pincode || '110001'}, India
+                    {contactInfo.pincode}, India
                   </p>
                   <Button variant="link" size="sm" className="px-0 h-auto mt-2 text-primary" asChild>
                     <a
-                      href="https://maps.google.com/?q=Delhi,India"
+                      href={contactInfo.mapsUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
@@ -340,11 +403,11 @@ export default function ContactPage() {
                   <div className="text-sm space-y-1">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Monday - Saturday</span>
-                      <span className="font-medium">9:00 AM - 8:00 PM</span>
+                      <span className="font-medium">{contactInfo.weekdayHours}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Sunday</span>
-                      <span className="font-medium text-orange-600">Emergency Only</span>
+                      <span className="font-medium text-orange-600">{contactInfo.weekendHours}</span>
                     </div>
                   </div>
                   <div className="mt-3 pt-3 border-t">
@@ -387,7 +450,7 @@ export default function ContactPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="email">
-                    Email <span className="text-destructive">*</span>
+                    Email Address <span className="text-destructive">*</span>
                   </Label>
                   <Input
                     id="email"
@@ -412,27 +475,19 @@ export default function ContactPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="subject">Subject *</Label>
-                  <Select
-                    value={form.subject}
-                    onValueChange={(value) => handleChange('subject', value)}
-                  >
+                  <Label htmlFor="subject">Subject</Label>
+                  <Select value={form.subject} onValueChange={(v) => handleChange('subject', v)}>
                     <SelectTrigger id="subject">
-                      <SelectValue placeholder="What can we help you with?" />
+                      <SelectValue placeholder="Select a topic" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="support">Customer Support</SelectItem>
-                      <SelectItem value="product">Product Information</SelectItem>
-                      <SelectItem value="order">Order Status / Delivery</SelectItem>
-                      <SelectItem value="installation">Installation Query</SelectItem>
-                      <SelectItem value="service">Service Request</SelectItem>
-                      <SelectItem value="warranty">Warranty Claim</SelectItem>
-                      <SelectItem value="amc">AMC / Service Plans</SelectItem>
-                      <SelectItem value="partnership">Become a Partner</SelectItem>
-                      <SelectItem value="bulk">Bulk / Corporate Order</SelectItem>
-                      <SelectItem value="complaint">Complaint</SelectItem>
-                      <SelectItem value="feedback">Feedback / Suggestion</SelectItem>
                       <SelectItem value="general">General Inquiry</SelectItem>
+                      <SelectItem value="support">Customer Support</SelectItem>
+                      <SelectItem value="warranty">Warranty & AMC</SelectItem>
+                      <SelectItem value="partnership">Partnership Inquiry</SelectItem>
+                      <SelectItem value="bulk">Bulk Orders</SelectItem>
+                      <SelectItem value="feedback">Feedback</SelectItem>
+                      <SelectItem value="complaint">Complaint</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -444,111 +499,80 @@ export default function ContactPage() {
                 </Label>
                 <Textarea
                   id="message"
-                  placeholder="Please describe your query in detail. Include order number, product model, or any relevant information that can help us assist you better..."
-                  rows={5}
+                  placeholder="How can we help you today? Please provide details about your query, order number (if applicable), or any relevant information."
                   value={form.message}
                   onChange={(e) => handleChange('message', e.target.value)}
+                  rows={5}
                   required
                 />
-                <p className="text-xs text-muted-foreground">
-                  For faster resolution, please include your order number or registered phone number.
-                </p>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting}>
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Sending...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="mr-2 h-4 w-4" />
-                      Send Message
-                    </>
-                  )}
-                </Button>
-                <p className="text-xs text-muted-foreground">
-                  We typically respond within 24 hours
-                </p>
-              </div>
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Send className="mr-2 h-4 w-4" />
+                    Send Message
+                  </>
+                )}
+              </Button>
             </form>
           </CardContent>
         </Card>
       </div>
 
       {/* Additional Resources */}
-      <div className="max-w-6xl mx-auto mt-12 grid md:grid-cols-3 gap-6">
-        {/* FAQ Link */}
-        <Card className="text-center">
-          <CardContent className="pt-6">
-            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
-              <MessageSquare className="h-6 w-6 text-primary" />
-            </div>
-            <h3 className="font-semibold mb-2">Frequently Asked Questions</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Find instant answers to common questions about products, orders, and services.
-            </p>
-            <Button variant="outline" asChild>
-              <Link href="/faq">Browse FAQs</Link>
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="max-w-6xl mx-auto mt-12">
+        <h2 className="text-xl font-semibold mb-6 text-center">Additional Resources</h2>
+        <div className="grid sm:grid-cols-3 gap-4">
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="pt-6 text-center">
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                <MessageSquare className="h-6 w-6 text-primary" />
+              </div>
+              <h3 className="font-semibold mb-2">FAQs</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Find answers to commonly asked questions about our products and services.
+              </p>
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/faq">Browse FAQs</Link>
+              </Button>
+            </CardContent>
+          </Card>
 
-        {/* Video Guides */}
-        <Card className="text-center">
-          <CardContent className="pt-6">
-            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
-              <Headphones className="h-6 w-6 text-primary" />
-            </div>
-            <h3 className="font-semibold mb-2">Installation & Maintenance</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Watch step-by-step video guides for installation and troubleshooting.
-            </p>
-            <Button variant="outline" asChild>
-              <Link href="/guides">View Guides</Link>
-            </Button>
-          </CardContent>
-        </Card>
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="pt-6 text-center">
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                <Shield className="h-6 w-6 text-primary" />
+              </div>
+              <h3 className="font-semibold mb-2">Service Booking</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Schedule a service visit, maintenance, or repair at your convenience.
+              </p>
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/account/services">Book Service</Link>
+              </Button>
+            </CardContent>
+          </Card>
 
-        {/* Service Request */}
-        <Card className="text-center">
-          <CardContent className="pt-6">
-            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
-              <Shield className="h-6 w-6 text-primary" />
-            </div>
-            <h3 className="font-semibold mb-2">Book a Service</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Schedule installation, repair, or maintenance service at your convenience.
-            </p>
-            <Button variant="outline" asChild>
-              <Link href="/account/services">Book Service</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Trust Badges */}
-      <div className="max-w-4xl mx-auto mt-12 text-center">
-        <p className="text-sm text-muted-foreground mb-4">Trusted by 50,000+ happy families across India</p>
-        <div className="flex flex-wrap justify-center gap-8">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <CheckCircle className="h-4 w-4 text-green-500" />
-            <span>ISO 9001 Certified</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <CheckCircle className="h-4 w-4 text-green-500" />
-            <span>100% Genuine Products</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <CheckCircle className="h-4 w-4 text-green-500" />
-            <span>Pan-India Service Network</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <CheckCircle className="h-4 w-4 text-green-500" />
-            <span>Expert Technicians</span>
-          </div>
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="pt-6 text-center">
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                <Headphones className="h-6 w-6 text-primary" />
+              </div>
+              <h3 className="font-semibold mb-2">Video Guides</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Watch tutorials on installation, maintenance, and troubleshooting.
+              </p>
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/guides">Watch Videos</Link>
+              </Button>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

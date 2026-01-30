@@ -407,6 +407,7 @@ export const navigation: NavItem[] = [
       { title: 'FAQ Management', href: '/dashboard/cms/faq', icon: HelpCircle, permissions: ['CMS_VIEW'] },
       { title: 'Video Guides', href: '/dashboard/cms/video-guides', icon: Video, permissions: ['CMS_VIEW'] },
       { title: 'Partner Page', href: '/dashboard/cms/partner-content', icon: Users, permissions: ['CMS_VIEW'] },
+      { title: 'Contact Settings', href: '/dashboard/cms/contact-settings', icon: Phone, permissions: ['CMS_VIEW'] },
       { title: 'SEO Settings', href: '/dashboard/cms/seo', icon: Search, permissions: ['CMS_VIEW'] },
 
       // -------- SETTINGS --------
