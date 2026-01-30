@@ -855,3 +855,109 @@ class StorefrontFaqResponse(BaseModel):
     """Complete FAQ response for storefront."""
     categories: List[StorefrontFaqCategoryResponse] = []
     total_items: int = 0
+
+
+# ==================== Video Guide Schemas ====================
+
+class VideoGuideCategoryEnum(str, Enum):
+    INSTALLATION = "INSTALLATION"
+    MAINTENANCE = "MAINTENANCE"
+    TROUBLESHOOTING = "TROUBLESHOOTING"
+    PRODUCT_TOUR = "PRODUCT_TOUR"
+    HOW_TO = "HOW_TO"
+    TIPS = "TIPS"
+
+
+class VideoGuideVideoTypeEnum(str, Enum):
+    YOUTUBE = "YOUTUBE"
+    VIMEO = "VIMEO"
+    DIRECT = "DIRECT"
+
+
+class CMSVideoGuideBase(BaseModel):
+    """Base schema for Video Guide."""
+    title: str = Field(..., min_length=1, max_length=255)
+    slug: str = Field(..., min_length=1, max_length=255, pattern=r"^[a-z0-9-]+$")
+    description: Optional[str] = Field(None)
+    thumbnail_url: str = Field(..., max_length=500)
+    video_url: str = Field(..., max_length=500)
+    video_type: str = Field("YOUTUBE", pattern=r"^(YOUTUBE|VIMEO|DIRECT)$")
+    video_id: Optional[str] = Field(None, max_length=50, description="YouTube/Vimeo video ID")
+    duration_seconds: Optional[int] = Field(None, ge=0)
+    category: str = Field("HOW_TO", description="INSTALLATION, MAINTENANCE, TROUBLESHOOTING, PRODUCT_TOUR, HOW_TO, TIPS")
+    tags: Optional[List[str]] = Field(default_factory=list)
+    product_id: Optional[UUID] = None
+    product_category_id: Optional[UUID] = None
+    sort_order: int = Field(0, ge=0)
+    is_featured: bool = False
+    is_active: bool = True
+
+
+class CMSVideoGuideCreate(CMSVideoGuideBase):
+    """Schema for creating a video guide."""
+    pass
+
+
+class CMSVideoGuideUpdate(BaseModel):
+    """Schema for updating a video guide."""
+    title: Optional[str] = Field(None, max_length=255)
+    slug: Optional[str] = Field(None, max_length=255, pattern=r"^[a-z0-9-]+$")
+    description: Optional[str] = None
+    thumbnail_url: Optional[str] = Field(None, max_length=500)
+    video_url: Optional[str] = Field(None, max_length=500)
+    video_type: Optional[str] = Field(None, pattern=r"^(YOUTUBE|VIMEO|DIRECT)$")
+    video_id: Optional[str] = Field(None, max_length=50)
+    duration_seconds: Optional[int] = Field(None, ge=0)
+    category: Optional[str] = None
+    tags: Optional[List[str]] = None
+    product_id: Optional[UUID] = None
+    product_category_id: Optional[UUID] = None
+    sort_order: Optional[int] = Field(None, ge=0)
+    is_featured: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+
+class CMSVideoGuideResponse(BaseResponseSchema):
+    """Response schema for video guide."""
+    id: UUID
+    title: str
+    slug: str
+    description: Optional[str] = None
+    thumbnail_url: str
+    video_url: str
+    video_type: str
+    video_id: Optional[str] = None
+    duration_seconds: Optional[int] = None
+    category: str
+    tags: Optional[List[str]] = []
+    product_id: Optional[UUID] = None
+    product_category_id: Optional[UUID] = None
+    sort_order: int
+    is_featured: bool
+    is_active: bool
+    view_count: int = 0
+    like_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+    created_by: Optional[UUID] = None
+
+
+class CMSVideoGuideBrief(BaseModel):
+    """Brief video guide info for lists."""
+    id: UUID
+    title: str
+    slug: str
+    thumbnail_url: str
+    category: str
+    is_featured: bool
+    is_active: bool
+    sort_order: int
+    view_count: int = 0
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CMSVideoGuideListResponse(BaseModel):
+    """Paginated list of video guides."""
+    items: List[CMSVideoGuideResponse]
+    total: int

@@ -401,6 +401,49 @@ export interface CMSFaqItemCreate {
   is_active?: boolean;
 }
 
+// Video Guides
+export interface CMSVideoGuide {
+  id: string;
+  title: string;
+  slug: string;
+  description?: string;
+  thumbnail_url: string;
+  video_url: string;
+  video_type: 'YOUTUBE' | 'VIMEO' | 'DIRECT';
+  video_id?: string;
+  duration_seconds?: number;
+  category: 'INSTALLATION' | 'MAINTENANCE' | 'TROUBLESHOOTING' | 'PRODUCT_TOUR' | 'HOW_TO' | 'TIPS';
+  tags?: string[];
+  product_id?: string;
+  product_category_id?: string;
+  sort_order: number;
+  is_featured: boolean;
+  is_active: boolean;
+  view_count: number;
+  like_count: number;
+  created_at: string;
+  updated_at: string;
+  created_by?: string;
+}
+
+export interface CMSVideoGuideCreate {
+  title: string;
+  slug: string;
+  description?: string;
+  thumbnail_url: string;
+  video_url: string;
+  video_type?: 'YOUTUBE' | 'VIMEO' | 'DIRECT';
+  video_id?: string;
+  duration_seconds?: number;
+  category?: string;
+  tags?: string[];
+  product_id?: string;
+  product_category_id?: string;
+  sort_order?: number;
+  is_featured?: boolean;
+  is_active?: boolean;
+}
+
 export interface ListResponse<T> {
   items: T[];
   total: number;
@@ -656,6 +699,27 @@ export const cmsApi = {
 
     reorder: (ids: string[]) =>
       apiClient.put('/cms/faq-items/reorder', { ids }),
+  },
+
+  // Video Guides
+  videoGuides: {
+    list: (params?: { category?: string; is_active?: boolean; is_featured?: boolean; search?: string; skip?: number; limit?: number }) =>
+      apiClient.get<ListResponse<CMSVideoGuide>>('/cms/video-guides', { params }),
+
+    get: (id: string) =>
+      apiClient.get<CMSVideoGuide>(`/cms/video-guides/${id}`),
+
+    create: (data: CMSVideoGuideCreate) =>
+      apiClient.post<CMSVideoGuide>('/cms/video-guides', data),
+
+    update: (id: string, data: Partial<CMSVideoGuideCreate>) =>
+      apiClient.put<CMSVideoGuide>(`/cms/video-guides/${id}`, data),
+
+    delete: (id: string) =>
+      apiClient.delete(`/cms/video-guides/${id}`),
+
+    reorder: (ids: string[]) =>
+      apiClient.put('/cms/video-guides/reorder', { ids }),
   },
 };
 

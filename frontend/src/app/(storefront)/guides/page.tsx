@@ -1,12 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Play,
   PlayCircle,
   Clock,
-  Filter,
   Search,
   ChevronRight,
   BookOpen,
@@ -17,7 +16,6 @@ import {
   ThumbsUp,
   Eye,
   Star,
-  Droplets,
   Shield,
   Phone,
 } from 'lucide-react';
@@ -25,208 +23,114 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { guidesApi } from '@/lib/storefront/api';
 
 interface VideoGuide {
   id: string;
   title: string;
+  slug: string;
   description: string;
-  category: 'installation' | 'maintenance' | 'troubleshooting' | 'tips';
-  duration: string;
-  thumbnail: string;
-  videoUrl: string;
-  youtubeId?: string;
-  views: number;
-  likes: number;
-  products?: string[];
-  featured?: boolean;
+  category: string;
+  duration_seconds?: number;
+  thumbnail_url: string;
+  video_url: string;
+  video_type: string;
+  video_id?: string;
+  view_count: number;
+  is_featured: boolean;
 }
 
-// Comprehensive video guides data with better organization
-const videoGuides: VideoGuide[] = [
-  // Installation Guides
+// Fallback data in case API fails
+const fallbackGuides: VideoGuide[] = [
   {
     id: '1',
-    title: 'Complete RO Water Purifier Installation Guide',
-    description: 'Professional step-by-step guide to install your AQUAPURITE RO water purifier at home. Covers wall mounting, plumbing connections, electrical setup, and first-time flushing procedure.',
-    category: 'installation',
-    duration: '12:45',
-    thumbnail: 'https://images.unsplash.com/photo-1585351650024-3a6d61c1e3f5?w=800&q=80',
-    videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
-    youtubeId: 'dQw4w9WgXcQ',
-    views: 45230,
-    likes: 1250,
-    products: ['Aquapurite Optima', 'Aquapurite Pro Max'],
-    featured: true,
+    title: 'RO Water Purifier Installation Guide',
+    slug: 'ro-installation-guide',
+    description: 'Step-by-step guide to install your AQUAPURITE RO water purifier.',
+    category: 'INSTALLATION',
+    duration_seconds: 720,
+    thumbnail_url: 'https://images.unsplash.com/photo-1585351650024-3a6d61c1e3f5?w=800&q=80',
+    video_url: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
+    video_type: 'YOUTUBE',
+    video_id: 'dQw4w9WgXcQ',
+    view_count: 45000,
+    is_featured: true,
   },
   {
     id: '2',
-    title: 'Under-Sink RO Installation Tutorial',
-    description: 'How to install an under-sink water purifier. Perfect for modular kitchens where you want a clean, hidden installation without visible equipment.',
-    category: 'installation',
-    duration: '10:20',
-    thumbnail: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800&q=80',
-    videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
-    youtubeId: 'dQw4w9WgXcQ',
-    views: 23400,
-    likes: 680,
+    title: 'How to Change RO Membrane',
+    slug: 'change-ro-membrane',
+    description: 'Learn how to replace the RO membrane in your water purifier.',
+    category: 'MAINTENANCE',
+    duration_seconds: 510,
+    thumbnail_url: 'https://images.unsplash.com/photo-1581244277943-fe4a9c777189?w=800&q=80',
+    video_url: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
+    video_type: 'YOUTUBE',
+    video_id: 'dQw4w9WgXcQ',
+    view_count: 32000,
+    is_featured: true,
   },
-  // Maintenance Guides
   {
     id: '3',
-    title: 'How to Change RO Membrane - DIY Guide',
-    description: 'Learn how to replace the RO membrane in your water purifier. Includes when to change (every 12-18 months), tools needed, and detailed step-by-step replacement process.',
-    category: 'maintenance',
-    duration: '8:30',
-    thumbnail: 'https://images.unsplash.com/photo-1581244277943-fe4a9c777189?w=800&q=80',
-    videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
-    youtubeId: 'dQw4w9WgXcQ',
-    views: 32150,
-    likes: 890,
-    featured: true,
-  },
-  {
-    id: '4',
-    title: 'Sediment & Carbon Filter Replacement',
-    description: 'Quick guide to replacing pre-filters (sediment and carbon) in your RO purifier. Recommended every 3-6 months depending on water quality for optimal performance.',
-    category: 'maintenance',
-    duration: '6:15',
-    thumbnail: 'https://images.unsplash.com/photo-1530587191325-3db32d826c18?w=800&q=80',
-    videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
-    youtubeId: 'dQw4w9WgXcQ',
-    views: 28900,
-    likes: 720,
-  },
-  {
-    id: '5',
-    title: 'UV Lamp Replacement Guide',
-    description: 'How to safely replace the UV lamp in UV/RO+UV water purifiers. Learn the signs that indicate UV lamp needs replacement and the correct replacement procedure.',
-    category: 'maintenance',
-    duration: '5:45',
-    thumbnail: 'https://images.unsplash.com/photo-1585351650024-3a6d61c1e3f5?w=800&q=80',
-    videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
-    youtubeId: 'dQw4w9WgXcQ',
-    views: 18500,
-    likes: 450,
-  },
-  {
-    id: '6',
-    title: 'How to Clean Water Purifier Storage Tank',
-    description: 'Essential monthly maintenance guide to clean the storage tank of your RO purifier. Ensures hygienic water storage and prevents bacterial growth.',
-    category: 'maintenance',
-    duration: '7:30',
-    thumbnail: 'https://images.unsplash.com/photo-1564419320461-6870880221ad?w=800&q=80',
-    videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
-    youtubeId: 'dQw4w9WgXcQ',
-    views: 21800,
-    likes: 560,
-  },
-  // Troubleshooting Guides
-  {
-    id: '7',
-    title: 'Water Purifier Not Working? Common Problems & Fixes',
-    description: 'Complete troubleshooting guide for common RO purifier issues: no water flow, bad taste, leakage, motor not running, low pressure, and unusual sounds. Fix most issues yourself!',
-    category: 'troubleshooting',
-    duration: '15:20',
-    thumbnail: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=800&q=80',
-    videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
-    youtubeId: 'dQw4w9WgXcQ',
-    views: 67400,
-    likes: 2100,
-    featured: true,
-  },
-  {
-    id: '8',
-    title: 'RO Purifier Leaking? How to Fix It',
-    description: 'Identify and fix water leaks in your RO purifier. Covers common leak points including filter housings, membrane housing, fittings, and tank connections.',
-    category: 'troubleshooting',
-    duration: '9:45',
-    thumbnail: 'https://images.unsplash.com/photo-1585351650024-3a6d61c1e3f5?w=800&q=80',
-    videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
-    youtubeId: 'dQw4w9WgXcQ',
-    views: 34200,
-    likes: 980,
-  },
-  {
-    id: '9',
-    title: 'Why Does My Purified Water Taste Bad?',
-    description: 'Troubleshoot bad taste or odor in purified water. Learn about filter life, membrane issues, and storage tank hygiene that affect water taste.',
-    category: 'troubleshooting',
-    duration: '8:00',
-    thumbnail: 'https://images.unsplash.com/photo-1548839140-29a749e1cf4d?w=800&q=80',
-    videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
-    youtubeId: 'dQw4w9WgXcQ',
-    views: 29100,
-    likes: 820,
-  },
-  // Tips & Educational Content
-  {
-    id: '10',
-    title: 'Understanding TDS and Water Quality',
-    description: 'What is TDS (Total Dissolved Solids)? How to measure it? What TDS level is safe for drinking? Complete guide to understanding water quality parameters.',
-    category: 'tips',
-    duration: '10:00',
-    thumbnail: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80',
-    videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
-    youtubeId: 'dQw4w9WgXcQ',
-    views: 52300,
-    likes: 1800,
-  },
-  {
-    id: '11',
-    title: 'Tips to Extend Water Purifier Life',
-    description: 'Expert tips to maximize the lifespan of your water purifier. Includes maintenance schedule, dos and don\'ts, best practices, and when to call for professional service.',
-    category: 'tips',
-    duration: '9:15',
-    thumbnail: 'https://images.unsplash.com/photo-1544027993-37dbfe43562a?w=800&q=80',
-    videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
-    youtubeId: 'dQw4w9WgXcQ',
-    views: 34600,
-    likes: 980,
-  },
-  {
-    id: '12',
-    title: 'RO vs UV vs UF: Which Purifier is Best for You?',
-    description: 'Understand the differences between RO, UV, and UF water purification technologies. Learn which type is best suited for your water source and needs.',
-    category: 'tips',
-    duration: '11:30',
-    thumbnail: 'https://images.unsplash.com/photo-1564419320461-6870880221ad?w=800&q=80',
-    videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
-    youtubeId: 'dQw4w9WgXcQ',
-    views: 41200,
-    likes: 1350,
+    title: 'Troubleshooting Common Problems',
+    slug: 'troubleshooting-guide',
+    description: 'Fix common RO purifier issues: no water flow, bad taste, leakage.',
+    category: 'TROUBLESHOOTING',
+    duration_seconds: 920,
+    thumbnail_url: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=800&q=80',
+    video_url: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
+    video_type: 'YOUTUBE',
+    video_id: 'dQw4w9WgXcQ',
+    view_count: 67000,
+    is_featured: true,
   },
 ];
 
-const categoryInfo = {
-  installation: {
+const categoryInfo: Record<string, { label: string; icon: React.ElementType; color: string }> = {
+  INSTALLATION: {
     label: 'Installation',
     icon: Settings,
     color: 'bg-blue-100 text-blue-800',
   },
-  maintenance: {
+  MAINTENANCE: {
     label: 'Maintenance',
     icon: Wrench,
     color: 'bg-green-100 text-green-800',
   },
-  troubleshooting: {
+  TROUBLESHOOTING: {
     label: 'Troubleshooting',
     icon: HelpCircle,
     color: 'bg-orange-100 text-orange-800',
   },
-  tips: {
+  PRODUCT_TOUR: {
+    label: 'Product Tour',
+    icon: Play,
+    color: 'bg-cyan-100 text-cyan-800',
+  },
+  HOW_TO: {
+    label: 'How To',
+    icon: BookOpen,
+    color: 'bg-indigo-100 text-indigo-800',
+  },
+  TIPS: {
     label: 'Tips & Guides',
     icon: BookOpen,
     color: 'bg-purple-100 text-purple-800',
   },
 };
+
+function formatDuration(seconds?: number): string {
+  if (!seconds) return '--:--';
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
 
 function formatViews(views: number): string {
   if (views >= 1000000) {
@@ -238,6 +142,16 @@ function formatViews(views: number): string {
   return views.toString();
 }
 
+function getEmbedUrl(video: VideoGuide): string {
+  if (video.video_type === 'YOUTUBE' && video.video_id) {
+    return `https://www.youtube.com/embed/${video.video_id}`;
+  }
+  if (video.video_type === 'VIMEO' && video.video_id) {
+    return `https://player.vimeo.com/video/${video.video_id}`;
+  }
+  return video.video_url;
+}
+
 function VideoCard({
   video,
   onPlay,
@@ -245,16 +159,15 @@ function VideoCard({
   video: VideoGuide;
   onPlay: () => void;
 }) {
-  const category = categoryInfo[video.category];
+  const category = categoryInfo[video.category] || categoryInfo.HOW_TO;
   const CategoryIcon = category.icon;
 
   return (
     <Card className="overflow-hidden group cursor-pointer hover:shadow-lg transition-shadow" onClick={onPlay}>
       <div className="relative aspect-video bg-muted overflow-hidden">
-        {/* Thumbnail Image */}
-        {video.thumbnail.startsWith('http') ? (
+        {video.thumbnail_url ? (
           <img
-            src={video.thumbnail}
+            src={video.thumbnail_url}
             alt={video.title}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             loading="lazy"
@@ -262,18 +175,16 @@ function VideoCard({
         ) : (
           <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-primary/5" />
         )}
-        {/* Play overlay */}
         <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center">
             <Play className="h-8 w-8 text-primary ml-1" />
           </div>
         </div>
-        {/* Duration badge */}
         <Badge className="absolute bottom-2 right-2 bg-black/80 text-white border-0">
           <Clock className="h-3 w-3 mr-1" />
-          {video.duration}
+          {formatDuration(video.duration_seconds)}
         </Badge>
-        {video.featured && (
+        {video.is_featured && (
           <Badge className="absolute top-2 left-2 bg-primary border-0">
             <Star className="h-3 w-3 mr-1 fill-current" />
             Featured
@@ -294,11 +205,7 @@ function VideoCard({
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
           <span className="flex items-center gap-1">
             <Eye className="h-3.5 w-3.5" />
-            {formatViews(video.views)} views
-          </span>
-          <span className="flex items-center gap-1">
-            <ThumbsUp className="h-3.5 w-3.5" />
-            {formatViews(video.likes)}
+            {formatViews(video.view_count)} views
           </span>
         </div>
       </CardContent>
@@ -310,9 +217,55 @@ export default function GuidesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const [selectedVideo, setSelectedVideo] = useState<VideoGuide | null>(null);
+  const [guides, setGuides] = useState<VideoGuide[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+
+  // Fetch guides from API
+  useEffect(() => {
+    const fetchGuides = async () => {
+      setIsLoading(true);
+      try {
+        const data = await guidesApi.getGuides();
+        if (data && data.length > 0) {
+          // Map API response to our interface
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const mappedGuides: VideoGuide[] = data.map((item: any) => ({
+            id: item.id,
+            title: item.title,
+            slug: item.slug || '',
+            description: item.description || '',
+            category: (item.category || 'HOW_TO').toUpperCase(),
+            duration_seconds: item.duration_seconds,
+            thumbnail_url: item.thumbnail_url || item.thumbnail || '',
+            video_url: item.video_url || '',
+            video_type: item.video_type || 'YOUTUBE',
+            video_id: item.video_id || item.youtube_id || '',
+            view_count: item.view_count || item.views || 0,
+            is_featured: item.is_featured || false,
+          }));
+          setGuides(mappedGuides);
+
+          // Extract unique categories
+          const cats = [...new Set(mappedGuides.map(g => g.category))].filter(Boolean);
+          setAvailableCategories(cats);
+        } else {
+          setGuides(fallbackGuides);
+          setAvailableCategories(['INSTALLATION', 'MAINTENANCE', 'TROUBLESHOOTING']);
+        }
+      } catch {
+        console.error('Failed to fetch guides, using fallback');
+        setGuides(fallbackGuides);
+        setAvailableCategories(['INSTALLATION', 'MAINTENANCE', 'TROUBLESHOOTING']);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchGuides();
+  }, []);
 
   // Filter videos based on search and category
-  const filteredVideos = videoGuides.filter((video) => {
+  const filteredVideos = guides.filter((video) => {
     const matchesSearch =
       video.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       video.description.toLowerCase().includes(searchQuery.toLowerCase());
@@ -322,7 +275,10 @@ export default function GuidesPage() {
   });
 
   // Get featured videos
-  const featuredVideos = videoGuides.filter((v) => v.featured);
+  const featuredVideos = guides.filter((v) => v.is_featured);
+
+  // Calculate stats
+  const totalViews = guides.reduce((sum, g) => sum + g.view_count, 0);
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
@@ -343,11 +299,11 @@ export default function GuidesPage() {
         <div className="flex flex-wrap justify-center gap-6">
           <div className="flex items-center gap-2 text-sm">
             <PlayCircle className="h-4 w-4 text-primary" />
-            <span><strong>{videoGuides.length}+</strong> Video Guides</span>
+            <span><strong>{guides.length}</strong> Video Guides</span>
           </div>
           <div className="flex items-center gap-2 text-sm">
             <Eye className="h-4 w-4 text-primary" />
-            <span><strong>400K+</strong> Views</span>
+            <span><strong>{formatViews(totalViews)}</strong> Views</span>
           </div>
           <div className="flex items-center gap-2 text-sm">
             <ThumbsUp className="h-4 w-4 text-primary" />
@@ -369,66 +325,80 @@ export default function GuidesPage() {
         </div>
       </div>
 
-      {/* Featured Videos */}
-      {!searchQuery && activeCategory === 'all' && (
-        <section className="mb-12">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <Play className="h-5 w-5 text-primary" />
-            Featured Videos
-          </h2>
-          <div className="grid md:grid-cols-3 gap-6">
-            {featuredVideos.map((video) => (
-              <VideoCard
-                key={video.id}
-                video={video}
-                onPlay={() => setSelectedVideo(video)}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Category Tabs */}
-      <Tabs value={activeCategory} onValueChange={setActiveCategory} className="mb-8">
-        <TabsList className="w-full justify-start flex-wrap h-auto gap-2 bg-transparent">
-          <TabsTrigger
-            value="all"
-            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-          >
-            All Videos
-          </TabsTrigger>
-          {Object.entries(categoryInfo).map(([key, { label, icon: Icon }]) => (
-            <TabsTrigger
-              key={key}
-              value={key}
-              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-            >
-              <Icon className="h-4 w-4 mr-2" />
-              {label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-
-      {/* Video Grid */}
-      {filteredVideos.length > 0 ? (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredVideos.map((video) => (
-            <VideoCard
-              key={video.id}
-              video={video}
-              onPlay={() => setSelectedVideo(video)}
-            />
-          ))}
+      {/* Loading State */}
+      {isLoading ? (
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading video guides...</p>
         </div>
       ) : (
-        <div className="text-center py-12">
-          <PlayCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">No videos found</h3>
-          <p className="text-muted-foreground">
-            Try adjusting your search or browse all categories.
-          </p>
-        </div>
+        <>
+          {/* Featured Videos */}
+          {!searchQuery && activeCategory === 'all' && featuredVideos.length > 0 && (
+            <section className="mb-12">
+              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <Play className="h-5 w-5 text-primary" />
+                Featured Videos
+              </h2>
+              <div className="grid md:grid-cols-3 gap-6">
+                {featuredVideos.slice(0, 3).map((video) => (
+                  <VideoCard
+                    key={video.id}
+                    video={video}
+                    onPlay={() => setSelectedVideo(video)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Category Tabs */}
+          <Tabs value={activeCategory} onValueChange={setActiveCategory} className="mb-8">
+            <TabsList className="w-full justify-start flex-wrap h-auto gap-2 bg-transparent">
+              <TabsTrigger
+                value="all"
+                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              >
+                All Videos
+              </TabsTrigger>
+              {availableCategories.map((cat) => {
+                const info = categoryInfo[cat] || categoryInfo.HOW_TO;
+                const Icon = info.icon;
+                return (
+                  <TabsTrigger
+                    key={cat}
+                    value={cat}
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                  >
+                    <Icon className="h-4 w-4 mr-2" />
+                    {info.label}
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+          </Tabs>
+
+          {/* Video Grid */}
+          {filteredVideos.length > 0 ? (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredVideos.map((video) => (
+                <VideoCard
+                  key={video.id}
+                  video={video}
+                  onPlay={() => setSelectedVideo(video)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <PlayCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No videos found</h3>
+              <p className="text-muted-foreground">
+                Try adjusting your search or browse all categories.
+              </p>
+            </div>
+          )}
+        </>
       )}
 
       {/* Video Player Dialog */}
@@ -438,7 +408,7 @@ export default function GuidesPage() {
             <>
               <div className="aspect-video">
                 <iframe
-                  src={`${selectedVideo.videoUrl}?autoplay=1`}
+                  src={`${getEmbedUrl(selectedVideo)}?autoplay=1`}
                   title={selectedVideo.title}
                   className="w-full h-full"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -448,9 +418,9 @@ export default function GuidesPage() {
               <div className="p-4">
                 <Badge
                   variant="secondary"
-                  className={cn('mb-2', categoryInfo[selectedVideo.category].color)}
+                  className={cn('mb-2', (categoryInfo[selectedVideo.category] || categoryInfo.HOW_TO).color)}
                 >
-                  {categoryInfo[selectedVideo.category].label}
+                  {(categoryInfo[selectedVideo.category] || categoryInfo.HOW_TO).label}
                 </Badge>
                 <h3 className="text-lg font-semibold mb-2">{selectedVideo.title}</h3>
                 <p className="text-sm text-muted-foreground mb-4">
@@ -460,17 +430,17 @@ export default function GuidesPage() {
                   <div className="flex items-center gap-4 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Eye className="h-4 w-4" />
-                      {formatViews(selectedVideo.views)} views
+                      {formatViews(selectedVideo.view_count)} views
                     </span>
                     <span className="flex items-center gap-1">
-                      <ThumbsUp className="h-4 w-4" />
-                      {formatViews(selectedVideo.likes)} likes
+                      <Clock className="h-4 w-4" />
+                      {formatDuration(selectedVideo.duration_seconds)}
                     </span>
                   </div>
-                  {selectedVideo.youtubeId && (
+                  {selectedVideo.video_type === 'YOUTUBE' && selectedVideo.video_id && (
                     <Button variant="outline" size="sm" asChild>
                       <a
-                        href={`https://www.youtube.com/watch?v=${selectedVideo.youtubeId}`}
+                        href={`https://www.youtube.com/watch?v=${selectedVideo.video_id}`}
                         target="_blank"
                         rel="noopener noreferrer"
                       >

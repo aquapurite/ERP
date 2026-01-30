@@ -34,6 +34,7 @@ from app.models.cms import (
     CMSMegaMenuItem,
     CMSFaqCategory,
     CMSFaqItem,
+    VideoGuide,
 )
 from app.models import Category
 from app.schemas.cms import (
@@ -99,6 +100,11 @@ from app.schemas.cms import (
     CMSFaqItemUpdate,
     CMSFaqItemResponse,
     CMSFaqItemListResponse,
+    # Video Guide schemas
+    CMSVideoGuideCreate,
+    CMSVideoGuideUpdate,
+    CMSVideoGuideResponse,
+    CMSVideoGuideListResponse,
     # Common schemas
     CMSReorderRequest,
 )
@@ -2183,3 +2189,186 @@ async def reorder_faq_items(
     await cache.delete("storefront:faq")
 
     return {"success": True, "message": "FAQ items reordered"}
+
+
+# ==================== Video Guide Endpoints ====================
+
+@router.get("/video-guides", response_model=CMSVideoGuideListResponse)
+async def list_video_guides(
+    db: DB,
+    current_user: CurrentUser,
+    category: Optional[str] = None,
+    is_active: Optional[bool] = None,
+    is_featured: Optional[bool] = None,
+    search: Optional[str] = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    _: bool = Depends(require_permissions(["CMS_VIEW"])),
+):
+    """List all video guides (admin view - includes inactive)."""
+    query = select(VideoGuide).order_by(VideoGuide.sort_order.asc(), VideoGuide.created_at.desc())
+
+    if category:
+        query = query.where(VideoGuide.category == category.upper())
+    if is_active is not None:
+        query = query.where(VideoGuide.is_active == is_active)
+    if is_featured is not None:
+        query = query.where(VideoGuide.is_featured == is_featured)
+    if search:
+        search_filter = f"%{search}%"
+        query = query.where(
+            VideoGuide.title.ilike(search_filter) |
+            VideoGuide.description.ilike(search_filter)
+        )
+
+    # Count total
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Fetch items
+    query = query.offset(skip).limit(limit)
+    result = await db.execute(query)
+    guides = result.scalars().all()
+
+    return CMSVideoGuideListResponse(
+        items=[CMSVideoGuideResponse.model_validate(guide) for guide in guides],
+        total=total,
+    )
+
+
+@router.post("/video-guides", response_model=CMSVideoGuideResponse, status_code=201)
+async def create_video_guide(
+    data: CMSVideoGuideCreate,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_CREATE"])),
+):
+    """Create a new video guide."""
+    # Check for duplicate slug
+    existing = await db.execute(
+        select(VideoGuide).where(VideoGuide.slug == data.slug)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="A video guide with this slug already exists")
+
+    guide = VideoGuide(
+        **data.model_dump(),
+        created_by=current_user.id,
+    )
+    db.add(guide)
+    await db.commit()
+    await db.refresh(guide)
+
+    # Invalidate video guides cache
+    cache = get_cache()
+    await cache.delete_pattern("guides:*")
+
+    return CMSVideoGuideResponse.model_validate(guide)
+
+
+@router.get("/video-guides/{guide_id}", response_model=CMSVideoGuideResponse)
+async def get_video_guide(
+    guide_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_VIEW"])),
+):
+    """Get a specific video guide by ID."""
+    result = await db.execute(
+        select(VideoGuide).where(VideoGuide.id == guide_id)
+    )
+    guide = result.scalar_one_or_none()
+    if not guide:
+        raise HTTPException(status_code=404, detail="Video guide not found")
+
+    return CMSVideoGuideResponse.model_validate(guide)
+
+
+@router.put("/video-guides/{guide_id}", response_model=CMSVideoGuideResponse)
+async def update_video_guide(
+    guide_id: UUID,
+    data: CMSVideoGuideUpdate,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_EDIT"])),
+):
+    """Update a video guide."""
+    result = await db.execute(
+        select(VideoGuide).where(VideoGuide.id == guide_id)
+    )
+    guide = result.scalar_one_or_none()
+    if not guide:
+        raise HTTPException(status_code=404, detail="Video guide not found")
+
+    # Check for duplicate slug if slug is being changed
+    if data.slug and data.slug != guide.slug:
+        existing = await db.execute(
+            select(VideoGuide).where(
+                VideoGuide.slug == data.slug,
+                VideoGuide.id != guide_id
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="A video guide with this slug already exists")
+
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(guide, field, value)
+
+    await db.commit()
+    await db.refresh(guide)
+
+    # Invalidate video guides cache
+    cache = get_cache()
+    await cache.delete_pattern("guides:*")
+
+    return CMSVideoGuideResponse.model_validate(guide)
+
+
+@router.delete("/video-guides/{guide_id}", status_code=204)
+async def delete_video_guide(
+    guide_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_DELETE"])),
+):
+    """Delete a video guide."""
+    result = await db.execute(
+        select(VideoGuide).where(VideoGuide.id == guide_id)
+    )
+    guide = result.scalar_one_or_none()
+    if not guide:
+        raise HTTPException(status_code=404, detail="Video guide not found")
+
+    await db.delete(guide)
+    await db.commit()
+
+    # Invalidate video guides cache
+    cache = get_cache()
+    await cache.delete_pattern("guides:*")
+
+
+@router.put("/video-guides/reorder", status_code=200)
+async def reorder_video_guides(
+    data: CMSReorderRequest,
+    db: DB,
+    current_user: CurrentUser,
+    _: bool = Depends(require_permissions(["CMS_EDIT"])),
+):
+    """Reorder video guides."""
+    for idx, guide_id in enumerate(data.ids):
+        result = await db.execute(
+            select(VideoGuide).where(VideoGuide.id == guide_id)
+        )
+        guide = result.scalar_one_or_none()
+        if guide:
+            guide.sort_order = idx
+
+    await db.commit()
+
+    # Invalidate video guides cache
+    cache = get_cache()
+    await cache.delete_pattern("guides:*")
+
+    return {"success": True, "message": "Video guides reordered"}
