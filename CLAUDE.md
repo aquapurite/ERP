@@ -564,6 +564,51 @@ git add -A && git commit -m "message" && git push origin main
 - **Step 6 (Schema)**: Supabase is the source of truth - models must match
 - **Step 8 (Verify Production)**: Confirms deploy worked correctly
 
+### CRITICAL: Local Testing MUST Use Supabase (NOT Local Docker)
+
+**ALWAYS test locally against the Supabase production database, NOT a local Docker PostgreSQL.**
+
+This ensures:
+1. Real data is used for testing (catches data-related bugs)
+2. Database schema matches exactly (no migration mismatches)
+3. What works locally will work in production
+4. No "works on my machine" issues
+
+```bash
+# .env should ALWAYS point to Supabase for local testing:
+DATABASE_URL=postgresql+psycopg://postgres:Aquapurite2026@db.aavjhutqzwusgdwrczds.supabase.co:6543/postgres
+
+# NEVER use local Docker for testing before deploy:
+# ❌ DATABASE_URL=postgresql+psycopg://aquapurite:aquapurite@localhost:5432/aquapurite_erp
+```
+
+**Local Testing Workflow:**
+
+```bash
+# 1. Verify .env points to Supabase
+cat .env | grep DATABASE_URL
+# Should show: db.aavjhutqzwusgdwrczds.supabase.co
+
+# 2. Start backend (connects to Supabase)
+source .venv/bin/activate
+uvicorn app.main:app --reload --port 8000
+
+# 3. Start frontend (in new terminal)
+cd frontend && pnpm dev
+
+# 4. Test at http://localhost:3000
+# - All data comes from production Supabase
+# - Changes affect real database (be careful with destructive tests)
+
+# 5. Only after testing passes, deploy
+git add -A && git commit -m "message" && git push origin main
+```
+
+**When to use Local Docker PostgreSQL:**
+- Only for initial schema development with migrations
+- Never for pre-production testing
+- Never when testing features that need real data
+
 ### 2. Use Smart Deployments
 
 Configuration is already set up to skip unnecessary deployments:

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, FileText, CheckCircle, XCircle, Upload, Download, AlertTriangle, Clock, DollarSign, FileCheck, Loader2 } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, FileText, CheckCircle, XCircle, Upload, Download, AlertTriangle, Clock, DollarSign, FileCheck, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -166,6 +166,24 @@ const vendorInvoicesApi = {
     const { data } = await apiClient.post(`/vendor-invoices/${id}/three-way-match`);
     return data;
   },
+  update: async (id: string, invoiceData: {
+    invoice_number?: string;
+    invoice_date?: string;
+    purchase_order_id?: string;
+    subtotal?: number;
+    taxable_amount?: number;
+    cgst_amount?: number;
+    sgst_amount?: number;
+    grand_total?: number;
+    due_date?: string;
+  }) => {
+    const { data } = await apiClient.put(`/vendor-invoices/${id}`, invoiceData);
+    return data;
+  },
+  delete: async (id: string) => {
+    const { data } = await apiClient.delete(`/vendor-invoices/${id}`);
+    return data;
+  },
 };
 
 const statusColors: Record<string, string> = {
@@ -198,6 +216,8 @@ export default function VendorInvoicesPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [paymentFilter, setPaymentFilter] = useState<string>('all');
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingInvoice, setEditingInvoice] = useState<VendorInvoice | null>(null);
 
   // Upload form state
   const [selectedVendorId, setSelectedVendorId] = useState<string>('');
@@ -205,6 +225,12 @@ export default function VendorInvoicesPage() {
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
   const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
+
+  // Amount fields
+  const [subtotal, setSubtotal] = useState<number>(0);
+  const [cgstAmount, setCgstAmount] = useState<number>(0);
+  const [sgstAmount, setSgstAmount] = useState<number>(0);
+  const [grandTotal, setGrandTotal] = useState<number>(0);
 
   const queryClient = useQueryClient();
 
@@ -239,13 +265,41 @@ export default function VendorInvoicesPage() {
       setInvoiceNumber('');
       setInvoiceDate(new Date().toISOString().split('T')[0]);
       setInvoiceFile(null);
+      setSubtotal(0);
+      setCgstAmount(0);
+      setSgstAmount(0);
+      setGrandTotal(0);
     }
   }, [isUploadDialogOpen]);
 
   // Reset PO selection when vendor changes
   useEffect(() => {
     setSelectedPOId('');
+    setSubtotal(0);
+    setCgstAmount(0);
+    setSgstAmount(0);
+    setGrandTotal(0);
   }, [selectedVendorId]);
+
+  // Auto-populate amounts from selected PO
+  useEffect(() => {
+    if (selectedPOId) {
+      const selectedPO = availablePOs.find(po => po.id === selectedPOId);
+      if (selectedPO) {
+        // Use PO grand_total as reference for invoice amounts
+        const poTotal = selectedPO.grand_total || 0;
+        // Estimate GST at 18% (typical rate)
+        const estimatedTaxable = poTotal / 1.18;
+        const estimatedGst = poTotal - estimatedTaxable;
+        const halfGst = estimatedGst / 2;
+
+        setSubtotal(Math.round(estimatedTaxable * 100) / 100);
+        setCgstAmount(Math.round(halfGst * 100) / 100);
+        setSgstAmount(Math.round(halfGst * 100) / 100);
+        setGrandTotal(poTotal);
+      }
+    }
+  }, [selectedPOId, availablePOs]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['vendor-invoices', page, pageSize, statusFilter, paymentFilter],
@@ -297,6 +351,33 @@ export default function VendorInvoicesPage() {
     },
   });
 
+  const updateInvoiceMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof vendorInvoicesApi.update>[1] }) =>
+      vendorInvoicesApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['vendor-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['vendor-invoices-stats'] });
+      setIsEditDialogOpen(false);
+      setEditingInvoice(null);
+      toast.success('Invoice updated successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to update invoice');
+    },
+  });
+
+  const deleteInvoiceMutation = useMutation({
+    mutationFn: (id: string) => vendorInvoicesApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['vendor-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['vendor-invoices-stats'] });
+      toast.success('Invoice deleted successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to delete invoice');
+    },
+  });
+
   const handleUploadSubmit = () => {
     if (!selectedVendorId) {
       toast.error('Please select a vendor');
@@ -310,6 +391,14 @@ export default function VendorInvoicesPage() {
       toast.error('Please enter invoice date');
       return;
     }
+    if (grandTotal <= 0) {
+      toast.error('Please enter invoice amounts. Grand total must be greater than 0.');
+      return;
+    }
+    if (!selectedPOId) {
+      toast.error('Please link this invoice to a Purchase Order for 3-way matching');
+      return;
+    }
 
     // Calculate due date (30 days from invoice date)
     const dueDate = new Date(invoiceDate);
@@ -320,11 +409,11 @@ export default function VendorInvoicesPage() {
       invoice_number: invoiceNumber,
       invoice_date: invoiceDate,
       purchase_order_id: selectedPOId || undefined,
-      subtotal: 0, // These would be entered in a full form or extracted from file
-      taxable_amount: 0,
-      cgst_amount: 0,
-      sgst_amount: 0,
-      grand_total: 0,
+      subtotal: subtotal,
+      taxable_amount: subtotal,
+      cgst_amount: cgstAmount,
+      sgst_amount: sgstAmount,
+      grand_total: grandTotal,
       due_date: dueDate.toISOString().split('T')[0],
     });
   };
@@ -444,6 +533,20 @@ export default function VendorInvoicesPage() {
                 <Eye className="mr-2 h-4 w-4" />
                 View Details
               </DropdownMenuItem>
+              {(invoice.status === 'PENDING' || invoice.status === 'UNDER_REVIEW' || !invoice.status || invoice.total_amount === 0) && (
+                <DropdownMenuItem onClick={() => {
+                  setEditingInvoice(invoice);
+                  // Pre-populate the form with invoice data
+                  setSubtotal(invoice.subtotal || 0);
+                  setCgstAmount(invoice.gst_amount ? invoice.gst_amount / 2 : 0);
+                  setSgstAmount(invoice.gst_amount ? invoice.gst_amount / 2 : 0);
+                  setGrandTotal(invoice.total_amount || 0);
+                  setIsEditDialogOpen(true);
+                }}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit Invoice
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => toast.success(`Downloading invoice ${invoice.invoice_number}`)}>
                 <Download className="mr-2 h-4 w-4" />
                 Download Invoice
@@ -466,6 +569,22 @@ export default function VendorInvoicesPage() {
                   <AlertTriangle className="mr-2 h-4 w-4" />
                   Resolve Discrepancy
                 </DropdownMenuItem>
+              )}
+              {(invoice.status === 'PENDING' || !invoice.status) && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => {
+                      if (confirm(`Are you sure you want to delete invoice ${invoice.invoice_number}?`)) {
+                        deleteInvoiceMutation.mutate(invoice.id);
+                      }
+                    }}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete Invoice
+                  </DropdownMenuItem>
+                </>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -573,7 +692,7 @@ export default function VendorInvoicesPage() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Link to PO (Optional)</label>
+                    <label className="text-sm font-medium">Link to PO (Recommended for 3-Way Match)</label>
                     <Select
                       value={selectedPOId}
                       onValueChange={setSelectedPOId}
@@ -619,6 +738,78 @@ export default function VendorInvoicesPage() {
                         {availablePOs.length} approved PO(s) available for this vendor
                       </p>
                     )}
+                    {selectedPOId && (
+                      <p className="text-xs text-green-600">
+                        ✓ Amounts auto-populated from PO. Adjust if invoice differs.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Invoice Amount Fields */}
+                  <div className="border rounded-lg p-4 bg-muted/30 space-y-4">
+                    <h4 className="text-sm font-medium">Invoice Amounts *</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-sm text-muted-foreground">Taxable Amount (Subtotal)</label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          value={subtotal || ''}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setSubtotal(val);
+                            // Auto-calculate total when subtotal changes
+                            setGrandTotal(val + cgstAmount + sgstAmount);
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm text-muted-foreground">Grand Total</label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          value={grandTotal || ''}
+                          onChange={(e) => setGrandTotal(parseFloat(e.target.value) || 0)}
+                          className="font-semibold"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-sm text-muted-foreground">CGST Amount</label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          value={cgstAmount || ''}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setCgstAmount(val);
+                            setGrandTotal(subtotal + val + sgstAmount);
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm text-muted-foreground">SGST Amount</label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          value={sgstAmount || ''}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setSgstAmount(val);
+                            setGrandTotal(subtotal + cgstAmount + val);
+                          }}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <DialogFooter>
@@ -749,6 +940,128 @@ export default function VendorInvoicesPage() {
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
+
+      {/* Edit Invoice Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
+        setIsEditDialogOpen(open);
+        if (!open) setEditingInvoice(null);
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Invoice</DialogTitle>
+            <DialogDescription>
+              Update invoice {editingInvoice?.invoice_number} amounts
+            </DialogDescription>
+          </DialogHeader>
+          {editingInvoice && (
+            <div className="grid gap-4 py-4">
+              <div className="p-3 bg-muted rounded-lg">
+                <div className="text-sm text-muted-foreground">Invoice Number</div>
+                <div className="font-medium">{editingInvoice.invoice_number}</div>
+                <div className="text-sm text-muted-foreground mt-2">Vendor</div>
+                <div className="font-medium">{editingInvoice.vendor_name}</div>
+              </div>
+
+              {/* Amount Fields */}
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Taxable Amount</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={subtotal || ''}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setSubtotal(val);
+                        setGrandTotal(val + cgstAmount + sgstAmount);
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Grand Total</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={grandTotal || ''}
+                      onChange={(e) => setGrandTotal(parseFloat(e.target.value) || 0)}
+                      className="font-semibold"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm text-muted-foreground">CGST Amount</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={cgstAmount || ''}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setCgstAmount(val);
+                        setGrandTotal(subtotal + val + sgstAmount);
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm text-muted-foreground">SGST Amount</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={sgstAmount || ''}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setSgstAmount(val);
+                        setGrandTotal(subtotal + cgstAmount + val);
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setIsEditDialogOpen(false);
+              setEditingInvoice(null);
+            }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (editingInvoice && grandTotal > 0) {
+                  updateInvoiceMutation.mutate({
+                    id: editingInvoice.id,
+                    data: {
+                      subtotal,
+                      taxable_amount: subtotal,
+                      cgst_amount: cgstAmount,
+                      sgst_amount: sgstAmount,
+                      grand_total: grandTotal,
+                    },
+                  });
+                } else {
+                  toast.error('Grand total must be greater than 0');
+                }
+              }}
+              disabled={updateInvoiceMutation.isPending || grandTotal <= 0}
+            >
+              {updateInvoiceMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                'Update Invoice'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

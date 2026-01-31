@@ -543,6 +543,120 @@ async def approve_invoice(
     }
 
 
+class VendorInvoiceUpdate(BaseModel):
+    """Schema for updating vendor invoice."""
+    invoice_number: Optional[str] = None
+    invoice_date: Optional[date] = None
+    purchase_order_id: Optional[UUID] = None
+    grn_id: Optional[UUID] = None
+    subtotal: Optional[Decimal] = None
+    taxable_amount: Optional[Decimal] = None
+    cgst_amount: Optional[Decimal] = None
+    sgst_amount: Optional[Decimal] = None
+    igst_amount: Optional[Decimal] = None
+    grand_total: Optional[Decimal] = None
+    due_date: Optional[date] = None
+    internal_notes: Optional[str] = None
+
+
+@router.put("/{invoice_id}")
+async def update_vendor_invoice(
+    invoice_id: UUID,
+    data: VendorInvoiceUpdate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Update an existing vendor invoice."""
+    invoice = await db.get(VendorInvoice, invoice_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    # Only allow updates on RECEIVED or UNDER_VERIFICATION status
+    if invoice.status not in ["RECEIVED", "UNDER_VERIFICATION"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot update invoice with status {invoice.status}. Only RECEIVED or UNDER_VERIFICATION invoices can be edited."
+        )
+
+    # Update fields if provided
+    if data.invoice_number is not None:
+        invoice.invoice_number = data.invoice_number
+    if data.invoice_date is not None:
+        invoice.invoice_date = data.invoice_date
+    if data.purchase_order_id is not None:
+        # Validate PO exists
+        po = await db.get(PurchaseOrder, data.purchase_order_id)
+        if not po:
+            raise HTTPException(status_code=404, detail="Purchase Order not found")
+        invoice.purchase_order_id = data.purchase_order_id
+    if data.grn_id is not None:
+        # Validate GRN exists
+        grn = await db.get(GoodsReceiptNote, data.grn_id)
+        if not grn:
+            raise HTTPException(status_code=404, detail="GRN not found")
+        invoice.grn_id = data.grn_id
+    if data.subtotal is not None:
+        invoice.subtotal = data.subtotal
+        invoice.taxable_amount = data.subtotal  # Sync taxable amount
+    if data.taxable_amount is not None:
+        invoice.taxable_amount = data.taxable_amount
+    if data.cgst_amount is not None:
+        invoice.cgst_amount = data.cgst_amount
+    if data.sgst_amount is not None:
+        invoice.sgst_amount = data.sgst_amount
+    if data.igst_amount is not None:
+        invoice.igst_amount = data.igst_amount
+    if data.grand_total is not None:
+        invoice.grand_total = data.grand_total
+        # Recalculate TDS and net payable
+        tds_amount = (data.grand_total * invoice.tds_rate / 100) if invoice.tds_applicable else Decimal("0")
+        invoice.tds_amount = tds_amount
+        invoice.net_payable = data.grand_total - tds_amount
+        invoice.balance_due = invoice.net_payable - invoice.amount_paid
+    if data.due_date is not None:
+        invoice.due_date = data.due_date
+    if data.internal_notes is not None:
+        invoice.internal_notes = data.internal_notes
+
+    # Recalculate total_tax
+    invoice.total_tax = invoice.cgst_amount + invoice.sgst_amount + invoice.igst_amount + invoice.cess_amount
+
+    await db.commit()
+    await db.refresh(invoice)
+
+    return {
+        "id": str(invoice.id),
+        "our_reference": invoice.our_reference,
+        "invoice_number": invoice.invoice_number,
+        "grand_total": float(invoice.grand_total),
+        "purchase_order_id": str(invoice.purchase_order_id) if invoice.purchase_order_id else None,
+        "message": "Invoice updated successfully",
+    }
+
+
+@router.delete("/{invoice_id}")
+async def delete_vendor_invoice(
+    invoice_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a vendor invoice (only if status is RECEIVED)."""
+    invoice = await db.get(VendorInvoice, invoice_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    if invoice.status != "RECEIVED":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete invoice with status {invoice.status}. Only RECEIVED invoices can be deleted."
+        )
+
+    await db.delete(invoice)
+    await db.commit()
+
+    return {"message": "Invoice deleted successfully"}
+
+
 @router.post("/{invoice_id}/record-payment")
 async def record_payment(
     invoice_id: UUID,
