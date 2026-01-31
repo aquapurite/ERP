@@ -714,6 +714,101 @@ class ThreeWayMatchResponse(BaseModel):
     recommendations: List[str] = []
 
 
+# ==================== 3-Way Match List/Stats Schemas ====================
+
+class ThreeWayMatchItemResponse(BaseModel):
+    """Individual item in a 3-way match comparison."""
+    id: UUID
+    product_id: Optional[UUID] = None
+    product_name: str
+    sku: Optional[str] = None
+    unit: str = "PCS"
+    # PO Details
+    po_quantity: int = 0
+    po_rate: Decimal = Decimal("0")
+    po_amount: Decimal = Decimal("0")
+    # GRN Details
+    grn_quantity: int = 0
+    grn_rate: Decimal = Decimal("0")
+    grn_amount: Decimal = Decimal("0")
+    # Invoice Details
+    invoice_quantity: int = 0
+    invoice_rate: Decimal = Decimal("0")
+    invoice_amount: Decimal = Decimal("0")
+    # Match Status
+    quantity_match: bool = False
+    rate_match: bool = False
+    amount_match: bool = False
+    match_status: str = "PENDING"
+    variance_quantity: int = 0
+    variance_rate: Decimal = Decimal("0")
+    variance_amount: Decimal = Decimal("0")
+
+
+class ThreeWayMatchListItem(BaseModel):
+    """Single item in the 3-way match list."""
+    id: UUID
+    invoice_number: str
+    invoice_id: UUID
+    invoice_date: date
+    invoice_amount: Decimal
+    po_number: Optional[str] = None
+    po_id: Optional[UUID] = None
+    po_date: Optional[date] = None
+    po_amount: Decimal = Decimal("0")
+    grn_number: Optional[str] = None
+    grn_id: Optional[UUID] = None
+    grn_date: Optional[date] = None
+    grn_amount: Decimal = Decimal("0")
+    vendor_id: UUID
+    vendor_name: str
+    vendor_code: Optional[str] = None
+    status: str
+    match_percent: Decimal = Decimal("0")
+    total_variance: Decimal = Decimal("0")
+    created_at: datetime
+
+
+class ThreeWayMatchDetailResponse(BaseModel):
+    """Detailed 3-way match response with line items."""
+    id: UUID
+    invoice_number: str
+    invoice_id: UUID
+    invoice_date: date
+    invoice_amount: Decimal
+    po_number: Optional[str] = None
+    po_id: Optional[UUID] = None
+    po_date: Optional[date] = None
+    po_amount: Decimal = Decimal("0")
+    grn_number: Optional[str] = None
+    grn_id: Optional[UUID] = None
+    grn_date: Optional[date] = None
+    grn_amount: Decimal = Decimal("0")
+    vendor_id: UUID
+    vendor_name: str
+    vendor_code: Optional[str] = None
+    status: str
+    match_percent: Decimal = Decimal("0")
+    total_variance: Decimal = Decimal("0")
+    items: List[ThreeWayMatchItemResponse] = []
+    created_at: datetime
+
+
+class ThreeWayMatchListResponse(BaseModel):
+    """Response for listing 3-way matches."""
+    items: List[ThreeWayMatchListItem]
+    total: int
+
+
+class ThreeWayMatchStatsResponse(BaseModel):
+    """Statistics for 3-way matching dashboard."""
+    total_pending: int = 0
+    matched: int = 0
+    partial: int = 0
+    mismatch: int = 0
+    total_variance_amount: Decimal = Decimal("0")
+
+
 # ==================== Report Schemas ====================
 
 class POSummaryRequest(BaseModel):

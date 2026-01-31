@@ -95,35 +95,25 @@ interface MatchStats {
 
 const threeWayMatchApi = {
   list: async (params?: { status?: string }): Promise<{ items: ThreeWayMatch[]; total: number }> => {
-    try {
-      const { data } = await apiClient.get('/purchase/three-way-match', { params });
-      return data;
-    } catch {
-      return { items: [], total: 0 };
-    }
+    const { data } = await apiClient.get('/purchase/three-way-match', { params });
+    return data;
   },
   getStats: async (): Promise<MatchStats> => {
-    try {
-      const { data } = await apiClient.get('/purchase/three-way-match/stats');
-      return data;
-    } catch {
-      return { total_pending: 0, matched: 0, partial: 0, mismatch: 0, total_variance_amount: 0 };
-    }
+    const { data } = await apiClient.get('/purchase/three-way-match/stats');
+    return data;
   },
   getDetail: async (id: string): Promise<ThreeWayMatch | null> => {
-    try {
-      const { data } = await apiClient.get(`/purchase/three-way-match/${id}`);
-      return data;
-    } catch {
-      return null;
-    }
+    const { data } = await apiClient.get(`/purchase/three-way-match/${id}`);
+    return data;
   },
   approve: async (id: string) => {
     const { data } = await apiClient.post(`/purchase/three-way-match/${id}/approve`);
     return data;
   },
-  resolveVariance: async (id: string, resolution: { action: string; notes: string }) => {
-    const { data } = await apiClient.post(`/purchase/three-way-match/${id}/resolve`, resolution);
+  reject: async (id: string, reason: string) => {
+    const { data } = await apiClient.post(`/purchase/three-way-match/${id}/reject`, null, {
+      params: { reason }
+    });
     return data;
   },
 };
@@ -157,16 +147,18 @@ export default function ThreeWayMatchPage() {
 
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['three-way-match', statusFilter],
     queryFn: () => threeWayMatchApi.list({
       status: statusFilter !== 'all' ? statusFilter : undefined,
     }),
+    retry: 1,
   });
 
   const { data: stats } = useQuery({
     queryKey: ['three-way-match-stats'],
     queryFn: threeWayMatchApi.getStats,
+    retry: 1,
   });
 
   const approveMutation = useMutation({

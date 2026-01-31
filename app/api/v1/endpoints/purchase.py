@@ -45,6 +45,9 @@ from app.schemas.purchase import (
     VendorInvoiceCreate, VendorInvoiceUpdate, VendorInvoiceResponse,
     VendorInvoiceListResponse, VendorInvoiceBrief,
     ThreeWayMatchRequest, ThreeWayMatchResponse,
+    # 3-Way Match List/Stats Schemas
+    ThreeWayMatchListItem, ThreeWayMatchListResponse, ThreeWayMatchStatsResponse,
+    ThreeWayMatchDetailResponse, ThreeWayMatchItemResponse,
     # Vendor Proforma Schemas
     VendorProformaCreate, VendorProformaUpdate, VendorProformaResponse,
     VendorProformaListResponse, VendorProformaBrief,
@@ -3525,6 +3528,412 @@ async def perform_three_way_match(
         discrepancies=discrepancies,
         recommendations=recommendations,
     )
+
+
+# ==================== 3-Way Match List/Stats/Detail Endpoints ====================
+
+@router.get("/three-way-match/stats", response_model=ThreeWayMatchStatsResponse)
+async def get_three_way_match_stats(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get 3-way match statistics for dashboard."""
+    # Count invoices by match status
+    # PENDING: Invoices in RECEIVED status (not yet matched)
+    pending_result = await db.execute(
+        select(func.count(VendorInvoice.id)).where(
+            VendorInvoice.status == VendorInvoiceStatus.RECEIVED.value
+        )
+    )
+    total_pending = pending_result.scalar() or 0
+
+    # MATCHED: Invoices that are fully matched
+    matched_result = await db.execute(
+        select(func.count(VendorInvoice.id)).where(
+            VendorInvoice.is_fully_matched == True
+        )
+    )
+    matched = matched_result.scalar() or 0
+
+    # PARTIAL: Invoices with partial match (po_matched or grn_matched but not both)
+    partial_result = await db.execute(
+        select(func.count(VendorInvoice.id)).where(
+            and_(
+                or_(VendorInvoice.po_matched == True, VendorInvoice.grn_matched == True),
+                VendorInvoice.is_fully_matched == False
+            )
+        )
+    )
+    partial = partial_result.scalar() or 0
+
+    # MISMATCH: Invoices with variance recorded but not matched
+    mismatch_result = await db.execute(
+        select(func.count(VendorInvoice.id)).where(
+            and_(
+                VendorInvoice.matching_variance > 0,
+                VendorInvoice.is_fully_matched == False
+            )
+        )
+    )
+    mismatch = mismatch_result.scalar() or 0
+
+    # Total variance amount
+    variance_result = await db.execute(
+        select(func.sum(VendorInvoice.matching_variance)).where(
+            VendorInvoice.matching_variance > 0
+        )
+    )
+    total_variance_amount = variance_result.scalar() or Decimal("0")
+
+    return ThreeWayMatchStatsResponse(
+        total_pending=total_pending,
+        matched=matched,
+        partial=partial,
+        mismatch=mismatch,
+        total_variance_amount=total_variance_amount,
+    )
+
+
+@router.get("/three-way-match", response_model=ThreeWayMatchListResponse)
+async def list_three_way_matches(
+    db: DB,
+    status: Optional[str] = Query(None, description="Filter by status: PENDING, MATCHED, PARTIAL_MATCH, MISMATCH"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+):
+    """List vendor invoices for 3-way matching with PO and GRN details."""
+    # Build base query
+    query = select(VendorInvoice).options(
+        selectinload(VendorInvoice.vendor)
+    )
+
+    # Apply status filter
+    if status:
+        if status == "PENDING":
+            query = query.where(VendorInvoice.status == VendorInvoiceStatus.RECEIVED.value)
+        elif status == "MATCHED":
+            query = query.where(VendorInvoice.is_fully_matched == True)
+        elif status == "PARTIAL_MATCH":
+            query = query.where(
+                and_(
+                    or_(VendorInvoice.po_matched == True, VendorInvoice.grn_matched == True),
+                    VendorInvoice.is_fully_matched == False
+                )
+            )
+        elif status == "MISMATCH":
+            query = query.where(
+                and_(
+                    VendorInvoice.matching_variance > 0,
+                    VendorInvoice.is_fully_matched == False
+                )
+            )
+
+    # Get total count
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Apply pagination and ordering
+    query = query.order_by(VendorInvoice.created_at.desc()).offset(skip).limit(limit)
+    result = await db.execute(query)
+    invoices = result.scalars().all()
+
+    items = []
+    for invoice in invoices:
+        # Fetch linked PO if exists
+        po = None
+        po_number = None
+        po_date = None
+        po_amount = Decimal("0")
+        if invoice.purchase_order_id:
+            po_result = await db.execute(
+                select(PurchaseOrder).where(PurchaseOrder.id == invoice.purchase_order_id)
+            )
+            po = po_result.scalar_one_or_none()
+            if po:
+                po_number = po.po_number
+                po_date = po.po_date
+                po_amount = po.grand_total
+
+        # Fetch linked GRN if exists
+        grn = None
+        grn_number = None
+        grn_date = None
+        grn_amount = Decimal("0")
+        if invoice.grn_id:
+            grn_result = await db.execute(
+                select(GoodsReceiptNote).where(GoodsReceiptNote.id == invoice.grn_id)
+            )
+            grn = grn_result.scalar_one_or_none()
+            if grn:
+                grn_number = grn.grn_number
+                grn_date = grn.grn_date
+                grn_amount = grn.total_value
+
+        # Determine display status
+        if invoice.is_fully_matched:
+            display_status = "MATCHED"
+        elif invoice.po_matched or invoice.grn_matched:
+            display_status = "PARTIAL_MATCH"
+        elif invoice.matching_variance > 0:
+            display_status = "MISMATCH"
+        else:
+            display_status = "PENDING"
+
+        # Calculate match percent
+        match_percent = Decimal("0")
+        if invoice.grand_total > 0 and grn_amount > 0:
+            variance = abs(invoice.grand_total - grn_amount)
+            match_percent = max(Decimal("0"), Decimal("100") - (variance / invoice.grand_total * 100))
+
+        items.append(ThreeWayMatchListItem(
+            id=invoice.id,
+            invoice_number=invoice.invoice_number,
+            invoice_id=invoice.id,
+            invoice_date=invoice.invoice_date,
+            invoice_amount=invoice.grand_total,
+            po_number=po_number,
+            po_id=invoice.purchase_order_id,
+            po_date=po_date,
+            po_amount=po_amount,
+            grn_number=grn_number,
+            grn_id=invoice.grn_id,
+            grn_date=grn_date,
+            grn_amount=grn_amount,
+            vendor_id=invoice.vendor_id,
+            vendor_name=invoice.vendor.name if invoice.vendor else "Unknown",
+            vendor_code=invoice.vendor.vendor_code if invoice.vendor else None,
+            status=display_status,
+            match_percent=match_percent,
+            total_variance=invoice.matching_variance,
+            created_at=invoice.created_at,
+        ))
+
+    return ThreeWayMatchListResponse(items=items, total=total)
+
+
+@router.get("/three-way-match/{invoice_id}", response_model=ThreeWayMatchDetailResponse)
+async def get_three_way_match_detail(
+    invoice_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get detailed 3-way match information for a specific invoice."""
+    # Fetch invoice with vendor
+    invoice_result = await db.execute(
+        select(VendorInvoice).options(
+            selectinload(VendorInvoice.vendor)
+        ).where(VendorInvoice.id == invoice_id)
+    )
+    invoice = invoice_result.scalar_one_or_none()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Vendor Invoice not found")
+
+    # Fetch linked PO
+    po = None
+    po_number = None
+    po_date = None
+    po_amount = Decimal("0")
+    if invoice.purchase_order_id:
+        po_result = await db.execute(
+            select(PurchaseOrder).options(
+                selectinload(PurchaseOrder.items)
+            ).where(PurchaseOrder.id == invoice.purchase_order_id)
+        )
+        po = po_result.scalar_one_or_none()
+        if po:
+            po_number = po.po_number
+            po_date = po.po_date
+            po_amount = po.grand_total
+
+    # Fetch linked GRN
+    grn = None
+    grn_number = None
+    grn_date = None
+    grn_amount = Decimal("0")
+    if invoice.grn_id:
+        grn_result = await db.execute(
+            select(GoodsReceiptNote).options(
+                selectinload(GoodsReceiptNote.items)
+            ).where(GoodsReceiptNote.id == invoice.grn_id)
+        )
+        grn = grn_result.scalar_one_or_none()
+        if grn:
+            grn_number = grn.grn_number
+            grn_date = grn.grn_date
+            grn_amount = grn.total_value
+
+    # Determine display status
+    if invoice.is_fully_matched:
+        display_status = "MATCHED"
+    elif invoice.po_matched or invoice.grn_matched:
+        display_status = "PARTIAL_MATCH"
+    elif invoice.matching_variance > 0:
+        display_status = "MISMATCH"
+    else:
+        display_status = "PENDING"
+
+    # Calculate match percent
+    match_percent = Decimal("0")
+    if invoice.grand_total > 0 and grn_amount > 0:
+        variance = abs(invoice.grand_total - grn_amount)
+        match_percent = max(Decimal("0"), Decimal("100") - (variance / invoice.grand_total * 100))
+
+    # Build line items comparison (if PO has items)
+    items = []
+    if po and po.items:
+        for po_item in po.items:
+            # Find matching GRN item
+            grn_item = None
+            if grn and grn.items:
+                for gi in grn.items:
+                    if gi.product_id == po_item.product_id:
+                        grn_item = gi
+                        break
+
+            # Get product details
+            product_result = await db.execute(
+                select(Product).where(Product.id == po_item.product_id)
+            )
+            product = product_result.scalar_one_or_none()
+
+            grn_qty = grn_item.quantity_accepted if grn_item else 0
+            grn_rate = po_item.unit_price  # GRN uses same rate as PO
+            grn_amt = Decimal(grn_qty) * grn_rate if grn_item else Decimal("0")
+
+            # For now, invoice item details come from PO (in full system, would match invoice lines)
+            invoice_qty = po_item.quantity_ordered
+            invoice_rate = po_item.unit_price
+            invoice_amt = invoice_qty * invoice_rate
+
+            quantity_match = po_item.quantity_ordered == grn_qty
+            rate_match = True  # Same rate used
+            amount_match = abs(po_item.total_price - grn_amt) < Decimal("0.01")
+
+            if quantity_match and rate_match and amount_match:
+                item_status = "MATCHED"
+            elif quantity_match or rate_match:
+                item_status = "PARTIAL"
+            else:
+                item_status = "MISMATCH"
+
+            items.append(ThreeWayMatchItemResponse(
+                id=po_item.id,
+                product_id=po_item.product_id,
+                product_name=product.name if product else po_item.description,
+                sku=product.sku if product else None,
+                unit=po_item.uom,
+                po_quantity=po_item.quantity_ordered,
+                po_rate=po_item.unit_price,
+                po_amount=po_item.total_price,
+                grn_quantity=grn_qty,
+                grn_rate=grn_rate,
+                grn_amount=grn_amt,
+                invoice_quantity=invoice_qty,
+                invoice_rate=invoice_rate,
+                invoice_amount=invoice_amt,
+                quantity_match=quantity_match,
+                rate_match=rate_match,
+                amount_match=amount_match,
+                match_status=item_status,
+                variance_quantity=abs(po_item.quantity_ordered - grn_qty),
+                variance_rate=Decimal("0"),
+                variance_amount=abs(po_item.total_price - grn_amt),
+            ))
+
+    return ThreeWayMatchDetailResponse(
+        id=invoice.id,
+        invoice_number=invoice.invoice_number,
+        invoice_id=invoice.id,
+        invoice_date=invoice.invoice_date,
+        invoice_amount=invoice.grand_total,
+        po_number=po_number,
+        po_id=invoice.purchase_order_id,
+        po_date=po_date,
+        po_amount=po_amount,
+        grn_number=grn_number,
+        grn_id=invoice.grn_id,
+        grn_date=grn_date,
+        grn_amount=grn_amount,
+        vendor_id=invoice.vendor_id,
+        vendor_name=invoice.vendor.name if invoice.vendor else "Unknown",
+        vendor_code=invoice.vendor.vendor_code if invoice.vendor else None,
+        status=display_status,
+        match_percent=match_percent,
+        total_variance=invoice.matching_variance,
+        items=items,
+        created_at=invoice.created_at,
+    )
+
+
+@router.post("/three-way-match/{invoice_id}/approve")
+async def approve_three_way_match(
+    invoice_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Approve a matched invoice for payment."""
+    # Fetch invoice
+    invoice_result = await db.execute(
+        select(VendorInvoice).where(VendorInvoice.id == invoice_id)
+    )
+    invoice = invoice_result.scalar_one_or_none()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Vendor Invoice not found")
+
+    # Check if invoice is eligible for approval
+    if invoice.status not in [VendorInvoiceStatus.RECEIVED.value, VendorInvoiceStatus.VERIFIED.value]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invoice cannot be approved. Current status: {invoice.status}"
+        )
+
+    # Update invoice status to APPROVED
+    invoice.status = VendorInvoiceStatus.APPROVED.value
+    invoice.approved_by = current_user.id
+    invoice.approved_at = datetime.now(timezone.utc)
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "message": "Invoice approved for payment",
+        "invoice_id": str(invoice.id),
+        "status": invoice.status,
+    }
+
+
+@router.post("/three-way-match/{invoice_id}/reject")
+async def reject_three_way_match(
+    invoice_id: UUID,
+    db: DB,
+    reason: str = Query(..., description="Reason for rejection"),
+    current_user: User = Depends(get_current_user),
+):
+    """Reject a 3-way match due to discrepancies."""
+    # Fetch invoice
+    invoice_result = await db.execute(
+        select(VendorInvoice).where(VendorInvoice.id == invoice_id)
+    )
+    invoice = invoice_result.scalar_one_or_none()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Vendor Invoice not found")
+
+    # Update invoice
+    invoice.status = VendorInvoiceStatus.DISPUTED.value
+    invoice.variance_reason = reason
+    invoice.verified_by = current_user.id
+    invoice.verified_at = datetime.now(timezone.utc)
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "message": "Invoice marked as disputed",
+        "invoice_id": str(invoice.id),
+        "status": invoice.status,
+    }
 
 
 # ==================== Reports ====================
