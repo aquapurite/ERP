@@ -40,17 +40,28 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 interface VendorInvoice {
   id: string;
   invoice_number: string;
+  invoice_type: 'PO_INVOICE' | 'EXPENSE_INVOICE';
   vendor_id: string;
   vendor_name: string;
   vendor_code: string;
+  // PO Invoice fields
   po_number?: string;
   grn_number?: string;
+  // Expense Invoice fields
+  gl_account_id?: string;
+  gl_account_name?: string;
+  cost_center_id?: string;
+  cost_center_name?: string;
+  expense_category?: string;
+  expense_description?: string;
+  // Common fields
   invoice_date: string;
   due_date: string;
   subtotal: number;
   gst_amount: number;
   tds_amount: number;
   total_amount: number;
+  grand_total: number;
   status: 'PENDING' | 'UNDER_REVIEW' | 'MATCHED' | 'PARTIAL_MATCH' | 'MISMATCH' | 'APPROVED' | 'REJECTED' | 'PAID';
   match_status: 'NOT_MATCHED' | 'MATCHED' | 'PARTIAL' | 'MISMATCH';
   payment_status: 'UNPAID' | 'PARTIAL' | 'PAID';
@@ -122,8 +133,23 @@ const purchaseOrdersApi = {
   },
 };
 
+// GL Accounts for expense invoices
+interface GLAccount {
+  id: string;
+  account_code: string;
+  account_name: string;
+  account_type: string;
+  account_sub_type?: string;
+}
+
+// Expense categories
+interface ExpenseCategory {
+  value: string;
+  label: string;
+}
+
 const vendorInvoicesApi = {
-  list: async (params?: { page?: number; size?: number; status?: string; payment_status?: string }) => {
+  list: async (params?: { page?: number; size?: number; status?: string; payment_status?: string; invoice_type?: string }) => {
     try {
       const { data } = await apiClient.get('/vendor-invoices', { params });
       return data;
@@ -139,11 +165,35 @@ const vendorInvoicesApi = {
       return { total_invoices: 0, pending_review: 0, matched: 0, mismatch: 0, overdue: 0, total_pending_amount: 0, total_overdue_amount: 0 };
     }
   },
+  getGLAccounts: async (): Promise<GLAccount[]> => {
+    try {
+      const { data } = await apiClient.get('/vendor-invoices/gl-accounts');
+      return data || [];
+    } catch {
+      return [];
+    }
+  },
+  getExpenseCategories: async (): Promise<ExpenseCategory[]> => {
+    try {
+      const { data } = await apiClient.get('/vendor-invoices/expense-categories');
+      return data || [];
+    } catch {
+      return [];
+    }
+  },
   create: async (invoiceData: {
     vendor_id: string;
     invoice_number: string;
     invoice_date: string;
+    invoice_type?: string;
+    // PO Invoice fields
     purchase_order_id?: string;
+    // Expense Invoice fields
+    gl_account_id?: string;
+    cost_center_id?: string;
+    expense_category?: string;
+    expense_description?: string;
+    // Amount fields
     subtotal: number;
     taxable_amount: number;
     cgst_amount: number;
@@ -220,11 +270,17 @@ export default function VendorInvoicesPage() {
   const [editingInvoice, setEditingInvoice] = useState<VendorInvoice | null>(null);
 
   // Upload form state
+  const [invoiceType, setInvoiceType] = useState<'PO_INVOICE' | 'EXPENSE_INVOICE'>('PO_INVOICE');
   const [selectedVendorId, setSelectedVendorId] = useState<string>('');
   const [selectedPOId, setSelectedPOId] = useState<string>('');
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
   const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
+
+  // For Expense Invoices
+  const [selectedGLAccountId, setSelectedGLAccountId] = useState<string>('');
+  const [expenseCategory, setExpenseCategory] = useState<string>('');
+  const [expenseDescription, setExpenseDescription] = useState<string>('');
 
   // Amount fields
   const [subtotal, setSubtotal] = useState<number>(0);
@@ -240,6 +296,20 @@ export default function VendorInvoicesPage() {
     queryFn: vendorsApi.getDropdown,
   });
   const vendors = Array.isArray(vendorsData) ? vendorsData : [];
+
+  // Fetch GL accounts for expense invoices
+  const { data: glAccountsData } = useQuery({
+    queryKey: ['gl-accounts-dropdown'],
+    queryFn: vendorInvoicesApi.getGLAccounts,
+  });
+  const glAccounts = Array.isArray(glAccountsData) ? glAccountsData : [];
+
+  // Fetch expense categories
+  const { data: expenseCategoriesData } = useQuery({
+    queryKey: ['expense-categories'],
+    queryFn: vendorInvoicesApi.getExpenseCategories,
+  });
+  const expenseCategories = Array.isArray(expenseCategoriesData) ? expenseCategoriesData : [];
 
   // Fetch POs - filtered by selected vendor
   const { data: posData, isLoading: posLoading } = useQuery({
@@ -260,8 +330,12 @@ export default function VendorInvoicesPage() {
   // Reset form when dialog closes
   useEffect(() => {
     if (!isUploadDialogOpen) {
+      setInvoiceType('PO_INVOICE');
       setSelectedVendorId('');
       setSelectedPOId('');
+      setSelectedGLAccountId('');
+      setExpenseCategory('');
+      setExpenseDescription('');
       setInvoiceNumber('');
       setInvoiceDate(new Date().toISOString().split('T')[0]);
       setInvoiceFile(null);
@@ -395,9 +469,23 @@ export default function VendorInvoicesPage() {
       toast.error('Please enter invoice amounts. Grand total must be greater than 0.');
       return;
     }
-    if (!selectedPOId) {
-      toast.error('Please link this invoice to a Purchase Order for 3-way matching');
-      return;
+
+    // Validation based on invoice type
+    if (invoiceType === 'PO_INVOICE') {
+      if (!selectedPOId) {
+        toast.error('Please link this invoice to a Purchase Order for 3-way matching');
+        return;
+      }
+    } else {
+      // EXPENSE_INVOICE - require GL account
+      if (!selectedGLAccountId) {
+        toast.error('Please select a GL Account for expense coding');
+        return;
+      }
+      if (!expenseCategory) {
+        toast.error('Please select an expense category');
+        return;
+      }
     }
 
     // Calculate due date (30 days from invoice date)
@@ -408,7 +496,14 @@ export default function VendorInvoicesPage() {
       vendor_id: selectedVendorId,
       invoice_number: invoiceNumber,
       invoice_date: invoiceDate,
-      purchase_order_id: selectedPOId || undefined,
+      invoice_type: invoiceType,
+      // PO Invoice fields
+      purchase_order_id: invoiceType === 'PO_INVOICE' ? selectedPOId || undefined : undefined,
+      // Expense Invoice fields
+      gl_account_id: invoiceType === 'EXPENSE_INVOICE' ? selectedGLAccountId || undefined : undefined,
+      expense_category: invoiceType === 'EXPENSE_INVOICE' ? expenseCategory || undefined : undefined,
+      expense_description: invoiceType === 'EXPENSE_INVOICE' ? expenseDescription || undefined : undefined,
+      // Amount fields
       subtotal: subtotal,
       taxable_amount: subtotal,
       cgst_amount: cgstAmount,
@@ -650,6 +745,31 @@ export default function VendorInvoicesPage() {
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {/* Invoice Type Selector */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Invoice Type *</label>
+                    <Select value={invoiceType} onValueChange={(v) => setInvoiceType(v as 'PO_INVOICE' | 'EXPENSE_INVOICE')}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="PO_INVOICE">
+                          <div className="flex flex-col">
+                            <span>PO Invoice (Procurement)</span>
+                            <span className="text-xs text-muted-foreground">For goods received against Purchase Order</span>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="EXPENSE_INVOICE">
+                          <div className="flex flex-col">
+                            <span>Expense Invoice (Non-PO)</span>
+                            <span className="text-xs text-muted-foreground">For services, assets, utilities, etc.</span>
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Invoice File</label>
                     <div className="border-2 border-dashed rounded-lg p-6 text-center">
@@ -691,59 +811,110 @@ export default function VendorInvoicesPage() {
                       />
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Link to PO (Recommended for 3-Way Match)</label>
-                    <Select
-                      value={selectedPOId}
-                      onValueChange={setSelectedPOId}
-                      disabled={!selectedVendorId}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={
-                          !selectedVendorId
-                            ? "Select vendor first"
-                            : posLoading
-                              ? "Loading POs..."
-                              : "Select PO"
-                        } />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {posLoading ? (
-                          <div className="flex items-center justify-center py-4">
-                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                            Loading...
-                          </div>
-                        ) : availablePOs.length === 0 ? (
-                          <div className="py-4 text-center text-sm text-muted-foreground">
-                            {selectedVendorId
-                              ? "No approved POs for this vendor"
-                              : "Select a vendor to see POs"}
-                          </div>
-                        ) : (
-                          availablePOs.map((po) => (
-                            <SelectItem key={po.id} value={po.id}>
-                              <div className="flex flex-col">
-                                <span>{po.po_number}</span>
-                                <span className="text-xs text-muted-foreground">
-                                  {formatCurrency(po.grand_total)} • {po.status}
-                                </span>
-                              </div>
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                    {selectedVendorId && availablePOs.length > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        {availablePOs.length} approved PO(s) available for this vendor
-                      </p>
-                    )}
-                    {selectedPOId && (
-                      <p className="text-xs text-green-600">
-                        ✓ Amounts auto-populated from PO. Adjust if invoice differs.
-                      </p>
-                    )}
-                  </div>
+                  {/* PO Invoice: Link to PO */}
+                  {invoiceType === 'PO_INVOICE' && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Link to PO (Required for 3-Way Match) *</label>
+                      <Select
+                        value={selectedPOId}
+                        onValueChange={setSelectedPOId}
+                        disabled={!selectedVendorId}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={
+                            !selectedVendorId
+                              ? "Select vendor first"
+                              : posLoading
+                                ? "Loading POs..."
+                                : "Select PO"
+                          } />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {posLoading ? (
+                            <div className="flex items-center justify-center py-4">
+                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                              Loading...
+                            </div>
+                          ) : availablePOs.length === 0 ? (
+                            <div className="py-4 text-center text-sm text-muted-foreground">
+                              {selectedVendorId
+                                ? "No approved POs for this vendor"
+                                : "Select a vendor to see POs"}
+                            </div>
+                          ) : (
+                            availablePOs.map((po) => (
+                              <SelectItem key={po.id} value={po.id}>
+                                <div className="flex flex-col">
+                                  <span>{po.po_number}</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {formatCurrency(po.grand_total)} • {po.status}
+                                  </span>
+                                </div>
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                      {selectedVendorId && availablePOs.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          {availablePOs.length} approved PO(s) available for this vendor
+                        </p>
+                      )}
+                      {selectedPOId && (
+                        <p className="text-xs text-green-600">
+                          ✓ Amounts auto-populated from PO. Adjust if invoice differs.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Expense Invoice: GL Account & Category */}
+                  {invoiceType === 'EXPENSE_INVOICE' && (
+                    <div className="space-y-4 border rounded-lg p-4 bg-blue-50/50">
+                      <h4 className="text-sm font-medium text-blue-700">Expense Coding</h4>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">GL Account *</label>
+                        <Select value={selectedGLAccountId} onValueChange={setSelectedGLAccountId}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select GL Account" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {glAccounts.map((acc) => (
+                              <SelectItem key={acc.id} value={acc.id}>
+                                <div className="flex flex-col">
+                                  <span>{acc.account_code} - {acc.account_name}</span>
+                                  <span className="text-xs text-muted-foreground">{acc.account_type}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Expense Category *</label>
+                        <Select value={expenseCategory} onValueChange={setExpenseCategory}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select Category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {expenseCategories.map((cat) => (
+                              <SelectItem key={cat.value} value={cat.value}>
+                                {cat.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Description</label>
+                        <Input
+                          placeholder="Brief description of expense..."
+                          value={expenseDescription}
+                          onChange={(e) => setExpenseDescription(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   {/* Invoice Amount Fields */}
                   <div className="border rounded-lg p-4 bg-muted/30 space-y-4">

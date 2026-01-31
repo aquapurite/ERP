@@ -1417,7 +1417,7 @@ class VendorInvoice(Base):
         index=True
     )
 
-    # Linked Documents
+    # Linked Documents (for PO Invoices)
     purchase_order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("purchase_orders.id", ondelete="SET NULL"),
@@ -1427,6 +1427,45 @@ class VendorInvoice(Base):
         UUID(as_uuid=True),
         ForeignKey("goods_receipt_notes.id", ondelete="SET NULL"),
         nullable=True
+    )
+
+    # Invoice Type: PO_INVOICE (procurement) or EXPENSE_INVOICE (non-PO)
+    invoice_type: Mapped[str] = mapped_column(
+        String(30),
+        default="PO_INVOICE",
+        nullable=False,
+        index=True,
+        comment="PO_INVOICE for procurement, EXPENSE_INVOICE for non-PO expenses"
+    )
+
+    # GL Account (for expense invoices - direct GL coding)
+    gl_account_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("chart_of_accounts.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="GL account for expense invoices"
+    )
+
+    # Cost Center (for expense allocation)
+    cost_center_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cost_centers.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Cost center for expense allocation"
+    )
+
+    # Expense Category (for non-PO invoices)
+    expense_category: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="FIXED_ASSET, SERVICE, UTILITIES, RENT, TRAVEL, OFFICE_SUPPLIES, etc."
+    )
+
+    # Expense Description
+    expense_description: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Description of expense for non-PO invoices"
     )
 
     # Invoice Amounts
@@ -1537,6 +1576,8 @@ class VendorInvoice(Base):
     vendor: Mapped["Vendor"] = relationship("Vendor")
     purchase_order: Mapped[Optional["PurchaseOrder"]] = relationship("PurchaseOrder")
     grn: Mapped[Optional["GoodsReceiptNote"]] = relationship("GoodsReceiptNote")
+    gl_account: Mapped[Optional["ChartOfAccount"]] = relationship("ChartOfAccount")
+    cost_center: Mapped[Optional["CostCenter"]] = relationship("CostCenter")
     received_by_user: Mapped["User"] = relationship("User", foreign_keys=[received_by])
     verified_by_user: Mapped[Optional["User"]] = relationship("User", foreign_keys=[verified_by])
     approved_by_user: Mapped[Optional["User"]] = relationship("User", foreign_keys=[approved_by])

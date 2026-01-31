@@ -16,6 +16,7 @@ from app.models.purchase import (
     PurchaseOrder, GoodsReceiptNote
 )
 from app.models.vendor import Vendor
+from app.models.accounting import ChartOfAccount, CostCenter
 from uuid import uuid4
 from datetime import date as date_type
 from app.services.auto_journal_service import AutoJournalService, AutoJournalError
@@ -29,8 +30,17 @@ class VendorInvoiceCreate(BaseModel):
     vendor_id: UUID
     invoice_number: str
     invoice_date: date
+    # Invoice type: PO_INVOICE (procurement) or EXPENSE_INVOICE (non-PO)
+    invoice_type: str = "PO_INVOICE"
+    # For PO Invoices
     purchase_order_id: Optional[UUID] = None
     grn_id: Optional[UUID] = None
+    # For Expense Invoices (non-PO)
+    gl_account_id: Optional[UUID] = None
+    cost_center_id: Optional[UUID] = None
+    expense_category: Optional[str] = None
+    expense_description: Optional[str] = None
+    # Amounts
     subtotal: Decimal
     discount_amount: Decimal = Decimal("0")
     taxable_amount: Decimal
@@ -72,6 +82,61 @@ async def get_next_reference(
     return {"reference": next_ref}
 
 
+@router.get("/gl-accounts")
+async def get_gl_accounts_dropdown(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    account_type: Optional[str] = Query(None, description="Filter by account type: ASSET, EXPENSE"),
+):
+    """Get GL accounts for dropdown (for expense invoice coding)."""
+    query = select(ChartOfAccount).where(
+        ChartOfAccount.is_active == True,
+        ChartOfAccount.allow_direct_posting == True,
+    )
+
+    if account_type:
+        query = query.where(ChartOfAccount.account_type == account_type.upper())
+    else:
+        # Default: show ASSET and EXPENSE accounts for vendor invoices
+        query = query.where(ChartOfAccount.account_type.in_(["ASSET", "EXPENSE"]))
+
+    query = query.order_by(ChartOfAccount.account_code)
+    result = await db.execute(query)
+    accounts = result.scalars().all()
+
+    return [
+        {
+            "id": str(acc.id),
+            "account_code": acc.account_code,
+            "account_name": acc.account_name,
+            "account_type": acc.account_type,
+            "account_sub_type": acc.account_sub_type,
+        }
+        for acc in accounts
+    ]
+
+
+@router.get("/expense-categories")
+async def get_expense_categories(
+    current_user: User = Depends(get_current_user),
+):
+    """Get expense categories for dropdown."""
+    categories = [
+        {"value": "FIXED_ASSET", "label": "Fixed Asset (Laptop, Furniture, Equipment)"},
+        {"value": "SERVICE", "label": "Professional Services (Consulting, Legal)"},
+        {"value": "UTILITIES", "label": "Utilities (Electricity, Water, Internet)"},
+        {"value": "RENT", "label": "Rent & Lease"},
+        {"value": "TRAVEL", "label": "Travel & Conveyance"},
+        {"value": "OFFICE_SUPPLIES", "label": "Office Supplies & Stationery"},
+        {"value": "REPAIRS", "label": "Repairs & Maintenance"},
+        {"value": "INSURANCE", "label": "Insurance"},
+        {"value": "SUBSCRIPTION", "label": "Software & Subscriptions"},
+        {"value": "MARKETING", "label": "Marketing & Advertising"},
+        {"value": "OTHER", "label": "Other Expenses"},
+    ]
+    return categories
+
+
 @router.get("")
 async def list_vendor_invoices(
     db: DB,
@@ -80,6 +145,7 @@ async def list_vendor_invoices(
     size: int = Query(20, ge=1, le=100),
     status: Optional[str] = None,
     vendor_id: Optional[UUID] = None,
+    invoice_type: Optional[str] = Query(None, description="PO_INVOICE or EXPENSE_INVOICE"),
     is_matched: Optional[bool] = None,
     is_overdue: Optional[bool] = None,
     start_date: Optional[date] = None,
@@ -91,6 +157,8 @@ async def list_vendor_invoices(
         selectinload(VendorInvoice.vendor),
         selectinload(VendorInvoice.purchase_order),
         selectinload(VendorInvoice.grn),
+        selectinload(VendorInvoice.gl_account),
+        selectinload(VendorInvoice.cost_center),
     )
 
     conditions = []
@@ -100,6 +168,9 @@ async def list_vendor_invoices(
 
     if vendor_id:
         conditions.append(VendorInvoice.vendor_id == vendor_id)
+
+    if invoice_type:
+        conditions.append(VendorInvoice.invoice_type == invoice_type.upper())
 
     if is_matched is not None:
         conditions.append(VendorInvoice.is_fully_matched == is_matched)
@@ -149,17 +220,29 @@ async def list_vendor_invoices(
                 "our_reference": inv.our_reference,
                 "invoice_number": inv.invoice_number,
                 "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
+                "invoice_type": inv.invoice_type or "PO_INVOICE",
                 "status": inv.status,
                 "vendor_id": str(inv.vendor_id),
                 "vendor_name": inv.vendor.name if inv.vendor else None,
+                "vendor_code": inv.vendor.vendor_code if inv.vendor else None,
+                # PO Invoice fields
                 "po_number": inv.purchase_order.po_number if inv.purchase_order else None,
                 "grn_number": inv.grn.grn_number if inv.grn else None,
+                # Expense Invoice fields
+                "gl_account_id": str(inv.gl_account_id) if inv.gl_account_id else None,
+                "gl_account_name": inv.gl_account.account_name if inv.gl_account else None,
+                "cost_center_id": str(inv.cost_center_id) if inv.cost_center_id else None,
+                "cost_center_name": inv.cost_center.name if inv.cost_center else None,
+                "expense_category": inv.expense_category,
+                "expense_description": inv.expense_description,
+                # Amounts
                 "grand_total": float(inv.grand_total),
                 "amount_paid": float(inv.amount_paid),
                 "balance_due": float(inv.balance_due),
                 "due_date": inv.due_date.isoformat() if inv.due_date else None,
                 "is_overdue": inv.is_overdue,
                 "days_overdue": inv.days_overdue,
+                # Match status (for PO invoices)
                 "is_fully_matched": inv.is_fully_matched,
                 "po_matched": inv.po_matched,
                 "grn_matched": inv.grn_matched,
@@ -366,10 +449,18 @@ async def create_vendor_invoice(
         our_reference=our_reference,
         invoice_number=data.invoice_number,
         invoice_date=data.invoice_date,
+        invoice_type=data.invoice_type or "PO_INVOICE",
         status="RECEIVED",
         vendor_id=data.vendor_id,
+        # PO Invoice fields
         purchase_order_id=data.purchase_order_id,
         grn_id=data.grn_id,
+        # Expense Invoice fields
+        gl_account_id=data.gl_account_id,
+        cost_center_id=data.cost_center_id,
+        expense_category=data.expense_category,
+        expense_description=data.expense_description,
+        # Amounts
         subtotal=data.subtotal,
         discount_amount=data.discount_amount,
         taxable_amount=data.taxable_amount,

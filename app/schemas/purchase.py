@@ -610,8 +610,17 @@ class VendorInvoiceBase(BaseModel):
     vendor_id: UUID
     invoice_number: str = Field(..., max_length=50)
     invoice_date: date
+    # Invoice Type: PO_INVOICE (requires PO) or EXPENSE_INVOICE (non-PO)
+    invoice_type: str = Field("PO_INVOICE", description="PO_INVOICE or EXPENSE_INVOICE")
+    # For PO Invoices
     purchase_order_id: Optional[UUID] = None
     grn_id: Optional[UUID] = None
+    # For Expense Invoices (non-PO)
+    gl_account_id: Optional[UUID] = Field(None, description="GL account for expense coding")
+    cost_center_id: Optional[UUID] = Field(None, description="Cost center for allocation")
+    expense_category: Optional[str] = Field(None, description="FIXED_ASSET, SERVICE, UTILITIES, RENT, etc.")
+    expense_description: Optional[str] = Field(None, description="Description of expense")
+    # Amounts
     subtotal: Decimal = Field(..., ge=0)
     discount_amount: Decimal = Field(Decimal("0"), ge=0)
     cgst_amount: Decimal = Field(Decimal("0"), ge=0)
@@ -649,17 +658,28 @@ class VendorInvoiceResponse(BaseResponseSchema):
     id: UUID
     our_reference: str
     status: str
+    invoice_type: str
+    # Amounts
     taxable_amount: Decimal
     total_tax: Decimal
     tds_amount: Decimal
     net_payable: Decimal
     amount_paid: Decimal
     balance_due: Decimal
+    # 3-Way Match (for PO Invoices)
     po_matched: bool
     grn_matched: bool
     is_fully_matched: bool
     matching_variance: Decimal
     variance_reason: Optional[str] = None
+    # Expense Invoice fields
+    gl_account_id: Optional[UUID] = None
+    gl_account_name: Optional[str] = None
+    cost_center_id: Optional[UUID] = None
+    cost_center_name: Optional[str] = None
+    expense_category: Optional[str] = None
+    expense_description: Optional[str] = None
+    # Workflow
     received_by: UUID
     received_at: datetime
     verified_by: Optional[UUID] = None
@@ -677,10 +697,15 @@ class VendorInvoiceBrief(BaseResponseSchema):
     invoice_number: str
     invoice_date: date
     vendor_name: str
+    invoice_type: str
     grand_total: Decimal
     balance_due: Decimal
     due_date: date
     status: str
+    # For display
+    po_number: Optional[str] = None
+    gl_account_name: Optional[str] = None
+    expense_category: Optional[str] = None
 
 
 class VendorInvoiceListResponse(BaseModel):
