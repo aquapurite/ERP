@@ -5932,22 +5932,45 @@ export const gstFilingApi = {
 
 // ==================== ITC (INPUT TAX CREDIT) API ====================
 
+/**
+ * Convert period from MMYYYY format to YYYYMM format expected by backend
+ * Frontend generates: "012026" (MMYYYY)
+ * Backend expects: "202601" (YYYYMM)
+ */
+const normalizePeriodForAPI = (period: string): string => {
+  if (!period || period.length !== 6) return period;
+
+  // Check if already in YYYYMM format (year > 2000)
+  const firstFour = parseInt(period.substring(0, 4), 10);
+  if (firstFour >= 2000 && firstFour <= 2100) {
+    return period; // Already YYYYMM format
+  }
+
+  // Convert MMYYYY to YYYYMM
+  const month = period.substring(0, 2);
+  const year = period.substring(2, 6);
+  return `${year}${month}`;
+};
+
 export const itcApi = {
   // Get Available ITC
   getAvailableITC: async (period: string) => {
-    const { data } = await apiClient.get('/gst/itc/available', { params: { period } });
+    const normalizedPeriod = normalizePeriodForAPI(period);
+    const { data } = await apiClient.get('/gst/itc/available', { params: { period: normalizedPeriod } });
     return data;
   },
 
   // Reconcile ITC with GSTR-2A
   reconcileWithGSTR2A: async (month: number, year: number) => {
-    const { data } = await apiClient.post('/gst/itc/reconcile', { month, year, source: 'GSTR2A' });
+    const period = `${year}${String(month).padStart(2, '0')}`; // YYYYMM format
+    const { data } = await apiClient.post('/gst/itc/reconcile', { period, source: 'GSTR2A' });
     return data;
   },
 
   // Reconcile ITC with GSTR-2B
   reconcileWithGSTR2B: async (month: number, year: number) => {
-    const { data } = await apiClient.post('/gst/itc/reconcile', { month, year, source: 'GSTR2B' });
+    const period = `${year}${String(month).padStart(2, '0')}`; // YYYYMM format
+    const { data } = await apiClient.post('/gst/itc/reconcile', { period, source: 'GSTR2B' });
     return data;
   },
 
@@ -5964,7 +5987,7 @@ export const itcApi = {
     const normalizedParams = params ? {
       page: params.page,
       size: params.size || params.limit,
-      period: params.period,
+      period: params.period ? normalizePeriodForAPI(params.period) : undefined,
       status: params.status,
       vendor_gstin: params.vendor_gstin,
     } : undefined;
@@ -5974,7 +5997,8 @@ export const itcApi = {
 
   // Get ITC Summary
   getSummary: async (period: string) => {
-    const { data } = await apiClient.get('/gst/itc/summary', { params: { period } });
+    const normalizedPeriod = normalizePeriodForAPI(period);
+    const { data } = await apiClient.get('/gst/itc/summary', { params: { period: normalizedPeriod } });
     return data;
   },
 
@@ -5985,7 +6009,11 @@ export const itcApi = {
     sgst_utilized: number;
     igst_utilized: number;
   }) => {
-    const { data } = await apiClient.post('/gst/itc/utilize', utilizationData);
+    const normalizedData = {
+      ...utilizationData,
+      period: normalizePeriodForAPI(utilizationData.period),
+    };
+    const { data } = await apiClient.post('/gst/itc/utilize', normalizedData);
     return data;
   },
 
@@ -5997,7 +6025,8 @@ export const itcApi = {
 
   // Get Mismatch Report (ITC vs GSTR-2A/2B)
   getMismatchReport: async (period: string) => {
-    const { data } = await apiClient.get('/gst/itc/mismatch-report', { params: { period } });
+    const normalizedPeriod = normalizePeriodForAPI(period);
+    const { data } = await apiClient.get('/gst/itc/mismatch-report', { params: { period: normalizedPeriod } });
     return data;
   },
 };
