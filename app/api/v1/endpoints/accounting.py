@@ -344,18 +344,26 @@ async def sync_vendor_subledger_accounts(
 
     created = []
     for vendor in vendors:
-        # Generate account code: 2101-VND001, 2101-VND002, etc.
-        # Use vendor code suffix for readability
-        vendor_suffix = vendor.vendor_code.replace("VND-", "").replace("-", "")[:6]
-        account_code = f"2101-{vendor_suffix}"
+        # Generate account code using vendor NAME for uniqueness (not vendor_code which can be duplicate)
+        # Clean vendor name: remove spaces, special chars, take first 6 chars uppercase
+        import re
+        clean_name = re.sub(r'[^A-Za-z0-9]', '', vendor.name)[:6].upper()
+        account_code = f"2101-{clean_name}"
 
-        # Check if account code already exists
+        # Check if account code already exists and make unique
         existing = await db.execute(
             select(ChartOfAccount).where(ChartOfAccount.account_code == account_code)
         )
         if existing.scalar_one_or_none():
-            # Code exists, add UUID suffix
-            account_code = f"2101-{vendor_suffix[:4]}{str(vendor.id)[:4].upper()}"
+            # Code exists, add first 4 chars of UUID for uniqueness
+            account_code = f"2101-{clean_name[:4]}{str(vendor.id)[:4].upper()}"
+            # Double-check this new code is also unique
+            existing2 = await db.execute(
+                select(ChartOfAccount).where(ChartOfAccount.account_code == account_code)
+            )
+            if existing2.scalar_one_or_none():
+                # Still duplicate, use full UUID portion
+                account_code = f"2101-{str(vendor.id)[:8].upper()}"
 
         # Create the GL account
         gl_account = ChartOfAccount(
