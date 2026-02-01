@@ -984,10 +984,16 @@ class AutoJournalService:
                 {"difference": float(total_debit - total_credit)}
             )
 
-        # Auto-post if requested
+        # Flush to get line IDs
+        await self.db.flush()
+
+        # Auto-post if requested - this creates GL entries and updates account balances
         if auto_post:
             journal.status = JournalEntryStatus.POSTED.value
             journal.posted_at = datetime.now(timezone.utc)
+            # Create GL entries for each journal line
+            lines_with_ids = [(line.id, line) for line in journal_lines]
+            await self._post_journal_entry(journal, lines_with_ids)
 
         await self.db.flush()
 
