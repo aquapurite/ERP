@@ -261,6 +261,7 @@ async def list_vendor_invoices(
                 ),
                 # Computed payment_status for frontend
                 "payment_status": (
+                    "UNPAID" if inv.grand_total <= 0 else  # No amount = unpaid
                     "PAID" if inv.balance_due <= 0 else
                     "PARTIAL" if inv.amount_paid > 0 else
                     "UNPAID"
