@@ -166,6 +166,17 @@ const vendorInvoicesApi = {
       return { items: [], total: 0, pages: 0 };
     }
   },
+  getNextReference: async (): Promise<string> => {
+    try {
+      const { data } = await apiClient.get('/vendor-invoices/next-reference');
+      return data.reference || '';
+    } catch {
+      // Generate a local reference if API fails
+      const today = new Date();
+      const fy = today.getMonth() >= 3 ? `${today.getFullYear()}-${(today.getFullYear() + 1).toString().slice(-2)}` : `${today.getFullYear() - 1}-${today.getFullYear().toString().slice(-2)}`;
+      return `VI/${fy}/${Date.now().toString().slice(-6)}`;
+    }
+  },
   getStats: async (): Promise<InvoiceStats> => {
     try {
       const { data } = await apiClient.get('/vendor-invoices/stats');
@@ -303,6 +314,7 @@ export default function VendorInvoicesPage() {
   const [invoiceType, setInvoiceType] = useState<'PO_INVOICE' | 'EXPENSE_INVOICE'>('PO_INVOICE');
   const [selectedVendorId, setSelectedVendorId] = useState<string>('');
   const [selectedPOId, setSelectedPOId] = useState<string>('');
+  const [ourReference, setOurReference] = useState<string>('');
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
   const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
@@ -360,11 +372,17 @@ export default function VendorInvoicesPage() {
     : posItems;
 
   // Reset form when dialog closes
+  // Fetch next reference and reset form when dialog opens/closes
   useEffect(() => {
-    if (!isUploadDialogOpen) {
+    if (isUploadDialogOpen) {
+      // Fetch next reference number when dialog opens
+      vendorInvoicesApi.getNextReference().then(ref => setOurReference(ref));
+    } else {
+      // Reset form when dialog closes
       setInvoiceType('PO_INVOICE');
       setSelectedVendorId('');
       setSelectedPOId('');
+      setOurReference('');
       setSelectedGLAccountId('');
       setExpenseCategory('');
       setExpenseDescription('');
@@ -757,18 +775,27 @@ export default function VendorInvoicesPage() {
                   Upload Invoice
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-md">
+              <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Upload Vendor Invoice</DialogTitle>
                   <DialogDescription>
-                    Upload an invoice PDF or image for processing
+                    Create a new vendor invoice record
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
+                  {/* Auto-generated Reference */}
+                  {ourReference && (
+                    <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="text-xs text-blue-600 font-medium">Our Reference (Auto-generated)</div>
+                      <div className="text-lg font-mono font-bold text-blue-800">{ourReference}</div>
+                    </div>
+                  )}
+
+                  {/* Vendor Selection - MOST IMPORTANT */}
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Vendor *</label>
                     <Select value={selectedVendorId} onValueChange={setSelectedVendorId}>
-                      <SelectTrigger>
+                      <SelectTrigger className="h-12">
                         <SelectValue placeholder={vendorsLoading ? "Loading vendors..." : "Select vendor"} />
                       </SelectTrigger>
                       <SelectContent>
