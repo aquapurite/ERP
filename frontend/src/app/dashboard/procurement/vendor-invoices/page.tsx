@@ -207,6 +207,7 @@ const vendorInvoicesApi = {
     taxable_amount: number;
     cgst_amount: number;
     sgst_amount: number;
+    igst_amount?: number;
     grand_total: number;
     due_date: string;
   }) => {
@@ -240,6 +241,7 @@ const vendorInvoicesApi = {
     taxable_amount?: number;
     cgst_amount?: number;
     sgst_amount?: number;
+    igst_amount?: number;
     grand_total?: number;
     due_date?: string;
   }) => {
@@ -291,8 +293,10 @@ export default function VendorInvoicesPage() {
   const [editExpenseCategory, setEditExpenseCategory] = useState<string>('');
   const [editExpenseDescription, setEditExpenseDescription] = useState<string>('');
   const [editSubtotal, setEditSubtotal] = useState<number>(0);
+  const [editGstType, setEditGstType] = useState<'INTRA_STATE' | 'INTER_STATE'>('INTRA_STATE');
   const [editCgstAmount, setEditCgstAmount] = useState<number>(0);
   const [editSgstAmount, setEditSgstAmount] = useState<number>(0);
+  const [editIgstAmount, setEditIgstAmount] = useState<number>(0);
   const [editGrandTotal, setEditGrandTotal] = useState<number>(0);
 
   // Upload form state
@@ -310,8 +314,10 @@ export default function VendorInvoicesPage() {
 
   // Amount fields
   const [subtotal, setSubtotal] = useState<number>(0);
+  const [gstType, setGstType] = useState<'INTRA_STATE' | 'INTER_STATE'>('INTRA_STATE');
   const [cgstAmount, setCgstAmount] = useState<number>(0);
   const [sgstAmount, setSgstAmount] = useState<number>(0);
+  const [igstAmount, setIgstAmount] = useState<number>(0);
   const [grandTotal, setGrandTotal] = useState<number>(0);
 
   const queryClient = useQueryClient();
@@ -366,8 +372,10 @@ export default function VendorInvoicesPage() {
       setInvoiceDate(new Date().toISOString().split('T')[0]);
       setInvoiceFile(null);
       setSubtotal(0);
+      setGstType('INTRA_STATE');
       setCgstAmount(0);
       setSgstAmount(0);
+      setIgstAmount(0);
       setGrandTotal(0);
     }
   }, [isUploadDialogOpen]);
@@ -376,8 +384,10 @@ export default function VendorInvoicesPage() {
   useEffect(() => {
     setSelectedPOId('');
     setSubtotal(0);
+    setGstType('INTRA_STATE');
     setCgstAmount(0);
     setSgstAmount(0);
+    setIgstAmount(0);
     setGrandTotal(0);
   }, [selectedVendorId]);
 
@@ -534,6 +544,7 @@ export default function VendorInvoicesPage() {
       taxable_amount: subtotal,
       cgst_amount: cgstAmount,
       sgst_amount: sgstAmount,
+      igst_amount: igstAmount,
       grand_total: grandTotal,
       due_date: dueDate.toISOString().split('T')[0],
     });
@@ -666,8 +677,12 @@ export default function VendorInvoicesPage() {
                   setEditExpenseCategory(invoice.expense_category || '');
                   setEditExpenseDescription(invoice.expense_description || '');
                   setEditSubtotal(invoice.subtotal || invoice.grand_total || 0);
+                  // Detect GST type from existing values: if IGST > 0, it's inter-state
+                  const hasIgst = (invoice.igst_amount || 0) > 0;
+                  setEditGstType(hasIgst ? 'INTER_STATE' : 'INTRA_STATE');
                   setEditCgstAmount(invoice.cgst_amount || 0);
                   setEditSgstAmount(invoice.sgst_amount || 0);
+                  setEditIgstAmount(invoice.igst_amount || 0);
                   setEditGrandTotal(invoice.grand_total || 0);
                   setIsEditDialogOpen(true);
                 }}>
@@ -965,8 +980,12 @@ export default function VendorInvoicesPage() {
                           onChange={(e) => {
                             const val = parseFloat(e.target.value) || 0;
                             setSubtotal(val);
-                            // Auto-calculate total when subtotal changes
-                            setGrandTotal(val + cgstAmount + sgstAmount);
+                            // Auto-calculate total based on GST type
+                            if (gstType === 'INTRA_STATE') {
+                              setGrandTotal(val + cgstAmount + sgstAmount);
+                            } else {
+                              setGrandTotal(val + igstAmount);
+                            }
                           }}
                         />
                       </div>
@@ -983,38 +1002,97 @@ export default function VendorInvoicesPage() {
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-sm text-muted-foreground">CGST Amount</label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="0.00"
-                          value={cgstAmount || ''}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0;
-                            setCgstAmount(val);
-                            setGrandTotal(subtotal + val + sgstAmount);
-                          }}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm text-muted-foreground">SGST Amount</label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="0.00"
-                          value={sgstAmount || ''}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0;
-                            setSgstAmount(val);
-                            setGrandTotal(subtotal + cgstAmount + val);
-                          }}
-                        />
-                      </div>
+
+                    {/* GST Type Selector */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">GST Type *</label>
+                      <Select
+                        value={gstType}
+                        onValueChange={(v) => {
+                          const newType = v as 'INTRA_STATE' | 'INTER_STATE';
+                          setGstType(newType);
+                          // Clear the opposite GST values and recalculate
+                          if (newType === 'INTRA_STATE') {
+                            setIgstAmount(0);
+                            setGrandTotal(subtotal + cgstAmount + sgstAmount);
+                          } else {
+                            setCgstAmount(0);
+                            setSgstAmount(0);
+                            setGrandTotal(subtotal + igstAmount);
+                          }
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="INTRA_STATE">
+                            <div className="flex flex-col">
+                              <span>Intra-State (CGST + SGST)</span>
+                              <span className="text-xs text-muted-foreground">Vendor in same state</span>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="INTER_STATE">
+                            <div className="flex flex-col">
+                              <span>Inter-State (IGST)</span>
+                              <span className="text-xs text-muted-foreground">Vendor in different state</span>
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
+
+                    {/* Conditional GST Fields based on type */}
+                    {gstType === 'INTRA_STATE' ? (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-sm text-muted-foreground">CGST Amount</label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            value={cgstAmount || ''}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              setCgstAmount(val);
+                              setGrandTotal(subtotal + val + sgstAmount);
+                            }}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm text-muted-foreground">SGST Amount</label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            value={sgstAmount || ''}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              setSgstAmount(val);
+                              setGrandTotal(subtotal + cgstAmount + val);
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <label className="text-sm text-muted-foreground">IGST Amount</label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          value={igstAmount || ''}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setIgstAmount(val);
+                            setGrandTotal(subtotal + val);
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
                 <DialogFooter>
@@ -1246,7 +1324,11 @@ export default function VendorInvoicesPage() {
                       onChange={(e) => {
                         const val = parseFloat(e.target.value) || 0;
                         setEditSubtotal(val);
-                        setEditGrandTotal(val + editCgstAmount + editSgstAmount);
+                        if (editGstType === 'INTRA_STATE') {
+                          setEditGrandTotal(val + editCgstAmount + editSgstAmount);
+                        } else {
+                          setEditGrandTotal(val + editIgstAmount);
+                        }
                       }}
                     />
                   </div>
@@ -1262,36 +1344,84 @@ export default function VendorInvoicesPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm text-muted-foreground">CGST Amount</label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={editCgstAmount || ''}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value) || 0;
-                        setEditCgstAmount(val);
-                        setEditGrandTotal(editSubtotal + val + editSgstAmount);
-                      }}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm text-muted-foreground">SGST Amount</label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={editSgstAmount || ''}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value) || 0;
-                        setEditSgstAmount(val);
-                        setEditGrandTotal(editSubtotal + editCgstAmount + val);
-                      }}
-                    />
-                  </div>
+
+                {/* GST Type Selector */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">GST Type *</label>
+                  <Select
+                    value={editGstType}
+                    onValueChange={(v) => {
+                      const newType = v as 'INTRA_STATE' | 'INTER_STATE';
+                      setEditGstType(newType);
+                      // Clear opposite GST values and recalculate
+                      if (newType === 'INTRA_STATE') {
+                        setEditIgstAmount(0);
+                        setEditGrandTotal(editSubtotal + editCgstAmount + editSgstAmount);
+                      } else {
+                        setEditCgstAmount(0);
+                        setEditSgstAmount(0);
+                        setEditGrandTotal(editSubtotal + editIgstAmount);
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="INTRA_STATE">Intra-State (CGST + SGST)</SelectItem>
+                      <SelectItem value="INTER_STATE">Inter-State (IGST)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+
+                {/* Conditional GST Fields based on type */}
+                {editGstType === 'INTRA_STATE' ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm text-muted-foreground">CGST Amount</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={editCgstAmount || ''}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setEditCgstAmount(val);
+                          setEditGrandTotal(editSubtotal + val + editSgstAmount);
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm text-muted-foreground">SGST Amount</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={editSgstAmount || ''}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setEditSgstAmount(val);
+                          setEditGrandTotal(editSubtotal + editCgstAmount + val);
+                        }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <label className="text-sm text-muted-foreground">IGST Amount</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={editIgstAmount || ''}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setEditIgstAmount(val);
+                        setEditGrandTotal(editSubtotal + val);
+                      }}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1333,6 +1463,7 @@ export default function VendorInvoicesPage() {
                     taxable_amount: editSubtotal,
                     cgst_amount: editCgstAmount,
                     sgst_amount: editSgstAmount,
+                    igst_amount: editIgstAmount,
                     grand_total: editGrandTotal,
                   },
                 });
