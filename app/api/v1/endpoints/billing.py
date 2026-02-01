@@ -2111,35 +2111,54 @@ async def get_gstr2a_report(
     year: int = Query(..., ge=2017),
     current_user: User = Depends(get_current_user),
 ):
-    """Generate GSTR-2A (Inward Supplies) report data - Auto-populated from supplier filings."""
+    """Generate GSTR-2A (Inward Supplies) report data from Vendor Invoices.
+
+    GSTR-2A shows purchase invoices received from vendors with their GST details.
+    This data is used for ITC (Input Tax Credit) reconciliation.
+    """
     from calendar import monthrange
-    from app.models.purchase import PurchaseOrder, POStatus
+    from app.models.purchase import VendorInvoice
+    from app.models.vendor import Vendor
+    from sqlalchemy.orm import selectinload
 
     start_date = date(year, month, 1)
     end_date = date(year, month, monthrange(year, month)[1])
 
-    # Get received purchase orders (inward supplies)
-    po_query = select(PurchaseOrder).where(
-        and_(
-            PurchaseOrder.po_date >= start_date,
-            PurchaseOrder.po_date <= end_date,
-            PurchaseOrder.status.in_([POStatus.RECEIVED.value, POStatus.COMPLETED.value]),
+    # Get vendor invoices for the period with vendor details
+    invoice_query = (
+        select(VendorInvoice)
+        .options(selectinload(VendorInvoice.vendor))
+        .where(
+            and_(
+                VendorInvoice.invoice_date >= start_date,
+                VendorInvoice.invoice_date <= end_date,
+            )
         )
+        .order_by(VendorInvoice.invoice_date.desc())
     )
-    po_result = await db.execute(po_query)
-    purchase_orders = po_result.scalars().all()
+    invoice_result = await db.execute(invoice_query)
+    vendor_invoices = invoice_result.scalars().all()
 
-    # Calculate totals
-    total_taxable = sum(float(po.subtotal or 0) for po in purchase_orders)
-    total_igst = sum(float(po.igst_amount or 0) for po in purchase_orders)
-    total_cgst = sum(float(po.cgst_amount or 0) for po in purchase_orders)
-    total_sgst = sum(float(po.sgst_amount or 0) for po in purchase_orders)
+    # Calculate totals from vendor invoices
+    total_taxable = sum(float(inv.taxable_amount or inv.subtotal or 0) for inv in vendor_invoices)
+    total_igst = sum(float(inv.igst_amount or 0) for inv in vendor_invoices)
+    total_cgst = sum(float(inv.cgst_amount or 0) for inv in vendor_invoices)
+    total_sgst = sum(float(inv.sgst_amount or 0) for inv in vendor_invoices)
     total_tax = total_igst + total_cgst + total_sgst
+
+    # Determine match status based on invoice status
+    def get_match_status(inv):
+        if inv.status in ['APPROVED', 'PAID', 'MATCHED']:
+            return 'MATCHED'
+        elif inv.status in ['MISMATCH', 'DISPUTED']:
+            return 'MISMATCHED'
+        else:
+            return 'PENDING'
 
     return {
         "return_period": f"{month:02d}{year}",
         "summary": {
-            "total_invoices": len(purchase_orders),
+            "total_invoices": len(vendor_invoices),
             "total_taxable_value": total_taxable,
             "total_igst": total_igst,
             "total_cgst": total_cgst,
@@ -2149,19 +2168,19 @@ async def get_gstr2a_report(
         },
         "invoices": [
             {
-                "id": str(po.id),
-                "invoice_number": po.po_number,
-                "invoice_date": po.po_date.isoformat() if po.po_date else None,
-                "gstin": po.vendor_gstin if hasattr(po, 'vendor_gstin') else None,
-                "vendor_name": po.vendor_name if hasattr(po, 'vendor_name') else "Vendor",
-                "taxable_value": float(po.subtotal or 0),
-                "igst": float(po.igst_amount or 0),
-                "cgst": float(po.cgst_amount or 0),
-                "sgst": float(po.sgst_amount or 0),
-                "total_value": float(po.grand_total or 0),
-                "status": "MATCHED" if po.status == POStatus.COMPLETED.value else "PENDING",
+                "id": str(inv.id),
+                "invoice_number": inv.invoice_number,
+                "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
+                "gstin": inv.vendor.gstin if inv.vendor else None,
+                "vendor_name": inv.vendor.name if inv.vendor else "Unknown Vendor",
+                "taxable_value": float(inv.taxable_amount or inv.subtotal or 0),
+                "igst": float(inv.igst_amount or 0),
+                "cgst": float(inv.cgst_amount or 0),
+                "sgst": float(inv.sgst_amount or 0),
+                "total_value": float(inv.grand_total or 0),
+                "status": get_match_status(inv),
             }
-            for po in purchase_orders
+            for inv in vendor_invoices
         ],
     }
 
