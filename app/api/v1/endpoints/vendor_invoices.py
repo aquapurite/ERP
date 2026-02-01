@@ -658,8 +658,15 @@ class VendorInvoiceUpdate(BaseModel):
     """Schema for updating vendor invoice."""
     invoice_number: Optional[str] = None
     invoice_date: Optional[date] = None
+    invoice_type: Optional[str] = None  # PO_INVOICE or EXPENSE_INVOICE
     purchase_order_id: Optional[UUID] = None
     grn_id: Optional[UUID] = None
+    # Expense invoice fields
+    gl_account_id: Optional[UUID] = None
+    cost_center_id: Optional[UUID] = None
+    expense_category: Optional[str] = None
+    expense_description: Optional[str] = None
+    # Amount fields
     subtotal: Optional[Decimal] = None
     taxable_amount: Optional[Decimal] = None
     cgst_amount: Optional[Decimal] = None
@@ -706,6 +713,23 @@ async def update_vendor_invoice(
         if not grn:
             raise HTTPException(status_code=404, detail="GRN not found")
         invoice.grn_id = data.grn_id
+
+    # Invoice type and expense coding fields
+    if data.invoice_type is not None:
+        invoice.invoice_type = data.invoice_type
+    if data.gl_account_id is not None:
+        # Validate GL account exists
+        gl_account = await db.get(ChartOfAccount, data.gl_account_id)
+        if not gl_account:
+            raise HTTPException(status_code=404, detail="GL Account not found")
+        invoice.gl_account_id = data.gl_account_id
+    if data.cost_center_id is not None:
+        invoice.cost_center_id = data.cost_center_id
+    if data.expense_category is not None:
+        invoice.expense_category = data.expense_category
+    if data.expense_description is not None:
+        invoice.expense_description = data.expense_description
+
     if data.subtotal is not None:
         invoice.subtotal = data.subtotal
         invoice.taxable_amount = data.subtotal  # Sync taxable amount

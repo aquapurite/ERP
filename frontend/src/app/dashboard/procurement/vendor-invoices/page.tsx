@@ -228,7 +228,14 @@ const vendorInvoicesApi = {
   update: async (id: string, invoiceData: {
     invoice_number?: string;
     invoice_date?: string;
+    invoice_type?: string;
     purchase_order_id?: string;
+    // Expense invoice fields
+    gl_account_id?: string;
+    cost_center_id?: string;
+    expense_category?: string;
+    expense_description?: string;
+    // Amount fields
     subtotal?: number;
     taxable_amount?: number;
     cgst_amount?: number;
@@ -277,6 +284,16 @@ export default function VendorInvoicesPage() {
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<VendorInvoice | null>(null);
+
+  // Edit form state
+  const [editInvoiceType, setEditInvoiceType] = useState<'PO_INVOICE' | 'EXPENSE_INVOICE'>('EXPENSE_INVOICE');
+  const [editGLAccountId, setEditGLAccountId] = useState<string>('');
+  const [editExpenseCategory, setEditExpenseCategory] = useState<string>('');
+  const [editExpenseDescription, setEditExpenseDescription] = useState<string>('');
+  const [editSubtotal, setEditSubtotal] = useState<number>(0);
+  const [editCgstAmount, setEditCgstAmount] = useState<number>(0);
+  const [editSgstAmount, setEditSgstAmount] = useState<number>(0);
+  const [editGrandTotal, setEditGrandTotal] = useState<number>(0);
 
   // Upload form state
   const [invoiceType, setInvoiceType] = useState<'PO_INVOICE' | 'EXPENSE_INVOICE'>('PO_INVOICE');
@@ -643,11 +660,15 @@ export default function VendorInvoicesPage() {
               {(['RECEIVED', 'PENDING', 'UNDER_REVIEW', 'UNDER_VERIFICATION', 'MISMATCH'].includes(invoice.status) || !invoice.status || invoice.grand_total === 0) && (
                 <DropdownMenuItem onClick={() => {
                   setEditingInvoice(invoice);
-                  // Pre-populate the form with invoice data
-                  setSubtotal(invoice.subtotal || invoice.grand_total || 0);
-                  setCgstAmount(invoice.cgst_amount || 0);
-                  setSgstAmount(invoice.sgst_amount || 0);
-                  setGrandTotal(invoice.grand_total || 0);
+                  // Pre-populate the edit form with invoice data
+                  setEditInvoiceType(invoice.invoice_type || 'EXPENSE_INVOICE');
+                  setEditGLAccountId(invoice.gl_account_id || '');
+                  setEditExpenseCategory(invoice.expense_category || '');
+                  setEditExpenseDescription(invoice.expense_description || '');
+                  setEditSubtotal(invoice.subtotal || invoice.grand_total || 0);
+                  setEditCgstAmount(invoice.cgst_amount || 0);
+                  setEditSgstAmount(invoice.sgst_amount || 0);
+                  setEditGrandTotal(invoice.grand_total || 0);
                   setIsEditDialogOpen(true);
                 }}>
                   <Pencil className="mr-2 h-4 w-4" />
@@ -1130,47 +1151,113 @@ export default function VendorInvoicesPage() {
         setIsEditDialogOpen(open);
         if (!open) setEditingInvoice(null);
       }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Invoice</DialogTitle>
             <DialogDescription>
-              Update invoice {editingInvoice?.invoice_number} amounts
+              Update invoice {editingInvoice?.invoice_number}
             </DialogDescription>
           </DialogHeader>
           {editingInvoice && (
             <div className="grid gap-4 py-4">
               <div className="p-3 bg-muted rounded-lg">
-                <div className="text-sm text-muted-foreground">Invoice Number</div>
-                <div className="font-medium">{editingInvoice.invoice_number}</div>
-                <div className="text-sm text-muted-foreground mt-2">Vendor</div>
-                <div className="font-medium">{editingInvoice.vendor_name}</div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-sm text-muted-foreground">Invoice Number</div>
+                    <div className="font-medium">{editingInvoice.invoice_number}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Vendor</div>
+                    <div className="font-medium">{editingInvoice.vendor_name}</div>
+                  </div>
+                </div>
               </div>
 
+              {/* Invoice Type */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Invoice Type *</label>
+                <Select value={editInvoiceType} onValueChange={(v) => setEditInvoiceType(v as 'PO_INVOICE' | 'EXPENSE_INVOICE')}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PO_INVOICE">PO Invoice (Procurement)</SelectItem>
+                    <SelectItem value="EXPENSE_INVOICE">Expense Invoice (Non-PO)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Expense Coding - Only for Expense Invoices */}
+              {editInvoiceType === 'EXPENSE_INVOICE' && (
+                <div className="space-y-4 border rounded-lg p-4 bg-blue-50/50">
+                  <h4 className="text-sm font-medium text-blue-700">Expense Coding</h4>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">GL Account *</label>
+                    <Select value={editGLAccountId} onValueChange={setEditGLAccountId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select GL Account" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {glAccounts.map((acc) => (
+                          <SelectItem key={acc.id} value={acc.id}>
+                            {acc.account_code} - {acc.account_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Expense Category *</label>
+                    <Select value={editExpenseCategory} onValueChange={setEditExpenseCategory}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {expenseCategories.map((cat) => (
+                          <SelectItem key={cat.value} value={cat.value}>
+                            {cat.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Description</label>
+                    <Input
+                      placeholder="Brief description of expense..."
+                      value={editExpenseDescription}
+                      onChange={(e) => setEditExpenseDescription(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Amount Fields */}
-              <div className="space-y-4">
+              <div className="space-y-4 border rounded-lg p-4 bg-muted/30">
+                <h4 className="text-sm font-medium">Invoice Amounts *</h4>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Taxable Amount</label>
+                    <label className="text-sm text-muted-foreground">Taxable Amount</label>
                     <Input
                       type="number"
                       step="0.01"
                       min="0"
-                      value={subtotal || ''}
+                      value={editSubtotal || ''}
                       onChange={(e) => {
                         const val = parseFloat(e.target.value) || 0;
-                        setSubtotal(val);
-                        setGrandTotal(val + cgstAmount + sgstAmount);
+                        setEditSubtotal(val);
+                        setEditGrandTotal(val + editCgstAmount + editSgstAmount);
                       }}
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Grand Total</label>
+                    <label className="text-sm text-muted-foreground">Grand Total</label>
                     <Input
                       type="number"
                       step="0.01"
                       min="0"
-                      value={grandTotal || ''}
-                      onChange={(e) => setGrandTotal(parseFloat(e.target.value) || 0)}
+                      value={editGrandTotal || ''}
+                      onChange={(e) => setEditGrandTotal(parseFloat(e.target.value) || 0)}
                       className="font-semibold"
                     />
                   </div>
@@ -1182,11 +1269,11 @@ export default function VendorInvoicesPage() {
                       type="number"
                       step="0.01"
                       min="0"
-                      value={cgstAmount || ''}
+                      value={editCgstAmount || ''}
                       onChange={(e) => {
                         const val = parseFloat(e.target.value) || 0;
-                        setCgstAmount(val);
-                        setGrandTotal(subtotal + val + sgstAmount);
+                        setEditCgstAmount(val);
+                        setEditGrandTotal(editSubtotal + val + editSgstAmount);
                       }}
                     />
                   </div>
@@ -1196,11 +1283,11 @@ export default function VendorInvoicesPage() {
                       type="number"
                       step="0.01"
                       min="0"
-                      value={sgstAmount || ''}
+                      value={editSgstAmount || ''}
                       onChange={(e) => {
                         const val = parseFloat(e.target.value) || 0;
-                        setSgstAmount(val);
-                        setGrandTotal(subtotal + cgstAmount + val);
+                        setEditSgstAmount(val);
+                        setEditGrandTotal(editSubtotal + editCgstAmount + val);
                       }}
                     />
                   </div>
@@ -1217,22 +1304,40 @@ export default function VendorInvoicesPage() {
             </Button>
             <Button
               onClick={() => {
-                if (editingInvoice && grandTotal > 0) {
-                  updateInvoiceMutation.mutate({
-                    id: editingInvoice.id,
-                    data: {
-                      subtotal,
-                      taxable_amount: subtotal,
-                      cgst_amount: cgstAmount,
-                      sgst_amount: sgstAmount,
-                      grand_total: grandTotal,
-                    },
-                  });
-                } else {
+                if (!editingInvoice) return;
+
+                // Validation
+                if (editGrandTotal <= 0) {
                   toast.error('Grand total must be greater than 0');
+                  return;
                 }
+                if (editInvoiceType === 'EXPENSE_INVOICE' && !editGLAccountId) {
+                  toast.error('Please select a GL Account');
+                  return;
+                }
+                if (editInvoiceType === 'EXPENSE_INVOICE' && !editExpenseCategory) {
+                  toast.error('Please select an Expense Category');
+                  return;
+                }
+
+                updateInvoiceMutation.mutate({
+                  id: editingInvoice.id,
+                  data: {
+                    invoice_type: editInvoiceType,
+                    // Expense coding fields
+                    gl_account_id: editInvoiceType === 'EXPENSE_INVOICE' ? editGLAccountId : undefined,
+                    expense_category: editInvoiceType === 'EXPENSE_INVOICE' ? editExpenseCategory : undefined,
+                    expense_description: editInvoiceType === 'EXPENSE_INVOICE' ? editExpenseDescription : undefined,
+                    // Amount fields
+                    subtotal: editSubtotal,
+                    taxable_amount: editSubtotal,
+                    cgst_amount: editCgstAmount,
+                    sgst_amount: editSgstAmount,
+                    grand_total: editGrandTotal,
+                  },
+                });
               }}
-              disabled={updateInvoiceMutation.isPending || grandTotal <= 0}
+              disabled={updateInvoiceMutation.isPending || editGrandTotal <= 0}
             >
               {updateInvoiceMutation.isPending ? (
                 <>
