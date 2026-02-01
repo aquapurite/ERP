@@ -61,6 +61,8 @@ interface JournalLine {
   id?: string;
   account_id: string;
   account?: { code: string; name: string };
+  account_code?: string;  // Backend returns flat fields
+  account_name?: string;  // Backend returns flat fields
   description?: string;
   debit_amount: number;
   credit_amount: number;
@@ -807,7 +809,9 @@ export default function JournalEntriesPage() {
                       {selectedEntry.lines.map((line, idx) => (
                         <div key={idx} className="flex justify-between items-center text-sm py-2 border-b last:border-0">
                           <div>
-                            <div className="font-medium">{line.account?.code} - {line.account?.name}</div>
+                            <div className="font-medium">
+                              {(line.account_code || line.account?.code) || '-'} - {(line.account_name || line.account?.name) || '-'}
+                            </div>
                             {line.description && (
                               <div className="text-xs text-muted-foreground">{line.description}</div>
                             )}
