@@ -2958,3 +2958,89 @@ async def delete_tax_configuration(
     await db.commit()
 
     return None
+
+
+# ==================== Fix Missing GL Entries ====================
+
+@router.post(
+    "/fix-missing-gl-entries",
+    dependencies=[Depends(require_permissions("finance:manage"))]
+)
+async def fix_missing_gl_entries(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Fix POSTED journal entries that are missing general_ledger entries.
+    This is a one-time fix for vendor invoices that were approved before
+    the GL posting was properly implemented.
+    """
+    import uuid as uuid_module
+
+    # Find all POSTED journal entries that don't have any GL entries
+    subquery = select(GeneralLedger.journal_entry_id).distinct()
+
+    result = await db.execute(
+        select(JournalEntry)
+        .options(selectinload(JournalEntry.lines))
+        .where(
+            and_(
+                JournalEntry.status == "POSTED",
+                JournalEntry.id.notin_(subquery)
+            )
+        )
+    )
+    journals_without_gl = result.scalars().all()
+
+    fixed_count = 0
+    errors = []
+
+    for journal in journals_without_gl:
+        try:
+            for line in journal.lines:
+                # Get account for balance type determination
+                account_result = await db.execute(
+                    select(ChartOfAccount).where(ChartOfAccount.id == line.account_id)
+                )
+                account = account_result.scalar_one_or_none()
+                if not account:
+                    continue
+
+                # Calculate balance change based on account type
+                if account.account_type in [AccountType.ASSET, AccountType.EXPENSE]:
+                    balance_change = (line.debit_amount or Decimal("0")) - (line.credit_amount or Decimal("0"))
+                else:
+                    balance_change = (line.credit_amount or Decimal("0")) - (line.debit_amount or Decimal("0"))
+
+                new_balance = (account.current_balance or Decimal("0")) + balance_change
+
+                # Create GL entry
+                gl_entry = GeneralLedger(
+                    id=uuid_module.uuid4(),
+                    account_id=line.account_id,
+                    period_id=journal.period_id,
+                    transaction_date=journal.entry_date,
+                    journal_entry_id=journal.id,
+                    journal_line_id=line.id,
+                    debit_amount=line.debit_amount or Decimal("0"),
+                    credit_amount=line.credit_amount or Decimal("0"),
+                    running_balance=new_balance,
+                    narration=line.description or journal.narration,
+                )
+                db.add(gl_entry)
+
+                # Update account balance
+                account.current_balance = new_balance
+
+            fixed_count += 1
+        except Exception as e:
+            errors.append({"journal_id": str(journal.id), "error": str(e)})
+
+    await db.commit()
+
+    return {
+        "message": f"Fixed {fixed_count} journal entries with missing GL entries",
+        "fixed_count": fixed_count,
+        "total_found": len(journals_without_gl),
+        "errors": errors if errors else None
+    }
