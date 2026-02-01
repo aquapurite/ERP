@@ -58,14 +58,23 @@ interface VendorInvoice {
   invoice_date: string;
   due_date: string;
   subtotal: number;
-  gst_amount: number;
-  tds_amount: number;
-  total_amount: number;
+  taxable_amount?: number;
+  cgst_amount?: number;
+  sgst_amount?: number;
+  igst_amount?: number;
+  total_tax?: number;
+  gst_amount?: number;
+  tds_amount?: number;
+  total_amount?: number;
   grand_total: number;
-  status: 'PENDING' | 'UNDER_REVIEW' | 'MATCHED' | 'PARTIAL_MATCH' | 'MISMATCH' | 'APPROVED' | 'REJECTED' | 'PAID';
+  amount_paid?: number;
+  balance_due?: number;
+  status: string;
   match_status: 'NOT_MATCHED' | 'MATCHED' | 'PARTIAL' | 'MISMATCH';
   payment_status: 'UNPAID' | 'PARTIAL' | 'PAID';
-  days_until_due: number;
+  is_overdue?: boolean;
+  days_overdue?: number;
+  days_until_due?: number;
   created_at: string;
 }
 
@@ -567,7 +576,7 @@ export default function VendorInvoicesPage() {
       accessorKey: 'due_date',
       header: 'Due Date',
       cell: ({ row }) => {
-        const isOverdue = row.original.days_until_due < 0;
+        const isOverdue = row.original.is_overdue || (row.original.days_overdue && row.original.days_overdue > 0);
         return (
           <div className={`flex items-center gap-2 ${isOverdue ? 'text-red-600' : ''}`}>
             {isOverdue && <AlertTriangle className="h-4 w-4" />}
@@ -575,8 +584,10 @@ export default function VendorInvoicesPage() {
               <div className="text-sm">{formatDate(row.original.due_date)}</div>
               <div className="text-xs text-muted-foreground">
                 {isOverdue
-                  ? `Overdue by ${Math.abs(row.original.days_until_due)} days`
-                  : `${row.original.days_until_due} days left`}
+                  ? `Overdue by ${row.original.days_overdue || 0} days`
+                  : row.original.days_overdue !== undefined
+                    ? `${row.original.days_overdue} days overdue`
+                    : 'Due date pending'}
               </div>
             </div>
           </div>
@@ -628,14 +639,15 @@ export default function VendorInvoicesPage() {
                 <Eye className="mr-2 h-4 w-4" />
                 View Details
               </DropdownMenuItem>
-              {(invoice.status === 'PENDING' || invoice.status === 'UNDER_REVIEW' || !invoice.status || invoice.total_amount === 0) && (
+              {/* Allow edit for non-approved statuses */}
+              {(['RECEIVED', 'PENDING', 'UNDER_REVIEW', 'UNDER_VERIFICATION', 'MISMATCH'].includes(invoice.status) || !invoice.status || invoice.grand_total === 0) && (
                 <DropdownMenuItem onClick={() => {
                   setEditingInvoice(invoice);
                   // Pre-populate the form with invoice data
-                  setSubtotal(invoice.subtotal || 0);
-                  setCgstAmount(invoice.gst_amount ? invoice.gst_amount / 2 : 0);
-                  setSgstAmount(invoice.gst_amount ? invoice.gst_amount / 2 : 0);
-                  setGrandTotal(invoice.total_amount || 0);
+                  setSubtotal(invoice.subtotal || invoice.grand_total || 0);
+                  setCgstAmount(invoice.cgst_amount || 0);
+                  setSgstAmount(invoice.sgst_amount || 0);
+                  setGrandTotal(invoice.grand_total || 0);
                   setIsEditDialogOpen(true);
                 }}>
                   <Pencil className="mr-2 h-4 w-4" />
@@ -665,7 +677,8 @@ export default function VendorInvoicesPage() {
                   Resolve Discrepancy
                 </DropdownMenuItem>
               )}
-              {(invoice.status === 'PENDING' || !invoice.status) && (
+              {/* Allow delete for non-approved statuses */}
+              {(['RECEIVED', 'PENDING', 'UNDER_REVIEW', 'UNDER_VERIFICATION'].includes(invoice.status) || !invoice.status) && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem

@@ -236,6 +236,12 @@ async def list_vendor_invoices(
                 "expense_category": inv.expense_category,
                 "expense_description": inv.expense_description,
                 # Amounts
+                "subtotal": float(inv.subtotal),
+                "taxable_amount": float(inv.taxable_amount),
+                "cgst_amount": float(inv.cgst_amount),
+                "sgst_amount": float(inv.sgst_amount),
+                "igst_amount": float(inv.igst_amount),
+                "total_tax": float(inv.total_tax),
                 "grand_total": float(inv.grand_total),
                 "amount_paid": float(inv.amount_paid),
                 "balance_due": float(inv.balance_due),
@@ -246,6 +252,19 @@ async def list_vendor_invoices(
                 "is_fully_matched": inv.is_fully_matched,
                 "po_matched": inv.po_matched,
                 "grn_matched": inv.grn_matched,
+                # Computed match_status for frontend
+                "match_status": (
+                    "MATCHED" if inv.is_fully_matched else
+                    "PARTIAL" if (inv.po_matched or inv.grn_matched) else
+                    "MISMATCH" if inv.status == "MISMATCH" else
+                    "NOT_MATCHED"
+                ),
+                # Computed payment_status for frontend
+                "payment_status": (
+                    "PAID" if inv.balance_due <= 0 else
+                    "PARTIAL" if inv.amount_paid > 0 else
+                    "UNPAID"
+                ),
                 "created_at": inv.created_at.isoformat() if inv.created_at else None,
             }
             for inv in invoices
