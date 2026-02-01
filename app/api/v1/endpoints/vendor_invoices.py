@@ -686,6 +686,10 @@ class VendorInvoiceUpdate(BaseModel):
     grand_total: Optional[Decimal] = None
     due_date: Optional[date] = None
     internal_notes: Optional[str] = None
+    # TDS fields
+    tds_applicable: Optional[bool] = None
+    tds_section: Optional[str] = None
+    tds_rate: Optional[Decimal] = None
 
 
 @router.put("/{invoice_id}")
@@ -764,8 +768,22 @@ async def update_vendor_invoice(
     if data.internal_notes is not None:
         invoice.internal_notes = data.internal_notes
 
+    # TDS fields
+    if data.tds_applicable is not None:
+        invoice.tds_applicable = data.tds_applicable
+    if data.tds_section is not None:
+        invoice.tds_section = data.tds_section
+    if data.tds_rate is not None:
+        invoice.tds_rate = data.tds_rate
+
     # Recalculate total_tax
     invoice.total_tax = invoice.cgst_amount + invoice.sgst_amount + invoice.igst_amount + invoice.cess_amount
+
+    # Recalculate TDS and net payable based on current values
+    tds_amount = (invoice.grand_total * invoice.tds_rate / 100) if invoice.tds_applicable else Decimal("0")
+    invoice.tds_amount = tds_amount
+    invoice.net_payable = invoice.grand_total - tds_amount
+    invoice.balance_due = invoice.net_payable - invoice.amount_paid
 
     await db.commit()
     await db.refresh(invoice)

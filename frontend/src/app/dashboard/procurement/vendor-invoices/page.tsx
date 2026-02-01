@@ -221,6 +221,10 @@ const vendorInvoicesApi = {
     igst_amount?: number;
     grand_total: number;
     due_date: string;
+    // TDS fields
+    tds_applicable?: boolean;
+    tds_section?: string;
+    tds_rate?: number;
   }) => {
     const { data } = await apiClient.post('/vendor-invoices', invoiceData);
     return data;
@@ -255,6 +259,10 @@ const vendorInvoicesApi = {
     igst_amount?: number;
     grand_total?: number;
     due_date?: string;
+    // TDS fields
+    tds_applicable?: boolean;
+    tds_section?: string;
+    tds_rate?: number;
   }) => {
     const { data } = await apiClient.put(`/vendor-invoices/${id}`, invoiceData);
     return data;
@@ -305,10 +313,16 @@ export default function VendorInvoicesPage() {
   const [editExpenseDescription, setEditExpenseDescription] = useState<string>('');
   const [editSubtotal, setEditSubtotal] = useState<number>(0);
   const [editGstType, setEditGstType] = useState<'INTRA_STATE' | 'INTER_STATE'>('INTRA_STATE');
+  const [editGstRate, setEditGstRate] = useState<string>('18');
   const [editCgstAmount, setEditCgstAmount] = useState<number>(0);
   const [editSgstAmount, setEditSgstAmount] = useState<number>(0);
   const [editIgstAmount, setEditIgstAmount] = useState<number>(0);
   const [editGrandTotal, setEditGrandTotal] = useState<number>(0);
+  const [editTdsApplicable, setEditTdsApplicable] = useState<boolean>(false);
+  const [editTdsSection, setEditTdsSection] = useState<string>('');
+  const [editTdsRate, setEditTdsRate] = useState<number>(0);
+  const [editTdsAmount, setEditTdsAmount] = useState<number>(0);
+  const [editNetPayable, setEditNetPayable] = useState<number>(0);
 
   // Upload form state
   const [invoiceType, setInvoiceType] = useState<'PO_INVOICE' | 'EXPENSE_INVOICE'>('PO_INVOICE');
@@ -327,10 +341,18 @@ export default function VendorInvoicesPage() {
   // Amount fields
   const [subtotal, setSubtotal] = useState<number>(0);
   const [gstType, setGstType] = useState<'INTRA_STATE' | 'INTER_STATE'>('INTRA_STATE');
+  const [gstRate, setGstRate] = useState<string>('18'); // GST Rate %
   const [cgstAmount, setCgstAmount] = useState<number>(0);
   const [sgstAmount, setSgstAmount] = useState<number>(0);
   const [igstAmount, setIgstAmount] = useState<number>(0);
   const [grandTotal, setGrandTotal] = useState<number>(0);
+
+  // TDS fields
+  const [tdsApplicable, setTdsApplicable] = useState<boolean>(false);
+  const [tdsSection, setTdsSection] = useState<string>('');
+  const [tdsRate, setTdsRate] = useState<number>(0);
+  const [tdsAmount, setTdsAmount] = useState<number>(0);
+  const [netPayable, setNetPayable] = useState<number>(0);
 
   const queryClient = useQueryClient();
 
@@ -391,10 +413,17 @@ export default function VendorInvoicesPage() {
       setInvoiceFile(null);
       setSubtotal(0);
       setGstType('INTRA_STATE');
+      setGstRate('18');
       setCgstAmount(0);
       setSgstAmount(0);
       setIgstAmount(0);
       setGrandTotal(0);
+      // Reset TDS
+      setTdsApplicable(false);
+      setTdsSection('');
+      setTdsRate(0);
+      setTdsAmount(0);
+      setNetPayable(0);
     }
   }, [isUploadDialogOpen]);
 
@@ -403,11 +432,70 @@ export default function VendorInvoicesPage() {
     setSelectedPOId('');
     setSubtotal(0);
     setGstType('INTRA_STATE');
+    setGstRate('18');
     setCgstAmount(0);
     setSgstAmount(0);
     setIgstAmount(0);
     setGrandTotal(0);
+    setTdsApplicable(false);
+    setTdsSection('');
+    setTdsRate(0);
+    setTdsAmount(0);
+    setNetPayable(0);
   }, [selectedVendorId]);
+
+  // TDS Section mapping to default rates
+  const TDS_SECTIONS = [
+    { value: '194C', label: '194C - Contractor', rate: 2 },
+    { value: '194J', label: '194J - Professional/Technical', rate: 10 },
+    { value: '194H', label: '194H - Commission/Brokerage', rate: 5 },
+    { value: '194I', label: '194I - Rent', rate: 10 },
+    { value: '194A', label: '194A - Interest', rate: 10 },
+    { value: '194Q', label: '194Q - Purchase of Goods', rate: 0.1 },
+  ];
+
+  // Calculate GST from rate and taxable amount
+  const calculateGstFromRate = (taxable: number, rate: string, type: 'INTRA_STATE' | 'INTER_STATE') => {
+    const rateNum = parseFloat(rate) || 0;
+    const gstAmount = (taxable * rateNum) / 100;
+
+    if (type === 'INTRA_STATE') {
+      const halfGst = Math.round(gstAmount / 2 * 100) / 100;
+      return { cgst: halfGst, sgst: halfGst, igst: 0 };
+    } else {
+      return { cgst: 0, sgst: 0, igst: Math.round(gstAmount * 100) / 100 };
+    }
+  };
+
+  // Calculate TDS and net payable
+  const calculateTds = (grossTotal: number, applicable: boolean, rate: number) => {
+    if (!applicable || rate <= 0) {
+      return { tdsAmt: 0, netPay: grossTotal };
+    }
+    const tdsAmt = Math.round((grossTotal * rate / 100) * 100) / 100;
+    return { tdsAmt, netPay: grossTotal - tdsAmt };
+  };
+
+  // Update all amounts when subtotal or GST rate changes
+  const recalculateAmounts = (
+    taxable: number,
+    rate: string,
+    type: 'INTRA_STATE' | 'INTER_STATE',
+    tdsAppl: boolean,
+    tdsRt: number
+  ) => {
+    const gst = calculateGstFromRate(taxable, rate, type);
+    const totalGst = gst.cgst + gst.sgst + gst.igst;
+    const gross = taxable + totalGst;
+    const { tdsAmt, netPay } = calculateTds(gross, tdsAppl, tdsRt);
+
+    setCgstAmount(gst.cgst);
+    setSgstAmount(gst.sgst);
+    setIgstAmount(gst.igst);
+    setGrandTotal(gross);
+    setTdsAmount(tdsAmt);
+    setNetPayable(netPay);
+  };
 
   // Auto-populate amounts from selected PO
   useEffect(() => {
@@ -565,6 +653,10 @@ export default function VendorInvoicesPage() {
       igst_amount: igstAmount,
       grand_total: grandTotal,
       due_date: dueDate.toISOString().split('T')[0],
+      // TDS fields
+      tds_applicable: tdsApplicable,
+      tds_section: tdsApplicable ? tdsSection || undefined : undefined,
+      tds_rate: tdsApplicable ? tdsRate : 0,
     });
   };
 
@@ -694,14 +786,26 @@ export default function VendorInvoicesPage() {
                   setEditGLAccountId(invoice.gl_account_id || '');
                   setEditExpenseCategory(invoice.expense_category || '');
                   setEditExpenseDescription(invoice.expense_description || '');
-                  setEditSubtotal(invoice.subtotal || invoice.grand_total || 0);
+                  const sub = invoice.subtotal || invoice.taxable_amount || 0;
+                  setEditSubtotal(sub);
                   // Detect GST type from existing values: if IGST > 0, it's inter-state
                   const hasIgst = (invoice.igst_amount || 0) > 0;
                   setEditGstType(hasIgst ? 'INTER_STATE' : 'INTRA_STATE');
+                  // Derive GST rate from amounts
+                  const totalGst = (invoice.cgst_amount || 0) + (invoice.sgst_amount || 0) + (invoice.igst_amount || 0);
+                  const derivedRate = sub > 0 ? Math.round((totalGst / sub) * 100) : 18;
+                  setEditGstRate(String(derivedRate));
                   setEditCgstAmount(invoice.cgst_amount || 0);
                   setEditSgstAmount(invoice.sgst_amount || 0);
                   setEditIgstAmount(invoice.igst_amount || 0);
                   setEditGrandTotal(invoice.grand_total || 0);
+                  // TDS fields
+                  setEditTdsApplicable(invoice.tds_amount ? invoice.tds_amount > 0 : false);
+                  setEditTdsSection('');  // TDS section not returned in list, will be set manually
+                  const invTdsRate = invoice.tds_amount && invoice.grand_total ? Math.round((invoice.tds_amount / invoice.grand_total) * 10000) / 100 : 0;
+                  setEditTdsRate(invTdsRate);
+                  setEditTdsAmount(invoice.tds_amount || 0);
+                  setEditNetPayable((invoice.grand_total || 0) - (invoice.tds_amount || 0));
                   setIsEditDialogOpen(true);
                 }}>
                   <Pencil className="mr-2 h-4 w-4" />
@@ -997,85 +1101,71 @@ export default function VendorInvoicesPage() {
                   {/* Invoice Amount Fields */}
                   <div className="border rounded-lg p-4 bg-muted/30 space-y-4">
                     <h4 className="text-sm font-medium">Invoice Amounts *</h4>
+                    <div className="space-y-2">
+                      <label className="text-sm text-muted-foreground">Taxable Amount (Subtotal)</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={subtotal || ''}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setSubtotal(val);
+                          recalculateAmounts(val, gstRate, gstType, tdsApplicable, tdsRate);
+                        }}
+                      />
+                    </div>
+
+                    {/* GST Type and Rate Row */}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <label className="text-sm text-muted-foreground">Taxable Amount (Subtotal)</label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="0.00"
-                          value={subtotal || ''}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0;
-                            setSubtotal(val);
-                            // Auto-calculate total based on GST type
-                            if (gstType === 'INTRA_STATE') {
-                              setGrandTotal(val + cgstAmount + sgstAmount);
-                            } else {
-                              setGrandTotal(val + igstAmount);
-                            }
+                        <label className="text-sm font-medium">GST Type *</label>
+                        <Select
+                          value={gstType}
+                          onValueChange={(v) => {
+                            const newType = v as 'INTRA_STATE' | 'INTER_STATE';
+                            setGstType(newType);
+                            recalculateAmounts(subtotal, gstRate, newType, tdsApplicable, tdsRate);
                           }}
-                        />
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="INTRA_STATE">Intra-State (CGST + SGST)</SelectItem>
+                            <SelectItem value="INTER_STATE">Inter-State (IGST)</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className="space-y-2">
-                        <label className="text-sm text-muted-foreground">Grand Total</label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="0.00"
-                          value={grandTotal || ''}
-                          onChange={(e) => setGrandTotal(parseFloat(e.target.value) || 0)}
-                          className="font-semibold"
-                        />
+                        <label className="text-sm font-medium">GST Rate %</label>
+                        <Select
+                          value={gstRate}
+                          onValueChange={(v) => {
+                            setGstRate(v);
+                            recalculateAmounts(subtotal, v, gstType, tdsApplicable, tdsRate);
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="0">0% (Exempt)</SelectItem>
+                            <SelectItem value="5">5%</SelectItem>
+                            <SelectItem value="12">12%</SelectItem>
+                            <SelectItem value="18">18% (Most common)</SelectItem>
+                            <SelectItem value="28">28%</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
 
-                    {/* GST Type Selector */}
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">GST Type *</label>
-                      <Select
-                        value={gstType}
-                        onValueChange={(v) => {
-                          const newType = v as 'INTRA_STATE' | 'INTER_STATE';
-                          setGstType(newType);
-                          // Clear the opposite GST values and recalculate
-                          if (newType === 'INTRA_STATE') {
-                            setIgstAmount(0);
-                            setGrandTotal(subtotal + cgstAmount + sgstAmount);
-                          } else {
-                            setCgstAmount(0);
-                            setSgstAmount(0);
-                            setGrandTotal(subtotal + igstAmount);
-                          }
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="INTRA_STATE">
-                            <div className="flex flex-col">
-                              <span>Intra-State (CGST + SGST)</span>
-                              <span className="text-xs text-muted-foreground">Vendor in same state</span>
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="INTER_STATE">
-                            <div className="flex flex-col">
-                              <span>Inter-State (IGST)</span>
-                              <span className="text-xs text-muted-foreground">Vendor in different state</span>
-                            </div>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Conditional GST Fields based on type */}
+                    {/* GST Amount Fields */}
                     {gstType === 'INTRA_STATE' ? (
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <label className="text-sm text-muted-foreground">CGST Amount</label>
+                          <label className="text-sm text-muted-foreground">CGST ({parseFloat(gstRate) / 2}%)</label>
                           <Input
                             type="number"
                             step="0.01"
@@ -1085,12 +1175,16 @@ export default function VendorInvoicesPage() {
                             onChange={(e) => {
                               const val = parseFloat(e.target.value) || 0;
                               setCgstAmount(val);
-                              setGrandTotal(subtotal + val + sgstAmount);
+                              const gross = subtotal + val + sgstAmount;
+                              setGrandTotal(gross);
+                              const { tdsAmt, netPay } = calculateTds(gross, tdsApplicable, tdsRate);
+                              setTdsAmount(tdsAmt);
+                              setNetPayable(netPay);
                             }}
                           />
                         </div>
                         <div className="space-y-2">
-                          <label className="text-sm text-muted-foreground">SGST Amount</label>
+                          <label className="text-sm text-muted-foreground">SGST ({parseFloat(gstRate) / 2}%)</label>
                           <Input
                             type="number"
                             step="0.01"
@@ -1100,14 +1194,18 @@ export default function VendorInvoicesPage() {
                             onChange={(e) => {
                               const val = parseFloat(e.target.value) || 0;
                               setSgstAmount(val);
-                              setGrandTotal(subtotal + cgstAmount + val);
+                              const gross = subtotal + cgstAmount + val;
+                              setGrandTotal(gross);
+                              const { tdsAmt, netPay } = calculateTds(gross, tdsApplicable, tdsRate);
+                              setTdsAmount(tdsAmt);
+                              setNetPayable(netPay);
                             }}
                           />
                         </div>
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        <label className="text-sm text-muted-foreground">IGST Amount</label>
+                        <label className="text-sm text-muted-foreground">IGST ({gstRate}%)</label>
                         <Input
                           type="number"
                           step="0.01"
@@ -1117,11 +1215,128 @@ export default function VendorInvoicesPage() {
                           onChange={(e) => {
                             const val = parseFloat(e.target.value) || 0;
                             setIgstAmount(val);
-                            setGrandTotal(subtotal + val);
+                            const gross = subtotal + val;
+                            setGrandTotal(gross);
+                            const { tdsAmt, netPay } = calculateTds(gross, tdsApplicable, tdsRate);
+                            setTdsAmount(tdsAmt);
+                            setNetPayable(netPay);
                           }}
                         />
                       </div>
                     )}
+
+                    {/* Grand Total (before TDS) */}
+                    <div className="pt-2 border-t">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium">Gross Total (incl. GST)</span>
+                        <span className="text-lg font-semibold">{formatCurrency(grandTotal)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* TDS Section */}
+                  <div className="border rounded-lg p-4 bg-orange-50/50 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-medium">TDS Deduction</h4>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={tdsApplicable}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setTdsApplicable(checked);
+                            if (!checked) {
+                              setTdsSection('');
+                              setTdsRate(0);
+                              setTdsAmount(0);
+                              setNetPayable(grandTotal);
+                            } else {
+                              const { tdsAmt, netPay } = calculateTds(grandTotal, true, tdsRate);
+                              setTdsAmount(tdsAmt);
+                              setNetPayable(netPay);
+                            }
+                          }}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <span className="text-sm">TDS Applicable</span>
+                      </label>
+                    </div>
+
+                    {tdsApplicable && (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-sm text-muted-foreground">TDS Section</label>
+                            <Select
+                              value={tdsSection}
+                              onValueChange={(v) => {
+                                setTdsSection(v);
+                                const section = TDS_SECTIONS.find(s => s.value === v);
+                                if (section) {
+                                  setTdsRate(section.rate);
+                                  const { tdsAmt, netPay } = calculateTds(grandTotal, true, section.rate);
+                                  setTdsAmount(tdsAmt);
+                                  setNetPayable(netPay);
+                                }
+                              }}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select TDS Section" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {TDS_SECTIONS.map((sec) => (
+                                  <SelectItem key={sec.value} value={sec.value}>
+                                    {sec.label} ({sec.rate}%)
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm text-muted-foreground">TDS Rate %</label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="30"
+                              placeholder="0.00"
+                              value={tdsRate || ''}
+                              onChange={(e) => {
+                                const rate = parseFloat(e.target.value) || 0;
+                                setTdsRate(rate);
+                                const { tdsAmt, netPay } = calculateTds(grandTotal, true, rate);
+                                setTdsAmount(tdsAmt);
+                                setNetPayable(netPay);
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center p-2 bg-orange-100 rounded">
+                          <span className="text-sm">TDS Amount to be deducted</span>
+                          <span className="font-semibold text-orange-700">- {formatCurrency(tdsAmount)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Net Payable Summary */}
+                  <div className="border rounded-lg p-4 bg-green-50 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">Gross Total</span>
+                      <span>{formatCurrency(grandTotal)}</span>
+                    </div>
+                    {tdsApplicable && tdsAmount > 0 && (
+                      <div className="flex justify-between items-center text-orange-700">
+                        <span className="text-sm">Less: TDS ({tdsRate}%)</span>
+                        <span>- {formatCurrency(tdsAmount)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center pt-2 border-t">
+                      <span className="font-semibold">Net Payable to Vendor</span>
+                      <span className="text-xl font-bold text-green-700">
+                        {formatCurrency(tdsApplicable ? netPayable : grandTotal)}
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <DialogFooter>
@@ -1342,72 +1557,94 @@ export default function VendorInvoicesPage() {
               {/* Amount Fields */}
               <div className="space-y-4 border rounded-lg p-4 bg-muted/30">
                 <h4 className="text-sm font-medium">Invoice Amounts *</h4>
+                <div className="space-y-2">
+                  <label className="text-sm text-muted-foreground">Taxable Amount (Subtotal)</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editSubtotal || ''}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value) || 0;
+                      setEditSubtotal(val);
+                      const gst = calculateGstFromRate(val, editGstRate, editGstType);
+                      setEditCgstAmount(gst.cgst);
+                      setEditSgstAmount(gst.sgst);
+                      setEditIgstAmount(gst.igst);
+                      const gross = val + gst.cgst + gst.sgst + gst.igst;
+                      setEditGrandTotal(gross);
+                      const { tdsAmt, netPay } = calculateTds(gross, editTdsApplicable, editTdsRate);
+                      setEditTdsAmount(tdsAmt);
+                      setEditNetPayable(netPay);
+                    }}
+                  />
+                </div>
+
+                {/* GST Type and Rate Row */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-sm text-muted-foreground">Taxable Amount</label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={editSubtotal || ''}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value) || 0;
-                        setEditSubtotal(val);
-                        if (editGstType === 'INTRA_STATE') {
-                          setEditGrandTotal(val + editCgstAmount + editSgstAmount);
-                        } else {
-                          setEditGrandTotal(val + editIgstAmount);
-                        }
+                    <label className="text-sm font-medium">GST Type *</label>
+                    <Select
+                      value={editGstType}
+                      onValueChange={(v) => {
+                        const newType = v as 'INTRA_STATE' | 'INTER_STATE';
+                        setEditGstType(newType);
+                        const gst = calculateGstFromRate(editSubtotal, editGstRate, newType);
+                        setEditCgstAmount(gst.cgst);
+                        setEditSgstAmount(gst.sgst);
+                        setEditIgstAmount(gst.igst);
+                        const gross = editSubtotal + gst.cgst + gst.sgst + gst.igst;
+                        setEditGrandTotal(gross);
+                        const { tdsAmt, netPay } = calculateTds(gross, editTdsApplicable, editTdsRate);
+                        setEditTdsAmount(tdsAmt);
+                        setEditNetPayable(netPay);
                       }}
-                    />
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="INTRA_STATE">Intra-State (CGST + SGST)</SelectItem>
+                        <SelectItem value="INTER_STATE">Inter-State (IGST)</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm text-muted-foreground">Grand Total</label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={editGrandTotal || ''}
-                      onChange={(e) => setEditGrandTotal(parseFloat(e.target.value) || 0)}
-                      className="font-semibold"
-                    />
+                    <label className="text-sm font-medium">GST Rate %</label>
+                    <Select
+                      value={editGstRate}
+                      onValueChange={(v) => {
+                        setEditGstRate(v);
+                        const gst = calculateGstFromRate(editSubtotal, v, editGstType);
+                        setEditCgstAmount(gst.cgst);
+                        setEditSgstAmount(gst.sgst);
+                        setEditIgstAmount(gst.igst);
+                        const gross = editSubtotal + gst.cgst + gst.sgst + gst.igst;
+                        setEditGrandTotal(gross);
+                        const { tdsAmt, netPay } = calculateTds(gross, editTdsApplicable, editTdsRate);
+                        setEditTdsAmount(tdsAmt);
+                        setEditNetPayable(netPay);
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">0% (Exempt)</SelectItem>
+                        <SelectItem value="5">5%</SelectItem>
+                        <SelectItem value="12">12%</SelectItem>
+                        <SelectItem value="18">18% (Most common)</SelectItem>
+                        <SelectItem value="28">28%</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
-                {/* GST Type Selector */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">GST Type *</label>
-                  <Select
-                    value={editGstType}
-                    onValueChange={(v) => {
-                      const newType = v as 'INTRA_STATE' | 'INTER_STATE';
-                      setEditGstType(newType);
-                      // Clear opposite GST values and recalculate
-                      if (newType === 'INTRA_STATE') {
-                        setEditIgstAmount(0);
-                        setEditGrandTotal(editSubtotal + editCgstAmount + editSgstAmount);
-                      } else {
-                        setEditCgstAmount(0);
-                        setEditSgstAmount(0);
-                        setEditGrandTotal(editSubtotal + editIgstAmount);
-                      }
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="INTRA_STATE">Intra-State (CGST + SGST)</SelectItem>
-                      <SelectItem value="INTER_STATE">Inter-State (IGST)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Conditional GST Fields based on type */}
+                {/* GST Amount Fields */}
                 {editGstType === 'INTRA_STATE' ? (
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <label className="text-sm text-muted-foreground">CGST Amount</label>
+                      <label className="text-sm text-muted-foreground">CGST ({parseFloat(editGstRate) / 2}%)</label>
                       <Input
                         type="number"
                         step="0.01"
@@ -1416,12 +1653,16 @@ export default function VendorInvoicesPage() {
                         onChange={(e) => {
                           const val = parseFloat(e.target.value) || 0;
                           setEditCgstAmount(val);
-                          setEditGrandTotal(editSubtotal + val + editSgstAmount);
+                          const gross = editSubtotal + val + editSgstAmount;
+                          setEditGrandTotal(gross);
+                          const { tdsAmt, netPay } = calculateTds(gross, editTdsApplicable, editTdsRate);
+                          setEditTdsAmount(tdsAmt);
+                          setEditNetPayable(netPay);
                         }}
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm text-muted-foreground">SGST Amount</label>
+                      <label className="text-sm text-muted-foreground">SGST ({parseFloat(editGstRate) / 2}%)</label>
                       <Input
                         type="number"
                         step="0.01"
@@ -1430,14 +1671,18 @@ export default function VendorInvoicesPage() {
                         onChange={(e) => {
                           const val = parseFloat(e.target.value) || 0;
                           setEditSgstAmount(val);
-                          setEditGrandTotal(editSubtotal + editCgstAmount + val);
+                          const gross = editSubtotal + editCgstAmount + val;
+                          setEditGrandTotal(gross);
+                          const { tdsAmt, netPay } = calculateTds(gross, editTdsApplicable, editTdsRate);
+                          setEditTdsAmount(tdsAmt);
+                          setEditNetPayable(netPay);
                         }}
                       />
                     </div>
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <label className="text-sm text-muted-foreground">IGST Amount</label>
+                    <label className="text-sm text-muted-foreground">IGST ({editGstRate}%)</label>
                     <Input
                       type="number"
                       step="0.01"
@@ -1446,11 +1691,127 @@ export default function VendorInvoicesPage() {
                       onChange={(e) => {
                         const val = parseFloat(e.target.value) || 0;
                         setEditIgstAmount(val);
-                        setEditGrandTotal(editSubtotal + val);
+                        const gross = editSubtotal + val;
+                        setEditGrandTotal(gross);
+                        const { tdsAmt, netPay } = calculateTds(gross, editTdsApplicable, editTdsRate);
+                        setEditTdsAmount(tdsAmt);
+                        setEditNetPayable(netPay);
                       }}
                     />
                   </div>
                 )}
+
+                {/* Gross Total */}
+                <div className="pt-2 border-t">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium">Gross Total (incl. GST)</span>
+                    <span className="text-lg font-semibold">{formatCurrency(editGrandTotal)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* TDS Section */}
+              <div className="border rounded-lg p-4 bg-orange-50/50 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-medium">TDS Deduction</h4>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editTdsApplicable}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setEditTdsApplicable(checked);
+                        if (!checked) {
+                          setEditTdsSection('');
+                          setEditTdsRate(0);
+                          setEditTdsAmount(0);
+                          setEditNetPayable(editGrandTotal);
+                        } else {
+                          const { tdsAmt, netPay } = calculateTds(editGrandTotal, true, editTdsRate);
+                          setEditTdsAmount(tdsAmt);
+                          setEditNetPayable(netPay);
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                    <span className="text-sm">TDS Applicable</span>
+                  </label>
+                </div>
+
+                {editTdsApplicable && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-sm text-muted-foreground">TDS Section</label>
+                        <Select
+                          value={editTdsSection}
+                          onValueChange={(v) => {
+                            setEditTdsSection(v);
+                            const section = TDS_SECTIONS.find(s => s.value === v);
+                            if (section) {
+                              setEditTdsRate(section.rate);
+                              const { tdsAmt, netPay } = calculateTds(editGrandTotal, true, section.rate);
+                              setEditTdsAmount(tdsAmt);
+                              setEditNetPayable(netPay);
+                            }
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select TDS Section" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {TDS_SECTIONS.map((sec) => (
+                              <SelectItem key={sec.value} value={sec.value}>
+                                {sec.label} ({sec.rate}%)
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm text-muted-foreground">TDS Rate %</label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max="30"
+                          value={editTdsRate || ''}
+                          onChange={(e) => {
+                            const rate = parseFloat(e.target.value) || 0;
+                            setEditTdsRate(rate);
+                            const { tdsAmt, netPay } = calculateTds(editGrandTotal, true, rate);
+                            setEditTdsAmount(tdsAmt);
+                            setEditNetPayable(netPay);
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center p-2 bg-orange-100 rounded">
+                      <span className="text-sm">TDS Amount to be deducted</span>
+                      <span className="font-semibold text-orange-700">- {formatCurrency(editTdsAmount)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Net Payable Summary */}
+              <div className="border rounded-lg p-4 bg-green-50 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Gross Total</span>
+                  <span>{formatCurrency(editGrandTotal)}</span>
+                </div>
+                {editTdsApplicable && editTdsAmount > 0 && (
+                  <div className="flex justify-between items-center text-orange-700">
+                    <span className="text-sm">Less: TDS ({editTdsRate}%)</span>
+                    <span>- {formatCurrency(editTdsAmount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center pt-2 border-t">
+                  <span className="font-semibold">Net Payable to Vendor</span>
+                  <span className="text-xl font-bold text-green-700">
+                    {formatCurrency(editTdsApplicable ? editNetPayable : editGrandTotal)}
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -1494,6 +1855,10 @@ export default function VendorInvoicesPage() {
                     sgst_amount: editSgstAmount,
                     igst_amount: editIgstAmount,
                     grand_total: editGrandTotal,
+                    // TDS fields
+                    tds_applicable: editTdsApplicable,
+                    tds_section: editTdsApplicable ? editTdsSection || undefined : undefined,
+                    tds_rate: editTdsApplicable ? editTdsRate : 0,
                   },
                 });
               }}
