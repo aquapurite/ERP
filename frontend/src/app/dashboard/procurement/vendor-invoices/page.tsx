@@ -589,13 +589,13 @@ export default function VendorInvoicesPage() {
       ),
     },
     {
-      accessorKey: 'total_amount',
+      accessorKey: 'grand_total',
       header: 'Amount',
       cell: ({ row }) => (
         <div>
-          <div className="font-medium">{formatCurrency(row.original.total_amount)}</div>
+          <div className="font-medium">{formatCurrency(row.original.grand_total)}</div>
           <div className="text-xs text-muted-foreground">
-            GST: {formatCurrency(row.original.gst_amount)}
+            GST: {formatCurrency(row.original.total_tax)}
           </div>
         </div>
       ),
