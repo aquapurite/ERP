@@ -835,17 +835,20 @@ class AutoJournalService:
         if not invoice:
             raise AutoJournalError("Vendor invoice not found")
 
-        # Check if journal entry already exists
+        # Check if journal entry already exists for this vendor invoice
         existing = await self.db.execute(
             select(JournalEntry).where(
                 and_(
-                    JournalEntry.reference_type == "VendorInvoice",
-                    JournalEntry.reference_id == vendor_invoice_id
+                    JournalEntry.source_type == "VendorInvoice",
+                    JournalEntry.source_id == vendor_invoice_id
                 )
             )
         )
         if existing.scalar_one_or_none():
             raise AutoJournalError("Journal entry already exists for this vendor invoice")
+
+        # Get financial period
+        period = await self._get_or_create_period()
 
         # Get AP account (use vendor's linked GL account if available)
         if invoice.vendor_id:
@@ -875,15 +878,20 @@ class AutoJournalService:
         # Create journal entry
         vendor_name = invoice.vendor.name if invoice.vendor else "Vendor"
         entry_type = "EXPENSE" if invoice.invoice_type == "EXPENSE_INVOICE" else "PURCHASE"
+        entry_number = await self._generate_entry_number()
+        narration = f"Vendor invoice {invoice.invoice_number} from {vendor_name}"
 
         journal = JournalEntry(
             entry_type=entry_type,
-            entry_number=f"JV-{entry_type[:3]}-{invoice.invoice_number}",
+            entry_number=entry_number,
             entry_date=invoice.invoice_date,
-            reference_type="VendorInvoice",
-            reference_id=vendor_invoice_id,
-            reference_number=invoice.invoice_number,
-            narration=f"Vendor invoice {invoice.invoice_number} from {vendor_name}",
+            period_id=period.id,
+            source_type="VendorInvoice",
+            source_id=vendor_invoice_id,
+            source_number=invoice.invoice_number,
+            narration=narration,
+            total_debit=invoice.grand_total,
+            total_credit=invoice.grand_total,
             status=JournalEntryStatus.DRAFT.value,
             created_by=user_id,
         )
