@@ -987,3 +987,261 @@ async def train_reconciliation_model(
     result = await ml_service.train_on_historical_matches(account_id, limit)
 
     return result
+
+
+# ==================== Vendor Suggestion for Bank Transactions ====================
+
+class VendorSuggestion(BaseModel):
+    """Suggested vendor account based on bank description."""
+    vendor_id: Optional[UUID] = None
+    vendor_name: str
+    vendor_code: Optional[str] = None
+    gl_account_id: Optional[UUID] = None
+    gl_account_code: Optional[str] = None
+    gl_account_name: Optional[str] = None
+    confidence: float
+    matched_text: str
+
+
+class VendorSuggestionResponse(BaseModel):
+    """Response for vendor suggestion."""
+    suggestions: List[VendorSuggestion]
+    extracted_party_name: Optional[str] = None
+    warning: Optional[str] = None
+
+
+@router.get("/transactions/{transaction_id}/suggest-vendor")
+async def suggest_vendor_for_transaction(
+    transaction_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Suggest vendor accounts based on bank transaction description.
+
+    Extracts party name from bank description and matches against:
+    - Vendor names
+    - Vendor GL account names
+    - Historical transaction patterns
+    """
+    from app.models.vendor import Vendor
+    from app.models.accounting import ChartOfAccount
+    import re
+
+    # Get the bank transaction
+    txn_result = await db.execute(
+        select(BankTransaction).where(BankTransaction.id == transaction_id)
+    )
+    txn = txn_result.scalar_one_or_none()
+
+    if not txn:
+        raise HTTPException(status_code=404, detail="Bank transaction not found")
+
+    description = txn.description or ""
+
+    # Extract party name using common patterns
+    extracted_party = None
+    patterns = [
+        # NRTGS/NEFT with vendor name
+        r'(?:NRTGS|NEFT|RTGS)[/\-_][A-Z0-9]+[/\-_][0-9]+[/\-_]([A-Z][A-Z\s]+?)(?:/|$)',
+        r'(?:NEFT_OUT|NEFT_IN)[:\s]*[A-Z0-9]+[/]([A-Z][A-Z\s]+?)(?:/|$)',
+        # IMPS with description
+        r'IMPS[/-](?:OUT|IN)?[/]?[0-9]+[/]([A-Z][A-Z\s]+)',
+        # Generic patterns
+        r'(?:FROM|TO|BY|A/C)\s+([A-Z][A-Z\s]+)',
+        r'(?:CR|DR)\s+([A-Z][A-Z\s]+)',
+        # UPI patterns
+        r'UPI[/](?:CR|DR)[/][0-9]+[/]([A-Z][A-Z\s]+)',
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, description.upper())
+        if match:
+            name = match.group(1).strip()
+            # Clean up common suffixes
+            name = re.sub(r'\s+(PVT|LTD|LIMITED|PRIVATE|INDIA|IND|C)[\s]*$', '', name)
+            name = name.strip()
+            if len(name) >= 3:  # Minimum 3 characters
+                extracted_party = name
+                break
+
+    suggestions = []
+
+    if extracted_party:
+        # Search vendors by name similarity
+        vendors_result = await db.execute(
+            select(Vendor).where(Vendor.is_active == True)
+        )
+        vendors = vendors_result.scalars().all()
+
+        for vendor in vendors:
+            vendor_name_upper = vendor.name.upper()
+            extracted_upper = extracted_party.upper()
+
+            # Calculate similarity
+            confidence = 0.0
+
+            # Exact match
+            if extracted_upper in vendor_name_upper or vendor_name_upper in extracted_upper:
+                confidence = 0.95
+            else:
+                # Partial match - check if significant words match
+                extracted_words = set(extracted_upper.split())
+                vendor_words = set(vendor_name_upper.split())
+                # Remove common words
+                common_ignore = {'PVT', 'LTD', 'LIMITED', 'PRIVATE', 'INDIA', 'THE', 'AND', 'OF'}
+                extracted_words -= common_ignore
+                vendor_words -= common_ignore
+
+                if extracted_words and vendor_words:
+                    intersection = extracted_words & vendor_words
+                    union = extracted_words | vendor_words
+                    jaccard = len(intersection) / len(union) if union else 0
+                    confidence = jaccard * 0.85  # Scale to max 0.85 for partial match
+
+            if confidence >= 0.4:  # Minimum threshold
+                # Get linked GL account
+                gl_account = None
+                if vendor.gl_account_id:
+                    gl_result = await db.execute(
+                        select(ChartOfAccount).where(ChartOfAccount.id == vendor.gl_account_id)
+                    )
+                    gl_account = gl_result.scalar_one_or_none()
+
+                suggestions.append(VendorSuggestion(
+                    vendor_id=vendor.id,
+                    vendor_name=vendor.name,
+                    vendor_code=vendor.vendor_code,
+                    gl_account_id=gl_account.id if gl_account else None,
+                    gl_account_code=gl_account.account_code if gl_account else None,
+                    gl_account_name=gl_account.account_name if gl_account else None,
+                    confidence=round(confidence, 2),
+                    matched_text=extracted_party,
+                ))
+
+        # Also search GL accounts directly (for cases where vendor isn't linked)
+        gl_result = await db.execute(
+            select(ChartOfAccount).where(
+                and_(
+                    ChartOfAccount.account_code.like("2101%"),
+                    ChartOfAccount.is_active == True,
+                    ChartOfAccount.is_group == False,
+                )
+            )
+        )
+        gl_accounts = gl_result.scalars().all()
+
+        for gl_acc in gl_accounts:
+            # Skip if already in suggestions via vendor
+            if any(s.gl_account_id == gl_acc.id for s in suggestions):
+                continue
+
+            acc_name_upper = gl_acc.account_name.upper()
+            extracted_upper = extracted_party.upper()
+
+            if extracted_upper in acc_name_upper or any(
+                word in acc_name_upper for word in extracted_upper.split() if len(word) >= 4
+            ):
+                suggestions.append(VendorSuggestion(
+                    vendor_id=None,
+                    vendor_name=gl_acc.account_name.replace("Vendor: ", ""),
+                    vendor_code=None,
+                    gl_account_id=gl_acc.id,
+                    gl_account_code=gl_acc.account_code,
+                    gl_account_name=gl_acc.account_name,
+                    confidence=0.70,
+                    matched_text=extracted_party,
+                ))
+
+    # Sort by confidence
+    suggestions.sort(key=lambda x: x.confidence, reverse=True)
+
+    # Limit to top 5
+    suggestions = suggestions[:5]
+
+    return VendorSuggestionResponse(
+        suggestions=suggestions,
+        extracted_party_name=extracted_party,
+        warning="No vendor match found - please select manually" if not suggestions and extracted_party else None
+    )
+
+
+@router.post("/validate-journal-vendor")
+async def validate_journal_vendor_match(
+    narration: str = Query(..., description="Bank transaction narration/description"),
+    account_id: UUID = Query(..., description="Selected GL account ID"),
+    db: DB = None,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Validate if selected GL account matches the vendor in bank narration.
+
+    Returns a warning if there's a mismatch between the party name in the
+    narration and the selected vendor account.
+    """
+    from app.models.accounting import ChartOfAccount
+    import re
+
+    # Get the selected account
+    acc_result = await db.execute(
+        select(ChartOfAccount).where(ChartOfAccount.id == account_id)
+    )
+    account = acc_result.scalar_one_or_none()
+
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    # Extract party name from narration
+    extracted_party = None
+    patterns = [
+        r'(?:NRTGS|NEFT|RTGS)[/\-_][A-Z0-9]+[/\-_][0-9]+[/\-_]([A-Z][A-Z\s]+?)(?:/|$)',
+        r'(?:NEFT_OUT|NEFT_IN)[:\s]*[A-Z0-9]+[/]([A-Z][A-Z\s]+?)(?:/|$)',
+        r'IMPS[/-](?:OUT|IN)?[/]?[0-9]+[/]([A-Z][A-Z\s]+)',
+        r'(?:FROM|TO|BY|A/C)\s+([A-Z][A-Z\s]+)',
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, narration.upper())
+        if match:
+            name = match.group(1).strip()
+            name = re.sub(r'\s+(PVT|LTD|LIMITED|PRIVATE|INDIA|IND|C)[\s]*$', '', name)
+            name = name.strip()
+            if len(name) >= 3:
+                extracted_party = name
+                break
+
+    if not extracted_party:
+        return {
+            "is_valid": True,
+            "warning": None,
+            "extracted_party": None,
+            "selected_account": account.account_name,
+        }
+
+    # Check if account name contains the extracted party
+    account_name_upper = account.account_name.upper()
+    extracted_words = set(extracted_party.split())
+    # Remove common words
+    common_ignore = {'PVT', 'LTD', 'LIMITED', 'PRIVATE', 'INDIA', 'THE', 'AND', 'OF', 'IND'}
+    extracted_words -= common_ignore
+
+    match_found = False
+    for word in extracted_words:
+        if len(word) >= 3 and word in account_name_upper:
+            match_found = True
+            break
+
+    if not match_found:
+        return {
+            "is_valid": False,
+            "warning": f"MISMATCH WARNING: Bank description mentions '{extracted_party}' but selected account is '{account.account_name}'. Please verify this is correct.",
+            "extracted_party": extracted_party,
+            "selected_account": account.account_name,
+        }
+
+    return {
+        "is_valid": True,
+        "warning": None,
+        "extracted_party": extracted_party,
+        "selected_account": account.account_name,
+    }

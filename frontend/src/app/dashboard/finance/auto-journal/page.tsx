@@ -55,7 +55,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
-import { autoJournalApi, invoicesApi, accountsApi } from '@/lib/api';
+import { autoJournalApi, invoicesApi, accountsApi, bankingApi } from '@/lib/api';
 import { formatDate, formatCurrency } from '@/lib/utils';
 
 interface PendingJournal {
@@ -99,7 +99,20 @@ export default function AutoJournalPage() {
   const [selectedReceiptId, setSelectedReceiptId] = useState('');
   const [selectedBankTxnId, setSelectedBankTxnId] = useState('');
   const [contraAccountCode, setContraAccountCode] = useState('');
+  const [contraAccountId, setContraAccountId] = useState('');
   const [autoPost, setAutoPost] = useState(false);
+  const [vendorSuggestions, setVendorSuggestions] = useState<Array<{
+    vendor_id: string | null;
+    vendor_name: string;
+    gl_account_id: string | null;
+    gl_account_code: string | null;
+    gl_account_name: string | null;
+    confidence: number;
+    matched_text: string;
+  }>>([]);
+  const [extractedPartyName, setExtractedPartyName] = useState<string | null>(null);
+  const [vendorWarning, setVendorWarning] = useState<string | null>(null);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
@@ -170,13 +183,85 @@ export default function AutoJournalPage() {
         setIsBankDialogOpen(false);
         setSelectedBankTxnId('');
         setContraAccountCode('');
+        setContraAccountId('');
         setAutoPost(false);
+        setVendorSuggestions([]);
+        setExtractedPartyName(null);
+        setVendorWarning(null);
       } else {
         toast.error(result.error || 'Failed to generate journal');
       }
     },
     onError: (error: Error) => toast.error(error.message || 'Failed to generate journal'),
   });
+
+  // Fetch vendor suggestions when bank transaction ID is entered
+  const fetchVendorSuggestions = async (transactionId: string) => {
+    if (!transactionId || transactionId.length < 36) {
+      setVendorSuggestions([]);
+      setExtractedPartyName(null);
+      return;
+    }
+
+    setLoadingSuggestions(true);
+    try {
+      const result = await bankingApi.suggestVendorForTransaction(transactionId);
+      setVendorSuggestions(result.suggestions || []);
+      setExtractedPartyName(result.extracted_party_name);
+      if (result.warning) {
+        toast.warning(result.warning);
+      }
+    } catch (error) {
+      console.error('Failed to fetch vendor suggestions:', error);
+      setVendorSuggestions([]);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
+  // Handle bank transaction ID change
+  const handleBankTxnIdChange = (value: string) => {
+    setSelectedBankTxnId(value);
+    setVendorWarning(null);
+    // Debounce the API call
+    const timeoutId = setTimeout(() => {
+      fetchVendorSuggestions(value);
+    }, 500);
+    return () => clearTimeout(timeoutId);
+  };
+
+  // Handle contra account selection with validation
+  const handleContraAccountChange = (code: string, id: string) => {
+    setContraAccountCode(code);
+    setContraAccountId(id);
+    setVendorWarning(null);
+
+    // Validate if the selected account matches the extracted vendor
+    if (extractedPartyName && id) {
+      // Check if any suggestion matches the selected account
+      const matchingSuggestion = vendorSuggestions.find(
+        s => s.gl_account_id === id || s.gl_account_code === code
+      );
+
+      if (!matchingSuggestion && vendorSuggestions.length > 0) {
+        const bestSuggestion = vendorSuggestions[0];
+        setVendorWarning(
+          `WARNING: Bank description contains "${extractedPartyName}" but you selected a different account. ` +
+          `Suggested: ${bestSuggestion.gl_account_code} - ${bestSuggestion.gl_account_name} (${Math.round(bestSuggestion.confidence * 100)}% match)`
+        );
+      }
+    }
+  };
+
+  // Quick select suggested vendor
+  const selectSuggestedVendor = (suggestion: typeof vendorSuggestions[0]) => {
+    if (suggestion.gl_account_code && suggestion.gl_account_id) {
+      setContraAccountCode(suggestion.gl_account_code);
+      setContraAccountId(suggestion.gl_account_id);
+      setVendorWarning(null);
+      toast.success(`Selected: ${suggestion.gl_account_name}`);
+    }
+  };
 
   // Bulk generate mutation
   const bulkGenerateMutation = useMutation({
@@ -578,18 +663,87 @@ export default function AutoJournalPage() {
                     Creates journal entry for bank deposit or withdrawal
                   </DialogDescription>
                 </DialogHeader>
-                <div className="grid gap-4 py-4">
+                <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
                   <div className="space-y-2">
                     <Label>Bank Transaction ID</Label>
                     <Input
                       placeholder="Enter bank transaction ID (UUID)"
                       value={selectedBankTxnId}
-                      onChange={(e) => setSelectedBankTxnId(e.target.value)}
+                      onChange={(e) => handleBankTxnIdChange(e.target.value)}
                     />
                   </div>
+
+                  {/* Vendor Suggestions */}
+                  {loadingSuggestions && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Analyzing transaction...
+                    </div>
+                  )}
+
+                  {extractedPartyName && (
+                    <div className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                        Detected Party: <span className="font-bold">{extractedPartyName}</span>
+                      </p>
+                    </div>
+                  )}
+
+                  {vendorSuggestions.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-green-600 dark:text-green-400">Suggested Vendor Accounts:</Label>
+                      <div className="space-y-2">
+                        {vendorSuggestions.map((suggestion, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => selectSuggestedVendor(suggestion)}
+                            className={`w-full p-3 text-left rounded-lg border transition-colors ${
+                              contraAccountCode === suggestion.gl_account_code
+                                ? 'bg-green-100 dark:bg-green-900 border-green-500'
+                                : 'bg-muted/50 hover:bg-muted border-border'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-medium text-sm">
+                                  {suggestion.gl_account_code} - {suggestion.gl_account_name}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Matched: &quot;{suggestion.matched_text}&quot;
+                                </p>
+                              </div>
+                              <Badge variant={suggestion.confidence >= 0.8 ? "default" : "secondary"}>
+                                {Math.round(suggestion.confidence * 100)}%
+                              </Badge>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Warning for mismatch */}
+                  {vendorWarning && (
+                    <div className="p-3 bg-yellow-50 dark:bg-yellow-950 rounded-lg border border-yellow-400 dark:border-yellow-600">
+                      <div className="flex gap-2">
+                        <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
+                        <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                          {vendorWarning}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <Label>Contra Account *</Label>
-                    <Select value={contraAccountCode} onValueChange={setContraAccountCode}>
+                    <Select
+                      value={contraAccountCode}
+                      onValueChange={(code) => {
+                        const acc = accounts.find((a: { code: string }) => a.code === code);
+                        handleContraAccountChange(code, acc?.id || '');
+                      }}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select contra account" />
                       </SelectTrigger>
@@ -602,7 +756,7 @@ export default function AutoJournalPage() {
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
-                      The other side of the bank entry (e.g., Sales, Expenses, etc.)
+                      The other side of the bank entry (e.g., Vendor AP, Expenses, etc.)
                     </p>
                   </div>
                   <div className="flex items-center space-x-2">

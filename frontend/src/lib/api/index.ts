@@ -5368,6 +5368,17 @@ export const bankingApi = {
     const { data } = await apiClient.post(`/banking/accounts/${accountId}/train-reconciliation-model`);
     return data;
   },
+  // Vendor Suggestion for Bank Transactions
+  suggestVendorForTransaction: async (transactionId: string) => {
+    const { data } = await apiClient.get(`/banking/transactions/${transactionId}/suggest-vendor`);
+    return data;
+  },
+  validateJournalVendorMatch: async (narration: string, accountId: string) => {
+    const { data } = await apiClient.post('/banking/validate-journal-vendor', null, {
+      params: { narration, account_id: accountId }
+    });
+    return data;
+  },
 };
 
 // ==================== CREDENTIALS API ====================
