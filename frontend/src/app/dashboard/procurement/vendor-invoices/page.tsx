@@ -719,7 +719,9 @@ export default function VendorInvoicesPage() {
                   Initiate 3-Way Match
                 </DropdownMenuItem>
               )}
-              {invoice.match_status === 'MATCHED' && invoice.status !== 'APPROVED' && (
+              {/* Approve button: For PO invoices when matched, for Expense invoices anytime before approval */}
+              {((invoice.match_status === 'MATCHED' && invoice.status !== 'APPROVED') ||
+                (invoice.invoice_type === 'EXPENSE_INVOICE' && ['RECEIVED', 'UNDER_REVIEW', 'UNDER_VERIFICATION'].includes(invoice.status))) && (
                 <DropdownMenuItem onClick={() => approveMutation.mutate(invoice.id)}>
                   <CheckCircle className="mr-2 h-4 w-4" />
                   Approve for Payment

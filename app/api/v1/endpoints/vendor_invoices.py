@@ -616,29 +616,40 @@ async def approve_invoice(
     db: DB,
     current_user: User = Depends(get_current_user),
 ):
-    """Approve a matched invoice for payment."""
+    """Approve a vendor invoice for payment and create journal entry."""
     invoice = await db.get(VendorInvoice, invoice_id)
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
-    if invoice.status not in ["MATCHED", "PARTIALLY_MATCHED"]:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot approve invoice with status {invoice.status}"
-        )
+    # Different approval rules for PO vs Expense invoices
+    if invoice.invoice_type == "EXPENSE_INVOICE":
+        # Expense invoices can be approved from RECEIVED, UNDER_REVIEW, or UNDER_VERIFICATION
+        allowed_statuses = ["RECEIVED", "UNDER_REVIEW", "UNDER_VERIFICATION"]
+        if invoice.status not in allowed_statuses:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot approve expense invoice with status {invoice.status}. Must be in {allowed_statuses}"
+            )
+    else:
+        # PO invoices require 3-way matching first
+        if invoice.status not in ["MATCHED", "PARTIALLY_MATCHED"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot approve PO invoice with status {invoice.status}. Complete 3-way matching first."
+            )
 
     invoice.status = "APPROVED"
     invoice.approved_by = current_user.id
     invoice.approved_at = datetime.now(timezone.utc)
 
-    # Auto-generate journal entry for purchase invoice approval
+    # Auto-generate journal entry for vendor invoice approval
     journal_entry = None
     try:
         auto_journal_service = AutoJournalService(db)
-        journal_entry = await auto_journal_service.generate_for_purchase_bill(
-            purchase_invoice_id=invoice_id,
+        journal_entry = await auto_journal_service.generate_for_vendor_invoice(
+            vendor_invoice_id=invoice_id,
             user_id=current_user.id,
-            auto_post=False  # Purchase invoices need separate approval
+            auto_post=True  # Auto-post the journal entry
         )
     except AutoJournalError as e:
         # Log the error but don't fail the approval
@@ -648,7 +659,7 @@ async def approve_invoice(
     await db.commit()
 
     return {
-        "message": "Invoice approved",
+        "message": "Invoice approved and journal entry created",
         "status": invoice.status,
         "journal_entry_id": str(journal_entry.id) if journal_entry else None
     }
