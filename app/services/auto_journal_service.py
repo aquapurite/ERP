@@ -1372,13 +1372,12 @@ class AutoJournalService:
             if not account:
                 continue
 
-            # Calculate balance change based on account type
-            # Asset/Expense: Debit increases, Credit decreases
-            # Liability/Equity/Revenue: Credit increases, Debit decreases
-            if account.account_type in ["ASSET", "EXPENSE"]:
-                balance_change = (line.debit_amount or Decimal("0")) - (line.credit_amount or Decimal("0"))
-            else:
-                balance_change = (line.credit_amount or Decimal("0")) - (line.debit_amount or Decimal("0"))
+            # UNIFIED formula for ALL account types:
+            # balance_change = debit - credit
+            # Positive running_balance = Debit balance
+            # Negative running_balance = Credit balance
+            # This ensures consistent display in General Ledger UI
+            balance_change = (line.debit_amount or Decimal("0")) - (line.credit_amount or Decimal("0"))
 
             new_balance = (account.current_balance or Decimal("0")) + balance_change
 

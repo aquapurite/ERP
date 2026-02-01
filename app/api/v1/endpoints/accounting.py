@@ -3006,11 +3006,11 @@ async def fix_missing_gl_entries(
                 if not account:
                     continue
 
-                # Calculate balance change based on account type
-                if account.account_type in [AccountType.ASSET, AccountType.EXPENSE]:
-                    balance_change = (line.debit_amount or Decimal("0")) - (line.credit_amount or Decimal("0"))
-                else:
-                    balance_change = (line.credit_amount or Decimal("0")) - (line.debit_amount or Decimal("0"))
+                # UNIFIED formula for ALL account types:
+                # balance_change = debit - credit
+                # Positive running_balance = Debit balance
+                # Negative running_balance = Credit balance
+                balance_change = (line.debit_amount or Decimal("0")) - (line.credit_amount or Decimal("0"))
 
                 new_balance = (account.current_balance or Decimal("0")) + balance_change
 

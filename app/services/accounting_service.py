@@ -224,13 +224,12 @@ class AccountingService:
             )
             account = account_result.scalar_one()
 
-            # Calculate balance change
-            # For Asset/Expense: Debit increases, Credit decreases
-            # For Liability/Equity/Revenue: Credit increases, Debit decreases
-            if account.account_type in [AccountType.ASSET, AccountType.EXPENSE]:
-                balance_change = line.debit_amount - line.credit_amount
-            else:
-                balance_change = line.credit_amount - line.debit_amount
+            # UNIFIED formula for ALL account types:
+            # balance_change = debit - credit
+            # Positive running_balance = Debit balance
+            # Negative running_balance = Credit balance
+            # This ensures consistent display in General Ledger UI
+            balance_change = line.debit_amount - line.credit_amount
 
             new_balance = account.current_balance + balance_change
 
