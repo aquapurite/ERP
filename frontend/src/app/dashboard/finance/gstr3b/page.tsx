@@ -152,6 +152,14 @@ export default function GSTR3BPage() {
     queryFn: () => gstReportsApi.getGSTR3B(month, year),
   });
 
+  // Debug: Log API response
+  useEffect(() => {
+    if (gstr3bData) {
+      console.log('GSTR-3B API Response:', gstr3bData);
+      console.log('ITC Available from API:', gstr3bData.itc_available);
+    }
+  }, [gstr3bData]);
+
   // Derive summary from API data - now includes ITC from ITCLedger
   const summary: GSTR3BSummary | null = gstr3bData ? {
     return_period: gstr3bData.return_period,

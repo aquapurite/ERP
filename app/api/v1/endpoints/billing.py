@@ -2119,6 +2119,10 @@ async def get_gstr3b_report(
 
     # ==================== ITC Available from ITCLedger ====================
     # Query ITC Ledger for available ITC in this period
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"GSTR-3B: Querying ITC for period={period}")
+
     itc_query = select(
         func.sum(ITCLedger.igst_itc).label("itc_igst"),
         func.sum(ITCLedger.cgst_itc).label("itc_cgst"),
@@ -2144,6 +2148,8 @@ async def get_gstr3b_report(
     itc_cess = float(itc_data.itc_cess or 0)
     itc_utilized = float(itc_data.utilized or 0)
     itc_reversed = float(itc_data.reversed or 0)
+
+    logger.info(f"GSTR-3B ITC Result: IGST={itc_igst}, CGST={itc_cgst}, SGST={itc_sgst}, CESS={itc_cess}")
 
     # Calculate net ITC available
     total_itc_available = itc_igst + itc_cgst + itc_sgst + itc_cess
