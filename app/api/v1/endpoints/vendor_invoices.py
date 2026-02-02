@@ -662,7 +662,7 @@ async def approve_invoice(
     itc_entry = None
     try:
         # Get company_id from user or invoice
-        company_id = current_user.company_id
+        company_id = getattr(current_user, 'company_id', None)
         if company_id:
             itc_service = ITCService(db, company_id)
             itc_entry = await itc_service.sync_vendor_invoice_to_itc(

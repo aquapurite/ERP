@@ -18,12 +18,50 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
 from app.models.itc import ITCLedger, ITCSummary, GSTFiling
+from app.models.company import Company
 from app.api.deps import DB, get_current_user
 from app.services.gst_filing_service import GSTFilingService, GSTFilingError
 from app.services.itc_service import ITCService
 
 
 router = APIRouter()
+
+
+async def get_effective_company_id(
+    db: AsyncSession,
+    company_id: Optional[UUID],
+    current_user: User,
+) -> UUID:
+    """
+    Get effective company ID with fallback to primary company.
+
+    Priority:
+    1. Explicit company_id parameter
+    2. current_user.company_id (if exists)
+    3. Primary company from database
+    """
+    # Try explicit company_id first
+    if company_id:
+        return company_id
+
+    # Try user's company_id
+    user_company_id = getattr(current_user, 'company_id', None)
+    if user_company_id:
+        return user_company_id
+
+    # Fallback to primary company
+    result = await db.execute(
+        select(Company.id).where(Company.is_primary == True).limit(1)
+    )
+    primary_company = result.scalar_one_or_none()
+
+    if not primary_company:
+        raise HTTPException(
+            status_code=400,
+            detail="Company ID is required. No primary company found."
+        )
+
+    return primary_company
 
 
 # ==================== Request/Response Schemas ====================
@@ -172,7 +210,7 @@ async def file_gstr1(
     current_user: User = Depends(get_current_user),
 ):
     """File GSTR-1 for the specified period."""
-    company_id = request.company_id or current_user.company_id
+    company_id = request.company_id or getattr(current_user, 'company_id', None)
 
     if not company_id:
         raise HTTPException(
@@ -217,7 +255,7 @@ async def file_gstr3b(
     current_user: User = Depends(get_current_user),
 ):
     """File GSTR-3B for the specified period."""
-    company_id = request.company_id or current_user.company_id
+    company_id = request.company_id or getattr(current_user, 'company_id', None)
 
     if not company_id:
         raise HTTPException(
@@ -251,7 +289,7 @@ async def get_filing_status(
     current_user: User = Depends(get_current_user),
 ):
     """Get filing status for a specific return period."""
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -279,7 +317,7 @@ async def preview_gstr1_data(
     current_user: User = Depends(get_current_user),
 ):
     """Preview GSTR-1 data for a period."""
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -320,7 +358,7 @@ async def get_gst_dashboard(
     current_user: User = Depends(get_current_user),
 ):
     """Get GST filing dashboard data."""
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -359,7 +397,7 @@ async def download_gstr2a(
     current_user: User = Depends(get_current_user),
 ):
     """Download GSTR-2A for ITC reconciliation."""
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -389,10 +427,7 @@ async def get_available_itc(
     current_user: User = Depends(get_current_user),
 ):
     """Get available ITC summary."""
-    effective_company_id = company_id or current_user.company_id
-
-    if not effective_company_id:
-        raise HTTPException(status_code=400, detail="Company ID is required")
+    effective_company_id = await get_effective_company_id(db, company_id, current_user)
 
     itc_service = ITCService(db, effective_company_id)
     result = await itc_service.get_available_itc(period, vendor_gstin)
@@ -416,10 +451,7 @@ async def get_itc_ledger(
     current_user: User = Depends(get_current_user),
 ):
     """Get ITC ledger entries."""
-    effective_company_id = company_id or current_user.company_id
-
-    if not effective_company_id:
-        raise HTTPException(status_code=400, detail="Company ID is required")
+    effective_company_id = await get_effective_company_id(db, company_id, current_user)
 
     itc_service = ITCService(db, effective_company_id)
     result = await itc_service.get_itc_ledger(
@@ -475,7 +507,7 @@ async def create_itc_entry(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new ITC entry."""
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -539,7 +571,7 @@ async def reconcile_itc(
     current_user: User = Depends(get_current_user),
 ):
     """Reconcile ITC with GSTR-2A/2B data."""
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -575,7 +607,7 @@ async def get_itc_dashboard(
     current_user: User = Depends(get_current_user),
 ):
     """Get ITC dashboard data."""
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -708,7 +740,7 @@ async def authenticate_gst_portal(
     current_user: User = Depends(get_current_user),
 ):
     """Authenticate with GST portal."""
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -737,7 +769,7 @@ async def get_filing_history(
     current_user: User = Depends(get_current_user),
 ):
     """Get filing history with pagination."""
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -785,10 +817,7 @@ async def get_itc_summary(
     current_user: User = Depends(get_current_user),
 ):
     """Get ITC summary for a period."""
-    effective_company_id = company_id or current_user.company_id
-
-    if not effective_company_id:
-        raise HTTPException(status_code=400, detail="Company ID is required")
+    effective_company_id = await get_effective_company_id(db, company_id, current_user)
 
     itc_service = ITCService(db, effective_company_id)
     result = await itc_service.get_itc_summary(period)
@@ -817,7 +846,7 @@ async def utilize_itc(
     current_user: User = Depends(get_current_user),
 ):
     """Utilize ITC against tax liability."""
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -860,7 +889,7 @@ async def reverse_itc_entry(
     current_user: User = Depends(get_current_user),
 ):
     """Reverse an ITC entry."""
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -897,10 +926,7 @@ async def get_itc_mismatch_report(
     current_user: User = Depends(get_current_user),
 ):
     """Get ITC mismatch report for a period."""
-    effective_company_id = company_id or current_user.company_id
-
-    if not effective_company_id:
-        raise HTTPException(status_code=400, detail="Company ID is required")
+    effective_company_id = await get_effective_company_id(db, company_id, current_user)
 
     itc_service = ITCService(db, effective_company_id)
     result = await itc_service.get_mismatch_report(period)
@@ -940,10 +966,7 @@ async def sync_itc_from_vendor_invoices(
     current_user: User = Depends(get_current_user),
 ):
     """Sync ITC entries from vendor invoices."""
-    effective_company_id = company_id or current_user.company_id
-
-    if not effective_company_id:
-        raise HTTPException(status_code=400, detail="Company ID is required")
+    effective_company_id = await get_effective_company_id(db, company_id, current_user)
 
     itc_service = ITCService(db, effective_company_id)
     result = await itc_service.sync_all_vendor_invoices_to_itc(
