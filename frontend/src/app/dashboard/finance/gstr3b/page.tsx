@@ -145,20 +145,27 @@ export default function GSTR3BPage() {
     }
   }, [periods, selectedPeriod]);
 
-  const { month, year } = parsePeriod(selectedPeriod || getCurrentPeriod());
+  // Determine the effective period: use selectedPeriod if set, or find current financial period
+  const currentFinancialPeriod = periods.find((p: any) => p.isCurrent)?.value || periods[0]?.value;
+  const effectivePeriod = selectedPeriod || currentFinancialPeriod;
+  const { month, year } = parsePeriod(effectivePeriod || getCurrentPeriod());
 
   const { data: gstr3bData, isLoading } = useQuery({
     queryKey: ['gstr3b-report', month, year],
     queryFn: () => gstReportsApi.getGSTR3B(month, year),
+    // Only fetch when we have a valid period (from user selection or from loaded financial periods)
+    // This prevents fetching for the wrong month before periods load
+    enabled: !!effectivePeriod,
   });
 
-  // Debug: Log API response
+  // Debug: Log API response and period being used
   useEffect(() => {
+    console.log('GSTR-3B Debug: effectivePeriod =', effectivePeriod, '| month =', month, '| year =', year);
     if (gstr3bData) {
       console.log('GSTR-3B API Response:', gstr3bData);
       console.log('ITC Available from API:', gstr3bData.itc_available);
     }
-  }, [gstr3bData]);
+  }, [gstr3bData, effectivePeriod, month, year]);
 
   // Derive summary from API data - now includes ITC from ITCLedger
   const summary: GSTR3BSummary | null = gstr3bData ? {
