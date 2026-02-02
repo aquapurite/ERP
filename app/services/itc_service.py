@@ -13,7 +13,7 @@ from decimal import Decimal
 from typing import Optional, Dict, Any, List
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, and_, func, update
+from sqlalchemy import select, and_, func, update, Integer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.itc import ITCLedger, ITCSummary, ITCStatus, ITCMatchStatus
@@ -455,8 +455,8 @@ class ITCService:
                 func.sum(ITCLedger.utilized_amount).label("total_utilized"),
                 func.sum(ITCLedger.reversed_amount).label("total_reversed"),
                 func.count(ITCLedger.id).label("total_invoices"),
-                func.sum(func.cast(ITCLedger.gstr2a_matched, type_=Decimal)).label("gstr2a_matched"),
-                func.sum(func.cast(ITCLedger.gstr2b_matched, type_=Decimal)).label("gstr2b_matched"),
+                func.sum(func.cast(ITCLedger.gstr2a_matched, type_=Integer)).label("gstr2a_matched"),
+                func.sum(func.cast(ITCLedger.gstr2b_matched, type_=Integer)).label("gstr2b_matched"),
             )
             .where(
                 and_(
@@ -556,7 +556,7 @@ class ITCService:
                 func.sum(ITCLedger.reversed_amount).label("total_reversed"),
                 func.count(ITCLedger.id).label("total_invoices"),
                 func.sum(
-                    func.cast(ITCLedger.gstr2b_matched, type_=Decimal)
+                    func.cast(ITCLedger.gstr2b_matched, type_=Integer)
                 ).label("matched_count"),
             )
             .where(
@@ -633,8 +633,8 @@ class ITCService:
         match_query = (
             select(
                 func.count(ITCLedger.id).label("total"),
-                func.sum(func.cast(ITCLedger.gstr2a_matched, type_=Decimal)).label("gstr2a_matched"),
-                func.sum(func.cast(ITCLedger.gstr2b_matched, type_=Decimal)).label("gstr2b_matched"),
+                func.sum(func.cast(ITCLedger.gstr2a_matched, type_=Integer)).label("gstr2a_matched"),
+                func.sum(func.cast(ITCLedger.gstr2b_matched, type_=Integer)).label("gstr2b_matched"),
             )
             .where(
                 and_(
