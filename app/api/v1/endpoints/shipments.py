@@ -1669,7 +1669,7 @@ async def generate_eway_bill_for_shipment(
     ewb_result = await db.execute(ewb_query)
     ewb = ewb_result.scalar_one_or_none()
 
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -1803,7 +1803,7 @@ async def update_eway_bill_vehicle(
     if not shipment.eway_bill_id:
         raise HTTPException(status_code=400, detail="No E-Way Bill found for this shipment")
 
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")

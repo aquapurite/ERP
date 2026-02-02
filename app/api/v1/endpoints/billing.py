@@ -40,8 +40,46 @@ from app.services.audit_service import AuditService
 from app.services.gst_einvoice_service import GSTEInvoiceService, GSTEInvoiceError
 from app.services.gst_ewaybill_service import GSTEWayBillService, GSTEWayBillError
 from app.services.auto_journal_service import AutoJournalService, AutoJournalError
+from app.models.company import Company
 
 router = APIRouter()
+
+
+async def get_effective_company_id(
+    db: AsyncSession,
+    company_id: Optional[UUID],
+    current_user: User,
+) -> UUID:
+    """
+    Get effective company ID with fallback to primary company.
+
+    Priority:
+    1. Explicit company_id parameter
+    2. current_user.company_id (if exists)
+    3. Primary company from database
+    """
+    # Try explicit company_id first
+    if company_id:
+        return company_id
+
+    # Try user's company_id
+    user_company_id = getattr(current_user, 'company_id', None)
+    if user_company_id:
+        return user_company_id
+
+    # Fallback to primary company
+    result = await db.execute(
+        select(Company.id).where(Company.is_primary == True).limit(1)
+    )
+    primary_company = result.scalar_one_or_none()
+
+    if not primary_company:
+        raise HTTPException(
+            status_code=400,
+            detail="Company ID is required. No primary company found."
+        )
+
+    return primary_company
 
 
 # ==================== TaxInvoice ====================
@@ -417,7 +455,7 @@ async def generate_einvoice_irn(
         )
 
     # Determine company_id - use from invoice or parameter
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(
@@ -525,7 +563,7 @@ async def cancel_einvoice_irn(
         )
 
     # Determine company_id
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(
@@ -605,7 +643,7 @@ async def get_irn_details(
     if not invoice.irn:
         raise HTTPException(status_code=400, detail="No IRN exists for this invoice")
 
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(
@@ -701,7 +739,7 @@ async def verify_gstin(
             detail="Invalid GSTIN format. GSTIN must be 15 characters."
         )
 
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(
@@ -1020,7 +1058,7 @@ async def generate_eway_bill_number(
         raise HTTPException(status_code=400, detail="E-Way Bill number already generated")
 
     # Determine company_id
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(
@@ -1105,7 +1143,7 @@ async def update_eway_bill_vehicle(
     if ewb.status == EWayBillStatus.CANCELLED:
         raise HTTPException(status_code=400, detail="Cannot update cancelled E-Way Bill")
 
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(
@@ -1195,7 +1233,7 @@ async def cancel_eway_bill(
             detail="Invalid reason code. Valid codes: 1=Duplicate, 2=Order Cancelled, 3=Data Entry Mistake, 4=Others"
         )
 
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(
@@ -1285,7 +1323,7 @@ async def extend_eway_bill_validity(
     if ewb.status == EWayBillStatus.CANCELLED:
         raise HTTPException(status_code=400, detail="Cannot extend cancelled E-Way Bill")
 
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(
@@ -1350,7 +1388,7 @@ async def get_eway_bill_details(
     if not ewb.eway_bill_number:
         raise HTTPException(status_code=400, detail="E-Way Bill number not generated")
 
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(

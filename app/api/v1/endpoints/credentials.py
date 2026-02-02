@@ -41,7 +41,7 @@ async def get_gst_credentials(
 
     Returns masked credentials (passwords are not returned, only whether they are set).
     """
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(
@@ -83,7 +83,7 @@ async def update_gst_credentials(
 
     Passwords are automatically encrypted before storage.
     """
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(
@@ -170,7 +170,7 @@ async def test_gst_connection(
 
     Attempts to authenticate with the stored credentials.
     """
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(
@@ -227,7 +227,7 @@ async def clear_gst_credentials(
 
     Use with caution - this will remove stored credentials.
     """
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(

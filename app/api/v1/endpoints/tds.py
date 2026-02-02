@@ -39,7 +39,7 @@ async def calculate_tds(
 
     This is a utility endpoint to preview TDS before recording.
     """
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -82,7 +82,7 @@ async def record_tds_deduction(
 
     Used when making payments to vendors/contractors where TDS is applicable.
     """
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -141,7 +141,7 @@ async def list_tds_deductions(
     current_user: User = Depends(get_current_user),
 ):
     """List all TDS deductions with filters."""
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -192,7 +192,7 @@ async def get_tds_deduction(
     current_user: User = Depends(get_current_user),
 ):
     """Get details of a specific TDS deduction."""
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     result = await db.execute(
         select(TDSDeduction).where(
@@ -257,7 +257,7 @@ async def get_pending_deposits(
 
     These need to be deposited to the government by the 7th of next month.
     """
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -287,7 +287,7 @@ async def mark_tds_deposited(
 
     Record challan details after making the payment.
     """
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -322,7 +322,7 @@ async def generate_form_16a(
 
     Form 16A is TDS certificate issued quarterly to the deductee.
     """
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -352,7 +352,7 @@ async def download_form_16a_pdf(
 
     Returns base64 encoded PDF content.
     """
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -407,7 +407,7 @@ async def get_tds_summary(
     current_user: User = Depends(get_current_user),
 ):
     """Get TDS summary for a financial year."""
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")

@@ -48,7 +48,7 @@ async def create_marketplace_integration(
     """
     from app.models.channel import MarketplaceIntegration
 
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -112,7 +112,7 @@ async def list_marketplace_integrations(
     """List all marketplace integrations for a company."""
     from app.models.channel import MarketplaceIntegration
 
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -150,7 +150,7 @@ async def update_marketplace_integration(
     """Update marketplace integration credentials."""
     from app.models.channel import MarketplaceIntegration
 
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -197,7 +197,7 @@ async def delete_marketplace_integration(
     """Delete marketplace integration."""
     from app.models.channel import MarketplaceIntegration
 
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -232,7 +232,7 @@ async def toggle_marketplace_integration(
     """Enable or disable marketplace integration."""
     from app.models.channel import MarketplaceIntegration
 
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -283,7 +283,7 @@ async def sync_marketplace_orders(
             detail=f"Invalid marketplace. Supported: {[m.value for m in MarketplaceType]}"
         )
 
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -334,7 +334,7 @@ async def sync_inventory_to_marketplace(
             detail=f"Invalid marketplace. Supported: {[m.value for m in MarketplaceType]}"
         )
 
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -385,7 +385,7 @@ async def update_marketplace_shipment(
             detail=f"Invalid marketplace. Supported: {[m.value for m in MarketplaceType]}"
         )
 
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -437,7 +437,7 @@ async def test_marketplace_connection(
             detail=f"Invalid marketplace. Supported: {[m.value for m in MarketplaceType]}"
         )
 
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")

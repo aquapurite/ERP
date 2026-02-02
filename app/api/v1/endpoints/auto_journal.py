@@ -43,7 +43,7 @@ async def generate_from_sales_invoice(
 
     The journal entry is created in DRAFT status unless auto_post is True.
     """
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -87,7 +87,7 @@ async def generate_from_payment_receipt(
     - Debit: Cash/Bank account
     - Credit: Accounts Receivable
     """
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -133,7 +133,7 @@ async def generate_from_bank_transaction(
     For deposits: Debit Bank, Credit Contra
     For withdrawals: Debit Contra, Credit Bank
     """
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -176,7 +176,7 @@ async def generate_bulk_journal_entries(
 
     Returns summary of successful and failed generations.
     """
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -257,7 +257,7 @@ async def post_journal_entry(
     current_user: User = Depends(get_current_user),
 ):
     """Post a draft journal entry."""
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -292,7 +292,7 @@ async def list_pending_journal_entries(
     current_user: User = Depends(get_current_user),
 ):
     """List all draft/pending journal entries for review."""
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")
@@ -336,7 +336,7 @@ async def post_all_pending_journals(
     current_user: User = Depends(get_current_user),
 ):
     """Post all pending journal entries."""
-    effective_company_id = company_id or current_user.company_id
+    effective_company_id = company_id or getattr(current_user, 'company_id', None)
 
     if not effective_company_id:
         raise HTTPException(status_code=400, detail="Company ID is required")

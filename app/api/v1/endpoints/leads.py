@@ -417,7 +417,7 @@ async def auto_assign_lead(
             detail=f"Invalid strategy. Valid options: {[s.value for s in AssignmentStrategy]}"
         )
 
-    company_id = current_user.company_id
+    company_id = getattr(current_user, 'company_id', None)
     if not company_id:
         raise HTTPException(status_code=400, detail="Company ID required")
 
@@ -461,7 +461,7 @@ async def bulk_auto_assign_leads(
             detail=f"Invalid strategy. Valid options: {[s.value for s in AssignmentStrategy]}"
         )
 
-    company_id = current_user.company_id
+    company_id = getattr(current_user, 'company_id', None)
     if not company_id:
         raise HTTPException(status_code=400, detail="Company ID required")
 
@@ -497,7 +497,7 @@ async def get_unassigned_leads(
     limit: int = Query(100, ge=1, le=500)
 ):
     """Get all unassigned leads for assignment."""
-    company_id = current_user.company_id
+    company_id = getattr(current_user, 'company_id', None)
     if not company_id:
         raise HTTPException(status_code=400, detail="Company ID required")
 
@@ -526,7 +526,7 @@ async def get_lead_assignment_stats(
     days: int = Query(30, ge=1, le=365)
 ):
     """Get lead assignment statistics and distribution."""
-    company_id = current_user.company_id
+    company_id = getattr(current_user, 'company_id', None)
     if not company_id:
         raise HTTPException(status_code=400, detail="Company ID required")
 
@@ -545,7 +545,7 @@ async def get_agents_workload(
     team_id: Optional[UUID] = None
 ):
     """Get current workload for all sales agents."""
-    company_id = current_user.company_id
+    company_id = getattr(current_user, 'company_id', None)
     if not company_id:
         raise HTTPException(status_code=400, detail="Company ID required")
 
