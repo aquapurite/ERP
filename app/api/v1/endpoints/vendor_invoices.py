@@ -616,7 +616,9 @@ async def approve_invoice(
     db: DB,
     current_user: User = Depends(get_current_user),
 ):
-    """Approve a vendor invoice for payment and create journal entry."""
+    """Approve a vendor invoice for payment, create journal entry, and sync ITC."""
+    from app.services.itc_service import ITCService
+
     invoice = await db.get(VendorInvoice, invoice_id)
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
@@ -656,12 +658,29 @@ async def approve_invoice(
         import logging
         logging.warning(f"Failed to auto-generate journal for vendor invoice {invoice.invoice_number}: {e.message}")
 
+    # Auto-sync to ITC Ledger for GST compliance
+    itc_entry = None
+    try:
+        # Get company_id from user or invoice
+        company_id = current_user.company_id
+        if company_id:
+            itc_service = ITCService(db, company_id)
+            itc_entry = await itc_service.sync_vendor_invoice_to_itc(
+                vendor_invoice_id=invoice_id,
+                created_by=current_user.id,
+            )
+    except Exception as e:
+        # Log the error but don't fail the approval
+        import logging
+        logging.warning(f"Failed to sync ITC for vendor invoice {invoice.invoice_number}: {str(e)}")
+
     await db.commit()
 
     return {
-        "message": "Invoice approved and journal entry created",
+        "message": "Invoice approved, journal entry created, and ITC synced",
         "status": invoice.status,
-        "journal_entry_id": str(journal_entry.id) if journal_entry else None
+        "journal_entry_id": str(journal_entry.id) if journal_entry else None,
+        "itc_entry_id": str(itc_entry.id) if itc_entry else None,
     }
 
 

@@ -905,3 +905,50 @@ async def get_itc_mismatch_report(
     itc_service = ITCService(db, effective_company_id)
     result = await itc_service.get_mismatch_report(period)
     return ITCMismatchReportResponse(**result)
+
+
+class ITCSyncResponse(BaseModel):
+    """Response schema for ITC sync operation."""
+    total_invoices: int
+    synced: int
+    skipped: int
+    errors: List[dict]
+
+
+@router.post(
+    "/itc/sync-from-invoices",
+    response_model=ITCSyncResponse,
+    summary="Sync ITC from Vendor Invoices",
+    description="""
+    Bulk sync ITC entries from approved/matched vendor invoices.
+
+    This endpoint populates the ITC Ledger from existing vendor invoices.
+    Useful for:
+    - Initial data migration
+    - Re-syncing after data fixes
+    - Recovering from sync failures
+
+    **Note:** Invoices that already have ITC entries will be skipped.
+
+    **Permissions Required:** gst:itc:manage
+    """,
+)
+async def sync_itc_from_vendor_invoices(
+    period: Optional[str] = Query(None, description="Period in YYYYMM format (optional)"),
+    company_id: Optional[UUID] = None,
+    db: DB = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Sync ITC entries from vendor invoices."""
+    effective_company_id = company_id or current_user.company_id
+
+    if not effective_company_id:
+        raise HTTPException(status_code=400, detail="Company ID is required")
+
+    itc_service = ITCService(db, effective_company_id)
+    result = await itc_service.sync_all_vendor_invoices_to_itc(
+        period=period,
+        created_by=current_user.id,
+    )
+
+    return ITCSyncResponse(**result)

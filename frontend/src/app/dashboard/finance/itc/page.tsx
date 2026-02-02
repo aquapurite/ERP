@@ -143,6 +143,22 @@ export default function ITCManagementPage() {
     },
   });
 
+  // Sync ITC from vendor invoices
+  const syncMutation = useMutation({
+    mutationFn: () => itcApi.syncFromVendorInvoices(selectedPeriod),
+    onSuccess: (data) => {
+      toast.success(`ITC sync complete! ${data.synced} entries synced, ${data.skipped} skipped.`);
+      queryClient.invalidateQueries({ queryKey: ['itc-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['itc-ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['itc-mismatch'] });
+      // Also refresh GSTR-3B data as it now depends on ITC
+      queryClient.invalidateQueries({ queryKey: ['gstr3b-report'] });
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'ITC sync failed');
+    },
+  });
+
   const reverseMutation = useMutation({
     mutationFn: ({ entryId, reason, amount }: { entryId: string; reason: string; amount?: number }) =>
       itcApi.reverseITC(entryId, reason, amount),
@@ -167,6 +183,10 @@ export default function ITCManagementPage() {
     } finally {
       setIsReconciling(false);
     }
+  };
+
+  const handleSyncFromInvoices = async () => {
+    await syncMutation.mutateAsync();
   };
 
   const handleReverseITC = (entry: ITCEntry) => {
@@ -309,6 +329,14 @@ export default function ITCManagementPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Button variant="outline" onClick={handleSyncFromInvoices} disabled={syncMutation.isPending}>
+              {syncMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              {syncMutation.isPending ? 'Syncing...' : 'Sync from Invoices'}
+            </Button>
             <Button variant="outline" onClick={handleReconcile} disabled={isReconciling}>
               {isReconciling ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -2020,10 +2020,13 @@ async def get_gstr3b_report(
     year: int = Query(..., ge=2017),
     current_user: User = Depends(get_current_user),
 ):
-    """Generate GSTR-3B (Monthly Summary) report data."""
+    """Generate GSTR-3B (Monthly Summary) report data with ITC from ITCLedger."""
     from calendar import monthrange
+    from app.models.itc import ITCLedger, ITCStatus
+
     start_date = date(year, month, 1)
     end_date = date(year, month, monthrange(year, month)[1])
+    period = f"{year}{month:02d}"  # YYYYMM format for ITC lookup
 
     # Outward taxable supplies
     outward_query = select(
@@ -2076,6 +2079,56 @@ async def get_gstr3b_report(
     intra_result = await db.execute(intra_state_query)
     intra_state = intra_result.one()
 
+    # ==================== ITC Available from ITCLedger ====================
+    # Query ITC Ledger for available ITC in this period
+    itc_query = select(
+        func.sum(ITCLedger.igst_itc).label("itc_igst"),
+        func.sum(ITCLedger.cgst_itc).label("itc_cgst"),
+        func.sum(ITCLedger.sgst_itc).label("itc_sgst"),
+        func.sum(ITCLedger.cess_itc).label("itc_cess"),
+        func.sum(ITCLedger.total_itc).label("total_itc"),
+        func.sum(ITCLedger.utilized_amount).label("utilized"),
+        func.sum(ITCLedger.reversed_amount).label("reversed"),
+    ).where(
+        and_(
+            ITCLedger.period == period,
+            ITCLedger.status.in_([ITCStatus.AVAILABLE.value, ITCStatus.UTILIZED.value]),
+        )
+    )
+
+    itc_result = await db.execute(itc_query)
+    itc_data = itc_result.one()
+
+    # Extract ITC values (handle None)
+    itc_igst = float(itc_data.itc_igst or 0)
+    itc_cgst = float(itc_data.itc_cgst or 0)
+    itc_sgst = float(itc_data.itc_sgst or 0)
+    itc_cess = float(itc_data.itc_cess or 0)
+    itc_utilized = float(itc_data.utilized or 0)
+    itc_reversed = float(itc_data.reversed or 0)
+
+    # Calculate net ITC available
+    total_itc_available = itc_igst + itc_cgst + itc_sgst + itc_cess
+    net_itc = total_itc_available - itc_reversed
+
+    # Calculate tax payable after ITC
+    tax_payable_igst = float(outward.igst or 0)
+    tax_payable_cgst = float(outward.cgst or 0)
+    tax_payable_sgst = float(outward.sgst or 0)
+    tax_payable_cess = float(outward.cess or 0)
+
+    # ITC utilization (simplified - IGST first, then CGST, SGST)
+    itc_utilized_igst = min(itc_igst, tax_payable_igst)
+    itc_utilized_cgst = min(itc_cgst, tax_payable_cgst)
+    itc_utilized_sgst = min(itc_sgst, tax_payable_sgst)
+    itc_utilized_cess = min(itc_cess, tax_payable_cess)
+
+    # Cash payment = Tax payable - ITC utilized
+    cash_igst = tax_payable_igst - itc_utilized_igst
+    cash_cgst = tax_payable_cgst - itc_utilized_cgst
+    cash_sgst = tax_payable_sgst - itc_utilized_sgst
+    cash_cess = tax_payable_cess - itc_utilized_cess
+
     return {
         "return_period": f"{month:02d}{year}",
         "outward_taxable_supplies": {
@@ -2094,12 +2147,51 @@ async def get_gstr3b_report(
             "cgst": float(intra_state.cgst or 0),
             "sgst": float(intra_state.sgst or 0),
         },
+        # Section 4: ITC Available (from ITCLedger)
+        "itc_available": {
+            "igst": itc_igst,
+            "cgst": itc_cgst,
+            "sgst": itc_sgst,
+            "cess": itc_cess,
+            "total": total_itc_available,
+        },
+        "itc_reversed": {
+            "igst": 0,  # Could be split by component if tracked
+            "cgst": 0,
+            "sgst": 0,
+            "cess": 0,
+            "total": itc_reversed,
+        },
+        "itc_net": {
+            "igst": itc_igst,
+            "cgst": itc_cgst,
+            "sgst": itc_sgst,
+            "cess": itc_cess,
+            "total": net_itc,
+        },
+        # Section 6: Tax Payable
         "tax_payable": {
-            "igst": float(outward.igst or 0),
-            "cgst": float(outward.cgst or 0),
-            "sgst": float(outward.sgst or 0),
-            "cess": float(outward.cess or 0),
-            "total": float((outward.igst or 0) + (outward.cgst or 0) + (outward.sgst or 0) + (outward.cess or 0)),
+            "igst": tax_payable_igst,
+            "cgst": tax_payable_cgst,
+            "sgst": tax_payable_sgst,
+            "cess": tax_payable_cess,
+            "total": tax_payable_igst + tax_payable_cgst + tax_payable_sgst + tax_payable_cess,
+        },
+        # ITC Utilized
+        "itc_utilized": {
+            "igst": itc_utilized_igst,
+            "cgst": itc_utilized_cgst,
+            "sgst": itc_utilized_sgst,
+            "cess": itc_utilized_cess,
+            "total": itc_utilized_igst + itc_utilized_cgst + itc_utilized_sgst + itc_utilized_cess,
+        },
+        # Cash Payment
+        "cash_payment": {
+            "igst": cash_igst,
+            "cgst": cash_cgst,
+            "sgst": cash_sgst,
+            "cess": cash_cess,
+            "total": cash_igst + cash_cgst + cash_sgst + cash_cess,
         },
     }
 

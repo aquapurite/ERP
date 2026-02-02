@@ -152,7 +152,7 @@ export default function GSTR3BPage() {
     queryFn: () => gstReportsApi.getGSTR3B(month, year),
   });
 
-  // Derive summary from API data
+  // Derive summary from API data - now includes ITC from ITCLedger
   const summary: GSTR3BSummary | null = gstr3bData ? {
     return_period: gstr3bData.return_period,
     filing_status: 'NOT_FILED',
@@ -174,28 +174,33 @@ export default function GSTR3BPage() {
     },
     inter_state_comp: { taxable_value: 0, igst: 0 },
     inter_state_uin: { taxable_value: 0, igst: 0 },
-    itc_igst: 0,
-    itc_cgst: 0,
-    itc_sgst: 0,
-    itc_cess: 0,
-    itc_ineligible_igst: 0,
-    itc_ineligible_cgst: 0,
-    itc_ineligible_sgst: 0,
+    // ITC Available from ITCLedger (Section 4)
+    itc_igst: gstr3bData.itc_available?.igst || 0,
+    itc_cgst: gstr3bData.itc_available?.cgst || 0,
+    itc_sgst: gstr3bData.itc_available?.sgst || 0,
+    itc_cess: gstr3bData.itc_available?.cess || 0,
+    // ITC Reversed/Ineligible
+    itc_ineligible_igst: gstr3bData.itc_reversed?.igst || 0,
+    itc_ineligible_cgst: gstr3bData.itc_reversed?.cgst || 0,
+    itc_ineligible_sgst: gstr3bData.itc_reversed?.sgst || 0,
     inward_exempt: 0,
     inward_nil: 0,
     inward_non_gst: 0,
+    // Tax Payable (Section 6)
     tax_payable_igst: gstr3bData.tax_payable?.igst || 0,
     tax_payable_cgst: gstr3bData.tax_payable?.cgst || 0,
     tax_payable_sgst: gstr3bData.tax_payable?.sgst || 0,
     tax_payable_cess: gstr3bData.tax_payable?.cess || 0,
-    itc_utilized_igst: 0,
-    itc_utilized_cgst: 0,
-    itc_utilized_sgst: 0,
-    itc_utilized_cess: 0,
-    cash_igst: gstr3bData.tax_payable?.igst || 0,
-    cash_cgst: gstr3bData.tax_payable?.cgst || 0,
-    cash_sgst: gstr3bData.tax_payable?.sgst || 0,
-    cash_cess: gstr3bData.tax_payable?.cess || 0,
+    // ITC Utilized
+    itc_utilized_igst: gstr3bData.itc_utilized?.igst || 0,
+    itc_utilized_cgst: gstr3bData.itc_utilized?.cgst || 0,
+    itc_utilized_sgst: gstr3bData.itc_utilized?.sgst || 0,
+    itc_utilized_cess: gstr3bData.itc_utilized?.cess || 0,
+    // Cash Payment
+    cash_igst: gstr3bData.cash_payment?.igst || 0,
+    cash_cgst: gstr3bData.cash_payment?.cgst || 0,
+    cash_sgst: gstr3bData.cash_payment?.sgst || 0,
+    cash_cess: gstr3bData.cash_payment?.cess || 0,
     interest: 0,
     late_fee: 0,
   } : null;

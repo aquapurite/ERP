@@ -6029,6 +6029,13 @@ export const itcApi = {
     const { data } = await apiClient.get('/gst/itc/mismatch-report', { params: { period: normalizedPeriod } });
     return data;
   },
+
+  // Sync ITC from Vendor Invoices (bulk sync)
+  syncFromVendorInvoices: async (period?: string) => {
+    const params = period ? { period: normalizePeriodForAPI(period) } : undefined;
+    const { data } = await apiClient.post('/gst/itc/sync-from-invoices', null, { params });
+    return data;
+  },
 };
 
 // ==================== UPLOADS API ====================

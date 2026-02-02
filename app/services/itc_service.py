@@ -794,3 +794,163 @@ class ITCService:
             "amount_mismatches": amount_mismatches,
             "extra_in_portal": extra_in_portal,
         }
+
+    async def sync_vendor_invoice_to_itc(
+        self,
+        vendor_invoice_id: UUID,
+        created_by: Optional[UUID] = None,
+    ) -> Optional[ITCLedger]:
+        """
+        Sync a single VendorInvoice to ITCLedger.
+
+        Creates an ITC entry from the vendor invoice tax amounts.
+        This should be called when a vendor invoice is approved.
+
+        Returns:
+            ITCLedger entry if created, None if already exists or no tax
+        """
+        from app.models.purchase import VendorInvoice
+        from app.models.vendor import Vendor
+        from sqlalchemy.orm import selectinload
+
+        # Get vendor invoice with vendor details
+        query = (
+            select(VendorInvoice)
+            .options(selectinload(VendorInvoice.vendor))
+            .where(VendorInvoice.id == vendor_invoice_id)
+        )
+        result = await self.db.execute(query)
+        invoice = result.scalar_one_or_none()
+
+        if not invoice:
+            return None
+
+        # Check if ITC entry already exists for this invoice
+        existing_query = (
+            select(ITCLedger)
+            .where(
+                and_(
+                    ITCLedger.company_id == self.company_id,
+                    ITCLedger.purchase_invoice_id == vendor_invoice_id,
+                )
+            )
+        )
+        existing_result = await self.db.execute(existing_query)
+        if existing_result.scalar_one_or_none():
+            # ITC entry already exists, skip
+            return None
+
+        # Only create ITC if there's tax amount
+        cgst = invoice.cgst_amount or Decimal("0")
+        sgst = invoice.sgst_amount or Decimal("0")
+        igst = invoice.igst_amount or Decimal("0")
+        cess = invoice.cess_amount or Decimal("0")
+
+        total_tax = cgst + sgst + igst + cess
+        if total_tax <= 0:
+            return None
+
+        # Get vendor GSTIN
+        vendor_gstin = invoice.vendor.gstin if invoice.vendor else ""
+        vendor_name = invoice.vendor.name if invoice.vendor else "Unknown Vendor"
+
+        # Create ITC entry
+        itc_entry = await self.create_itc_entry(
+            vendor_gstin=vendor_gstin or "",
+            vendor_name=vendor_name,
+            invoice_number=invoice.invoice_number or "",
+            invoice_date=invoice.invoice_date,
+            invoice_value=invoice.grand_total or Decimal("0"),
+            taxable_value=invoice.taxable_amount or invoice.subtotal or Decimal("0"),
+            cgst_itc=cgst,
+            sgst_itc=sgst,
+            igst_itc=igst,
+            cess_itc=cess,
+            itc_type="INPUTS",
+            vendor_id=invoice.vendor_id,
+            purchase_invoice_id=vendor_invoice_id,
+            created_by=created_by,
+        )
+
+        # Mark as matched since it comes from our own vendor invoice
+        itc_entry.gstr2a_matched = True
+        itc_entry.match_status = ITCMatchStatus.MATCHED.value
+        itc_entry.match_date = datetime.now(timezone.utc)
+
+        return itc_entry
+
+    async def sync_all_vendor_invoices_to_itc(
+        self,
+        period: Optional[str] = None,
+        created_by: Optional[UUID] = None,
+    ) -> Dict:
+        """
+        Sync all approved/matched/paid vendor invoices to ITCLedger.
+
+        This is a one-time bulk sync to populate ITCLedger from existing
+        vendor invoices. Useful for initial data migration.
+
+        Args:
+            period: Optional period filter in YYYYMM format
+            created_by: User ID who initiated the sync
+
+        Returns:
+            Dict with sync statistics
+        """
+        from app.models.purchase import VendorInvoice
+        from sqlalchemy.orm import selectinload
+        from calendar import monthrange
+
+        # Build query for vendor invoices that should have ITC
+        conditions = [
+            VendorInvoice.status.in_(["APPROVED", "MATCHED", "PARTIALLY_MATCHED", "PAYMENT_INITIATED", "PAID"]),
+        ]
+
+        # Filter by period if specified
+        if period:
+            year = int(period[:4])
+            month = int(period[4:])
+            start_date = date(year, month, 1)
+            end_date = date(year, month, monthrange(year, month)[1])
+            conditions.append(VendorInvoice.invoice_date >= start_date)
+            conditions.append(VendorInvoice.invoice_date <= end_date)
+
+        query = (
+            select(VendorInvoice)
+            .options(selectinload(VendorInvoice.vendor))
+            .where(and_(*conditions))
+            .order_by(VendorInvoice.invoice_date.asc())
+        )
+
+        result = await self.db.execute(query)
+        invoices = result.scalars().all()
+
+        synced = 0
+        skipped = 0
+        errors = []
+
+        for invoice in invoices:
+            try:
+                itc_entry = await self.sync_vendor_invoice_to_itc(
+                    vendor_invoice_id=invoice.id,
+                    created_by=created_by,
+                )
+                if itc_entry:
+                    synced += 1
+                else:
+                    skipped += 1
+            except Exception as e:
+                errors.append({
+                    "invoice_id": str(invoice.id),
+                    "invoice_number": invoice.invoice_number,
+                    "error": str(e),
+                })
+
+        await self.db.commit()
+
+        return {
+            "total_invoices": len(invoices),
+            "synced": synced,
+            "skipped": skipped,
+            "errors": errors,
+        }
