@@ -1929,7 +1929,7 @@ async def get_gstr1_report(
             TaxInvoice.invoice_date >= start_date,
             TaxInvoice.invoice_date <= end_date,
             or_(TaxInvoice.billing_gstin.is_(None), TaxInvoice.billing_gstin == ""),
-            TaxInvoice.is_inter_state == True,
+            TaxInvoice.is_interstate == True,
             TaxInvoice.grand_total > 250000,
             TaxInvoice.status != InvoiceStatus.CANCELLED,
         )
@@ -2092,7 +2092,7 @@ async def get_gstr3b_report(
         and_(
             TaxInvoice.invoice_date >= start_date,
             TaxInvoice.invoice_date <= end_date,
-            TaxInvoice.is_inter_state == True,
+            TaxInvoice.is_interstate == True,
             TaxInvoice.status != InvoiceStatus.CANCELLED,
         )
     )
@@ -2109,7 +2109,7 @@ async def get_gstr3b_report(
         and_(
             TaxInvoice.invoice_date >= start_date,
             TaxInvoice.invoice_date <= end_date,
-            TaxInvoice.is_inter_state == False,
+            TaxInvoice.is_interstate == False,
             TaxInvoice.status != InvoiceStatus.CANCELLED,
         )
     )
