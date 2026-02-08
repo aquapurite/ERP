@@ -2018,18 +2018,14 @@ async def post_journal_entry(
         gl_entry = GeneralLedger(
             account_id=line.account_id,
             period_id=journal.period_id,
-            entry_date=journal.entry_date,
-            journal_id=journal.id,
-            entry_number=journal.entry_number,
-            journal_type=journal.journal_type,
+            transaction_date=journal.entry_date,
+            journal_entry_id=journal.id,
+            journal_line_id=line.id,
             debit_amount=line.debit_amount,
             credit_amount=line.credit_amount,
-            balance=line.debit_amount - line.credit_amount,
-            narration=line.narration or journal.narration,
+            running_balance=line.debit_amount - line.credit_amount,
+            narration=line.description or journal.narration,
             cost_center_id=line.cost_center_id,
-            reference_type=journal.reference_type,
-            reference_number=journal.reference_number,
-            created_by=current_user.id,
         )
         db.add(gl_entry)
 
