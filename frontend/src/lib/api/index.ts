@@ -1425,6 +1425,13 @@ export const dealersApi = {
     const { data } = await apiClient.get<{ items: DealerScheme[]; total: number }>('/dealers/schemes', { params });
     return data;
   },
+  getNextCode: async (dealerType: string) => {
+    const { data } = await apiClient.get<{ next_code: string; prefix: string; dealer_type: string }>(
+      '/dealers/next-code',
+      { params: { dealer_type: dealerType } }
+    );
+    return data;
+  },
 };
 
 // Dealer types for API

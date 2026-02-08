@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
@@ -234,11 +234,32 @@ export default function DealersPage() {
   };
 
   // Handle Add New
-  const handleAddNew = () => {
+  const handleAddNew = async () => {
     setSelectedDealer(null);
     setFormData(initialFormData);
     setIsDialogOpen(true);
+    // Fetch next code for default type (DEALER)
+    try {
+      const result = await dealersApi.getNextCode('DEALER');
+      setFormData(prev => ({ ...prev, code: result.next_code }));
+    } catch (error) {
+      console.error('Failed to fetch next dealer code:', error);
+    }
   };
+
+  // Auto-fetch next code when dealer type changes (only for new dealers)
+  useEffect(() => {
+    const fetchNextCode = async () => {
+      if (selectedDealer || !isDialogOpen) return; // Only for new dealers when dialog is open
+      try {
+        const result = await dealersApi.getNextCode(formData.type);
+        setFormData(prev => ({ ...prev, code: result.next_code }));
+      } catch (error) {
+        console.error('Failed to fetch next dealer code:', error);
+      }
+    };
+    fetchNextCode();
+  }, [formData.type, selectedDealer, isDialogOpen]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['dealers', page, pageSize],
@@ -375,10 +396,15 @@ export default function DealersPage() {
                   id="code"
                   placeholder="DLR001"
                   value={formData.code}
+                  readOnly={!selectedDealer}
+                  className={!selectedDealer ? 'bg-muted' : ''}
                   onChange={(e) =>
                     setFormData({ ...formData, code: e.target.value.toUpperCase() })
                   }
                 />
+                {!selectedDealer && (
+                  <p className="text-xs text-muted-foreground">Auto-generated based on dealer type</p>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">

@@ -37,6 +37,68 @@ from app.services.audit_service import AuditService
 router = APIRouter()
 
 
+# Prefix mapping for dealer types
+DEALER_PREFIX_MAP = {
+    DealerType.DISTRIBUTOR: "DST",
+    DealerType.DEALER: "DLR",
+    DealerType.SUB_DEALER: "SDL",
+    DealerType.RETAILER: "RTL",
+    DealerType.FRANCHISE: "FRN",
+    DealerType.MODERN_TRADE: "MTR",
+    DealerType.INSTITUTIONAL: "INS",
+    DealerType.GOVERNMENT: "GOV",
+}
+
+
+async def get_next_dealer_code(db: AsyncSession, dealer_type: DealerType) -> str:
+    """Generate next sequential dealer code for a given type (e.g., DLR001, DLR002)."""
+    import re
+
+    prefix = DEALER_PREFIX_MAP.get(dealer_type, "DLR")
+
+    # Find existing codes with this prefix
+    result = await db.execute(
+        select(Dealer.dealer_code)
+        .where(Dealer.dealer_code.like(f"{prefix}%"))
+        .order_by(Dealer.dealer_code.desc())
+    )
+    existing_codes = [r[0] for r in result.fetchall()]
+
+    # Extract the max number from existing codes
+    max_num = 0
+    pattern = re.compile(rf"^{prefix}(\d+)$")
+
+    for code in existing_codes:
+        match = pattern.match(code)
+        if match:
+            num = int(match.group(1))
+            if num > max_num:
+                max_num = num
+
+    # Generate next code
+    next_num = max_num + 1
+    return f"{prefix}{str(next_num).zfill(3)}"
+
+
+# ==================== Next Code Endpoint ====================
+
+@router.get("/next-code")
+async def get_next_code(
+    db: DB,
+    dealer_type: DealerType = Query(..., description="Dealer type (DEALER, DISTRIBUTOR, etc.)"),
+    current_user: User = Depends(get_current_user),
+):
+    """Get the next available dealer code for a given type."""
+    next_code = await get_next_dealer_code(db, dealer_type)
+    prefix = DEALER_PREFIX_MAP.get(dealer_type, "DLR")
+
+    return {
+        "next_code": next_code,
+        "prefix": prefix,
+        "dealer_type": dealer_type.value,
+    }
+
+
 # ==================== Dealer CRUD ====================
 
 @router.post("", response_model=DealerResponse, status_code=status.HTTP_201_CREATED)
@@ -57,19 +119,8 @@ async def create_dealer(
                 detail=f"Dealer with GSTIN {dealer_in.gstin} already exists"
             )
 
-    # Generate dealer code
-    count_result = await db.execute(select(func.count(Dealer.id)))
-    count = count_result.scalar() or 0
-
-    prefix_map = {
-        DealerType.DISTRIBUTOR: "DST",
-        DealerType.DEALER: "DLR",
-        DealerType.RETAILER: "RTL",
-        DealerType.FRANCHISE: "FRN",
-        DealerType.INSTITUTIONAL: "INS",
-    }
-    prefix = prefix_map.get(dealer_in.dealer_type, "DLR")
-    dealer_code = f"{prefix}-{str(count + 1).zfill(5)}"
+    # Generate dealer code using sequential numbering
+    dealer_code = await get_next_dealer_code(db, dealer_in.dealer_type)
 
     dealer = Dealer(
         **dealer_in.model_dump(exclude={"opening_balance"}),
