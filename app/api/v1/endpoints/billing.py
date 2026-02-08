@@ -2122,8 +2122,8 @@ async def get_gstr3b_report(
     import logging
     logger = logging.getLogger(__name__)
 
-    # Get company_id from current user
-    company_id = current_user.company_id
+    # Get company_id using helper function (falls back to primary company)
+    company_id = await get_effective_company_id(db, None, current_user)
     logger.info(f"GSTR-3B: Querying ITC for period<={period}, company_id={company_id}")
 
     itc_query = select(
