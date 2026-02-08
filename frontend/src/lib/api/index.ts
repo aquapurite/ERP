@@ -1869,6 +1869,10 @@ export const accountsApi = {
     const { data } = await apiClient.get('/accounting/accounts/tree');
     return data;
   },
+  getNextCode: async (params: { parent_id?: string; account_type?: string }) => {
+    const { data } = await apiClient.get('/accounting/accounts/next-code', { params });
+    return data as { next_code: string; parent_code?: string; parent_name?: string; account_type?: string };
+  },
   getDropdown: async () => {
     const { data } = await apiClient.get('/accounting/accounts/dropdown');
     return data;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal, Plus, Pencil, Trash2, ChevronRight, FileSpreadsheet, Loader2, Landmark } from 'lucide-react';
@@ -177,6 +177,30 @@ export default function ChartOfAccountsPage() {
     setIsEditMode(false);
     setIsDialogOpen(false);
   };
+
+  // Auto-fetch next available code when parent or type changes
+  useEffect(() => {
+    const fetchNextCode = async () => {
+      // Don't fetch if in edit mode or if code is already set manually
+      if (isEditMode) return;
+
+      try {
+        if (formData.parent_id) {
+          // Fetch based on parent account
+          const result = await accountsApi.getNextCode({ parent_id: formData.parent_id });
+          setFormData(prev => ({ ...prev, code: result.next_code }));
+        } else if (formData.type && !formData.code) {
+          // Fetch based on account type (only if code is empty)
+          const result = await accountsApi.getNextCode({ account_type: formData.type });
+          setFormData(prev => ({ ...prev, code: result.next_code }));
+        }
+      } catch (error) {
+        console.error('Failed to fetch next code:', error);
+      }
+    };
+
+    fetchNextCode();
+  }, [formData.parent_id, formData.type, isEditMode]);
 
   const handleEdit = (account: Account) => {
     setFormData({
@@ -364,11 +388,15 @@ export default function ChartOfAccountsPage() {
                   <div className="space-y-2">
                     <Label>Code *</Label>
                     <Input
-                      placeholder="1001"
+                      placeholder="Auto-generated"
                       value={formData.code}
                       onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
                       disabled={isEditMode}
+                      className={formData.code ? '' : 'text-muted-foreground'}
                     />
+                    <p className="text-xs text-muted-foreground">
+                      {isEditMode ? 'Code cannot be changed' : 'Auto-generated based on parent/type'}
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <Label>Type *</Label>

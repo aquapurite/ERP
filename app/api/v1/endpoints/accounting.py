@@ -93,6 +93,137 @@ async def create_account(
 
 
 @router.get(
+    "/accounts/next-code",
+    dependencies=[Depends(require_permissions("accounts:view"))]
+)
+async def get_next_account_code(
+    db: DB,
+    parent_id: Optional[UUID] = Query(None, description="Parent account ID"),
+    account_type: Optional[AccountType] = Query(None, description="Account type (ASSET, LIABILITY, etc.)"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get the next available account code.
+
+    If parent_id is provided, generates a child code based on parent's code.
+    If only account_type is provided, generates based on type prefix.
+
+    Account type prefixes:
+    - ASSET: 1xxx
+    - LIABILITY: 2xxx
+    - EQUITY: 3xxx (or 1xxx for capital)
+    - REVENUE: 4xxx
+    - EXPENSE: 5xxx
+    """
+    type_prefixes = {
+        AccountType.ASSET: "1",
+        AccountType.LIABILITY: "2",
+        AccountType.EQUITY: "3",
+        AccountType.REVENUE: "4",
+        AccountType.EXPENSE: "5",
+    }
+
+    if parent_id:
+        # Get parent account
+        parent_result = await db.execute(
+            select(ChartOfAccount).where(ChartOfAccount.id == parent_id)
+        )
+        parent = parent_result.scalar_one_or_none()
+
+        if not parent:
+            raise HTTPException(status_code=404, detail="Parent account not found")
+
+        parent_code = parent.account_code
+
+        # Find all child accounts of this parent
+        children_result = await db.execute(
+            select(ChartOfAccount.account_code)
+            .where(ChartOfAccount.parent_id == parent_id)
+            .order_by(ChartOfAccount.account_code.desc())
+        )
+        children = [r[0] for r in children_result.fetchall()]
+
+        if children:
+            # Find the highest numeric code among children
+            numeric_codes = []
+            for code in children:
+                try:
+                    numeric_codes.append(int(code))
+                except ValueError:
+                    continue
+
+            if numeric_codes:
+                next_code = str(max(numeric_codes) + 1)
+            else:
+                # No numeric codes, start with parent_code + "01"
+                next_code = f"{parent_code}01"
+        else:
+            # No children yet - try parent_code + "01" or increment parent
+            try:
+                next_code = str(int(parent_code) + 1)
+            except ValueError:
+                next_code = f"{parent_code}01"
+
+        # Make sure this code doesn't already exist
+        while True:
+            existing = await db.execute(
+                select(ChartOfAccount.id).where(ChartOfAccount.account_code == next_code)
+            )
+            if not existing.scalar_one_or_none():
+                break
+            try:
+                next_code = str(int(next_code) + 1)
+            except ValueError:
+                next_code = next_code + "1"
+
+        return {
+            "next_code": next_code,
+            "parent_code": parent_code,
+            "parent_name": parent.account_name
+        }
+
+    elif account_type:
+        # Generate based on account type prefix
+        prefix = type_prefixes.get(account_type, "9")
+
+        # Find highest code with this prefix
+        result = await db.execute(
+            select(func.max(ChartOfAccount.account_code))
+            .where(ChartOfAccount.account_code.like(f"{prefix}%"))
+            .where(func.length(ChartOfAccount.account_code) == 4)  # Only 4-digit codes
+        )
+        max_code = result.scalar()
+
+        if max_code:
+            try:
+                next_code = str(int(max_code) + 1)
+            except ValueError:
+                next_code = f"{prefix}100"
+        else:
+            next_code = f"{prefix}100"
+
+        # Make sure this code doesn't already exist
+        while True:
+            existing = await db.execute(
+                select(ChartOfAccount.id).where(ChartOfAccount.account_code == next_code)
+            )
+            if not existing.scalar_one_or_none():
+                break
+            next_code = str(int(next_code) + 1)
+
+        return {
+            "next_code": next_code,
+            "account_type": account_type.value
+        }
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Either parent_id or account_type is required"
+        )
+
+
+@router.get(
     "/accounts",
     response_model=AccountListResponse,
     dependencies=[Depends(require_permissions("accounts:view"))]
