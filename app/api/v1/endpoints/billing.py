@@ -2118,10 +2118,13 @@ async def get_gstr3b_report(
     intra_state = intra_result.one()
 
     # ==================== ITC Available from ITCLedger ====================
-    # Query ITC Ledger for available ITC in this period
+    # Query ITC Ledger for all available ITC up to and including this period
     import logging
     logger = logging.getLogger(__name__)
-    logger.info(f"GSTR-3B: Querying ITC for period={period}")
+
+    # Get company_id from current user
+    company_id = current_user.company_id
+    logger.info(f"GSTR-3B: Querying ITC for period<={period}, company_id={company_id}")
 
     itc_query = select(
         func.sum(ITCLedger.igst_itc).label("itc_igst"),
@@ -2133,7 +2136,8 @@ async def get_gstr3b_report(
         func.sum(ITCLedger.reversed_amount).label("reversed"),
     ).where(
         and_(
-            ITCLedger.period == period,
+            ITCLedger.company_id == company_id,
+            ITCLedger.period <= period,  # All ITC up to and including this period
             ITCLedger.status.in_([ITCStatus.AVAILABLE.value, ITCStatus.UTILIZED.value]),
         )
     )
