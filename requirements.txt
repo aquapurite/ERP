@@ -48,3 +48,4 @@ PyJWT>=2.8.0
 
 # Supabase Storage
 supabase>=2.0.0
+
