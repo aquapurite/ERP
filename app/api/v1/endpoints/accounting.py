@@ -1792,10 +1792,9 @@ async def approve_journal_entry(
             account = acc_result.scalar_one()
 
             # Update account balance
-            if account.account_type in [AccountType.ASSET, AccountType.EXPENSE]:
-                account.current_balance += (line.debit_amount - line.credit_amount)
-            else:
-                account.current_balance += (line.credit_amount - line.debit_amount)
+            # Using consistent sign convention: positive = debit balance, negative = credit balance
+            # Debit increases balance, Credit decreases balance (for all account types)
+            account.current_balance += (line.debit_amount - line.credit_amount)
 
             # Create GL entry
             gl_entry = GeneralLedger(
@@ -2015,6 +2014,18 @@ async def post_journal_entry(
 
     # Create General Ledger entries for each line
     for line in journal.lines:
+        # First update account balance
+        account_result = await db.execute(
+            select(ChartOfAccount).where(ChartOfAccount.id == line.account_id)
+        )
+        account = account_result.scalar_one()
+
+        # Update account balance using consistent sign convention:
+        # positive = debit balance, negative = credit balance
+        # Debit increases balance, Credit decreases balance (for all account types)
+        account.current_balance += (line.debit_amount - line.credit_amount)
+
+        # Create GL entry with updated running balance
         gl_entry = GeneralLedger(
             account_id=line.account_id,
             period_id=journal.period_id,
@@ -2023,23 +2034,11 @@ async def post_journal_entry(
             journal_line_id=line.id,
             debit_amount=line.debit_amount,
             credit_amount=line.credit_amount,
-            running_balance=line.debit_amount - line.credit_amount,
+            running_balance=account.current_balance,
             narration=line.description or journal.narration,
             cost_center_id=line.cost_center_id,
         )
         db.add(gl_entry)
-
-        # Update account balance
-        account_result = await db.execute(
-            select(ChartOfAccount).where(ChartOfAccount.id == line.account_id)
-        )
-        account = account_result.scalar_one()
-
-        # For Assets and Expenses, debit increases; for Liabilities, Equity, Revenue, credit increases
-        if account.account_type in [AccountType.ASSET, AccountType.EXPENSE]:
-            account.current_balance += (line.debit_amount - line.credit_amount)
-        else:  # LIABILITY, EQUITY, REVENUE
-            account.current_balance += (line.credit_amount - line.debit_amount)
 
     # Update journal status
     journal.status = JournalStatus.POSTED.value
