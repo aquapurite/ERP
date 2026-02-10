@@ -2316,7 +2316,11 @@ async def get_account_ledger(
     end_date: Optional[date] = None,
     current_user: User = Depends(get_current_user),
 ):
-    """Get General Ledger entries for an account."""
+    """Get General Ledger entries for an account with DYNAMICALLY CALCULATED running balances.
+
+    Running balances are calculated on-the-fly to ensure accuracy regardless of posting order.
+    Formula: running_balance = opening_balance + cumulative(debit - credit) for all entries up to current row.
+    """
     # Verify account
     account_result = await db.execute(
         select(ChartOfAccount).where(ChartOfAccount.id == account_id)
@@ -2325,8 +2329,28 @@ async def get_account_ledger(
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    # Build query with join to get entry_number from journal_entries
-    query = (
+    # Get the account's opening balance
+    opening_balance = float(account.opening_balance or 0)
+
+    # Calculate balance BEFORE the view window (entries before start_date OR entries before the current page)
+    # This is critical for correct running balances with pagination and date filters
+
+    # Step 1: Calculate balance from all entries BEFORE start_date (if start_date is specified)
+    balance_before_start_date = Decimal("0")
+    if start_date:
+        before_start_query = select(
+            func.coalesce(func.sum(GeneralLedger.debit_amount), 0).label("total_debit"),
+            func.coalesce(func.sum(GeneralLedger.credit_amount), 0).label("total_credit"),
+        ).where(
+            GeneralLedger.account_id == account_id,
+            GeneralLedger.transaction_date < start_date
+        )
+        before_start_result = await db.execute(before_start_query)
+        before_start = before_start_result.one()
+        balance_before_start_date = Decimal(str(before_start.total_debit)) - Decimal(str(before_start.total_credit))
+
+    # Build base query for date range (without pagination)
+    base_query = (
         select(GeneralLedger, JournalEntry.entry_number)
         .join(JournalEntry, GeneralLedger.journal_entry_id == JournalEntry.id)
         .where(GeneralLedger.account_id == account_id)
@@ -2336,13 +2360,40 @@ async def get_account_ledger(
     )
 
     if start_date:
-        query = query.where(GeneralLedger.transaction_date >= start_date)
+        base_query = base_query.where(GeneralLedger.transaction_date >= start_date)
         count_query = count_query.where(GeneralLedger.transaction_date >= start_date)
     if end_date:
-        query = query.where(GeneralLedger.transaction_date <= end_date)
+        base_query = base_query.where(GeneralLedger.transaction_date <= end_date)
         count_query = count_query.where(GeneralLedger.transaction_date <= end_date)
 
-    # Get totals
+    # Step 2: Calculate balance from entries BEFORE the current page (for pagination)
+    # This ensures running balance starts correctly on each page
+    balance_before_page = Decimal("0")
+    if skip > 0:
+        # Get sum of debits and credits for entries that come before this page
+        # We need to use a subquery to get the first `skip` entries ordered by date
+        before_page_subquery = (
+            select(GeneralLedger.id)
+            .where(GeneralLedger.account_id == account_id)
+        )
+        if start_date:
+            before_page_subquery = before_page_subquery.where(GeneralLedger.transaction_date >= start_date)
+        if end_date:
+            before_page_subquery = before_page_subquery.where(GeneralLedger.transaction_date <= end_date)
+        before_page_subquery = before_page_subquery.order_by(
+            GeneralLedger.transaction_date, GeneralLedger.created_at
+        ).limit(skip)
+
+        before_page_query = select(
+            func.coalesce(func.sum(GeneralLedger.debit_amount), 0).label("total_debit"),
+            func.coalesce(func.sum(GeneralLedger.credit_amount), 0).label("total_credit"),
+        ).where(GeneralLedger.id.in_(before_page_subquery))
+
+        before_page_result = await db.execute(before_page_query)
+        before_page = before_page_result.one()
+        balance_before_page = Decimal(str(before_page.total_debit)) - Decimal(str(before_page.total_credit))
+
+    # Get totals for the filtered date range
     totals_query = select(
         func.coalesce(func.sum(GeneralLedger.debit_amount), 0).label("total_debit"),
         func.coalesce(func.sum(GeneralLedger.credit_amount), 0).label("total_credit"),
@@ -2359,28 +2410,43 @@ async def get_account_ledger(
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
-    query = query.order_by(GeneralLedger.transaction_date, GeneralLedger.created_at)
+    # Get paginated entries
+    query = base_query.order_by(GeneralLedger.transaction_date, GeneralLedger.created_at)
     query = query.offset(skip).limit(limit)
 
     result = await db.execute(query)
     rows = result.all()
 
-    # Build response items matching frontend LedgerEntry interface
+    # Calculate the starting balance for this page
+    # starting_balance = opening_balance + entries_before_start_date + entries_before_current_page
+    starting_balance = Decimal(str(opening_balance)) + balance_before_start_date + balance_before_page
+
+    # Build response items with DYNAMICALLY CALCULATED running balances
     items = []
+    current_balance = starting_balance
     for gl, entry_number in rows:
+        # Calculate running balance: previous_balance + (debit - credit)
+        debit = Decimal(str(gl.debit_amount or 0))
+        credit = Decimal(str(gl.credit_amount or 0))
+        current_balance = current_balance + debit - credit
+
         items.append({
             "id": str(gl.id),
             "entry_date": gl.transaction_date.isoformat(),
             "entry_number": entry_number or "",
             "narration": gl.narration or "",
-            "debit": float(gl.debit_amount or 0),
-            "credit": float(gl.credit_amount or 0),
-            "running_balance": float(gl.running_balance or 0),
+            "debit": float(debit),
+            "credit": float(credit),
+            "running_balance": float(current_balance),  # CALCULATED, not stored!
             "reference": None,
         })
 
     # Calculate pages
     pages = (total + limit - 1) // limit if limit > 0 else 0
+
+    # Calculate correct closing balance for the filtered period
+    period_opening = float(Decimal(str(opening_balance)) + balance_before_start_date)
+    period_closing = period_opening + float(totals.total_debit) - float(totals.total_credit)
 
     return {
         "account_id": str(account_id),
@@ -2391,8 +2457,8 @@ async def get_account_ledger(
         "pages": pages,
         "total_debit": float(totals.total_debit),
         "total_credit": float(totals.total_credit),
-        "opening_balance": float(account.opening_balance or 0),
-        "closing_balance": float(account.current_balance or 0),
+        "opening_balance": period_opening,  # Opening balance for the filtered period
+        "closing_balance": period_closing,  # Closing balance for the filtered period
     }
 
 
@@ -2408,24 +2474,45 @@ async def get_trial_balance(
     as_of_date: date = Query(default_factory=date.today),
     current_user: User = Depends(get_current_user),
 ):
-    """Get Trial Balance report."""
-    # Get all accounts with balances
-    query = select(ChartOfAccount).where(
+    """Get Trial Balance report.
+
+    IMPORTANT: This now calculates balances DYNAMICALLY from GL entries
+    to ensure accuracy, rather than using stored current_balance values.
+    """
+    # Get all active non-group accounts
+    accounts_query = select(ChartOfAccount).where(
         and_(
             ChartOfAccount.is_active == True,
             ChartOfAccount.is_group == False,
         )
     ).order_by(ChartOfAccount.account_code)
 
-    result = await db.execute(query)
-    accounts = result.scalars().all()
+    accounts_result = await db.execute(accounts_query)
+    accounts = accounts_result.scalars().all()
 
     items = []
     total_debit = Decimal("0")
     total_credit = Decimal("0")
 
     for account in accounts:
-        balance = account.current_balance
+        # CALCULATE balance from GL entries up to as_of_date (not stored value)
+        opening_balance = account.opening_balance or Decimal("0")
+
+        # Sum all GL entries up to and including as_of_date
+        gl_sum_query = select(
+            func.coalesce(func.sum(GeneralLedger.debit_amount), 0).label("total_debit"),
+            func.coalesce(func.sum(GeneralLedger.credit_amount), 0).label("total_credit"),
+        ).where(
+            and_(
+                GeneralLedger.account_id == account.id,
+                GeneralLedger.transaction_date <= as_of_date
+            )
+        )
+        gl_sum_result = await db.execute(gl_sum_query)
+        gl_sum = gl_sum_result.one()
+
+        # Calculate the balance: opening + debits - credits
+        balance = opening_balance + Decimal(str(gl_sum.total_debit)) - Decimal(str(gl_sum.total_credit))
 
         if balance == 0:
             continue
@@ -2433,7 +2520,7 @@ async def get_trial_balance(
         debit = Decimal("0")
         credit = Decimal("0")
 
-        # Assets and Expenses have debit balances
+        # Assets and Expenses have debit balances (positive = debit)
         if account.account_type in [AccountType.ASSET, AccountType.EXPENSE]:
             if balance > 0:
                 debit = balance
@@ -2475,49 +2562,61 @@ async def get_balance_sheet(
     as_of_date: date = Query(default_factory=date.today),
     current_user: User = Depends(get_current_user),
 ):
-    """Get Balance Sheet report."""
-    # Assets
-    assets_query = select(
-        ChartOfAccount.account_sub_type,
-        func.sum(ChartOfAccount.current_balance).label("total")
-    ).where(
-        and_(
-            ChartOfAccount.account_type == AccountType.ASSET,
-            ChartOfAccount.is_group == False,
+    """Get Balance Sheet report.
+
+    IMPORTANT: This now calculates balances DYNAMICALLY from GL entries
+    up to the as_of_date to ensure accuracy.
+    """
+
+    async def calculate_account_type_balances(account_type: AccountType) -> dict:
+        """Calculate balances for all accounts of a given type from GL entries."""
+        # Get all non-group accounts of this type
+        accounts_query = select(ChartOfAccount).where(
+            and_(
+                ChartOfAccount.account_type == account_type,
+                ChartOfAccount.is_group == False,
+            )
         )
-    ).group_by(ChartOfAccount.account_sub_type)
+        accounts_result = await db.execute(accounts_query)
+        accounts = accounts_result.scalars().all()
 
-    assets_result = await db.execute(assets_query)
-    assets_data = {row.account_sub_type if row.account_sub_type else "other": float(row.total or 0) for row in assets_result.all()}
+        balances_by_subtype = {}
+        for account in accounts:
+            # Get opening balance
+            opening = account.opening_balance or Decimal("0")
 
-    # Liabilities
-    liabilities_query = select(
-        ChartOfAccount.account_sub_type,
-        func.sum(ChartOfAccount.current_balance).label("total")
-    ).where(
-        and_(
-            ChartOfAccount.account_type == AccountType.LIABILITY,
-            ChartOfAccount.is_group == False,
-        )
-    ).group_by(ChartOfAccount.account_sub_type)
+            # Sum GL entries up to as_of_date
+            gl_query = select(
+                func.coalesce(func.sum(GeneralLedger.debit_amount), 0).label("total_debit"),
+                func.coalesce(func.sum(GeneralLedger.credit_amount), 0).label("total_credit"),
+            ).where(
+                and_(
+                    GeneralLedger.account_id == account.id,
+                    GeneralLedger.transaction_date <= as_of_date
+                )
+            )
+            gl_result = await db.execute(gl_query)
+            gl_sum = gl_result.one()
 
-    liabilities_result = await db.execute(liabilities_query)
-    liabilities_data = {row.account_sub_type if row.account_sub_type else "other": float(row.total or 0) for row in liabilities_result.all()}
+            # Calculate balance
+            balance = opening + Decimal(str(gl_sum.total_debit)) - Decimal(str(gl_sum.total_credit))
 
-    # Equity
-    equity_query = select(
-        func.sum(ChartOfAccount.current_balance)
-    ).where(
-        and_(
-            ChartOfAccount.account_type == AccountType.EQUITY,
-            ChartOfAccount.is_group == False,
-        )
-    )
-    equity_result = await db.execute(equity_query)
-    total_equity = float(equity_result.scalar() or 0)
+            # Group by sub-type
+            sub_type = account.account_sub_type if account.account_sub_type else "other"
+            if sub_type not in balances_by_subtype:
+                balances_by_subtype[sub_type] = Decimal("0")
+            balances_by_subtype[sub_type] += balance
+
+        return {k: float(v) for k, v in balances_by_subtype.items()}
+
+    # Calculate each section
+    assets_data = await calculate_account_type_balances(AccountType.ASSET)
+    liabilities_data = await calculate_account_type_balances(AccountType.LIABILITY)
+    equity_data = await calculate_account_type_balances(AccountType.EQUITY)
 
     total_assets = sum(assets_data.values())
     total_liabilities = sum(liabilities_data.values())
+    total_equity = sum(equity_data.values())
 
     return {
         "as_of_date": as_of_date.isoformat(),
@@ -2530,6 +2629,7 @@ async def get_balance_sheet(
             "total": total_liabilities,
         },
         "equity": {
+            "breakdown": equity_data,
             "total": total_equity,
         },
         "total_liabilities_and_equity": total_liabilities + total_equity,
@@ -3177,4 +3277,121 @@ async def fix_missing_gl_entries(
         "fixed_count": fixed_count,
         "total_found": len(journals_without_gl),
         "errors": errors if errors else None
+    }
+
+
+# ==================== Recalculate Account Balances ====================
+
+@router.post(
+    "/recalculate-account-balances",
+    dependencies=[Depends(require_permissions("finance:manage"))]
+)
+async def recalculate_account_balances(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    account_id: Optional[UUID] = Query(None, description="Specific account to recalculate, or all if not provided"),
+):
+    """
+    Recalculate account balances from GL entries.
+
+    This endpoint recalculates the `current_balance` field for accounts by summing
+    all GL entries. Use this to fix corrupted balances caused by:
+    - Entries posted out of chronological order
+    - Deleted entries without balance updates
+    - Any other data integrity issues
+
+    Also updates the stored `running_balance` in GL entries to be correct.
+
+    Args:
+        account_id: Optional - recalculate only this account. If not provided, recalculates all accounts.
+
+    Returns:
+        Summary of accounts recalculated and any discrepancies found.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Get accounts to process
+    if account_id:
+        accounts_query = select(ChartOfAccount).where(ChartOfAccount.id == account_id)
+    else:
+        accounts_query = select(ChartOfAccount).where(ChartOfAccount.is_group == False)
+
+    accounts_result = await db.execute(accounts_query)
+    accounts = accounts_result.scalars().all()
+
+    results = []
+    fixed_count = 0
+    discrepancies_found = 0
+
+    for account in accounts:
+        # Get the account's opening balance
+        opening_balance = account.opening_balance or Decimal("0")
+
+        # Calculate the correct balance from GL entries
+        gl_sum_query = select(
+            func.coalesce(func.sum(GeneralLedger.debit_amount), 0).label("total_debit"),
+            func.coalesce(func.sum(GeneralLedger.credit_amount), 0).label("total_credit"),
+        ).where(GeneralLedger.account_id == account.id)
+
+        gl_sum_result = await db.execute(gl_sum_query)
+        gl_sum = gl_sum_result.one()
+
+        # Calculate correct current balance
+        correct_balance = opening_balance + Decimal(str(gl_sum.total_debit)) - Decimal(str(gl_sum.total_credit))
+
+        # Check if there's a discrepancy
+        old_balance = account.current_balance or Decimal("0")
+        discrepancy = abs(old_balance - correct_balance)
+
+        if discrepancy > Decimal("0.01"):  # Allow for tiny floating point differences
+            discrepancies_found += 1
+            logger.warning(
+                f"Balance discrepancy for account {account.account_code} ({account.name}): "
+                f"stored={old_balance}, calculated={correct_balance}, diff={discrepancy}"
+            )
+
+            results.append({
+                "account_id": str(account.id),
+                "account_code": account.account_code,
+                "account_name": account.name,
+                "old_balance": float(old_balance),
+                "new_balance": float(correct_balance),
+                "discrepancy": float(discrepancy),
+                "status": "FIXED"
+            })
+
+            # Fix the balance
+            account.current_balance = correct_balance
+            fixed_count += 1
+
+        # Now recalculate running balances for all GL entries of this account
+        # Get all GL entries for this account ordered by date
+        gl_entries_query = (
+            select(GeneralLedger)
+            .where(GeneralLedger.account_id == account.id)
+            .order_by(GeneralLedger.transaction_date, GeneralLedger.created_at)
+        )
+        gl_entries_result = await db.execute(gl_entries_query)
+        gl_entries = gl_entries_result.scalars().all()
+
+        # Recalculate running balance for each entry
+        running_balance = opening_balance
+        for gl_entry in gl_entries:
+            debit = gl_entry.debit_amount or Decimal("0")
+            credit = gl_entry.credit_amount or Decimal("0")
+            running_balance = running_balance + debit - credit
+
+            # Update stored running balance if different
+            if gl_entry.running_balance != running_balance:
+                gl_entry.running_balance = running_balance
+
+    await db.commit()
+
+    return {
+        "message": f"Recalculated balances for {len(accounts)} accounts",
+        "accounts_processed": len(accounts),
+        "discrepancies_found": discrepancies_found,
+        "accounts_fixed": fixed_count,
+        "details": results if results else None
     }
