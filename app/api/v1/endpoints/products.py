@@ -176,21 +176,27 @@ async def get_next_sku(
     brand_id: uuid.UUID = Query(..., description="Brand ID"),
     category_id: uuid.UUID = Query(..., description="Subcategory ID"),
     item_type: str = Query(..., regex="^(FG|SP)$", description="Item type: FG (Finished Goods) or SP (Spare Parts)"),
+    model_code: str = Query(..., min_length=1, max_length=5, description="Model name code (1-5 uppercase letters)"),
 ):
     """
-    Generate the next sequential SKU based on brand, category, and item type.
+    Generate the next sequential SKU based on brand, category, item type, and model code.
 
-    SKU Format: [BRAND_CODE]-[PARENT_CAT_CODE]-[SUBCAT_CODE]-[ITEM_TYPE]-[SEQUENCE]
-    Example: AP-WP-RU-FG-001
+    SKU Format: [BRAND_CODE]-[PARENT_CAT_CODE]-[SUBCAT_CODE]-[ITEM_TYPE]-[MODEL_CODE]-[SEQUENCE]
+    Example: AP-WP-RU-FG-ELITZ-001
 
     The sequence number is determined by counting existing products with the same
-    brand, subcategory, and item type combination.
+    brand, subcategory, item type, and model code combination.
     """
     from sqlalchemy import select, func, and_
     from app.models.brand import Brand
     from app.models.category import Category
     from app.models.product import Product
     import re
+
+    # Validate and uppercase model_code
+    model_code = model_code.upper().strip()
+    if not model_code.isalpha():
+        raise HTTPException(status_code=400, detail="Model code must contain only letters")
 
     # Get brand with code
     brand_result = await db.execute(select(Brand).where(Brand.id == brand_id))
@@ -217,11 +223,11 @@ async def get_next_sku(
         parent_code = parent_category.code or parent_category.slug[:2].upper() if parent_category.slug else "PL"
     subcat_code = subcategory.code or subcategory.slug[:2].upper() if subcategory.slug else "SC"
 
-    # Build SKU prefix
+    # Build SKU prefix with model code
     if parent_code:
-        sku_prefix = f"{brand_code}-{parent_code}-{subcat_code}-{item_type}"
+        sku_prefix = f"{brand_code}-{parent_code}-{subcat_code}-{item_type}-{model_code}"
     else:
-        sku_prefix = f"{brand_code}-{subcat_code}-{item_type}"
+        sku_prefix = f"{brand_code}-{subcat_code}-{item_type}-{model_code}"
 
     # Count existing products with this prefix pattern
     # We need to find the highest sequence number for this prefix
@@ -257,6 +263,7 @@ async def get_next_sku(
         "parent_category_code": parent_code,
         "subcategory_code": subcat_code,
         "item_type": item_type,
+        "model_code": model_code,
         "prefix": sku_prefix,
     }
 

@@ -46,6 +46,7 @@ const productSchema = z.object({
   brand_id: z.string().min(1, 'Brand is required'),
   category_id: z.string().min(1, 'Category is required'),
   item_type: z.enum(['FG', 'SP']).default('FG'),
+  model_code: z.string().min(1, 'Model name is required').max(5, 'Model name must be 5 characters or less').regex(/^[A-Za-z]+$/, 'Model name must contain only letters'),
   mrp: z.coerce.number().min(0, 'MRP must be positive'),
   selling_price: z.coerce.number().min(0, 'Selling price must be positive').optional(),
   gst_rate: z.coerce.number().min(0).max(100, 'GST rate must be between 0 and 100').optional(),
@@ -67,9 +68,9 @@ type ProductFormData = z.infer<typeof productSchema>;
 
 // API for SKU generation
 const skuApi = {
-  getNextSku: async (brandId: string, categoryId: string, itemType: string) => {
+  getNextSku: async (brandId: string, categoryId: string, itemType: string, modelCode: string) => {
     const { data } = await apiClient.get('/products/next-sku', {
-      params: { brand_id: brandId, category_id: categoryId, item_type: itemType }
+      params: { brand_id: brandId, category_id: categoryId, item_type: itemType, model_code: modelCode }
     });
     return data;
   },
@@ -118,6 +119,7 @@ export default function NewProductPage() {
       brand_id: '',
       category_id: '',
       item_type: 'FG',
+      model_code: '',
       mrp: 0,
       selling_price: 0,
       gst_rate: 18,
@@ -133,27 +135,37 @@ export default function NewProductPage() {
   const watchBrandId = form.watch('brand_id');
   const watchCategoryId = form.watch('category_id');
   const watchItemType = form.watch('item_type');
+  const watchModelCode = form.watch('model_code');
 
-  // Auto-generate SKU when all hierarchy fields are filled
+  // Auto-generate SKU when all hierarchy fields are filled (including model_code)
   useEffect(() => {
     const generateSku = async () => {
-      if (watchBrandId && watchCategoryId && watchItemType) {
+      // Need all 4 fields: brand, category, item type, and model code
+      if (watchBrandId && watchCategoryId && watchItemType && watchModelCode && watchModelCode.length >= 1) {
         setIsGeneratingSku(true);
         try {
-          const result = await skuApi.getNextSku(watchBrandId, watchCategoryId, watchItemType);
+          const result = await skuApi.getNextSku(watchBrandId, watchCategoryId, watchItemType, watchModelCode);
           form.setValue('sku', result.sku);
+          // Also store the model_code in the form (already uppercase from API)
+          form.setValue('model_code', result.model_code);
           setIsSkuGenerated(true);
         } catch (error) {
           console.error('Failed to generate SKU:', error);
           // Don't show error - user can still enter manually
+          setIsSkuGenerated(false);
         } finally {
           setIsGeneratingSku(false);
+        }
+      } else {
+        // Reset SKU if model code is cleared
+        if (!watchModelCode) {
+          setIsSkuGenerated(false);
         }
       }
     };
 
     generateSku();
-  }, [watchBrandId, watchCategoryId, watchItemType, form]);
+  }, [watchBrandId, watchCategoryId, watchItemType, watchModelCode, form]);
 
   const createMutation = useMutation({
     mutationFn: async (data: ProductFormData) => {
@@ -325,7 +337,7 @@ export default function NewProductPage() {
                   Product Classification
                 </CardTitle>
                 <CardDescription>
-                  Select brand, product line, subcategory, and item type first. SKU will be auto-generated.
+                  Select brand, product line, subcategory, item type, and model name. SKU will be auto-generated.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -446,6 +458,31 @@ export default function NewProductPage() {
                     ))}
                   </div>
                 </div>
+
+                {/* Step 5: Model Name */}
+                <div className="space-y-2">
+                  <Label htmlFor="model_code">Step 5: Model Name * (for SKU)</Label>
+                  <Input
+                    id="model_code"
+                    placeholder="e.g., ELITZ, REGAL, PRIME"
+                    maxLength={5}
+                    {...form.register('model_code', {
+                      onChange: (e) => {
+                        // Uppercase and remove non-letters
+                        const value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+                        form.setValue('model_code', value);
+                        setIsSkuGenerated(false);
+                      }
+                    })}
+                    className="font-mono uppercase"
+                  />
+                  {form.formState.errors.model_code && (
+                    <p className="text-sm text-destructive">{form.formState.errors.model_code.message}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    1-5 letters for model identification in SKU (e.g., ELITZ → AP-WP-RU-FG-ELITZ-001)
+                  </p>
+                </div>
               </CardContent>
             </Card>
 
@@ -493,8 +530,8 @@ export default function NewProductPage() {
                     )}
                     <p className="text-xs text-muted-foreground">
                       {isSkuGenerated
-                        ? "SKU auto-generated based on brand, category, and item type"
-                        : "Complete the classification above to auto-generate SKU"}
+                        ? "SKU auto-generated: Brand-Category-SubCat-ItemType-Model-Sequence"
+                        : "Complete all 5 steps above to auto-generate SKU"}
                     </p>
                   </div>
                 </div>
@@ -918,11 +955,11 @@ export default function NewProductPage() {
                 <CardTitle>Quick Tips</CardTitle>
               </CardHeader>
               <CardContent className="text-sm text-muted-foreground space-y-2">
-                <p>1. Select Brand, Product Line, Subcategory first</p>
-                <p>2. SKU auto-generates based on selection</p>
-                <p>3. HSN code is required for GST compliance</p>
-                <p>4. Set channel-specific prices after creation</p>
-                <p>5. Cost price is auto-calculated from POs</p>
+                <p>1. Select Brand, Product Line, Subcategory</p>
+                <p>2. Choose Item Type (FG/SP)</p>
+                <p>3. Enter Model Name (1-5 letters)</p>
+                <p>4. SKU auto-generates with model name</p>
+                <p>5. HSN code is required for GST compliance</p>
               </CardContent>
             </Card>
           </div>
