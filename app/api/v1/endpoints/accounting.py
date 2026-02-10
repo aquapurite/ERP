@@ -49,6 +49,108 @@ from app.services.audit_service import AuditService
 router = APIRouter()
 
 
+# ==================== Helper Functions ====================
+
+async def calculate_correct_running_balance(
+    db: AsyncSession,
+    account_id: UUID,
+    transaction_date: date,
+    include_current_entry: bool = False,
+    current_debit: Decimal = Decimal("0"),
+    current_credit: Decimal = Decimal("0"),
+) -> Decimal:
+    """
+    Calculate the correct running balance for an account at a given date.
+
+    This function queries all GL entries to calculate the accurate balance,
+    rather than relying on the potentially corrupted current_balance field.
+
+    Args:
+        db: Database session
+        account_id: The account ID
+        transaction_date: The date of the transaction
+        include_current_entry: If True, includes current_debit/current_credit in calculation
+        current_debit: Debit amount of the current entry being posted
+        current_credit: Credit amount of the current entry being posted
+
+    Returns:
+        The correct running balance after all entries up to and including this transaction
+    """
+    # Get account's opening balance
+    account_result = await db.execute(
+        select(ChartOfAccount).where(ChartOfAccount.id == account_id)
+    )
+    account = account_result.scalar_one_or_none()
+    if not account:
+        return Decimal("0")
+
+    opening_balance = account.opening_balance or Decimal("0")
+
+    # Sum all GL entries for this account up to and including the transaction date
+    # Note: For entries on the same date, we include all of them (this is a simplification)
+    gl_sum_query = select(
+        func.coalesce(func.sum(GeneralLedger.debit_amount), 0).label("total_debit"),
+        func.coalesce(func.sum(GeneralLedger.credit_amount), 0).label("total_credit"),
+    ).where(
+        and_(
+            GeneralLedger.account_id == account_id,
+            GeneralLedger.transaction_date <= transaction_date
+        )
+    )
+
+    gl_sum_result = await db.execute(gl_sum_query)
+    gl_sum = gl_sum_result.one()
+
+    # Calculate balance: opening + all debits - all credits
+    balance = opening_balance + Decimal(str(gl_sum.total_debit)) - Decimal(str(gl_sum.total_credit))
+
+    # Add current entry if requested (for new entries being posted)
+    if include_current_entry:
+        balance = balance + current_debit - current_credit
+
+    return balance
+
+
+async def recalculate_account_current_balance(db: AsyncSession, account_id: UUID) -> Decimal:
+    """
+    Recalculate and update an account's current_balance from GL entries.
+
+    This ensures the stored current_balance is always accurate.
+
+    Args:
+        db: Database session
+        account_id: The account ID
+
+    Returns:
+        The recalculated current balance
+    """
+    account_result = await db.execute(
+        select(ChartOfAccount).where(ChartOfAccount.id == account_id)
+    )
+    account = account_result.scalar_one_or_none()
+    if not account:
+        return Decimal("0")
+
+    opening_balance = account.opening_balance or Decimal("0")
+
+    # Sum ALL GL entries for this account
+    gl_sum_query = select(
+        func.coalesce(func.sum(GeneralLedger.debit_amount), 0).label("total_debit"),
+        func.coalesce(func.sum(GeneralLedger.credit_amount), 0).label("total_credit"),
+    ).where(GeneralLedger.account_id == account_id)
+
+    gl_sum_result = await db.execute(gl_sum_query)
+    gl_sum = gl_sum_result.one()
+
+    # Calculate correct balance
+    correct_balance = opening_balance + Decimal(str(gl_sum.total_debit)) - Decimal(str(gl_sum.total_credit))
+
+    # Update the account's current_balance
+    account.current_balance = correct_balance
+
+    return correct_balance
+
+
 # ==================== Chart of Accounts ====================
 
 @router.post(
@@ -1915,33 +2017,55 @@ async def approve_journal_entry(
     # Auto-post if requested
     if request.auto_post:
         # Post to General Ledger
+        # First, create all GL entries
         for line in journal.lines:
-            # Get account for running balance
-            acc_result = await db.execute(
-                select(ChartOfAccount).where(ChartOfAccount.id == line.account_id)
-            )
-            account = acc_result.scalar_one()
+            debit = line.debit_amount or Decimal("0")
+            credit = line.credit_amount or Decimal("0")
 
-            # Update account balance
-            # Using consistent sign convention: positive = debit balance, negative = credit balance
-            # Debit increases balance, Credit decreases balance (for all account types)
-            account.current_balance += (line.debit_amount - line.credit_amount)
-
-            # Create GL entry
+            # Create GL entry (running_balance will be set after all entries are created)
             gl_entry = GeneralLedger(
                 account_id=line.account_id,
                 period_id=journal.period_id,
                 transaction_date=journal.entry_date,
                 journal_entry_id=journal.id,
                 journal_line_id=line.id,
-                debit_amount=line.debit_amount,
-                credit_amount=line.credit_amount,
-                running_balance=account.current_balance,
+                debit_amount=debit,
+                credit_amount=credit,
+                running_balance=Decimal("0"),  # Placeholder, will be recalculated
                 narration=line.description or journal.narration,
                 cost_center_id=line.cost_center_id,
                 channel_id=journal.channel_id,
             )
             db.add(gl_entry)
+
+        # Flush to ensure GL entries are in DB before calculating balances
+        await db.flush()
+
+        # Now recalculate running balances and current_balance for affected accounts
+        affected_accounts = set(line.account_id for line in journal.lines)
+        for account_id in affected_accounts:
+            # Recalculate and update account's current_balance
+            await recalculate_account_current_balance(db, account_id)
+
+            # Recalculate running_balance for all GL entries of this account
+            account_result = await db.execute(
+                select(ChartOfAccount).where(ChartOfAccount.id == account_id)
+            )
+            account = account_result.scalar_one()
+            opening_balance = account.opening_balance or Decimal("0")
+
+            # Get all GL entries ordered by date
+            gl_entries_result = await db.execute(
+                select(GeneralLedger)
+                .where(GeneralLedger.account_id == account_id)
+                .order_by(GeneralLedger.transaction_date, GeneralLedger.created_at)
+            )
+            gl_entries = gl_entries_result.scalars().all()
+
+            running_balance = opening_balance
+            for gl in gl_entries:
+                running_balance = running_balance + (gl.debit_amount or Decimal("0")) - (gl.credit_amount or Decimal("0"))
+                gl.running_balance = running_balance
 
         # Update journal to POSTED
         journal.status = JournalStatus.POSTED.value
@@ -2143,33 +2267,53 @@ async def post_journal_entry(
             detail="Only approved journals can be posted"
         )
 
-    # Create General Ledger entries for each line
+    # Create General Ledger entries for each line (running_balance set after flush)
     for line in journal.lines:
-        # First update account balance
-        account_result = await db.execute(
-            select(ChartOfAccount).where(ChartOfAccount.id == line.account_id)
-        )
-        account = account_result.scalar_one()
+        debit = line.debit_amount or Decimal("0")
+        credit = line.credit_amount or Decimal("0")
 
-        # Update account balance using consistent sign convention:
-        # positive = debit balance, negative = credit balance
-        # Debit increases balance, Credit decreases balance (for all account types)
-        account.current_balance += (line.debit_amount - line.credit_amount)
-
-        # Create GL entry with updated running balance
         gl_entry = GeneralLedger(
             account_id=line.account_id,
             period_id=journal.period_id,
             transaction_date=journal.entry_date,
             journal_entry_id=journal.id,
             journal_line_id=line.id,
-            debit_amount=line.debit_amount,
-            credit_amount=line.credit_amount,
-            running_balance=account.current_balance,
+            debit_amount=debit,
+            credit_amount=credit,
+            running_balance=Decimal("0"),  # Placeholder, recalculated below
             narration=line.description or journal.narration,
             cost_center_id=line.cost_center_id,
         )
         db.add(gl_entry)
+
+    # Flush to ensure GL entries are in DB before calculating balances
+    await db.flush()
+
+    # Recalculate running balances and current_balance for all affected accounts
+    affected_accounts = set(line.account_id for line in journal.lines)
+    for account_id in affected_accounts:
+        # Recalculate and update account's current_balance
+        await recalculate_account_current_balance(db, account_id)
+
+        # Recalculate running_balance for all GL entries of this account
+        account_result = await db.execute(
+            select(ChartOfAccount).where(ChartOfAccount.id == account_id)
+        )
+        account = account_result.scalar_one()
+        opening_balance = account.opening_balance or Decimal("0")
+
+        # Get all GL entries ordered by date
+        gl_entries_result = await db.execute(
+            select(GeneralLedger)
+            .where(GeneralLedger.account_id == account_id)
+            .order_by(GeneralLedger.transaction_date, GeneralLedger.created_at)
+        )
+        gl_entries = gl_entries_result.scalars().all()
+
+        running_balance = opening_balance
+        for gl in gl_entries:
+            running_balance = running_balance + (gl.debit_amount or Decimal("0")) - (gl.credit_amount or Decimal("0"))
+            gl.running_balance = running_balance
 
     # Update journal status
     journal.status = JournalStatus.POSTED.value
@@ -3228,27 +3372,16 @@ async def fix_missing_gl_entries(
 
     fixed_count = 0
     errors = []
+    affected_accounts = set()
 
+    # Phase 1: Create all missing GL entries with placeholder running_balance
     for journal in journals_without_gl:
         try:
             for line in journal.lines:
-                # Get account for balance type determination
-                account_result = await db.execute(
-                    select(ChartOfAccount).where(ChartOfAccount.id == line.account_id)
-                )
-                account = account_result.scalar_one_or_none()
-                if not account:
-                    continue
+                debit = line.debit_amount or Decimal("0")
+                credit = line.credit_amount or Decimal("0")
 
-                # UNIFIED formula for ALL account types:
-                # balance_change = debit - credit
-                # Positive running_balance = Debit balance
-                # Negative running_balance = Credit balance
-                balance_change = (line.debit_amount or Decimal("0")) - (line.credit_amount or Decimal("0"))
-
-                new_balance = (account.current_balance or Decimal("0")) + balance_change
-
-                # Create GL entry
+                # Create GL entry with placeholder running_balance
                 gl_entry = GeneralLedger(
                     id=uuid_module.uuid4(),
                     account_id=line.account_id,
@@ -3256,19 +3389,48 @@ async def fix_missing_gl_entries(
                     transaction_date=journal.entry_date,
                     journal_entry_id=journal.id,
                     journal_line_id=line.id,
-                    debit_amount=line.debit_amount or Decimal("0"),
-                    credit_amount=line.credit_amount or Decimal("0"),
-                    running_balance=new_balance,
+                    debit_amount=debit,
+                    credit_amount=credit,
+                    running_balance=Decimal("0"),  # Placeholder, will be recalculated
                     narration=line.description or journal.narration,
                 )
                 db.add(gl_entry)
-
-                # Update account balance
-                account.current_balance = new_balance
+                affected_accounts.add(line.account_id)
 
             fixed_count += 1
         except Exception as e:
             errors.append({"journal_id": str(journal.id), "error": str(e)})
+
+    # Flush to ensure all GL entries are in DB
+    await db.flush()
+
+    # Phase 2: Recalculate all running balances for affected accounts
+    for account_id in affected_accounts:
+        try:
+            # Recalculate and update account's current_balance
+            await recalculate_account_current_balance(db, account_id)
+
+            # Recalculate running_balance for all GL entries of this account
+            account_result = await db.execute(
+                select(ChartOfAccount).where(ChartOfAccount.id == account_id)
+            )
+            account = account_result.scalar_one()
+            opening_balance = account.opening_balance or Decimal("0")
+
+            # Get all GL entries ordered by date
+            gl_entries_result = await db.execute(
+                select(GeneralLedger)
+                .where(GeneralLedger.account_id == account_id)
+                .order_by(GeneralLedger.transaction_date, GeneralLedger.created_at)
+            )
+            gl_entries = gl_entries_result.scalars().all()
+
+            running_balance = opening_balance
+            for gl in gl_entries:
+                running_balance = running_balance + (gl.debit_amount or Decimal("0")) - (gl.credit_amount or Decimal("0"))
+                gl.running_balance = running_balance
+        except Exception as e:
+            errors.append({"account_id": str(account_id), "error": f"Balance recalc failed: {str(e)}"})
 
     await db.commit()
 
@@ -3276,6 +3438,7 @@ async def fix_missing_gl_entries(
         "message": f"Fixed {fixed_count} journal entries with missing GL entries",
         "fixed_count": fixed_count,
         "total_found": len(journals_without_gl),
+        "accounts_recalculated": len(affected_accounts),
         "errors": errors if errors else None
     }
 
