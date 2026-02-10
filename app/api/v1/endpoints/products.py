@@ -224,8 +224,14 @@ async def get_next_sku(
     subcat_code = subcategory.code or subcategory.slug[:2].upper() if subcategory.slug else "SC"
 
     # Build SKU prefix with model code
+    # For Spare Parts (SP), omit item_type since product line already indicates SP
     if parent_code:
-        sku_prefix = f"{brand_code}-{parent_code}-{subcat_code}-{item_type}-{model_code}"
+        if item_type == "SP" and parent_code == "SP":
+            # Spare Parts: AP-SP-PR-PURIO-001 (no item type, already implied by product line)
+            sku_prefix = f"{brand_code}-{parent_code}-{subcat_code}-{model_code}"
+        else:
+            # Finished Goods: AP-WP-RU-FG-ELITZ-001 (include item type)
+            sku_prefix = f"{brand_code}-{parent_code}-{subcat_code}-{item_type}-{model_code}"
     else:
         sku_prefix = f"{brand_code}-{subcat_code}-{item_type}-{model_code}"
 
