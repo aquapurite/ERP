@@ -169,7 +169,17 @@ export default function NewProductPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: ProductFormData) => {
-      const product = await productsApi.create({ ...data, tags });
+      // Transform frontend field names to backend field names
+      const { weight, length, width, height, requires_installation, ...rest } = data;
+      const backendData = {
+        ...rest,
+        dead_weight_kg: weight,
+        length_cm: length,
+        width_cm: width,
+        height_cm: height,
+        tags,
+      };
+      const product = await productsApi.create(backendData);
 
       if (images.length > 0) {
         setIsUploading(true);
