@@ -168,6 +168,99 @@ async def get_top_selling_products(
     return {"items": products}
 
 
+# ==================== SKU GENERATION ====================
+
+@router.get("/next-sku")
+async def get_next_sku(
+    db: DB,
+    brand_id: uuid.UUID = Query(..., description="Brand ID"),
+    category_id: uuid.UUID = Query(..., description="Subcategory ID"),
+    item_type: str = Query(..., regex="^(FG|SP)$", description="Item type: FG (Finished Goods) or SP (Spare Parts)"),
+):
+    """
+    Generate the next sequential SKU based on brand, category, and item type.
+
+    SKU Format: [BRAND_CODE]-[PARENT_CAT_CODE]-[SUBCAT_CODE]-[ITEM_TYPE]-[SEQUENCE]
+    Example: AP-WP-RU-FG-001
+
+    The sequence number is determined by counting existing products with the same
+    brand, subcategory, and item type combination.
+    """
+    from sqlalchemy import select, func, and_
+    from app.models.brand import Brand
+    from app.models.category import Category
+    from app.models.product import Product
+    import re
+
+    # Get brand with code
+    brand_result = await db.execute(select(Brand).where(Brand.id == brand_id))
+    brand = brand_result.scalar_one_or_none()
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+
+    # Get subcategory with code and parent
+    subcat_result = await db.execute(select(Category).where(Category.id == category_id))
+    subcategory = subcat_result.scalar_one_or_none()
+    if not subcategory:
+        raise HTTPException(status_code=404, detail="Subcategory not found")
+
+    # Get parent category (product line) if exists
+    parent_category = None
+    if subcategory.parent_id:
+        parent_result = await db.execute(select(Category).where(Category.id == subcategory.parent_id))
+        parent_category = parent_result.scalar_one_or_none()
+
+    # Generate codes - use code field if available, otherwise derive from slug
+    brand_code = brand.code or brand.slug[:2].upper() if brand.slug else "BR"
+    parent_code = ""
+    if parent_category:
+        parent_code = parent_category.code or parent_category.slug[:2].upper() if parent_category.slug else "PL"
+    subcat_code = subcategory.code or subcategory.slug[:2].upper() if subcategory.slug else "SC"
+
+    # Build SKU prefix
+    if parent_code:
+        sku_prefix = f"{brand_code}-{parent_code}-{subcat_code}-{item_type}"
+    else:
+        sku_prefix = f"{brand_code}-{subcat_code}-{item_type}"
+
+    # Count existing products with this prefix pattern
+    # We need to find the highest sequence number for this prefix
+    sku_pattern = f"{sku_prefix}-%"
+
+    # Query to find all SKUs starting with this prefix
+    result = await db.execute(
+        select(Product.sku)
+        .where(Product.sku.like(sku_pattern))
+        .order_by(Product.sku.desc())
+    )
+    existing_skus = [r[0] for r in result.fetchall()]
+
+    # Find the highest sequence number
+    max_sequence = 0
+    sequence_pattern = re.compile(rf"^{re.escape(sku_prefix)}-(\d+)$")
+
+    for sku in existing_skus:
+        match = sequence_pattern.match(sku)
+        if match:
+            seq = int(match.group(1))
+            if seq > max_sequence:
+                max_sequence = seq
+
+    # Next sequence number
+    next_sequence = max_sequence + 1
+    next_sku = f"{sku_prefix}-{str(next_sequence).zfill(3)}"
+
+    return {
+        "sku": next_sku,
+        "sequence": next_sequence,
+        "brand_code": brand_code,
+        "parent_category_code": parent_code,
+        "subcategory_code": subcat_code,
+        "item_type": item_type,
+        "prefix": sku_prefix,
+    }
+
+
 # ==================== PRODUCT COST ENDPOINTS (Static Routes First) ====================
 
 @router.get(

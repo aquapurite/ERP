@@ -9,6 +9,7 @@ import uuid
 class BrandBase(BaseModel):
     """Base brand schema."""
     name: str = Field(..., min_length=1, max_length=100)
+    code: Optional[str] = Field(None, max_length=10, description="Short code for SKU generation (e.g., AP for Aquapurite)")
     slug: str = Field(..., min_length=1, max_length=120)
     description: Optional[str] = None
     logo_url: Optional[str] = Field(None, max_length=500)
@@ -28,6 +29,7 @@ class BrandCreate(BrandBase):
 class BrandUpdate(BaseModel):
     """Brand update schema."""
     name: Optional[str] = Field(None, min_length=1, max_length=100)
+    code: Optional[str] = Field(None, max_length=10)
     slug: Optional[str] = Field(None, min_length=1, max_length=120)
     description: Optional[str] = None
     logo_url: Optional[str] = None
@@ -44,6 +46,7 @@ class BrandResponse(BaseResponseSchema):
     """Brand response schema."""
     id: uuid.UUID
     name: str
+    code: Optional[str] = None
     slug: str
     description: Optional[str] = None
     logo_url: Optional[str] = None
@@ -56,13 +59,6 @@ class BrandResponse(BaseResponseSchema):
     is_featured: bool
     created_at: datetime
     updated_at: datetime
-
-    # Frontend compatibility alias
-    @computed_field
-    @property
-    def code(self) -> str:
-        """Alias for slug - frontend expects 'code' field."""
-        return self.slug
 
 class BrandWithStats(BrandResponse):
     """Brand with product statistics."""

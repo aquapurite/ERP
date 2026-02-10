@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ArrowLeft, Save, Package, Loader2, Plus, X, Upload, ImagePlus, Trash2, Lock } from 'lucide-react';
+import { ArrowLeft, Save, Package, Loader2, Plus, X, Upload, ImagePlus, Trash2, Lock, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { toast } from 'sonner';
@@ -22,6 +22,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/common';
 import { productsApi, categoriesApi, brandsApi, uploadsApi } from '@/lib/api';
+import apiClient from '@/lib/api/client';
 import { Category, Brand } from '@/types';
 
 // Image preview type
@@ -46,7 +47,7 @@ const productSchema = z.object({
   category_id: z.string().min(1, 'Category is required'),
   item_type: z.enum(['FG', 'SP']).default('FG'),
   mrp: z.coerce.number().min(0, 'MRP must be positive'),
-  selling_price: z.coerce.number().min(0, 'Selling price must be positive').optional(), // Legacy - use Channel Pricing instead
+  selling_price: z.coerce.number().min(0, 'Selling price must be positive').optional(),
   gst_rate: z.coerce.number().min(0).max(100, 'GST rate must be between 0 and 100').optional(),
   hsn_code: z.string().optional(),
   weight: z.coerce.number().min(0).optional(),
@@ -64,6 +65,16 @@ const productSchema = z.object({
 
 type ProductFormData = z.infer<typeof productSchema>;
 
+// API for SKU generation
+const skuApi = {
+  getNextSku: async (brandId: string, categoryId: string, itemType: string) => {
+    const { data } = await apiClient.get('/products/next-sku', {
+      params: { brand_id: brandId, category_id: categoryId, item_type: itemType }
+    });
+    return data;
+  },
+};
+
 export default function NewProductPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -71,6 +82,8 @@ export default function NewProductPage() {
   const [tags, setTags] = useState<string[]>([]);
   const [images, setImages] = useState<ImagePreview[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSkuGenerated, setIsSkuGenerated] = useState(false);
+  const [isGeneratingSku, setIsGeneratingSku] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Cascading category state
@@ -106,7 +119,7 @@ export default function NewProductPage() {
       category_id: '',
       item_type: 'FG',
       mrp: 0,
-      selling_price: 0, // Will be set via Channel Pricing after creation
+      selling_price: 0,
       gst_rate: 18,
       warranty_months: 12,
       is_active: true,
@@ -116,25 +129,42 @@ export default function NewProductPage() {
     },
   });
 
+  // Watch for hierarchy field changes to auto-generate SKU
+  const watchBrandId = form.watch('brand_id');
+  const watchCategoryId = form.watch('category_id');
+  const watchItemType = form.watch('item_type');
+
+  // Auto-generate SKU when all hierarchy fields are filled
+  useEffect(() => {
+    const generateSku = async () => {
+      if (watchBrandId && watchCategoryId && watchItemType) {
+        setIsGeneratingSku(true);
+        try {
+          const result = await skuApi.getNextSku(watchBrandId, watchCategoryId, watchItemType);
+          form.setValue('sku', result.sku);
+          setIsSkuGenerated(true);
+        } catch (error) {
+          console.error('Failed to generate SKU:', error);
+          // Don't show error - user can still enter manually
+        } finally {
+          setIsGeneratingSku(false);
+        }
+      }
+    };
+
+    generateSku();
+  }, [watchBrandId, watchCategoryId, watchItemType, form]);
+
   const createMutation = useMutation({
     mutationFn: async (data: ProductFormData) => {
-      // First create the product
       const product = await productsApi.create({ ...data, tags });
 
-      // Then upload images if any
       if (images.length > 0) {
         setIsUploading(true);
         try {
           for (let i = 0; i < images.length; i++) {
             const img = images[i];
-            // Upload image to storage
-            const formData = new FormData();
-            formData.append('file', img.file);
-            formData.append('category', 'products');
-
             const uploadResult = await uploadsApi.uploadImage(img.file, 'products');
-
-            // Add image to product
             await productsApi.addImage(product.id, {
               image_url: uploadResult.url,
               thumbnail_url: uploadResult.thumbnail_url,
@@ -164,7 +194,6 @@ export default function NewProductPage() {
   });
 
   const onSubmit = (data: ProductFormData) => {
-    // Auto-generate slug from name if not provided
     if (!data.slug) {
       data.slug = data.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
     }
@@ -189,7 +218,6 @@ export default function NewProductPage() {
     }
   };
 
-  // Image handling functions
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
@@ -205,13 +233,10 @@ export default function NewProductPage() {
     const filesToProcess = Array.from(files).slice(0, remainingSlots);
 
     filesToProcess.forEach((file) => {
-      // Validate file type
       if (!file.type.startsWith('image/')) {
         toast.error(`${file.name} is not an image file`);
         return;
       }
-
-      // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         toast.error(`${file.name} is too large (max 5MB)`);
         return;
@@ -221,13 +246,11 @@ export default function NewProductPage() {
       newImages.push({
         file,
         preview,
-        isPrimary: images.length === 0 && newImages.length === 0, // First image is primary
+        isPrimary: images.length === 0 && newImages.length === 0,
       });
     });
 
     setImages([...images, ...newImages]);
-
-    // Reset input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -237,12 +260,9 @@ export default function NewProductPage() {
     const newImages = [...images];
     URL.revokeObjectURL(newImages[index].preview);
     newImages.splice(index, 1);
-
-    // If removed image was primary, set first image as primary
     if (images[index].isPrimary && newImages.length > 0) {
       newImages[0].isPrimary = true;
     }
-
     setImages(newImages);
   };
 
@@ -254,24 +274,16 @@ export default function NewProductPage() {
     setImages(newImages);
   };
 
-  // Auto-generate SKU suggestion from name
-  const generateSku = () => {
-    const name = form.getValues('name');
-    if (name) {
-      const sku = name.toUpperCase().replace(/\s+/g, '-').substring(0, 15) + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
-      form.setValue('sku', sku);
-    }
+  // Handle parent category change - reset subcategory selection
+  const handleParentCategoryChange = (parentId: string) => {
+    setSelectedParentCategoryId(parentId);
+    form.setValue('category_id', '');
+    setIsSkuGenerated(false);
   };
 
   const brands = brandsData?.items || [];
   const rootCategories = rootCategoriesData?.items || [];
   const subcategories = subcategoriesData?.items || [];
-
-  // Handle parent category change - reset subcategory selection
-  const handleParentCategoryChange = (parentId: string) => {
-    setSelectedParentCategoryId(parentId);
-    form.setValue('category_id', ''); // Reset subcategory when parent changes
-  };
 
   return (
     <div className="space-y-6">
@@ -305,15 +317,144 @@ export default function NewProductPage() {
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Basic Information */}
+            {/* Step 1: Product Classification (NEW ORDER) */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Package className="h-5 w-5" />
-                  Basic Information
+                  Product Classification
                 </CardTitle>
                 <CardDescription>
-                  Enter the basic details of the product
+                  Select brand, product line, subcategory, and item type first. SKU will be auto-generated.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Step 1: Brand Selection */}
+                <div className="space-y-2">
+                  <Label htmlFor="brand">Step 1: Brand *</Label>
+                  <Select
+                    value={form.watch('brand_id')}
+                    onValueChange={(value) => {
+                      form.setValue('brand_id', value);
+                      setIsSkuGenerated(false);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select brand" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {brands.map((brand: Brand) => (
+                        <SelectItem key={brand.id} value={brand.id}>
+                          {brand.code && <span className="font-mono text-muted-foreground mr-2">[{brand.code}]</span>}
+                          {brand.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {form.formState.errors.brand_id && (
+                    <p className="text-sm text-destructive">{form.formState.errors.brand_id.message}</p>
+                  )}
+                </div>
+
+                {/* Step 2: Product Line (Parent Category) */}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="parent_category">Step 2: Product Line *</Label>
+                    <Select
+                      value={selectedParentCategoryId}
+                      onValueChange={handleParentCategoryChange}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select product line" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {rootCategories.map((category: Category) => (
+                          <SelectItem key={category.id} value={category.id}>
+                            {category.code && <span className="font-mono text-muted-foreground mr-2">[{category.code}]</span>}
+                            {category.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      E.g., Water Purifiers, Air Purifiers
+                    </p>
+                  </div>
+
+                  {/* Step 3: Subcategory */}
+                  <div className="space-y-2">
+                    <Label htmlFor="category">Step 3: Subcategory *</Label>
+                    <Select
+                      value={form.watch('category_id')}
+                      onValueChange={(value) => {
+                        form.setValue('category_id', value);
+                        setIsSkuGenerated(false);
+                      }}
+                      disabled={!selectedParentCategoryId}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={selectedParentCategoryId ? "Select subcategory" : "Select product line first"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {subcategories.map((category: Category) => (
+                          <SelectItem key={category.id} value={category.id}>
+                            {category.code && <span className="font-mono text-muted-foreground mr-2">[{category.code}]</span>}
+                            {category.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {form.formState.errors.category_id && (
+                      <p className="text-sm text-destructive">{form.formState.errors.category_id.message}</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Step 4: Item Type Selection */}
+                <div className="space-y-2">
+                  <Label>Step 4: Item Type *</Label>
+                  <div className="flex gap-4">
+                    {ITEM_TYPES.map((type) => (
+                      <div
+                        key={type.value}
+                        className={`flex-1 cursor-pointer rounded-lg border-2 p-4 transition-colors ${
+                          form.watch('item_type') === type.value
+                            ? 'border-primary bg-primary/5'
+                            : 'border-border hover:border-primary/50'
+                        }`}
+                        onClick={() => {
+                          form.setValue('item_type', type.value);
+                          setIsSkuGenerated(false);
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className={`h-4 w-4 rounded-full border-2 ${
+                            form.watch('item_type') === type.value
+                              ? 'border-primary bg-primary'
+                              : 'border-muted-foreground'
+                          }`}>
+                            {form.watch('item_type') === type.value && (
+                              <div className="h-full w-full rounded-full bg-primary" />
+                            )}
+                          </div>
+                          <span className="font-medium">{type.label}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {type.description}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Step 2: Product Details */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Product Details</CardTitle>
+                <CardDescription>
+                  Enter product name and other details. SKU is auto-generated based on classification.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -331,20 +472,30 @@ export default function NewProductPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="sku">SKU *</Label>
-                    <div className="flex gap-2">
+                    <Label htmlFor="sku" className="flex items-center gap-2">
+                      SKU (Auto-Generated)
+                      {isSkuGenerated && <Sparkles className="h-4 w-4 text-green-500" />}
+                    </Label>
+                    <div className="relative">
                       <Input
                         id="sku"
-                        placeholder="Enter SKU"
+                        placeholder={isGeneratingSku ? "Generating..." : "Select classification to generate"}
                         {...form.register('sku')}
+                        readOnly={isSkuGenerated}
+                        className={isSkuGenerated ? "bg-muted font-mono" : ""}
                       />
-                      <Button type="button" variant="outline" onClick={generateSku}>
-                        Generate
-                      </Button>
+                      {isGeneratingSku && (
+                        <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                      )}
                     </div>
                     {form.formState.errors.sku && (
                       <p className="text-sm text-destructive">{form.formState.errors.sku.message}</p>
                     )}
+                    <p className="text-xs text-muted-foreground">
+                      {isSkuGenerated
+                        ? "SKU auto-generated based on brand, category, and item type"
+                        : "Complete the classification above to auto-generate SKU"}
+                    </p>
                   </div>
                 </div>
 
@@ -369,111 +520,6 @@ export default function NewProductPage() {
                     {...form.register('description')}
                   />
                 </div>
-
-                {/* Step 1: Brand Selection */}
-                <div className="space-y-2">
-                  <Label htmlFor="brand">Brand *</Label>
-                  <Select
-                    value={form.watch('brand_id')}
-                    onValueChange={(value) => form.setValue('brand_id', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select brand" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {brands.map((brand: Brand) => (
-                        <SelectItem key={brand.id} value={brand.id}>
-                          {brand.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {form.formState.errors.brand_id && (
-                    <p className="text-sm text-destructive">{form.formState.errors.brand_id.message}</p>
-                  )}
-                </div>
-
-                {/* Step 2: Category Selection (Cascading) */}
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="parent_category">Product Line *</Label>
-                    <Select
-                      value={selectedParentCategoryId}
-                      onValueChange={handleParentCategoryChange}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select product line" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {rootCategories.map((category: Category) => (
-                          <SelectItem key={category.id} value={category.id}>
-                            {category.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      E.g., Water Purifiers, Air Purifiers
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="category">Subcategory *</Label>
-                    <Select
-                      value={form.watch('category_id')}
-                      onValueChange={(value) => form.setValue('category_id', value)}
-                      disabled={!selectedParentCategoryId}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={selectedParentCategoryId ? "Select subcategory" : "Select product line first"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {subcategories.map((category: Category) => (
-                          <SelectItem key={category.id} value={category.id}>
-                            {category.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {form.formState.errors.category_id && (
-                      <p className="text-sm text-destructive">{form.formState.errors.category_id.message}</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Step 3: Item Type Selection */}
-                <div className="space-y-2">
-                  <Label>Item Type *</Label>
-                  <div className="flex gap-4">
-                    {ITEM_TYPES.map((type) => (
-                      <div
-                        key={type.value}
-                        className={`flex-1 cursor-pointer rounded-lg border-2 p-4 transition-colors ${
-                          form.watch('item_type') === type.value
-                            ? 'border-primary bg-primary/5'
-                            : 'border-border hover:border-primary/50'
-                        }`}
-                        onClick={() => form.setValue('item_type', type.value)}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className={`h-4 w-4 rounded-full border-2 ${
-                            form.watch('item_type') === type.value
-                              ? 'border-primary bg-primary'
-                              : 'border-muted-foreground'
-                          }`}>
-                            {form.watch('item_type') === type.value && (
-                              <div className="h-full w-full rounded-full bg-primary" />
-                            )}
-                          </div>
-                          <span className="font-medium">{type.label}</span>
-                        </div>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {type.description}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </CardContent>
             </Card>
 
@@ -489,7 +535,6 @@ export default function NewProductPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Upload Button */}
                 <div className="flex items-center gap-4">
                   <input
                     ref={fileInputRef}
@@ -513,7 +558,6 @@ export default function NewProductPage() {
                   </span>
                 </div>
 
-                {/* Image Previews */}
                 {images.length > 0 ? (
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                     {images.map((img, index) => (
@@ -531,8 +575,6 @@ export default function NewProductPage() {
                             className="object-cover"
                           />
                         </div>
-
-                        {/* Overlay with actions */}
                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                           {!img.isPrimary && (
                             <Button
@@ -553,8 +595,6 @@ export default function NewProductPage() {
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
-
-                        {/* Primary badge */}
                         {img.isPrimary && (
                           <Badge className="absolute top-2 left-2" variant="default">
                             Primary
@@ -878,11 +918,11 @@ export default function NewProductPage() {
                 <CardTitle>Quick Tips</CardTitle>
               </CardHeader>
               <CardContent className="text-sm text-muted-foreground space-y-2">
-                <p>- SKU should be unique across all products</p>
-                <p>- Upload multiple images (first is primary)</p>
-                <p>- HSN code is required for GST compliance</p>
-                <p>- Set channel-specific prices after creation</p>
-                <p>- Cost price is auto-calculated from POs</p>
+                <p>1. Select Brand, Product Line, Subcategory first</p>
+                <p>2. SKU auto-generates based on selection</p>
+                <p>3. HSN code is required for GST compliance</p>
+                <p>4. Set channel-specific prices after creation</p>
+                <p>5. Cost price is auto-calculated from POs</p>
               </CardContent>
             </Card>
           </div>
