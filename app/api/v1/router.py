@@ -9,6 +9,8 @@ from app.api.v1.endpoints import (
     access_control,
     # GST e-Filing & ITC
     gst_filing,
+    # Expense Vouchers
+    expenses,
     # CMS (D2C Content Management)
     cms,
     # File Uploads
@@ -434,6 +436,13 @@ api_router.include_router(
     fixed_assets.router,
     prefix="/fixed-assets",
     tags=["Fixed Assets"]
+)
+
+# ==================== Expense Vouchers ====================
+api_router.include_router(
+    expenses.router,
+    prefix="/expenses",
+    tags=["Expenses"]
 )
 
 # ==================== Notifications ====================

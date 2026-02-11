@@ -121,6 +121,48 @@ const getMaintenanceStatusBadge = (status: MaintenanceStatus) => {
   return <Badge variant={variant}>{label}</Badge>;
 };
 
+const getCapexStatusBadge = (status: string) => {
+  const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
+    DRAFT: { variant: 'secondary', label: 'Draft' },
+    PENDING_APPROVAL: { variant: 'outline', label: 'Pending Approval' },
+    APPROVED: { variant: 'default', label: 'Approved' },
+    REJECTED: { variant: 'destructive', label: 'Rejected' },
+    PO_CREATED: { variant: 'default', label: 'PO Created' },
+    RECEIVED: { variant: 'default', label: 'Received' },
+    CAPITALIZED: { variant: 'outline', label: 'Capitalized' },
+    CANCELLED: { variant: 'destructive', label: 'Cancelled' },
+  };
+  const { variant, label } = variants[status] || { variant: 'default', label: status };
+  return <Badge variant={variant}>{label}</Badge>;
+};
+
+interface CapexRequest {
+  id: string;
+  request_number: string;
+  request_date: string;
+  financial_year: string;
+  asset_category_id: string;
+  category_name?: string;
+  asset_name: string;
+  description?: string;
+  justification: string;
+  quantity: number;
+  estimated_cost: number;
+  estimated_gst: number;
+  estimated_total: number;
+  actual_cost?: number;
+  urgency: string;
+  status: string;
+  approval_level?: string;
+  requested_by_name?: string;
+  approved_by_name?: string;
+  approved_at?: string;
+  rejection_reason?: string;
+  po_number?: string;
+  asset_code?: string;
+  created_at: string;
+}
+
 export default function FixedAssetsPage() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
@@ -135,6 +177,13 @@ export default function FixedAssetsPage() {
   const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState(false);
   const [disposeDialogOpen, setDisposeDialogOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
+
+  // CAPEX states
+  const [capexDialogOpen, setCapexDialogOpen] = useState(false);
+  const [capexViewOpen, setCapexViewOpen] = useState(false);
+  const [capexRejectOpen, setCapexRejectOpen] = useState(false);
+  const [selectedCapex, setSelectedCapex] = useState<CapexRequest | null>(null);
+  const [capexRejectionReason, setCapexRejectionReason] = useState('');
 
   const queryClient = useQueryClient();
 
@@ -191,6 +240,12 @@ export default function FixedAssetsPage() {
   const { data: employees } = useQuery({
     queryKey: ['employees-dropdown'],
     queryFn: () => hrApi.employees.dropdown(),
+  });
+
+  // CAPEX Queries
+  const { data: capexRequests, isLoading: capexLoading } = useQuery({
+    queryKey: ['capex-requests'],
+    queryFn: () => fixedAssetsApi.capex.list(),
   });
 
   // Mutations
@@ -296,6 +351,55 @@ export default function FixedAssetsPage() {
     },
   });
 
+  // CAPEX Mutations
+  const createCapexMutation = useMutation({
+    mutationFn: fixedAssetsApi.capex.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['capex-requests'] });
+      setCapexDialogOpen(false);
+      toast.success('CAPEX request created');
+    },
+    onError: () => {
+      toast.error('Failed to create CAPEX request');
+    },
+  });
+
+  const submitCapexMutation = useMutation({
+    mutationFn: fixedAssetsApi.capex.submit,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['capex-requests'] });
+      toast.success('CAPEX request submitted for approval');
+    },
+    onError: () => {
+      toast.error('Failed to submit CAPEX request');
+    },
+  });
+
+  const approveCapexMutation = useMutation({
+    mutationFn: fixedAssetsApi.capex.approve,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['capex-requests'] });
+      setCapexViewOpen(false);
+      toast.success('CAPEX request approved');
+    },
+    onError: () => {
+      toast.error('Failed to approve CAPEX request');
+    },
+  });
+
+  const rejectCapexMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => fixedAssetsApi.capex.reject(id, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['capex-requests'] });
+      setCapexRejectOpen(false);
+      setCapexRejectionReason('');
+      toast.success('CAPEX request rejected');
+    },
+    onError: () => {
+      toast.error('Failed to reject CAPEX request');
+    },
+  });
+
   // Form handlers
   const handleCreateCategory = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -376,6 +480,24 @@ export default function FixedAssetsPage() {
     });
   };
 
+  const handleCreateCapex = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const estimatedCost = parseFloat(formData.get('estimated_cost') as string) || 0;
+    const estimatedGst = parseFloat(formData.get('estimated_gst') as string) || 0;
+    createCapexMutation.mutate({
+      request_date: formData.get('request_date') as string,
+      asset_category_id: formData.get('asset_category_id') as string,
+      asset_name: formData.get('asset_name') as string,
+      description: formData.get('description') as string || undefined,
+      justification: formData.get('justification') as string,
+      quantity: parseInt(formData.get('quantity') as string) || 1,
+      estimated_cost: estimatedCost,
+      estimated_gst: estimatedGst,
+      urgency: formData.get('urgency') as string || 'NORMAL',
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -412,6 +534,10 @@ export default function FixedAssetsPage() {
           <TabsTrigger value="maintenance" className="flex items-center gap-2">
             <Wrench className="h-4 w-4" />
             Maintenance
+          </TabsTrigger>
+          <TabsTrigger value="capex" className="flex items-center gap-2">
+            <DollarSign className="h-4 w-4" />
+            CAPEX Requests
           </TabsTrigger>
         </TabsList>
 
@@ -1317,6 +1443,101 @@ export default function FixedAssetsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* CAPEX Requests Tab */}
+        <TabsContent value="capex" className="space-y-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>CAPEX Requests</CardTitle>
+                <CardDescription>Capital expenditure requests for fixed asset purchases</CardDescription>
+              </div>
+              <Button onClick={() => setCapexDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                New CAPEX Request
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Request #</TableHead>
+                    <TableHead>Asset Name</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Estimated Cost</TableHead>
+                    <TableHead>Urgency</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {capexLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-8">
+                        <RefreshCw className="h-6 w-6 animate-spin mx-auto" />
+                      </TableCell>
+                    </TableRow>
+                  ) : capexRequests?.items.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                        No CAPEX requests found
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    capexRequests?.items.map((req) => (
+                      <TableRow key={req.id}>
+                        <TableCell className="font-mono">{req.request_number}</TableCell>
+                        <TableCell>
+                          <div className="font-medium">{req.asset_name}</div>
+                          <div className="text-xs text-muted-foreground">Qty: {req.quantity}</div>
+                        </TableCell>
+                        <TableCell>{req.category_name}</TableCell>
+                        <TableCell>{format(new Date(req.request_date), 'dd MMM yyyy')}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(req.estimated_total)}</TableCell>
+                        <TableCell>
+                          <Badge variant={req.urgency === 'URGENT' ? 'destructive' : req.urgency === 'HIGH' ? 'secondary' : 'outline'}>
+                            {req.urgency}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{getCapexStatusBadge(req.status)}</TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => { setSelectedCapex(req); setCapexViewOpen(true); }}>
+                                View Details
+                              </DropdownMenuItem>
+                              {req.status === 'DRAFT' && (
+                                <DropdownMenuItem onClick={() => submitCapexMutation.mutate(req.id)}>
+                                  Submit for Approval
+                                </DropdownMenuItem>
+                              )}
+                              {req.status === 'PENDING_APPROVAL' && (
+                                <>
+                                  <DropdownMenuItem onClick={() => approveCapexMutation.mutate(req.id)}>
+                                    Approve
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => { setSelectedCapex(req); setCapexRejectOpen(true); }}>
+                                    Reject
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       {/* Dispose Asset Dialog */}
@@ -1360,6 +1581,234 @@ export default function FixedAssetsPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create CAPEX Request Dialog */}
+      <Dialog open={capexDialogOpen} onOpenChange={setCapexDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>New CAPEX Request</DialogTitle>
+            <DialogDescription>
+              Create a capital expenditure request for asset purchase
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreateCapex}>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="capex_request_date">Request Date *</Label>
+                  <Input
+                    id="capex_request_date"
+                    name="request_date"
+                    type="date"
+                    defaultValue={new Date().toISOString().split('T')[0]}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="capex_asset_category_id">Asset Category *</Label>
+                  <Select name="asset_category_id" required>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categoriesDropdown?.map((cat) => (
+                        <SelectItem key={cat.id} value={cat.id}>
+                          {cat.code} - {cat.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="capex_asset_name">Asset Name *</Label>
+                <Input id="capex_asset_name" name="asset_name" placeholder="e.g., Dell Laptop, Office Chair" required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="capex_description">Description</Label>
+                <Textarea id="capex_description" name="description" placeholder="Detailed description of the asset" rows={2} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="capex_justification">Business Justification *</Label>
+                <Textarea id="capex_justification" name="justification" placeholder="Why is this purchase necessary?" rows={3} required />
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="capex_quantity">Quantity *</Label>
+                  <Input id="capex_quantity" name="quantity" type="number" defaultValue="1" min="1" required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="capex_estimated_cost">Estimated Cost *</Label>
+                  <Input id="capex_estimated_cost" name="estimated_cost" type="number" step="0.01" required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="capex_estimated_gst">Estimated GST</Label>
+                  <Input id="capex_estimated_gst" name="estimated_gst" type="number" step="0.01" defaultValue="0" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="capex_urgency">Urgency</Label>
+                <Select name="urgency" defaultValue="NORMAL">
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="LOW">Low</SelectItem>
+                    <SelectItem value="NORMAL">Normal</SelectItem>
+                    <SelectItem value="HIGH">High</SelectItem>
+                    <SelectItem value="URGENT">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCapexDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createCapexMutation.isPending}>
+                {createCapexMutation.isPending ? 'Creating...' : 'Create Request'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* CAPEX View Dialog */}
+      <Dialog open={capexViewOpen} onOpenChange={(open) => { setCapexViewOpen(open); if (!open) setSelectedCapex(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>CAPEX Request Details</DialogTitle>
+            <DialogDescription>
+              {selectedCapex?.request_number}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedCapex && (
+            <div className="space-y-4 py-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-sm text-muted-foreground">Status</p>
+                  {getCapexStatusBadge(selectedCapex.status)}
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-muted-foreground">Estimated Total</p>
+                  <p className="text-xl font-bold">{formatCurrency(selectedCapex.estimated_total)}</p>
+                </div>
+              </div>
+              <div className="border-t pt-4 grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground">Asset Name</p>
+                  <p className="font-medium">{selectedCapex.asset_name}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Category</p>
+                  <p className="font-medium">{selectedCapex.category_name}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Quantity</p>
+                  <p className="font-medium">{selectedCapex.quantity}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Urgency</p>
+                  <Badge variant={selectedCapex.urgency === 'URGENT' ? 'destructive' : 'outline'}>
+                    {selectedCapex.urgency}
+                  </Badge>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-muted-foreground">Justification</p>
+                  <p className="font-medium">{selectedCapex.justification}</p>
+                </div>
+                {selectedCapex.rejection_reason && (
+                  <div className="col-span-2 bg-red-50 p-3 rounded-lg">
+                    <p className="text-red-600 text-sm font-medium">Rejection Reason</p>
+                    <p className="text-red-700">{selectedCapex.rejection_reason}</p>
+                  </div>
+                )}
+                {selectedCapex.po_number && (
+                  <div>
+                    <p className="text-muted-foreground">PO Number</p>
+                    <p className="font-medium">{selectedCapex.po_number}</p>
+                  </div>
+                )}
+                {selectedCapex.asset_code && (
+                  <div>
+                    <p className="text-muted-foreground">Asset Code</p>
+                    <p className="font-medium">{selectedCapex.asset_code}</p>
+                  </div>
+                )}
+              </div>
+              <div className="border-t pt-4">
+                {selectedCapex.status === 'DRAFT' && (
+                  <Button
+                    className="w-full"
+                    onClick={() => submitCapexMutation.mutate(selectedCapex.id)}
+                    disabled={submitCapexMutation.isPending}
+                  >
+                    {submitCapexMutation.isPending ? 'Submitting...' : 'Submit for Approval'}
+                  </Button>
+                )}
+                {selectedCapex.status === 'PENDING_APPROVAL' && (
+                  <div className="flex gap-2">
+                    <Button
+                      className="flex-1"
+                      onClick={() => approveCapexMutation.mutate(selectedCapex.id)}
+                      disabled={approveCapexMutation.isPending}
+                    >
+                      {approveCapexMutation.isPending ? 'Approving...' : 'Approve'}
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      className="flex-1"
+                      onClick={() => { setCapexViewOpen(false); setCapexRejectOpen(true); }}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* CAPEX Reject Dialog */}
+      <Dialog open={capexRejectOpen} onOpenChange={(open) => { setCapexRejectOpen(open); if (!open) { setSelectedCapex(null); setCapexRejectionReason(''); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject CAPEX Request</DialogTitle>
+            <DialogDescription>
+              Please provide a reason for rejecting this CAPEX request.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Textarea
+              placeholder="Enter rejection reason (minimum 10 characters)..."
+              value={capexRejectionReason}
+              onChange={(e) => setCapexRejectionReason(e.target.value)}
+              rows={4}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => { setCapexRejectOpen(false); setSelectedCapex(null); setCapexRejectionReason(''); }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={capexRejectionReason.length < 10 || rejectCapexMutation.isPending}
+              onClick={() => {
+                if (selectedCapex) {
+                  rejectCapexMutation.mutate({ id: selectedCapex.id, reason: capexRejectionReason });
+                }
+              }}
+            >
+              {rejectCapexMutation.isPending ? 'Rejecting...' : 'Reject'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

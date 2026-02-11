@@ -69,6 +69,14 @@ class AccountingService:
         "FREIGHT_INWARD": "5300",
         "FREIGHT_OUTWARD": "6410",
         "WARRANTY_EXPENSE": "6600",
+
+        # Fixed Assets & Depreciation
+        "FIXED_ASSETS": "1300",
+        "ACCUMULATED_DEPRECIATION": "1350",
+        "DEPRECIATION_EXPENSE": "6700",
+
+        # TDS
+        "TDS_PAYABLE": "2300",
     }
 
     def __init__(self, db: AsyncSession, created_by: Optional[uuid.UUID] = None):
@@ -618,6 +626,171 @@ class AccountingService:
             narration=f"Freight expense - Shipment {shipment_number}",
             source_number=shipment_number,
             lines=lines,
+        )
+
+    async def post_expense_voucher(
+        self,
+        voucher_id: uuid.UUID,
+        voucher_number: str,
+        expense_account_id: Optional[uuid.UUID],
+        amount: Decimal,
+        gst_amount: Decimal,
+        tds_amount: Decimal,
+        net_amount: Decimal,
+        payment_mode: str,
+        bank_account_id: Optional[uuid.UUID],
+        narration: str,
+        cost_center_id: Optional[uuid.UUID] = None,
+    ) -> JournalEntry:
+        """
+        Post journal entry for expense voucher.
+
+        Debit: Expense Account (from category)
+        Debit: GST Input Credit (if applicable)
+        Credit: TDS Payable (if applicable)
+        Credit: Accounts Payable / Cash / Bank
+        """
+        lines = []
+
+        # Get expense account code
+        expense_code = None
+        if expense_account_id:
+            account_result = await self.db.execute(
+                select(ChartOfAccount.account_code)
+                .where(ChartOfAccount.id == expense_account_id)
+            )
+            expense_code = account_result.scalar_one_or_none()
+
+        if not expense_code:
+            raise ValueError("Expense account not found or not configured for category")
+
+        # Debit Expense Account
+        lines.append({
+            "account_code": expense_code,
+            "debit": amount,
+            "credit": Decimal("0"),
+            "description": narration,
+        })
+
+        # Debit GST Input Credit if applicable
+        if gst_amount > 0:
+            lines.append({
+                "account_code": self.ACCOUNT_CODES["CGST_INPUT"],
+                "debit": gst_amount / 2,
+                "credit": Decimal("0"),
+                "description": "CGST input credit on expense",
+            })
+            lines.append({
+                "account_code": self.ACCOUNT_CODES["SGST_INPUT"],
+                "debit": gst_amount / 2,
+                "credit": Decimal("0"),
+                "description": "SGST input credit on expense",
+            })
+
+        # Credit TDS Payable if applicable
+        if tds_amount > 0:
+            lines.append({
+                "account_code": self.ACCOUNT_CODES["TDS_PAYABLE"],
+                "debit": Decimal("0"),
+                "credit": tds_amount,
+                "description": "TDS deducted on expense",
+            })
+
+        # Credit payment account
+        total_credit = amount + gst_amount - tds_amount
+        if payment_mode == "CASH":
+            payment_code = self.ACCOUNT_CODES["CASH"]
+        elif payment_mode == "PETTY_CASH":
+            payment_code = self.ACCOUNT_CODES["CASH"]  # Use cash account for petty cash
+        elif bank_account_id:
+            # Get bank account code
+            bank_result = await self.db.execute(
+                select(ChartOfAccount.account_code)
+                .where(ChartOfAccount.id == bank_account_id)
+            )
+            payment_code = bank_result.scalar_one_or_none() or self.ACCOUNT_CODES["BANK_HDFC"]
+        else:
+            payment_code = self.ACCOUNT_CODES["AP_VENDORS"]
+
+        lines.append({
+            "account_code": payment_code,
+            "debit": Decimal("0"),
+            "credit": total_credit,
+            "description": f"Payment for expense - {voucher_number}",
+        })
+
+        return await self._create_journal_entry(
+            entry_type="EXPENSE",
+            source_type="EXPENSE_VOUCHER",
+            source_id=voucher_id,
+            narration=narration,
+            source_number=voucher_number,
+            lines=lines,
+        )
+
+    async def post_depreciation_entry(
+        self,
+        asset_id: uuid.UUID,
+        asset_code: str,
+        asset_name: str,
+        depreciation_amount: Decimal,
+        period_date: date,
+        expense_account_id: Optional[uuid.UUID],
+        depreciation_account_id: Optional[uuid.UUID],
+    ) -> JournalEntry:
+        """
+        Post journal entry for depreciation.
+
+        Debit: Depreciation Expense (from asset category)
+        Credit: Accumulated Depreciation (from asset category)
+        """
+        from datetime import date as date_type
+
+        # Get expense account code
+        expense_code = self.ACCOUNT_CODES["DEPRECIATION_EXPENSE"]
+        if expense_account_id:
+            account_result = await self.db.execute(
+                select(ChartOfAccount.account_code)
+                .where(ChartOfAccount.id == expense_account_id)
+            )
+            code = account_result.scalar_one_or_none()
+            if code:
+                expense_code = code
+
+        # Get accumulated depreciation account code
+        accum_code = self.ACCOUNT_CODES["ACCUMULATED_DEPRECIATION"]
+        if depreciation_account_id:
+            account_result = await self.db.execute(
+                select(ChartOfAccount.account_code)
+                .where(ChartOfAccount.id == depreciation_account_id)
+            )
+            code = account_result.scalar_one_or_none()
+            if code:
+                accum_code = code
+
+        lines = [
+            {
+                "account_code": expense_code,
+                "debit": depreciation_amount,
+                "credit": Decimal("0"),
+                "description": f"Depreciation for {asset_code} - {asset_name}",
+            },
+            {
+                "account_code": accum_code,
+                "debit": Decimal("0"),
+                "credit": depreciation_amount,
+                "description": f"Accumulated depreciation - {asset_code}",
+            },
+        ]
+
+        return await self._create_journal_entry(
+            entry_type="DEPRECIATION",
+            source_type="ASSET",
+            source_id=asset_id,
+            narration=f"Depreciation for {period_date.strftime('%B %Y')} - {asset_name}",
+            source_number=asset_code,
+            lines=lines,
+            entry_date=datetime.combine(period_date, datetime.min.time()).replace(tzinfo=timezone.utc),
         )
 
 
