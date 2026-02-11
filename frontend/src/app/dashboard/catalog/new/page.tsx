@@ -180,6 +180,10 @@ export default function NewProductPage() {
         // Store tags in extra_data since backend doesn't have a tags field
         extra_data: tags.length > 0 ? { tags } : undefined,
       };
+
+      // Debug: log what we're sending
+      console.log('Creating product with data:', JSON.stringify(backendData, null, 2));
+
       const product = await productsApi.create(backendData);
 
       if (images.length > 0) {
@@ -211,8 +215,17 @@ export default function NewProductPage() {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       router.push('/dashboard/catalog');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to create product');
+    onError: (error: any) => {
+      // Extract actual error message from API response
+      const apiError = error?.response?.data?.detail;
+      const errorMessage = typeof apiError === 'string'
+        ? apiError
+        : Array.isArray(apiError)
+          ? apiError.map((e: any) => `${e.loc?.join('.')}: ${e.msg}`).join(', ')
+          : error.message || 'Failed to create product';
+
+      console.error('Product creation failed:', error?.response?.data || error);
+      toast.error(errorMessage);
     },
   });
 
