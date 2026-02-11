@@ -129,7 +129,7 @@ class ProductBase(BaseModel):
     brand_id: uuid.UUID
 
     mrp: Decimal = Field(..., ge=0, description="Maximum Retail Price")
-    selling_price: Decimal = Field(..., ge=0, description="Selling price")
+    selling_price: Optional[Decimal] = Field(None, ge=0, description="Selling price (defaults to MRP if not provided)")
     dealer_price: Optional[Decimal] = Field(None, ge=0)
     cost_price: Optional[Decimal] = Field(None, ge=0)
 
@@ -175,8 +175,11 @@ class ProductCreate(ProductBase):
     @field_validator("selling_price")
     @classmethod
     def selling_price_less_than_mrp(cls, v, info):
-        """Validate selling price is not greater than MRP."""
+        """Validate selling price is not greater than MRP. Defaults to MRP if not provided."""
         mrp = info.data.get("mrp")
+        # If selling_price is None, 0, or not provided, default to MRP
+        if v is None or (isinstance(v, (int, float, Decimal)) and v == 0):
+            return mrp if mrp is not None else Decimal("0")
         if mrp is not None and v > mrp:
             raise ValueError("Selling price cannot be greater than MRP")
         return v
