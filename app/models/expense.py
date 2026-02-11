@@ -1,56 +1,24 @@
-"""Expense Voucher module models.
-
-Supports:
-- Expense categories with GL account mapping
-- Expense vouchers with approval workflow
-- Multiple payment modes (Cash, Bank, Petty Cash)
-- GST and TDS handling
-- Receipt/document attachments
 """
+Expense Management Models
+
+Handles:
+- Expense Categories (mapped to GL accounts)
+- Expense Vouchers with approval workflow
+"""
+
 import uuid
-from datetime import datetime, date, timezone
-from enum import Enum
-from typing import TYPE_CHECKING, Optional, List
+from datetime import datetime, timezone, date
 from decimal import Decimal
-
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Text, Numeric, Date
-from sqlalchemy import UniqueConstraint, Index
+from typing import Optional, List
+from sqlalchemy import String, Integer, Boolean, DateTime, Date, Numeric, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 from app.database import Base
 
-if TYPE_CHECKING:
-    from app.models.user import User
-    from app.models.accounting import ChartOfAccount, CostCenter
-
-
-# ==================== Enums ====================
-
-class ExpenseVoucherStatus(str, Enum):
-    """Expense voucher lifecycle status."""
-    DRAFT = "DRAFT"
-    PENDING_APPROVAL = "PENDING_APPROVAL"
-    APPROVED = "APPROVED"
-    REJECTED = "REJECTED"
-    POSTED = "POSTED"
-    PAID = "PAID"
-    CANCELLED = "CANCELLED"
-
-
-class PaymentMode(str, Enum):
-    """Payment mode for expense settlement."""
-    CASH = "CASH"
-    BANK = "BANK"
-    PETTY_CASH = "PETTY_CASH"
-    CREDIT_CARD = "CREDIT_CARD"
-
-
-# ==================== Expense Category ====================
 
 class ExpenseCategory(Base):
     """
-    Categories for expenses with GL account mapping.
+    Expense category master - maps to GL expense accounts.
     Examples: Travel, Office Supplies, Utilities, Professional Fees
     """
     __tablename__ = "expense_categories"
@@ -60,68 +28,48 @@ class ExpenseCategory(Base):
         primary_key=True,
         default=uuid.uuid4
     )
-
-    # Category Details
-    code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    # GL Account Mapping
+    # GL Account mapping
     gl_account_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("chart_of_accounts.id", ondelete="SET NULL"),
-        nullable=True,
-        comment="Expense GL Account to debit"
+        nullable=True
     )
 
-    # Approval Settings
-    requires_receipt: Mapped[bool] = mapped_column(
-        Boolean,
-        default=True,
-        comment="Whether receipt/invoice is mandatory"
-    )
+    # Controls
+    requires_receipt: Mapped[bool] = mapped_column(Boolean, default=True)
     max_amount_without_approval: Mapped[Decimal] = mapped_column(
-        Numeric(12, 2),
-        default=Decimal("0"),
-        comment="Max amount that can be auto-approved"
+        Numeric(18, 2), default=Decimal("0")
     )
-
-    # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    # Timestamps
+    # Audit
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-        nullable=False
+        onupdate=lambda: datetime.now(timezone.utc)
     )
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     # Relationships
-    gl_account: Mapped[Optional["ChartOfAccount"]] = relationship(
-        "ChartOfAccount",
-        foreign_keys=[gl_account_id]
-    )
-    vouchers: Mapped[List["ExpenseVoucher"]] = relationship(
-        "ExpenseVoucher",
-        back_populates="category"
-    )
+    vouchers = relationship("ExpenseVoucher", back_populates="category")
 
-    def __repr__(self) -> str:
-        return f"<ExpenseCategory(code='{self.code}', name='{self.name}')>"
+    def __repr__(self):
+        return f"<ExpenseCategory {self.code}: {self.name}>"
 
-
-# ==================== Expense Voucher ====================
 
 class ExpenseVoucher(Base):
     """
-    Expense voucher with full approval workflow.
-    Supports maker-checker and multi-level approval.
+    Expense voucher with approval workflow.
+
+    Status Flow: DRAFT → PENDING_APPROVAL → APPROVED → POSTED → PAID
+                                         ↘ REJECTED
     """
     __tablename__ = "expense_vouchers"
 
@@ -131,248 +79,79 @@ class ExpenseVoucher(Base):
         default=uuid.uuid4
     )
 
-    # Voucher Identification
-    voucher_number: Mapped[str] = mapped_column(
-        String(30),
-        unique=True,
-        nullable=False,
-        index=True,
-        comment="EXP-YYYYMM-XXXX"
-    )
-    voucher_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
-    financial_year: Mapped[str] = mapped_column(
-        String(10),
-        nullable=False,
-        comment="e.g., 2025-26"
-    )
-    period: Mapped[Optional[str]] = mapped_column(
-        String(10),
-        nullable=True,
-        comment="e.g., APR-2025"
-    )
+    # Voucher identification
+    voucher_number: Mapped[str] = mapped_column(String(30), unique=True, nullable=False, index=True)
+    voucher_date: Mapped[date] = mapped_column(Date, nullable=False)
+    financial_year: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    period: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
 
-    # Expense Category
-    expense_category_id: Mapped[uuid.UUID] = mapped_column(
+    # Expense details
+    expense_category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("expense_categories.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True
+        ForeignKey("expense_categories.id"),
+        nullable=True
     )
-
-    # Amount Details
-    amount: Mapped[Decimal] = mapped_column(
-        Numeric(14, 2),
-        nullable=False,
-        comment="Base expense amount"
-    )
-    gst_amount: Mapped[Decimal] = mapped_column(
-        Numeric(12, 2),
-        default=Decimal("0"),
-        comment="GST input credit (if applicable)"
-    )
-    tds_amount: Mapped[Decimal] = mapped_column(
-        Numeric(12, 2),
-        default=Decimal("0"),
-        comment="TDS to be deducted"
-    )
-    net_amount: Mapped[Decimal] = mapped_column(
-        Numeric(14, 2),
-        nullable=False,
-        comment="Amount + GST - TDS"
-    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    gst_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))
+    tds_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))
+    net_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
 
     # Vendor (optional - for vendor expenses)
-    vendor_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
-        nullable=True,
-        comment="Vendor if applicable"
-    )
-    vendor_invoice_no: Mapped[Optional[str]] = mapped_column(
-        String(50),
-        nullable=True,
-        comment="Vendor invoice/bill number"
-    )
-    vendor_invoice_date: Mapped[Optional[date]] = mapped_column(
-        Date,
-        nullable=True
-    )
+    vendor_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
 
-    # Cost Center
-    cost_center_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("cost_centers.id", ondelete="SET NULL"),
-        nullable=True
-    )
+    # Cost allocation
+    cost_center_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     # Description
-    narration: Mapped[str] = mapped_column(Text, nullable=False)
-    purpose: Mapped[Optional[str]] = mapped_column(
-        Text,
-        nullable=True,
-        comment="Business purpose/justification"
-    )
-
-    # Payment Details
-    payment_mode: Mapped[str] = mapped_column(
-        String(50),
-        default="BANK",
-        nullable=False,
-        comment="CASH, BANK, PETTY_CASH, CREDIT_CARD"
-    )
-    bank_account_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
-        nullable=True,
-        comment="Bank account if payment mode is BANK"
-    )
-
-    # Status
-    status: Mapped[str] = mapped_column(
-        String(50),
-        default="DRAFT",
-        nullable=False,
-        index=True,
-        comment="DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, POSTED, PAID, CANCELLED"
-    )
-
-    # Maker-Checker Workflow
-    created_by: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=False,
-        comment="Maker - who created the voucher"
-    )
-    submitted_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
-        comment="Who submitted for approval"
-    )
-    submitted_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True
-    )
-
-    # Approval level based on amount
-    approval_level: Mapped[Optional[str]] = mapped_column(
-        String(20),
-        nullable=True,
-        comment="LEVEL_1, LEVEL_2, LEVEL_3 based on amount"
-    )
-
-    # Checker approval/rejection
-    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
-        comment="Checker - who approved"
-    )
-    approved_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True
-    )
-    rejection_reason: Mapped[Optional[str]] = mapped_column(
-        Text,
-        nullable=True
-    )
-    rejected_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True
-    )
-    rejected_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True
-    )
-
-    # Posting to GL
-    posted_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True
-    )
-    posted_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True
-    )
-    journal_entry_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
-        nullable=True,
-        comment="Related journal entry after posting"
-    )
+    narration: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    purpose: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Payment
-    paid_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True
-    )
-    payment_reference: Mapped[Optional[str]] = mapped_column(
-        String(100),
-        nullable=True,
-        comment="Cheque no, UTR, transaction ref"
-    )
-    paid_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True
-    )
+    payment_mode: Mapped[str] = mapped_column(String(20), default="CASH")
+    bank_account_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
 
-    # Attachments (receipts, invoices)
-    attachments: Mapped[Optional[dict]] = mapped_column(
-        JSONB,
-        nullable=True,
-        default=dict,
-        comment="Array of attachment URLs"
-    )
+    # Status
+    status: Mapped[str] = mapped_column(String(30), default="DRAFT", index=True)
 
-    # Notes
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Maker
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    submitted_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # Timestamps
+    # Checker
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    approval_level: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+
+    # Rejection
+    rejected_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    rejected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # GL Posting
+    posted_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    posted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    journal_entry_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+    # Payment tracking
+    paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    payment_reference: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    # Attachments (receipts)
+    attachments: Mapped[dict] = mapped_column(JSONB, default=list)
+
+    # Audit
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-        nullable=False
+        onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
-    category: Mapped["ExpenseCategory"] = relationship(
-        "ExpenseCategory",
-        back_populates="vouchers"
-    )
-    cost_center: Mapped[Optional["CostCenter"]] = relationship(
-        "CostCenter",
-        foreign_keys=[cost_center_id]
-    )
-    creator: Mapped["User"] = relationship(
-        "User",
-        foreign_keys=[created_by]
-    )
-    submitter: Mapped[Optional["User"]] = relationship(
-        "User",
-        foreign_keys=[submitted_by]
-    )
-    approver: Mapped[Optional["User"]] = relationship(
-        "User",
-        foreign_keys=[approved_by]
-    )
-    poster: Mapped[Optional["User"]] = relationship(
-        "User",
-        foreign_keys=[posted_by]
-    )
+    category = relationship("ExpenseCategory", back_populates="vouchers")
 
-    __table_args__ = (
-        Index('idx_expense_voucher_status', 'status'),
-        Index('idx_expense_voucher_date', 'voucher_date'),
-        Index('idx_expense_voucher_category', 'expense_category_id'),
-        Index('idx_expense_voucher_cost_center', 'cost_center_id'),
-        Index('idx_expense_voucher_fy', 'financial_year'),
-    )
-
-    def __repr__(self) -> str:
-        return f"<ExpenseVoucher(number='{self.voucher_number}', status='{self.status}')>"
+    def __repr__(self):
+        return f"<ExpenseVoucher {self.voucher_number}: {self.status}>"
