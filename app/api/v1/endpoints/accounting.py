@@ -3718,3 +3718,170 @@ async def fix_orphaned_gl_entries(
         "orphaned_journals_fixed": len(orphaned_journals),
         "no_journal_entries_fixed": len(orphaned_no_journal)
     }
+
+
+@router.post(
+    "/fix-trial-balance-imbalance",
+    dependencies=[Depends(require_permissions("finance:manage"))]
+)
+async def fix_trial_balance_imbalance(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    dry_run: bool = Query(True, description="If True, only analyze. Set False to create correcting entry."),
+):
+    """
+    Analyze and fix Trial Balance imbalance by creating a correcting journal entry.
+
+    This endpoint:
+    1. Calculates the total GL debits and credits
+    2. If there's an imbalance, creates a correcting journal entry
+    3. Uses a "Historical Adjustment" account to balance
+
+    This is safer than deleting GL entries as it preserves audit trail.
+    """
+    from datetime import date as date_type
+    import uuid as uuid_module
+
+    # Step 1: Calculate total GL debits and credits
+    gl_sum_query = select(
+        func.sum(GeneralLedger.debit_amount).label("total_debit"),
+        func.sum(GeneralLedger.credit_amount).label("total_credit"),
+        func.count(GeneralLedger.id).label("entry_count")
+    )
+    result = await db.execute(gl_sum_query)
+    row = result.one()
+
+    total_debit = row.total_debit or Decimal("0")
+    total_credit = row.total_credit or Decimal("0")
+    difference = total_debit - total_credit
+
+    if abs(difference) < Decimal("0.01"):
+        return {
+            "message": "GL is already balanced",
+            "total_debit": float(total_debit),
+            "total_credit": float(total_credit),
+            "difference": 0,
+            "action_needed": False
+        }
+
+    # Step 2: Get or create "Historical Adjustment" account
+    adj_account_code = "9999"
+    adj_account_query = select(ChartOfAccount).where(
+        ChartOfAccount.account_code == adj_account_code
+    )
+    adj_account_result = await db.execute(adj_account_query)
+    adj_account = adj_account_result.scalar()
+
+    if not adj_account:
+        if dry_run:
+            return {
+                "mode": "dry_run",
+                "message": f"Would create 'Historical Adjustment' account (9999) and correcting entry",
+                "total_debit": float(total_debit),
+                "total_credit": float(total_credit),
+                "difference": float(difference),
+                "correction_needed": {
+                    "type": "credit" if difference > 0 else "debit",
+                    "amount": float(abs(difference))
+                },
+                "action_needed": True
+            }
+
+        # Create the adjustment account
+        adj_account = ChartOfAccount(
+            id=uuid_module.uuid4(),
+            account_code=adj_account_code,
+            account_name="Historical Adjustment (System Corrections)",
+            account_type=AccountType.EQUITY,
+            parent_code="1000",
+            is_group=False,
+            is_active=True,
+            description="Used for correcting historical GL posting errors",
+            opening_balance=Decimal("0"),
+            current_balance=Decimal("0"),
+        )
+        db.add(adj_account)
+        await db.flush()
+
+    if dry_run:
+        return {
+            "mode": "dry_run",
+            "message": "Would create correcting journal entry",
+            "total_debit": float(total_debit),
+            "total_credit": float(total_credit),
+            "difference": float(difference),
+            "correction_needed": {
+                "type": "credit" if difference > 0 else "debit",
+                "amount": float(abs(difference)),
+                "to_account": adj_account_code
+            },
+            "action_needed": True
+        }
+
+    # Step 3: Get current period
+    today = date_type.today()
+    period_query = select(FinancialPeriod).where(
+        and_(
+            FinancialPeriod.start_date <= today,
+            FinancialPeriod.end_date >= today,
+            FinancialPeriod.status == "OPEN"
+        )
+    )
+    period_result = await db.execute(period_query)
+    period = period_result.scalar()
+
+    if not period:
+        # Create a period if none exists
+        period_query = select(FinancialPeriod).where(
+            FinancialPeriod.status == "OPEN"
+        ).order_by(FinancialPeriod.end_date.desc())
+        period_result = await db.execute(period_query)
+        period = period_result.scalar()
+
+    if not period:
+        return {
+            "error": "No open financial period found. Cannot create correcting entry."
+        }
+
+    # Step 4: Create correcting GL entry directly
+    # If difference > 0 (more debits than credits), we need to credit adjustment account
+    # If difference < 0 (more credits than debits), we need to debit adjustment account
+
+    gl_entry = GeneralLedger(
+        id=uuid_module.uuid4(),
+        account_id=adj_account.id,
+        period_id=period.id,
+        transaction_date=today,
+        debit_amount=abs(difference) if difference < 0 else Decimal("0"),
+        credit_amount=abs(difference) if difference > 0 else Decimal("0"),
+        running_balance=Decimal("0"),  # Will be recalculated
+        narration=f"Historical correction for GL imbalance of Rs.{abs(difference):,.2f}",
+    )
+    db.add(gl_entry)
+
+    # Update account balance
+    adj_account.current_balance = (adj_account.current_balance or Decimal("0")) + (
+        gl_entry.debit_amount - gl_entry.credit_amount
+    )
+
+    await db.commit()
+
+    # Verify the fix
+    verify_result = await db.execute(gl_sum_query)
+    verify_row = verify_result.one()
+    new_difference = (verify_row.total_debit or Decimal("0")) - (verify_row.total_credit or Decimal("0"))
+
+    return {
+        "mode": "fix",
+        "message": "Created correcting GL entry",
+        "original_difference": float(difference),
+        "correcting_entry": {
+            "account": adj_account_code,
+            "debit": float(gl_entry.debit_amount),
+            "credit": float(gl_entry.credit_amount)
+        },
+        "new_total_debit": float(verify_row.total_debit or 0),
+        "new_total_credit": float(verify_row.total_credit or 0),
+        "new_difference": float(new_difference),
+        "is_balanced": abs(new_difference) < Decimal("0.01")
+    }
