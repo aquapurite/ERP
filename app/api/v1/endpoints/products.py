@@ -458,38 +458,37 @@ async def create_product(
         )
     logger.info(f"[CREATE_PRODUCT] Brand found: {brand.name}")
 
-    try:
-        logger.info(f"[CREATE_PRODUCT] Creating product...")
-        product = await service.create_product(data)
-        logger.info(f"[CREATE_PRODUCT] Product created with id: {product.id}")
+    # Step 1: Create product (this is the critical step)
+    logger.info(f"[CREATE_PRODUCT] Creating product...")
+    product = await service.create_product(data)
+    logger.info(f"[CREATE_PRODUCT] Product created with id: {product.id}")
 
-        # ORCHESTRATION: Auto-setup serialization (model_code, serial sequence)
+    # Step 2: ORCHESTRATION - Non-critical, don't fail if this errors
+    try:
         orchestration = ProductOrchestrationService(db)
         orchestration_result = await orchestration.on_product_created(product)
-        logger.info(f"[CREATE_PRODUCT] Orchestration complete")
-
-        # Commit orchestration changes
+        logger.info(f"[CREATE_PRODUCT] Orchestration complete: {orchestration_result}")
         await db.commit()
-        logger.info(f"[CREATE_PRODUCT] Commit complete")
+    except Exception as e:
+        logger.warning(f"[CREATE_PRODUCT] Orchestration failed (non-critical): {type(e).__name__}: {str(e)}")
+        # Don't fail the request - product was created successfully
 
-        # Invalidate product caches
+    # Step 3: Cache invalidation - Non-critical
+    try:
         cache = get_cache()
         await cache.invalidate_products()
+    except Exception as e:
+        logger.warning(f"[CREATE_PRODUCT] Cache invalidation failed (non-critical): {str(e)}")
 
-        # Re-fetch with all relationships loaded (refresh strips relationships)
+    # Step 4: Re-fetch with all relationships
+    try:
         final_product = await service.get_product_by_id(product.id, include_all=True)
         logger.info(f"[CREATE_PRODUCT] ========== SUCCESS ==========")
         return _build_product_detail_response(final_product)
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"[CREATE_PRODUCT] UNEXPECTED ERROR: {type(e).__name__}: {str(e)}")
-        import traceback
-        logger.error(f"[CREATE_PRODUCT] Traceback: {traceback.format_exc()}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create product: {str(e)}"
-        )
+        logger.error(f"[CREATE_PRODUCT] Re-fetch failed: {str(e)}")
+        # Return basic product info if re-fetch fails
+        return _build_product_detail_response(product)
 
 
 @router.put(
@@ -1010,4 +1009,167 @@ async def set_standard_cost(
         "average_cost": float(product_cost.average_cost),
         "variance": float(product_cost.cost_variance) if product_cost.cost_variance else None,
         "variance_percentage": product_cost.cost_variance_percentage,
+    }
+
+
+# ==================== SKU MIGRATION ====================
+
+@router.post(
+    "/migrate-sku",
+    dependencies=[Depends(require_permissions("products:update"))]
+)
+async def migrate_sku_format(
+    db: DB,
+    current_user: CurrentUser,
+    dry_run: bool = Query(True, description="Preview changes without applying"),
+):
+    """
+    Migrate product SKUs from old format to new standardized format.
+
+    Old format examples:
+    - WPRAOPT001 (FG)
+    - SPECPOC001 (SP)
+
+    New format:
+    - FG: AP-WP-RU-FG-OPT-001 (Brand-ProductLine-SubCat-ItemType-Model-Seq)
+    - SP: AP-SP-EC-POC-001 (Brand-ProductLine-SubCat-Model-Seq)
+
+    Requires: products:update permission
+    """
+    from sqlalchemy import text
+    import logging
+    logger = logging.getLogger(__name__)
+
+    logger.info(f"[SKU_MIGRATION] Starting migration (dry_run={dry_run})")
+
+    # Get category hierarchy
+    cat_result = await db.execute(text('''
+        SELECT
+            c.id as cat_id,
+            c.code as cat_code,
+            c.name as cat_name,
+            p.id as parent_id,
+            p.code as parent_code,
+            p.name as parent_name
+        FROM categories c
+        LEFT JOIN categories p ON c.parent_id = p.id
+    '''))
+
+    category_hierarchy = {}
+    for row in cat_result.fetchall():
+        cat_id = str(row[0])
+        cat_code = row[1] or 'XX'
+        parent_code = row[4] or cat_code
+        category_hierarchy[cat_id] = {
+            'cat_code': cat_code,
+            'parent_code': parent_code,
+        }
+
+    # Get brand codes
+    brand_result = await db.execute(text('SELECT id, code FROM brands'))
+    brand_codes = {str(row[0]): row[1] or 'XX' for row in brand_result.fetchall()}
+
+    # Get products to migrate (those NOT in new format)
+    products_result = await db.execute(text('''
+        SELECT
+            p.id,
+            p.sku,
+            p.name,
+            p.model_code,
+            p.item_type,
+            p.category_id,
+            p.brand_id
+        FROM products p
+        WHERE p.sku NOT LIKE 'AP-%-%-%-%-___'
+          AND p.sku NOT LIKE 'AP-%-%-%-___'
+        ORDER BY p.created_at
+    '''))
+    products = products_result.fetchall()
+
+    if not products:
+        return {
+            "message": "No products need migration. All SKUs are already in new format.",
+            "migrated_count": 0,
+            "dry_run": dry_run,
+            "migrations": []
+        }
+
+    # Track SKU counters for sequence numbers
+    sku_counters = {}
+    migration_report = []
+
+    for product in products:
+        product_id = product[0]
+        old_sku = product[1]
+        product_name = product[2]
+        model_code = product[3] or 'XXX'
+        item_type = product[4] or 'FG'
+        category_id = str(product[5])
+        brand_id = str(product[6])
+
+        # Get brand code
+        brand_code = brand_codes.get(brand_id, 'XX')
+
+        # Get category hierarchy
+        cat_info = category_hierarchy.get(category_id, {})
+        parent_code = cat_info.get('parent_code', 'XX')
+        subcat_code = cat_info.get('cat_code', 'XX')
+
+        # Build SKU prefix
+        if parent_code == 'SP' or item_type == 'SP':
+            # Spare Parts: No item_type in SKU
+            sku_prefix = f"{brand_code}-{parent_code}-{subcat_code}-{model_code}"
+        else:
+            # Finished Goods: Include item_type
+            sku_prefix = f"{brand_code}-{parent_code}-{subcat_code}-{item_type}-{model_code}"
+
+        # Get next sequence number for this prefix
+        if sku_prefix not in sku_counters:
+            sku_counters[sku_prefix] = 0
+        sku_counters[sku_prefix] += 1
+        seq = sku_counters[sku_prefix]
+
+        new_sku = f"{sku_prefix}-{str(seq).zfill(3)}"
+
+        migration_report.append({
+            'product_id': str(product_id),
+            'old_sku': old_sku,
+            'new_sku': new_sku,
+            'product_name': product_name
+        })
+
+        if not dry_run:
+            # Update product SKU
+            await db.execute(text('''
+                UPDATE products
+                SET sku = :new_sku, updated_at = NOW()
+                WHERE id = :product_id
+            '''), {'new_sku': new_sku, 'product_id': product_id})
+
+            # Update model_code_references
+            await db.execute(text('''
+                UPDATE model_code_references
+                SET product_sku = :new_sku, updated_at = NOW()
+                WHERE product_id = :product_id
+            '''), {'new_sku': new_sku, 'product_id': product_id})
+
+            # Update product_serial_sequences
+            await db.execute(text('''
+                UPDATE product_serial_sequences
+                SET product_sku = :new_sku, updated_at = NOW()
+                WHERE product_id = :product_id
+            '''), {'new_sku': new_sku, 'product_id': product_id})
+
+            logger.info(f"[SKU_MIGRATION] Updated: {old_sku} -> {new_sku}")
+
+    if not dry_run:
+        await db.commit()
+        logger.info(f"[SKU_MIGRATION] Migration complete! {len(products)} products updated.")
+
+    return {
+        "message": f"{'DRY RUN - ' if dry_run else ''}Migration {'preview' if dry_run else 'complete'}",
+        "migrated_count": len(products),
+        "dry_run": dry_run,
+        "sku_prefix_counts": sku_counters,
+        "migrations": migration_report
     }
