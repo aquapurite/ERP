@@ -68,12 +68,25 @@ CURRENT_ASSET_SUBTYPES = {"CASH", "BANK", "ACCOUNTS_RECEIVABLE", "INVENTORY", "P
 CURRENT_LIABILITY_SUBTYPES = {"ACCOUNTS_PAYABLE", "TAX_PAYABLE", "ACCRUED_EXPENSE", "SHORT_TERM_DEBT", "CURRENT_LIABILITY"}
 
 
-def build_section_items(accounts: list, previous_balances: dict) -> List[dict]:
-    """Build line items for a balance sheet section."""
+def build_section_items(accounts: list, previous_balances: dict, negate: bool = False) -> List[dict]:
+    """Build line items for a balance sheet section.
+
+    Args:
+        accounts: List of account records
+        previous_balances: Dict of account_id -> previous balance
+        negate: If True, negate balances (for LIABILITY/EQUITY which store negative balances)
+    """
     items = []
     for acc in accounts:
         current = float(acc.current_balance or 0)
         previous = previous_balances.get(str(acc.id), 0.0)
+
+        # For liability/equity accounts, current_balance is stored as negative
+        # Negate to show positive values on Balance Sheet
+        if negate:
+            current = -current
+            previous = -previous
+
         variance = current - previous
         variance_pct = (variance / previous * 100) if previous != 0 else 0
 
@@ -157,34 +170,35 @@ async def get_balance_sheet(
     for acc in all_assets + all_liabilities + equity_accounts:
         previous_balances[str(acc.id)] = float(acc.opening_balance or 0)
 
-    # Build sections
-    current_assets_items = build_section_items(current_assets, previous_balances)
-    non_current_assets_items = build_section_items(non_current_assets, previous_balances)
-    current_liabilities_items = build_section_items(current_liabilities, previous_balances)
-    non_current_liabilities_items = build_section_items(non_current_liabilities, previous_balances)
-    equity_items = build_section_items(equity_accounts, previous_balances)
+    # Build sections - negate=True for liability/equity to show positive values
+    current_assets_items = build_section_items(current_assets, previous_balances, negate=False)
+    non_current_assets_items = build_section_items(non_current_assets, previous_balances, negate=False)
+    current_liabilities_items = build_section_items(current_liabilities, previous_balances, negate=True)
+    non_current_liabilities_items = build_section_items(non_current_liabilities, previous_balances, negate=True)
+    equity_items = build_section_items(equity_accounts, previous_balances, negate=True)
 
-    # Calculate totals
+    # Calculate totals - negate liability/equity since they store negative balances
     total_current_assets = sum(float(a.current_balance or 0) for a in current_assets)
     total_non_current_assets = sum(float(a.current_balance or 0) for a in non_current_assets)
     total_assets = total_current_assets + total_non_current_assets
 
-    total_current_liabilities = sum(float(l.current_balance or 0) for l in current_liabilities)
-    total_non_current_liabilities = sum(float(l.current_balance or 0) for l in non_current_liabilities)
+    # For liabilities/equity: negate since current_balance stores debits-credits (negative for normal credit balances)
+    total_current_liabilities = -sum(float(l.current_balance or 0) for l in current_liabilities)
+    total_non_current_liabilities = -sum(float(l.current_balance or 0) for l in non_current_liabilities)
     total_liabilities = total_current_liabilities + total_non_current_liabilities
 
-    total_equity = sum(float(e.current_balance or 0) for e in equity_accounts)
+    total_equity = -sum(float(e.current_balance or 0) for e in equity_accounts)
 
-    # Previous totals
+    # Previous totals - negate liability/equity
     prev_current_assets = sum(previous_balances.get(str(a.id), 0) for a in current_assets)
     prev_non_current_assets = sum(previous_balances.get(str(a.id), 0) for a in non_current_assets)
     prev_total_assets = prev_current_assets + prev_non_current_assets
 
-    prev_current_liabilities = sum(previous_balances.get(str(l.id), 0) for l in current_liabilities)
-    prev_non_current_liabilities = sum(previous_balances.get(str(l.id), 0) for l in non_current_liabilities)
+    prev_current_liabilities = -sum(previous_balances.get(str(l.id), 0) for l in current_liabilities)
+    prev_non_current_liabilities = -sum(previous_balances.get(str(l.id), 0) for l in non_current_liabilities)
     prev_total_liabilities = prev_current_liabilities + prev_non_current_liabilities
 
-    prev_total_equity = sum(previous_balances.get(str(e.id), 0) for e in equity_accounts)
+    prev_total_equity = -sum(previous_balances.get(str(e.id), 0) for e in equity_accounts)
 
     total_liabilities_and_equity = total_liabilities + total_equity
     prev_total_liabilities_and_equity = prev_total_liabilities + prev_total_equity
@@ -284,8 +298,15 @@ async def get_trial_balance(
         opening_balance = Decimal(str(acc.opening_balance or 0))
 
         # Determine debit/credit based on account type and balance sign
-        # Assets & Expenses: positive = debit, negative = credit
-        # Liabilities, Equity, Revenue: positive = credit, negative = debit
+        # current_balance is stored as: Sum(debits) - Sum(credits)
+        #
+        # For ASSET & EXPENSE accounts (normal debit balance):
+        #   - Positive current_balance = debit balance (normal)
+        #   - Negative current_balance = credit balance (abnormal/contra)
+        #
+        # For LIABILITY, EQUITY, REVENUE accounts (normal credit balance):
+        #   - Negative current_balance = credit balance (normal, because credits > debits)
+        #   - Positive current_balance = debit balance (abnormal)
         is_debit_account = acc.account_type in ("ASSET", "EXPENSE")
 
         if is_debit_account:
@@ -294,10 +315,12 @@ async def get_trial_balance(
             opening_debit = max(opening_balance, Decimal("0"))
             opening_credit = max(-opening_balance, Decimal("0"))
         else:
-            credit_balance = max(current_balance, Decimal("0"))
-            debit_balance = max(-current_balance, Decimal("0"))
-            opening_credit = max(opening_balance, Decimal("0"))
-            opening_debit = max(-opening_balance, Decimal("0"))
+            # For credit-normal accounts, current_balance is typically negative
+            # Negate to convert to proper credit representation
+            credit_balance = max(-current_balance, Decimal("0"))  # Negative balance = credit
+            debit_balance = max(current_balance, Decimal("0"))    # Positive balance = debit
+            opening_credit = max(-opening_balance, Decimal("0"))
+            opening_debit = max(opening_balance, Decimal("0"))
 
         # Period movement is the difference
         period_debit = max(debit_balance - opening_debit, Decimal("0"))
@@ -391,8 +414,9 @@ async def get_profit_loss_report(
     prev_total_revenue = Decimal("0")
 
     for acc in revenue_accounts:
-        amount = Decimal(str(acc.current_balance or 0))
-        prev_amount = Decimal(str(acc.opening_balance or 0))
+        # Revenue stores negative balance (credits > debits), negate to show positive
+        amount = -Decimal(str(acc.current_balance or 0))
+        prev_amount = -Decimal(str(acc.opening_balance or 0))
         total_revenue += amount
         prev_total_revenue += prev_amount
         if amount != 0 or prev_amount != 0:
