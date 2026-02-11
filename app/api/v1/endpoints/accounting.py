@@ -3898,7 +3898,6 @@ async def fix_trial_balance_imbalance(
             account_code=adj_account_code,
             account_name="Historical Adjustment (System Corrections)",
             account_type=AccountType.EQUITY,
-            parent_code="1000",
             is_group=False,
             is_active=True,
             description="Used for correcting historical GL posting errors",
