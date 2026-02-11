@@ -165,11 +165,24 @@ class PaymentRequest(BaseModel):
 # ==================== DASHBOARD ====================
 
 class ExpenseDashboard(BaseModel):
-    total_expenses_this_month: Decimal
-    total_expenses_this_year: Decimal
-    pending_approval_count: int
-    pending_approval_amount: Decimal
-    category_wise_summary: List[dict]
-    recent_vouchers: List[ExpenseVoucherResponse]
+    # Counts
+    total_vouchers: int = 0
+    draft_count: int = 0
+    pending_approval_count: int = 0
+    approved_count: int = 0
+    posted_count: int = 0
+    paid_count: int = 0
+    rejected_count: int = 0
+
+    # Amounts
+    total_amount_this_month: Decimal = Decimal("0")
+    total_amount_this_year: Decimal = Decimal("0")
+    pending_approval_amount: Decimal = Decimal("0")
+
+    # Summaries
+    category_wise_spending: List[dict] = []
+    cost_center_wise_spending: List[dict] = []
+    monthly_trend: List[dict] = []
+    recent_vouchers: List[ExpenseVoucherResponse] = []
 
 

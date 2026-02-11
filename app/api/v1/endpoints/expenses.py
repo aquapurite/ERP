@@ -8,13 +8,13 @@ Handles:
 """
 
 from typing import Optional
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal
 from math import ceil
 import uuid
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends
-from sqlalchemy import select, func, and_, or_, text
+from sqlalchemy import select, func, and_, or_, text, case
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, CurrentUser, require_permissions
@@ -32,19 +32,59 @@ router = APIRouter(tags=["Expenses"])
 
 # ==================== EXPENSE CATEGORIES ====================
 
-@router.get("/categories", response_model=list[ExpenseCategoryResponse])
+@router.get("/categories")
 async def list_expense_categories(
     db: DB,
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
     is_active: Optional[bool] = Query(None),
+    search: Optional[str] = Query(None),
 ):
-    """List all expense categories."""
+    """List all expense categories with pagination."""
     query = select(ExpenseCategory)
+
+    # Filters
     if is_active is not None:
         query = query.where(ExpenseCategory.is_active == is_active)
+    if search:
+        query = query.where(
+            or_(
+                ExpenseCategory.code.ilike(f"%{search}%"),
+                ExpenseCategory.name.ilike(f"%{search}%"),
+            )
+        )
+
+    # Count
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await db.execute(count_query)).scalar() or 0
+
+    # Pagination
     query = query.order_by(ExpenseCategory.name)
-    
+    query = query.offset((page - 1) * size).limit(size)
+
     result = await db.execute(query)
-    return result.scalars().all()
+    categories = result.scalars().all()
+
+    # Get voucher counts for each category
+    items = []
+    for cat in categories:
+        count_result = await db.execute(
+            select(func.count())
+            .where(ExpenseVoucher.expense_category_id == cat.id)
+        )
+        voucher_count = count_result.scalar() or 0
+        items.append({
+            **ExpenseCategoryResponse.model_validate(cat).model_dump(),
+            "voucher_count": voucher_count,
+        })
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "size": size,
+        "pages": ceil(total / size) if total > 0 else 1
+    }
 
 
 @router.get("/categories/dropdown")
@@ -447,7 +487,28 @@ async def get_expense_dashboard(
     now = datetime.now(timezone.utc)
     first_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     first_of_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-    
+
+    # Status counts
+    result = await db.execute(
+        select(
+            func.count().label("total"),
+            func.sum(func.case((ExpenseVoucher.status == "DRAFT", 1), else_=0)).label("draft"),
+            func.sum(func.case((ExpenseVoucher.status == "PENDING_APPROVAL", 1), else_=0)).label("pending"),
+            func.sum(func.case((ExpenseVoucher.status == "APPROVED", 1), else_=0)).label("approved"),
+            func.sum(func.case((ExpenseVoucher.status == "POSTED", 1), else_=0)).label("posted"),
+            func.sum(func.case((ExpenseVoucher.status == "PAID", 1), else_=0)).label("paid"),
+            func.sum(func.case((ExpenseVoucher.status == "REJECTED", 1), else_=0)).label("rejected"),
+        )
+    )
+    counts = result.one()
+    total_vouchers = counts[0] or 0
+    draft_count = counts[1] or 0
+    pending_approval_count = counts[2] or 0
+    approved_count = counts[3] or 0
+    posted_count = counts[4] or 0
+    paid_count = counts[5] or 0
+    rejected_count = counts[6] or 0
+
     # This month total
     result = await db.execute(
         select(func.coalesce(func.sum(ExpenseVoucher.net_amount), 0))
@@ -457,7 +518,7 @@ async def get_expense_dashboard(
         ))
     )
     total_this_month = result.scalar() or Decimal("0")
-    
+
     # This year total
     result = await db.execute(
         select(func.coalesce(func.sum(ExpenseVoucher.net_amount), 0))
@@ -467,32 +528,50 @@ async def get_expense_dashboard(
         ))
     )
     total_this_year = result.scalar() or Decimal("0")
-    
-    # Pending approval
+
+    # Pending approval amount
     result = await db.execute(
-        select(func.count(), func.coalesce(func.sum(ExpenseVoucher.net_amount), 0))
+        select(func.coalesce(func.sum(ExpenseVoucher.net_amount), 0))
         .where(ExpenseVoucher.status == "PENDING_APPROVAL")
     )
-    pending = result.one()
-    pending_count = pending[0] or 0
-    pending_amount = pending[1] or Decimal("0")
-    
-    # Category-wise summary
+    pending_amount = result.scalar() or Decimal("0")
+
+    # Category-wise spending this year
     result = await db.execute(
         select(
             ExpenseCategory.name,
-            func.coalesce(func.sum(ExpenseVoucher.net_amount), 0).label("total")
+            func.coalesce(func.sum(ExpenseVoucher.net_amount), 0).label("amount")
         )
         .join(ExpenseVoucher, ExpenseVoucher.expense_category_id == ExpenseCategory.id)
         .where(and_(
-            ExpenseVoucher.voucher_date >= first_of_month.date(),
+            ExpenseVoucher.voucher_date >= first_of_year.date(),
             ExpenseVoucher.status.in_(["APPROVED", "POSTED", "PAID"])
         ))
         .group_by(ExpenseCategory.name)
         .order_by(func.sum(ExpenseVoucher.net_amount).desc())
+        .limit(10)
     )
-    category_summary = [{"category": row[0], "total": row[1]} for row in result.all()]
-    
+    category_wise_spending = [{"category": row[0], "amount": float(row[1])} for row in result.all()]
+
+    # Monthly trend (last 6 months)
+    monthly_trend = []
+    for i in range(5, -1, -1):
+        month_start = (now.replace(day=1) - timedelta(days=i * 30)).replace(day=1)
+        month_end = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+        result = await db.execute(
+            select(func.coalesce(func.sum(ExpenseVoucher.net_amount), 0))
+            .where(and_(
+                ExpenseVoucher.voucher_date >= month_start.date(),
+                ExpenseVoucher.voucher_date < month_end.date(),
+                ExpenseVoucher.status.in_(["APPROVED", "POSTED", "PAID"])
+            ))
+        )
+        amount = result.scalar() or Decimal("0")
+        monthly_trend.append({
+            "month": month_start.strftime("%b %Y"),
+            "amount": float(amount)
+        })
+
     # Recent vouchers
     result = await db.execute(
         select(ExpenseVoucher)
@@ -501,13 +580,21 @@ async def get_expense_dashboard(
         .limit(5)
     )
     recent = result.scalars().all()
-    
+
     return ExpenseDashboard(
-        total_expenses_this_month=total_this_month,
-        total_expenses_this_year=total_this_year,
-        pending_approval_count=pending_count,
+        total_vouchers=total_vouchers,
+        draft_count=draft_count,
+        pending_approval_count=pending_approval_count,
+        approved_count=approved_count,
+        posted_count=posted_count,
+        paid_count=paid_count,
+        rejected_count=rejected_count,
+        total_amount_this_month=total_this_month,
+        total_amount_this_year=total_this_year,
         pending_approval_amount=pending_amount,
-        category_wise_summary=category_summary,
+        category_wise_spending=category_wise_spending,
+        cost_center_wise_spending=[],  # TODO: Implement when cost centers are linked
+        monthly_trend=monthly_trend,
         recent_vouchers=recent
     )
 
