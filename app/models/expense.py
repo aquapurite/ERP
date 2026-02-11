@@ -155,3 +155,83 @@ class ExpenseVoucher(Base):
 
     def __repr__(self):
         return f"<ExpenseVoucher {self.voucher_number}: {self.status}>"
+
+
+class CapexRequest(Base):
+    """
+    Capital Expenditure (CAPEX) Request with approval workflow.
+    
+    Status Flow: DRAFT → PENDING_APPROVAL → APPROVED → PO_CREATED → RECEIVED → CAPITALIZED
+                                         ↘ REJECTED
+    """
+    __tablename__ = "capex_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Request identification
+    request_number: Mapped[str] = mapped_column(String(30), unique=True, nullable=False, index=True)
+    request_date: Mapped[date] = mapped_column(Date, nullable=False)
+    financial_year: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+
+    # Asset details
+    asset_category_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    asset_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    justification: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Cost
+    estimated_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    actual_cost: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+
+    # Vendor
+    vendor_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    expected_delivery_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+
+    # Allocation
+    cost_center_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    department_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+    # Status
+    status: Mapped[str] = mapped_column(String(30), default="DRAFT", index=True)
+
+    # Maker
+    requested_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Checker
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    approval_level: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+
+    # Rejection
+    rejected_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    rejected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # PO Link
+    purchase_order_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+    # Asset Link
+    asset_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    capitalized_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Attachments
+    attachments: Mapped[dict] = mapped_column(JSONB, default=list)
+    roi_analysis: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+
+    # Audit
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
+
+    def __repr__(self):
+        return f"<CapexRequest {self.request_number}: {self.status}>"

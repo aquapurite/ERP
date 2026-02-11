@@ -171,3 +171,76 @@ class ExpenseDashboard(BaseModel):
     pending_approval_amount: Decimal
     category_wise_summary: List[dict]
     recent_vouchers: List[ExpenseVoucherResponse]
+
+
+# ==================== CAPEX REQUEST ====================
+
+class CapexRequestBase(BaseModel):
+    request_date: date
+    asset_category_id: Optional[UUID] = None
+    asset_name: str = Field(..., max_length=255)
+    description: Optional[str] = None
+    justification: Optional[str] = None
+    estimated_cost: Decimal = Field(..., gt=0)
+    vendor_id: Optional[UUID] = None
+    expected_delivery_date: Optional[date] = None
+    cost_center_id: Optional[UUID] = None
+    department_id: Optional[UUID] = None
+
+
+class CapexRequestCreate(CapexRequestBase):
+    pass
+
+
+class CapexRequestUpdate(BaseModel):
+    request_date: Optional[date] = None
+    asset_category_id: Optional[UUID] = None
+    asset_name: Optional[str] = Field(None, max_length=255)
+    description: Optional[str] = None
+    justification: Optional[str] = None
+    estimated_cost: Optional[Decimal] = Field(None, gt=0)
+    vendor_id: Optional[UUID] = None
+    expected_delivery_date: Optional[date] = None
+    cost_center_id: Optional[UUID] = None
+    department_id: Optional[UUID] = None
+
+
+class CapexRequestResponse(BaseResponseSchema):
+    id: UUID
+    request_number: str
+    request_date: date
+    financial_year: Optional[str] = None
+    asset_category_id: Optional[UUID] = None
+    asset_name: str
+    description: Optional[str] = None
+    justification: Optional[str] = None
+    estimated_cost: Decimal
+    actual_cost: Optional[Decimal] = None
+    vendor_id: Optional[UUID] = None
+    expected_delivery_date: Optional[date] = None
+    cost_center_id: Optional[UUID] = None
+    department_id: Optional[UUID] = None
+    status: str
+    requested_by: Optional[UUID] = None
+    submitted_at: Optional[datetime] = None
+    approved_by: Optional[UUID] = None
+    approved_at: Optional[datetime] = None
+    approval_level: Optional[str] = None
+    rejected_by: Optional[UUID] = None
+    rejected_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
+    purchase_order_id: Optional[UUID] = None
+    asset_id: Optional[UUID] = None
+    capitalized_at: Optional[datetime] = None
+    attachments: List[dict] = []
+    roi_analysis: Optional[dict] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CapexRequestListResponse(BaseModel):
+    items: List[CapexRequestResponse]
+    total: int
+    page: int
+    size: int
+    pages: int
