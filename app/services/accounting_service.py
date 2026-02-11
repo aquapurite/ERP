@@ -22,6 +22,9 @@ from app.models.accounting import (
     FinancialPeriodStatus, AccountType,
 )
 
+# Import from SINGLE SOURCE OF TRUTH
+from app.core.account_codes import AccountCode
+
 
 class AccountingService:
     """Service for automated accounting entries."""
@@ -29,54 +32,55 @@ class AccountingService:
     # System user ID for automated accounting entries (should be created in seed)
     SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001"
 
-    # Account code mappings for standard transactions
+    # Account code mappings - IMPORTED FROM CENTRAL DEFINITION
+    # DO NOT modify these values here - update app/core/account_codes.py instead
     ACCOUNT_CODES = {
         # Assets
-        "CASH": "1010",
-        "BANK_HDFC": "1020",
-        "BANK_ICICI": "1021",
-        "AR_CUSTOMERS": "1110",
-        "AR_DEALERS": "1120",
-        "INVENTORY_FG": "1210",
-        "INVENTORY_SPARES": "1220",
-        "INVENTORY_TRANSIT": "1230",
-        "CGST_INPUT": "1410",
-        "SGST_INPUT": "1420",
-        "IGST_INPUT": "1430",
+        "CASH": AccountCode.CASH.value,
+        "BANK_HDFC": AccountCode.BANK_HDFC.value,
+        "BANK_ICICI": AccountCode.BANK_ICICI.value,
+        "AR_CUSTOMERS": AccountCode.AR_CUSTOMERS.value,
+        "AR_DEALERS": AccountCode.AR_DEALERS.value,
+        "INVENTORY_FG": AccountCode.INVENTORY_FG.value,
+        "INVENTORY_SPARES": AccountCode.INVENTORY_SPARES.value,
+        "INVENTORY_TRANSIT": AccountCode.INVENTORY_TRANSIT.value,
+        "CGST_INPUT": AccountCode.CGST_INPUT.value,
+        "SGST_INPUT": AccountCode.SGST_INPUT.value,
+        "IGST_INPUT": AccountCode.IGST_INPUT.value,
 
         # Liabilities
-        "AP_VENDORS": "2110",
-        "AP_SERVICE": "2120",
-        "CGST_OUTPUT": "2210",
-        "SGST_OUTPUT": "2220",
-        "IGST_OUTPUT": "2230",
-        "ADVANCE_CUSTOMERS": "2500",
-        "PROVISION_WARRANTY": "2610",
+        "AP_VENDORS": AccountCode.AP_VENDORS.value,
+        "AP_SERVICE": AccountCode.AP_SERVICE.value,
+        "CGST_OUTPUT": AccountCode.CGST_OUTPUT.value,
+        "SGST_OUTPUT": AccountCode.SGST_OUTPUT.value,
+        "IGST_OUTPUT": AccountCode.IGST_OUTPUT.value,
+        "ADVANCE_CUSTOMERS": AccountCode.ADVANCE_CUSTOMERS.value,
+        "PROVISION_WARRANTY": AccountCode.PROVISION_WARRANTY.value,
 
         # Revenue
-        "SALES_PURIFIERS": "4110",
-        "SALES_SPARES": "4120",
-        "SALES_ACCESSORIES": "4130",
-        "SERVICE_INSTALLATION": "4210",
-        "SERVICE_AMC": "4220",
-        "SERVICE_CALL": "4230",
-        "SALES_RETURNS": "4400",
-        "SALES_DISCOUNT": "4500",
+        "SALES_PURIFIERS": AccountCode.SALES_PURIFIERS.value,
+        "SALES_SPARES": AccountCode.SALES_SPARES.value,
+        "SALES_ACCESSORIES": AccountCode.SALES_ACCESSORIES.value,
+        "SERVICE_INSTALLATION": AccountCode.SERVICE_INSTALLATION.value,
+        "SERVICE_AMC": AccountCode.SERVICE_AMC.value,
+        "SERVICE_CALL": AccountCode.SERVICE_CALL.value,
+        "SALES_RETURNS": AccountCode.SALES_RETURNS.value,
+        "SALES_DISCOUNT": AccountCode.SALES_DISCOUNT.value,
 
         # Expenses
-        "COGS_PURIFIERS": "5100",
-        "COGS_SPARES": "5200",
-        "FREIGHT_INWARD": "5300",
-        "FREIGHT_OUTWARD": "6410",
-        "WARRANTY_EXPENSE": "6600",
+        "COGS_PURIFIERS": AccountCode.COGS_PURIFIERS.value,
+        "COGS_SPARES": AccountCode.COGS_SPARES.value,
+        "FREIGHT_INWARD": AccountCode.FREIGHT_INWARD.value,
+        "FREIGHT_OUTWARD": AccountCode.FREIGHT_OUTWARD.value,
+        "WARRANTY_EXPENSE": AccountCode.WARRANTY_EXPENSE.value,
 
         # Fixed Assets & Depreciation
-        "FIXED_ASSETS": "1300",
-        "ACCUMULATED_DEPRECIATION": "1350",
-        "DEPRECIATION_EXPENSE": "6700",
+        "FIXED_ASSETS": AccountCode.FIXED_ASSETS.value,
+        "ACCUMULATED_DEPRECIATION": AccountCode.ACCUMULATED_DEPRECIATION.value,
+        "DEPRECIATION_EXPENSE": AccountCode.DEPRECIATION_EXPENSE.value,
 
         # TDS
-        "TDS_PAYABLE": "2300",
+        "TDS_PAYABLE": AccountCode.TDS_PAYABLE.value,
     }
 
     def __init__(self, db: AsyncSession, created_by: Optional[uuid.UUID] = None):

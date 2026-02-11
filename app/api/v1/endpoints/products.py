@@ -168,112 +168,6 @@ async def get_top_selling_products(
     return {"items": products}
 
 
-# ==================== SKU GENERATION ====================
-
-@router.get("/next-sku")
-async def get_next_sku(
-    db: DB,
-    brand_id: uuid.UUID = Query(..., description="Brand ID"),
-    category_id: uuid.UUID = Query(..., description="Subcategory ID"),
-    item_type: str = Query(..., regex="^(FG|SP)$", description="Item type: FG (Finished Goods) or SP (Spare Parts)"),
-    model_code: str = Query(..., min_length=1, max_length=5, description="Model name code (1-5 uppercase letters)"),
-):
-    """
-    Generate the next sequential SKU based on brand, category, item type, and model code.
-
-    SKU Format: [BRAND_CODE]-[PARENT_CAT_CODE]-[SUBCAT_CODE]-[ITEM_TYPE]-[MODEL_CODE]-[SEQUENCE]
-    Example: AP-WP-RU-FG-ELITZ-001
-
-    The sequence number is determined by counting existing products with the same
-    brand, subcategory, item type, and model code combination.
-    """
-    from sqlalchemy import select, func, and_
-    from app.models.brand import Brand
-    from app.models.category import Category
-    from app.models.product import Product
-    import re
-
-    # Validate and uppercase model_code
-    model_code = model_code.upper().strip()
-    if not model_code.isalpha():
-        raise HTTPException(status_code=400, detail="Model code must contain only letters")
-
-    # Get brand with code
-    brand_result = await db.execute(select(Brand).where(Brand.id == brand_id))
-    brand = brand_result.scalar_one_or_none()
-    if not brand:
-        raise HTTPException(status_code=404, detail="Brand not found")
-
-    # Get subcategory with code and parent
-    subcat_result = await db.execute(select(Category).where(Category.id == category_id))
-    subcategory = subcat_result.scalar_one_or_none()
-    if not subcategory:
-        raise HTTPException(status_code=404, detail="Subcategory not found")
-
-    # Get parent category (product line) if exists
-    parent_category = None
-    if subcategory.parent_id:
-        parent_result = await db.execute(select(Category).where(Category.id == subcategory.parent_id))
-        parent_category = parent_result.scalar_one_or_none()
-
-    # Generate codes - use code field if available, otherwise derive from slug
-    brand_code = brand.code or brand.slug[:2].upper() if brand.slug else "BR"
-    parent_code = ""
-    if parent_category:
-        parent_code = parent_category.code or parent_category.slug[:2].upper() if parent_category.slug else "PL"
-    subcat_code = subcategory.code or subcategory.slug[:2].upper() if subcategory.slug else "SC"
-
-    # Build SKU prefix with model code
-    # For Spare Parts (SP), omit item_type since product line already indicates SP
-    if parent_code:
-        if item_type == "SP" and parent_code == "SP":
-            # Spare Parts: AP-SP-PR-PURIO-001 (no item type, already implied by product line)
-            sku_prefix = f"{brand_code}-{parent_code}-{subcat_code}-{model_code}"
-        else:
-            # Finished Goods: AP-WP-RU-FG-ELITZ-001 (include item type)
-            sku_prefix = f"{brand_code}-{parent_code}-{subcat_code}-{item_type}-{model_code}"
-    else:
-        sku_prefix = f"{brand_code}-{subcat_code}-{item_type}-{model_code}"
-
-    # Count existing products with this prefix pattern
-    # We need to find the highest sequence number for this prefix
-    sku_pattern = f"{sku_prefix}-%"
-
-    # Query to find all SKUs starting with this prefix
-    result = await db.execute(
-        select(Product.sku)
-        .where(Product.sku.like(sku_pattern))
-        .order_by(Product.sku.desc())
-    )
-    existing_skus = [r[0] for r in result.fetchall()]
-
-    # Find the highest sequence number
-    max_sequence = 0
-    sequence_pattern = re.compile(rf"^{re.escape(sku_prefix)}-(\d+)$")
-
-    for sku in existing_skus:
-        match = sequence_pattern.match(sku)
-        if match:
-            seq = int(match.group(1))
-            if seq > max_sequence:
-                max_sequence = seq
-
-    # Next sequence number
-    next_sequence = max_sequence + 1
-    next_sku = f"{sku_prefix}-{str(next_sequence).zfill(3)}"
-
-    return {
-        "sku": next_sku,
-        "sequence": next_sequence,
-        "brand_code": brand_code,
-        "parent_category_code": parent_code,
-        "subcategory_code": subcat_code,
-        "item_type": item_type,
-        "model_code": model_code,
-        "prefix": sku_prefix,
-    }
-
-
 # ==================== PRODUCT COST ENDPOINTS (Static Routes First) ====================
 
 @router.get(
@@ -401,94 +295,56 @@ async def create_product(
     Create a new product.
     Requires: products:create permission
     """
-    import logging
-    logger = logging.getLogger(__name__)
-
-    # Log full request data for debugging
-    logger.info(f"[CREATE_PRODUCT] ========== START ==========")
-    logger.info(f"[CREATE_PRODUCT] name={data.name}")
-    logger.info(f"[CREATE_PRODUCT] sku={data.sku}")
-    logger.info(f"[CREATE_PRODUCT] slug={data.slug}")
-    logger.info(f"[CREATE_PRODUCT] category_id={data.category_id}")
-    logger.info(f"[CREATE_PRODUCT] brand_id={data.brand_id}")
-    logger.info(f"[CREATE_PRODUCT] mrp={data.mrp}, selling_price={data.selling_price}")
-    logger.info(f"[CREATE_PRODUCT] item_type={data.item_type}, model_code={data.model_code}")
-
     service = ProductService(db)
 
     # Check SKU uniqueness
-    logger.info(f"[CREATE_PRODUCT] Checking SKU uniqueness: {data.sku}")
     existing = await service.get_product_by_sku(data.sku)
     if existing:
-        logger.error(f"[CREATE_PRODUCT] FAILED: SKU '{data.sku}' already exists (existing product id: {existing.id})")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Product with SKU '{data.sku}' already exists"
         )
 
     # Check slug uniqueness
-    logger.info(f"[CREATE_PRODUCT] Checking slug uniqueness: {data.slug}")
     existing_slug = await service.get_product_by_slug(data.slug)
     if existing_slug:
-        logger.error(f"[CREATE_PRODUCT] FAILED: Slug '{data.slug}' already exists (existing product id: {existing_slug.id})")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Product with slug '{data.slug}' already exists"
         )
 
     # Validate category exists
-    logger.info(f"[CREATE_PRODUCT] Checking category exists: {data.category_id}")
     category = await service.get_category_by_id(data.category_id)
     if not category:
-        logger.error(f"[CREATE_PRODUCT] FAILED: Category not found for id={data.category_id}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Category not found. The selected category (id: {data.category_id}) does not exist in the database."
+            detail="Category not found"
         )
-    logger.info(f"[CREATE_PRODUCT] Category found: {category.name}")
 
     # Validate brand exists
-    logger.info(f"[CREATE_PRODUCT] Checking brand exists: {data.brand_id}")
     brand = await service.get_brand_by_id(data.brand_id)
     if not brand:
-        logger.error(f"[CREATE_PRODUCT] FAILED: Brand not found for id={data.brand_id}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Brand not found. The selected brand (id: {data.brand_id}) does not exist in the database."
+            detail="Brand not found"
         )
-    logger.info(f"[CREATE_PRODUCT] Brand found: {brand.name}")
 
-    # Step 1: Create product (this is the critical step)
-    logger.info(f"[CREATE_PRODUCT] Creating product...")
     product = await service.create_product(data)
-    logger.info(f"[CREATE_PRODUCT] Product created with id: {product.id}")
 
-    # Step 2: ORCHESTRATION - Non-critical, don't fail if this errors
-    try:
-        orchestration = ProductOrchestrationService(db)
-        orchestration_result = await orchestration.on_product_created(product)
-        logger.info(f"[CREATE_PRODUCT] Orchestration complete: {orchestration_result}")
-        await db.commit()
-    except Exception as e:
-        logger.warning(f"[CREATE_PRODUCT] Orchestration failed (non-critical): {type(e).__name__}: {str(e)}")
-        # Don't fail the request - product was created successfully
+    # ORCHESTRATION: Auto-setup serialization (model_code, serial sequence)
+    orchestration = ProductOrchestrationService(db)
+    orchestration_result = await orchestration.on_product_created(product)
 
-    # Step 3: Cache invalidation - Non-critical
-    try:
-        cache = get_cache()
-        await cache.invalidate_products()
-    except Exception as e:
-        logger.warning(f"[CREATE_PRODUCT] Cache invalidation failed (non-critical): {str(e)}")
+    # Commit orchestration changes
+    await db.commit()
 
-    # Step 4: Re-fetch with all relationships
-    try:
-        final_product = await service.get_product_by_id(product.id, include_all=True)
-        logger.info(f"[CREATE_PRODUCT] ========== SUCCESS ==========")
-        return _build_product_detail_response(final_product)
-    except Exception as e:
-        logger.error(f"[CREATE_PRODUCT] Re-fetch failed: {str(e)}")
-        # Return basic product info if re-fetch fails
-        return _build_product_detail_response(product)
+    # Invalidate product caches
+    cache = get_cache()
+    await cache.invalidate_products()
+
+    # Re-fetch with all relationships loaded (refresh strips relationships)
+    final_product = await service.get_product_by_id(product.id, include_all=True)
+    return _build_product_detail_response(final_product)
 
 
 @router.put(
@@ -1009,171 +865,4 @@ async def set_standard_cost(
         "average_cost": float(product_cost.average_cost),
         "variance": float(product_cost.cost_variance) if product_cost.cost_variance else None,
         "variance_percentage": product_cost.cost_variance_percentage,
-    }
-
-
-# ==================== SKU MIGRATION ====================
-
-@router.post(
-    "/migrate-sku",
-    dependencies=[Depends(require_permissions("products:update"))]
-)
-async def migrate_sku_format(
-    db: DB,
-    current_user: CurrentUser,
-    dry_run: bool = Query(True, description="Preview changes without applying"),
-):
-    """
-    Migrate product SKUs from old format to new standardized format.
-
-    Old format examples:
-    - WPRAOPT001 (FG)
-    - SPECPOC001 (SP)
-
-    New format:
-    - FG: AP-WP-RU-FG-OPT-001 (Brand-ProductLine-SubCat-ItemType-Model-Seq)
-    - SP: AP-SP-EC-POC-001 (Brand-ProductLine-SubCat-Model-Seq)
-
-    Requires: products:update permission
-    """
-    from sqlalchemy import text
-    import logging
-    logger = logging.getLogger(__name__)
-
-    logger.info(f"[SKU_MIGRATION] Starting migration (dry_run={dry_run})")
-
-    # Get category hierarchy
-    cat_result = await db.execute(text('''
-        SELECT
-            c.id as cat_id,
-            c.code as cat_code,
-            c.name as cat_name,
-            p.id as parent_id,
-            p.code as parent_code,
-            p.name as parent_name
-        FROM categories c
-        LEFT JOIN categories p ON c.parent_id = p.id
-    '''))
-
-    category_hierarchy = {}
-    for row in cat_result.fetchall():
-        cat_id = str(row[0])
-        cat_code = row[1] or 'XX'
-        parent_code = row[4] or cat_code
-        category_hierarchy[cat_id] = {
-            'cat_code': cat_code,
-            'parent_code': parent_code,
-        }
-
-    # Get brand codes
-    brand_result = await db.execute(text('SELECT id, code FROM brands'))
-    brand_codes = {str(row[0]): row[1] or 'XX' for row in brand_result.fetchall()}
-
-    # Get products to migrate (those NOT in new format)
-    products_result = await db.execute(text('''
-        SELECT
-            p.id,
-            p.sku,
-            p.name,
-            p.model_code,
-            p.item_type,
-            p.category_id,
-            p.brand_id
-        FROM products p
-        WHERE p.sku NOT LIKE 'AP-%-%-%-%-___'
-          AND p.sku NOT LIKE 'AP-%-%-%-___'
-        ORDER BY p.created_at
-    '''))
-    products = products_result.fetchall()
-
-    if not products:
-        return {
-            "message": "No products need migration. All SKUs are already in new format.",
-            "migrated_count": 0,
-            "dry_run": dry_run,
-            "migrations": []
-        }
-
-    # Track SKU counters for sequence numbers
-    sku_counters = {}
-    migration_report = []
-
-    for product in products:
-        product_id = product[0]
-        old_sku = product[1]
-        product_name = product[2]
-        model_code = product[3] or 'XXX'
-        item_type = product[4] or 'FG'
-        category_id = str(product[5])
-        brand_id = str(product[6])
-
-        # Get brand code
-        brand_code = brand_codes.get(brand_id, 'XX')
-
-        # Get category hierarchy
-        cat_info = category_hierarchy.get(category_id, {})
-        parent_code = cat_info.get('parent_code', 'XX')
-        subcat_code = cat_info.get('cat_code', 'XX')
-
-        # Ensure model_code is exactly 3 characters (uppercase)
-        model_code = model_code[:3].upper()
-
-        # Build SKU prefix
-        if parent_code == 'SP' or item_type == 'SP':
-            # Spare Parts: No item_type in SKU
-            sku_prefix = f"{brand_code}-{parent_code}-{subcat_code}-{model_code}"
-        else:
-            # Finished Goods: Include item_type
-            sku_prefix = f"{brand_code}-{parent_code}-{subcat_code}-{item_type}-{model_code}"
-
-        # Get next sequence number for this prefix
-        if sku_prefix not in sku_counters:
-            sku_counters[sku_prefix] = 0
-        sku_counters[sku_prefix] += 1
-        seq = sku_counters[sku_prefix]
-
-        new_sku = f"{sku_prefix}-{str(seq).zfill(3)}"
-
-        migration_report.append({
-            'product_id': str(product_id),
-            'old_sku': old_sku,
-            'new_sku': new_sku,
-            'product_name': product_name
-        })
-
-        if not dry_run:
-            try:
-                # Convert product_id to string for SQL parameter
-                pid_str = str(product_id)
-
-                # Update product SKU
-                await db.execute(text(
-                    "UPDATE products SET sku = :new_sku, updated_at = NOW() WHERE id = CAST(:product_id AS UUID)"
-                ), {'new_sku': new_sku, 'product_id': pid_str})
-
-                # Update model_code_references (product_id is UUID after schema fix)
-                await db.execute(text(
-                    "UPDATE model_code_references SET product_sku = :new_sku, updated_at = NOW() WHERE product_id = CAST(:product_id AS UUID)"
-                ), {'new_sku': new_sku, 'product_id': pid_str})
-
-                # Update product_serial_sequences (product_id is UUID after schema fix)
-                await db.execute(text(
-                    "UPDATE product_serial_sequences SET product_sku = :new_sku, updated_at = NOW() WHERE product_id = CAST(:product_id AS UUID)"
-                ), {'new_sku': new_sku, 'product_id': pid_str})
-
-                logger.info(f"[SKU_MIGRATION] Updated: {old_sku} -> {new_sku}")
-            except Exception as e:
-                logger.error(f"[SKU_MIGRATION] Failed to update {old_sku}: {str(e)}")
-                raise
-
-    if not dry_run:
-        await db.commit()
-        logger.info(f"[SKU_MIGRATION] Migration complete! {len(products)} products updated.")
-
-    return {
-        "message": f"{'DRY RUN - ' if dry_run else ''}Migration {'preview' if dry_run else 'complete'}",
-        "migrated_count": len(products),
-        "dry_run": dry_run,
-        "sku_prefix_counts": sku_counters,
-        "migrations": migration_report
     }

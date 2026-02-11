@@ -325,10 +325,6 @@ export const navigation: NavItem[] = [
       { title: 'TDS Management', href: '/dashboard/finance/tds', icon: IndianRupee, permissions: ['TDS_VIEW'] },
       { title: 'E-Way Bills', href: '/dashboard/billing/eway-bills', icon: Truck, permissions: ['FINANCE_VIEW'] },
 
-      // -------- EXPENSES --------
-      { title: '── Expenses ──', href: '#', permissions: ['EXPENSES_VIEW'] },
-      { title: 'Expense Vouchers', href: '/dashboard/finance/expenses', icon: Receipt, permissions: ['EXPENSES_VIEW'] },
-
       // -------- ASSETS --------
       { title: '── Assets ──', href: '#', permissions: ['ASSETS_VIEW'] },
       { title: 'Fixed Assets', href: '/dashboard/finance/fixed-assets', icon: Building2, permissions: ['ASSETS_VIEW'] },

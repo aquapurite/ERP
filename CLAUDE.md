@@ -441,6 +441,88 @@ asyncio.run(main())
 | New table | Table created in Supabase |
 | Data type change | Column type matches |
 
+### Rule 8: Single Source of Truth for Constants (CRITICAL)
+
+**NEVER duplicate constant definitions across multiple files.** This was the root cause of a major COA corruption issue where GST accounts were created at Fixed Asset codes.
+
+**Central Definition Files:**
+| Constant Type | File Location | Usage |
+|---------------|---------------|-------|
+| Account Codes | `app/core/account_codes.py` | Import `AccountCode` enum |
+| Status Values | Use model/schema enums | Don't hardcode strings |
+| Tax Rates | Define in config or constants | Don't use magic numbers |
+
+**Example - CORRECT:**
+```python
+# In any service file
+from app.core.account_codes import AccountCode
+
+# Use enum value
+cgst_code = AccountCode.CGST_INPUT.value  # "1410"
+```
+
+**Example - WRONG:**
+```python
+# ❌ BAD - Hardcoded values that can drift from database
+DEFAULT_ACCOUNTS = {
+    "CGST_RECEIVABLE": "1510",  # WRONG! This is Land & Building!
+}
+```
+
+**Before adding any new constant:**
+1. Check if a central definition file exists
+2. Add to central file if needed
+3. Import and use from central file
+4. Run audit: `python scripts/audit_codebase.py`
+
+### Rule 9: Avoid get_or_create Patterns for Critical Data
+
+**DO NOT auto-create database records if they don't exist** for critical master data like:
+- Chart of Accounts
+- Tax configurations
+- Permissions
+- Roles
+
+This masks configuration errors. Instead:
+1. Validate at startup that required records exist
+2. Fail fast with clear error message
+3. Provide setup scripts for missing data
+
+```python
+# ❌ BAD - Creates wrong entries silently
+async def get_or_create_account(self, code, name, ...):
+    account = await self.get_account_by_code(code)
+    if not account:
+        account = ChartOfAccount(...)  # Silently creates!
+    return account
+
+# ✅ GOOD - Fails if account doesn't exist
+async def get_account(self, code: str) -> ChartOfAccount:
+    account = await self.get_account_by_code(code)
+    if not account:
+        raise ValueError(f"Account {code} not found in COA. Run setup script.")
+    return account
+```
+
+### Rule 10: Run Codebase Audit Before Deployment
+
+**Run the audit script before every deployment:**
+
+```bash
+# Check for hardcoded values, duplicates, and missing validations
+python scripts/audit_codebase.py
+
+# Check GST/COA structure
+python scripts/fix_gst_accounts.py
+```
+
+The audit checks for:
+- Hardcoded account codes not using central enum
+- Duplicate constant definitions
+- get_or_create patterns
+- Magic numbers in financial calculations
+- Missing startup validations
+
 ---
 
 ## Development Guide

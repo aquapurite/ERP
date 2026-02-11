@@ -41,9 +41,6 @@ class Permission(Base):
     # Action type (view, create, update, delete, approve, etc.)
     action: Mapped[str] = mapped_column(String(50), nullable=False)
 
-    # Resource being protected (expenses, capex, products, etc.)
-    resource: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Timestamps

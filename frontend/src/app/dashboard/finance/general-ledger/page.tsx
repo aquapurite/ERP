@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { BookText, Download, Filter, RefreshCw, AlertTriangle } from 'lucide-react';
+import { BookText, Download, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -15,18 +15,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader } from '@/components/common';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import { toast } from 'sonner';
 import apiClient from '@/lib/api/client';
 import { formatDate, formatCurrency } from '@/lib/utils';
 
@@ -48,22 +36,6 @@ interface Account {
   account_type: string;
 }
 
-interface RecalculateResult {
-  message: string;
-  accounts_processed: number;
-  discrepancies_found: number;
-  accounts_fixed: number;
-  details?: Array<{
-    account_id: string;
-    account_code: string;
-    account_name: string;
-    old_balance: number;
-    new_balance: number;
-    discrepancy: number;
-    status: string;
-  }>;
-}
-
 const ledgerApi = {
   getAccounts: async () => {
     try {
@@ -80,11 +52,6 @@ const ledgerApi = {
     } catch {
       return { items: [], total: 0, pages: 0, opening_balance: 0, closing_balance: 0 };
     }
-  },
-  recalculateBalances: async (accountId?: string): Promise<RecalculateResult> => {
-    const params = accountId ? { account_id: accountId } : {};
-    const { data } = await apiClient.post('/accounting/recalculate-account-balances', null, { params });
-    return data;
   },
 };
 
@@ -151,8 +118,6 @@ export default function GeneralLedgerPage() {
   const [selectedAccount, setSelectedAccount] = useState<string>('');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
-  const [recalculateDialogOpen, setRecalculateDialogOpen] = useState(false);
-  const queryClient = useQueryClient();
 
   const { data: accountsData } = useQuery({
     queryKey: ['accounts-list'],
@@ -165,38 +130,6 @@ export default function GeneralLedgerPage() {
     enabled: !!selectedAccount,
   });
 
-  // Mutation for recalculating balances
-  const recalculateMutation = useMutation({
-    mutationFn: (accountId?: string) => ledgerApi.recalculateBalances(accountId),
-    onSuccess: (data) => {
-      // Invalidate queries to refresh data
-      queryClient.invalidateQueries({ queryKey: ['ledger'] });
-      queryClient.invalidateQueries({ queryKey: ['accounts-list'] });
-
-      if (data.discrepancies_found > 0) {
-        toast.success(
-          `Balances Recalculated: Fixed ${data.accounts_fixed} accounts with discrepancies out of ${data.accounts_processed} processed.`
-        );
-      } else {
-        toast.success(
-          `Balances Verified: All ${data.accounts_processed} accounts have correct balances. No fixes needed.`
-        );
-      }
-      setRecalculateDialogOpen(false);
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || 'An error occurred while recalculating balances.');
-    },
-  });
-
-  const handleRecalculate = (allAccounts: boolean) => {
-    if (allAccounts) {
-      recalculateMutation.mutate(undefined);
-    } else if (selectedAccount) {
-      recalculateMutation.mutate(selectedAccount);
-    }
-  };
-
   // API returns { items: [...], total: ... }
   const accounts = accountsData?.items || [];
 
@@ -206,62 +139,10 @@ export default function GeneralLedgerPage() {
         title="General Ledger"
         description="View account-wise transaction details"
         actions={
-          <div className="flex gap-2">
-            <AlertDialog open={recalculateDialogOpen} onOpenChange={setRecalculateDialogOpen}>
-              <AlertDialogTrigger asChild>
-                <Button variant="outline" className="text-orange-600 border-orange-600 hover:bg-orange-50">
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Recalculate Balances
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle className="flex items-center gap-2">
-                    <AlertTriangle className="h-5 w-5 text-orange-500" />
-                    Recalculate Account Balances
-                  </AlertDialogTitle>
-                  <AlertDialogDescription className="space-y-2">
-                    <p>
-                      This will recalculate all running balances from the General Ledger entries.
-                      Use this to fix any balance discrepancies caused by entries posted out of order.
-                    </p>
-                    <p className="font-medium">
-                      Choose an option:
-                    </p>
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter className="flex-col sm:flex-row gap-2">
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  {selectedAccount && (
-                    <Button
-                      variant="outline"
-                      onClick={() => handleRecalculate(false)}
-                      disabled={recalculateMutation.isPending}
-                    >
-                      {recalculateMutation.isPending ? (
-                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                      ) : null}
-                      Selected Account Only
-                    </Button>
-                  )}
-                  <AlertDialogAction
-                    onClick={() => handleRecalculate(true)}
-                    disabled={recalculateMutation.isPending}
-                    className="bg-orange-600 hover:bg-orange-700"
-                  >
-                    {recalculateMutation.isPending ? (
-                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                    ) : null}
-                    All Accounts
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-            <Button variant="outline">
-              <Download className="mr-2 h-4 w-4" />
-              Export
-            </Button>
-          </div>
+          <Button variant="outline">
+            <Download className="mr-2 h-4 w-4" />
+            Export
+          </Button>
         }
       />
 

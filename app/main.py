@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import traceback
+import logging
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -9,6 +10,8 @@ from app.config import settings
 from app.api.v1.router import api_router
 from app.database import init_db, async_session_factory
 from app.jobs.scheduler import start_scheduler, shutdown_scheduler
+
+logger = logging.getLogger(__name__)
 
 
 async def auto_seed_admin():
@@ -73,6 +76,39 @@ async def auto_seed_admin():
         import traceback
         print(f"Auto-seed error: {e}")
         traceback.print_exc()
+
+
+async def run_startup_validations():
+    """
+    Run validation checks at startup to ensure database matches expected structure.
+
+    This catches configuration drift issues like:
+    - Missing required accounts in COA
+    - GST accounts at wrong codes
+    - Duplicate account entries
+    """
+    from app.core.startup_validation import run_startup_validations as validate
+
+    try:
+        print("=" * 60)
+        print("RUNNING STARTUP VALIDATIONS")
+        print("=" * 60)
+
+        result = await validate(fail_on_error=False)
+
+        if result['summary']['errors'] > 0:
+            print(f"⚠️ VALIDATION: Found {result['summary']['errors']} errors!")
+            print("   Review errors above. Application will continue but may have issues.")
+            logger.warning(f"Startup validation found {result['summary']['errors']} errors")
+        elif result['summary']['warnings'] > 0:
+            print(f"✓ VALIDATION: Passed with {result['summary']['warnings']} warnings")
+        else:
+            print("✓ VALIDATION: All checks passed!")
+
+    except Exception as e:
+        print(f"⚠️ VALIDATION: Error running validations: {e}")
+        logger.error(f"Startup validation error: {e}")
+        # Don't fail startup, just log the error
 
 
 async def auto_link_vendors_to_supplier_codes():
@@ -161,6 +197,8 @@ async def lifespan(app: FastAPI):
     # Initialize database tables
     await init_db()
     print("Database initialized")
+    # Run startup validations (COA structure, account codes, etc.)
+    await run_startup_validations()
     # Auto-seed admin user if needed
     await auto_seed_admin()
     # Auto-link vendors to supplier codes

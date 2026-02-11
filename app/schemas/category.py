@@ -9,7 +9,6 @@ import uuid
 class CategoryBase(BaseModel):
     """Base category schema."""
     name: str = Field(..., min_length=1, max_length=100)
-    code: Optional[str] = Field(None, max_length=10, description="Short code for SKU generation (e.g., WP for Water Purifiers)")
     slug: str = Field(..., min_length=1, max_length=120)
     description: Optional[str] = None
     parent_id: Optional[uuid.UUID] = None
@@ -29,7 +28,6 @@ class CategoryCreate(CategoryBase):
 class CategoryUpdate(BaseModel):
     """Category update schema."""
     name: Optional[str] = Field(None, min_length=1, max_length=100)
-    code: Optional[str] = Field(None, max_length=10)
     slug: Optional[str] = Field(None, min_length=1, max_length=120)
     description: Optional[str] = None
     parent_id: Optional[uuid.UUID] = None
@@ -46,7 +44,6 @@ class CategoryResponse(BaseResponseSchema):
     """Category response schema."""
     id: uuid.UUID
     name: str
-    code: Optional[str] = None
     slug: str
     description: Optional[str] = None
     parent_id: Optional[uuid.UUID] = None

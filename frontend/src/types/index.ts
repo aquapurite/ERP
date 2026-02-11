@@ -209,7 +209,6 @@ export interface Product {
 export interface Category {
   id: string;
   name: string;
-  code?: string;
   slug: string;
   description?: string;
   parent_id?: string;
@@ -223,7 +222,7 @@ export interface Category {
 export interface Brand {
   id: string;
   name: string;
-  code?: string;
+  code: string;
   description?: string;
   logo_url?: string;
   is_active: boolean;

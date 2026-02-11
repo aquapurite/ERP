@@ -144,7 +144,7 @@ export default function BrandsPage() {
     setEditingBrand(brand);
     setEditFormData({
       name: brand.name,
-      code: brand.code || '',
+      code: brand.code,
       description: brand.description || '',
       logo_url: brand.logo_url || '',
       is_active: brand.is_active,

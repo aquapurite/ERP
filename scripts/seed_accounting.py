@@ -356,6 +356,63 @@ async def seed_cost_centers(db: AsyncSession):
     print(f"\nTotal Cost Centers Created: {len(cost_centers)}")
 
 
+async def validate_seeded_accounts(db: AsyncSession):
+    """
+    Validate seeded accounts match the centralized AccountCode enum.
+    This catches any drift between seed data and the single source of truth.
+    """
+    print("\n" + "=" * 60)
+    print("VALIDATING SEEDED ACCOUNTS")
+    print("=" * 60)
+
+    try:
+        # Import the single source of truth
+        from app.core.account_codes import AccountCode
+
+        # Get all seeded accounts
+        result = await db.execute(select(ChartOfAccount))
+        accounts = {acc.account_code: acc for acc in result.scalars().all()}
+
+        # Key accounts that MUST exist and match
+        critical_accounts = [
+            ("1200", "Inventory", AccountCode.INVENTORY.value),
+            ("1410", "CGST Input", AccountCode.CGST_INPUT.value),
+            ("1420", "SGST Input", AccountCode.SGST_INPUT.value),
+            ("1430", "IGST Input", AccountCode.IGST_INPUT.value),
+            ("1510", "Land & Building", AccountCode.LAND_BUILDING.value),
+            ("1520", "Plant & Machinery", AccountCode.PLANT_MACHINERY.value),
+            ("1530", "Furniture & Fixtures", AccountCode.FURNITURE_FIXTURES.value),
+            ("2210", "CGST Output", AccountCode.CGST_OUTPUT.value),
+            ("2220", "SGST Output", AccountCode.SGST_OUTPUT.value),
+            ("2230", "IGST Output", AccountCode.IGST_OUTPUT.value),
+        ]
+
+        errors = []
+        for expected_code, expected_name_part, enum_value in critical_accounts:
+            if expected_code != enum_value:
+                errors.append(f"Code mismatch: seed uses {expected_code}, enum uses {enum_value}")
+
+            if expected_code not in accounts:
+                errors.append(f"Missing account: {expected_code} ({expected_name_part})")
+            else:
+                acc = accounts[expected_code]
+                if expected_name_part.lower() not in acc.account_name.lower():
+                    errors.append(f"Name mismatch for {expected_code}: seed='{acc.account_name}', expected contains '{expected_name_part}'")
+
+        if errors:
+            print("⚠️ VALIDATION WARNINGS:")
+            for err in errors:
+                print(f"  - {err}")
+            print("\nReview app/core/account_codes.py and scripts/seed_accounting.py for consistency.")
+        else:
+            print("✓ All critical accounts validated successfully!")
+
+    except ImportError:
+        print("⚠️ Could not import account_codes.py - skipping validation")
+    except Exception as e:
+        print(f"⚠️ Validation error: {e}")
+
+
 async def main():
     """Main seed function."""
     print("\n" + "=" * 60)
@@ -371,6 +428,10 @@ async def main():
             await seed_cost_centers(db)
 
             await db.commit()
+
+            # Validate seeded data against single source of truth
+            await validate_seeded_accounts(db)
+
             print("\n" + "=" * 60)
             print("ACCOUNTING SEED COMPLETED SUCCESSFULLY!")
             print("=" * 60)

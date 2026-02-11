@@ -65,37 +65,41 @@ class AutoJournalService:
     NOTE: This system is single-company, so company_id is optional.
     """
 
-    # Default ledger account codes (configurable per system)
+    # Default ledger account codes - IMPORTED FROM SINGLE SOURCE OF TRUTH
+    # See app/core/account_codes.py for the canonical definitions
+    # DO NOT modify these values here - update account_codes.py instead
+    from app.core.account_codes import AccountCode
+
     DEFAULT_ACCOUNTS = {
         # Revenue accounts
-        "SALES_REVENUE": "4000",
-        "SERVICE_REVENUE": "4100",
+        "SALES_REVENUE": AccountCode.SALES_REVENUE.value,
+        "SERVICE_REVENUE": AccountCode.SERVICE_REVENUE.value,
 
         # Asset accounts
-        "ACCOUNTS_RECEIVABLE": "1300",
-        "CASH": "1010",
-        "BANK": "1020",
-        "INVENTORY": "1400",
+        "ACCOUNTS_RECEIVABLE": AccountCode.ACCOUNTS_RECEIVABLE.value,
+        "CASH": AccountCode.CASH.value,
+        "BANK": AccountCode.BANK_HDFC.value,
+        "INVENTORY": AccountCode.INVENTORY.value,
 
         # Liability accounts
-        "ACCOUNTS_PAYABLE": "2100",
-        "GST_OUTPUT": "2300",
-        "GST_INPUT": "1500",
-        "CGST_PAYABLE": "2310",
-        "SGST_PAYABLE": "2320",
-        "IGST_PAYABLE": "2330",
-        "CGST_RECEIVABLE": "1510",
-        "SGST_RECEIVABLE": "1520",
-        "IGST_RECEIVABLE": "1530",
-        "TDS_PAYABLE": "2400",
-        "TDS_RECEIVABLE": "1600",
+        "ACCOUNTS_PAYABLE": AccountCode.ACCOUNTS_PAYABLE.value,
+        "GST_OUTPUT": AccountCode.GST_OUTPUT.value,
+        "GST_INPUT": AccountCode.GST_INPUT.value,
+        "CGST_PAYABLE": AccountCode.CGST_OUTPUT.value,
+        "SGST_PAYABLE": AccountCode.SGST_OUTPUT.value,
+        "IGST_PAYABLE": AccountCode.IGST_OUTPUT.value,
+        "CGST_RECEIVABLE": AccountCode.CGST_INPUT.value,
+        "SGST_RECEIVABLE": AccountCode.SGST_INPUT.value,
+        "IGST_RECEIVABLE": AccountCode.IGST_INPUT.value,
+        "TDS_PAYABLE": AccountCode.TDS_PAYABLE_194C.value,
+        "TDS_RECEIVABLE": AccountCode.TDS_RECEIVABLE.value,
 
         # Expense accounts
-        "PURCHASE": "5000",
-        "COST_OF_GOODS_SOLD": "5100",
-        "DISCOUNT_ALLOWED": "6100",
-        "DISCOUNT_RECEIVED": "4200",
-        "ROUND_OFF": "6900",
+        "PURCHASE": AccountCode.PURCHASE.value,
+        "COST_OF_GOODS_SOLD": AccountCode.COGS.value,
+        "DISCOUNT_ALLOWED": AccountCode.DISCOUNT_ALLOWED.value,
+        "DISCOUNT_RECEIVED": AccountCode.DISCOUNT_RECEIVED.value,
+        "ROUND_OFF": AccountCode.ROUND_OFF.value,
     }
 
     def __init__(self, db: AsyncSession, company_id: UUID = None):

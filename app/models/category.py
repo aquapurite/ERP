@@ -25,11 +25,6 @@ class Category(Base):
         default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    code: Mapped[Optional[str]] = mapped_column(
-        String(10),
-        nullable=True,
-        comment="Short code for SKU generation (e.g., WP for Water Purifiers)"
-    )
     slug: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
