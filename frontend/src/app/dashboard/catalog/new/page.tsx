@@ -216,23 +216,45 @@ export default function NewProductPage() {
       router.push('/dashboard/catalog');
     },
     onError: (error: any) => {
+      // Log detailed error information
+      console.error('[DEBUG] Product creation FAILED');
+      console.error('[DEBUG] HTTP Status:', error?.response?.status);
+      console.error('[DEBUG] Response data:', JSON.stringify(error?.response?.data, null, 2));
+      console.error('[DEBUG] Full error:', error);
+
       // Extract actual error message from API response
       const apiError = error?.response?.data?.detail;
+      const httpStatus = error?.response?.status || 'Unknown';
       const errorMessage = typeof apiError === 'string'
-        ? apiError
+        ? `[${httpStatus}] ${apiError}`
         : Array.isArray(apiError)
-          ? apiError.map((e: any) => `${e.loc?.join('.')}: ${e.msg}`).join(', ')
-          : error.message || 'Failed to create product';
+          ? `[${httpStatus}] ${apiError.map((e: any) => `${e.loc?.join('.')}: ${e.msg}`).join(', ')}`
+          : `[${httpStatus}] ${error.message || 'Failed to create product'}`;
 
-      console.error('Product creation failed:', error?.response?.data || error);
       toast.error(errorMessage);
     },
   });
 
   const onSubmit = (data: ProductFormData) => {
+    // Generate slug if not provided
     if (!data.slug) {
       data.slug = data.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
     }
+    // Ensure slug is not empty after processing
+    if (!data.slug || data.slug.length === 0) {
+      data.slug = `product-${Date.now()}`;
+    }
+    console.log('[DEBUG] Submitting form data:', {
+      name: data.name,
+      sku: data.sku,
+      slug: data.slug,
+      brand_id: data.brand_id,
+      category_id: data.category_id,
+      mrp: data.mrp,
+      selling_price: data.selling_price,
+      item_type: data.item_type,
+      model_code: data.model_code,
+    });
     createMutation.mutate(data);
   };
 
