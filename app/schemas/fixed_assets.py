@@ -48,6 +48,15 @@ class AssetCategoryUpdate(BaseModel):
 class AssetCategoryResponse(BaseResponseSchema):
     """Response schema for Asset Category."""
     id: UUID
+    code: str
+    name: str
+    description: Optional[str] = None
+    depreciation_method: str
+    depreciation_rate: Decimal
+    useful_life_years: int
+    asset_account_id: Optional[UUID] = None
+    depreciation_account_id: Optional[UUID] = None
+    expense_account_id: Optional[UUID] = None
     is_active: bool
     asset_count: int = 0
     created_at: datetime
