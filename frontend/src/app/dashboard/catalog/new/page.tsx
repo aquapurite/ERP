@@ -170,14 +170,15 @@ export default function NewProductPage() {
   const createMutation = useMutation({
     mutationFn: async (data: ProductFormData) => {
       // Transform frontend field names to backend field names
-      const { weight, length, width, height, requires_installation, ...rest } = data;
+      const { weight, length, width, height, requires_installation, tags: formTags, ...rest } = data;
       const backendData = {
         ...rest,
         dead_weight_kg: weight,
         length_cm: length,
         width_cm: width,
         height_cm: height,
-        tags,
+        // Store tags in extra_data since backend doesn't have a tags field
+        extra_data: tags.length > 0 ? { tags } : undefined,
       };
       const product = await productsApi.create(backendData);
 
