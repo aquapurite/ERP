@@ -164,6 +164,34 @@ async def get_balance_sheet(
     equity_result = await db.execute(equity_query)
     equity_accounts = equity_result.scalars().all()
 
+    # Calculate Current Period P&L (Revenue - Expenses)
+    # This needs to be added to Equity to balance the Balance Sheet
+    revenue_query = select(ChartOfAccount).where(
+        and_(
+            ChartOfAccount.account_type == "REVENUE",
+            ChartOfAccount.is_group == False,
+            ChartOfAccount.is_active == True,
+        )
+    )
+    revenue_result = await db.execute(revenue_query)
+    revenue_accounts = revenue_result.scalars().all()
+    # Revenue is stored as negative (credit), negate to get positive
+    total_revenue = -sum(float(r.current_balance or 0) for r in revenue_accounts)
+
+    expense_query = select(ChartOfAccount).where(
+        and_(
+            ChartOfAccount.account_type == "EXPENSE",
+            ChartOfAccount.is_group == False,
+            ChartOfAccount.is_active == True,
+        )
+    )
+    expense_result = await db.execute(expense_query)
+    expense_accounts = expense_result.scalars().all()
+    total_expenses = sum(float(e.current_balance or 0) for e in expense_accounts)
+
+    # Net Income (Profit/Loss) for current period
+    current_period_pnl = total_revenue - total_expenses
+
     # For comparison, use opening_balance as "previous" (simplified)
     # In a full implementation, we'd query GL at a previous date
     previous_balances = {}
@@ -177,6 +205,20 @@ async def get_balance_sheet(
     non_current_liabilities_items = build_section_items(non_current_liabilities, previous_balances, negate=True)
     equity_items = build_section_items(equity_accounts, previous_balances, negate=True)
 
+    # Add Current Period P&L to equity items
+    # This represents undistributed profit/loss for the current period
+    if current_period_pnl != 0:
+        equity_items.append({
+            "account_code": "",
+            "account_name": "Current Period P&L (Net Income)",
+            "current_balance": current_period_pnl,
+            "previous_balance": 0,
+            "variance": current_period_pnl,
+            "variance_percentage": 0,
+            "is_group": False,
+            "indent_level": 0
+        })
+
     # Calculate totals - negate liability/equity since they store negative balances
     total_current_assets = sum(float(a.current_balance or 0) for a in current_assets)
     total_non_current_assets = sum(float(a.current_balance or 0) for a in non_current_assets)
@@ -187,7 +229,8 @@ async def get_balance_sheet(
     total_non_current_liabilities = -sum(float(l.current_balance or 0) for l in non_current_liabilities)
     total_liabilities = total_current_liabilities + total_non_current_liabilities
 
-    total_equity = -sum(float(e.current_balance or 0) for e in equity_accounts)
+    # Equity includes current period P&L
+    total_equity = -sum(float(e.current_balance or 0) for e in equity_accounts) + current_period_pnl
 
     # Previous totals - negate liability/equity
     prev_current_assets = sum(previous_balances.get(str(a.id), 0) for a in current_assets)
