@@ -397,6 +397,7 @@ class JournalApproveRequest(BaseModel):
     """Request to approve a journal entry."""
     remarks: Optional[str] = Field(None, max_length=500, description="Approval remarks")
     auto_post: bool = Field(True, description="Automatically post to GL after approval")
+    bypass_maker_checker: bool = Field(False, description="Bypass maker-checker for system corrections (super admin only)")
 
 
 class JournalRejectRequest(BaseModel):

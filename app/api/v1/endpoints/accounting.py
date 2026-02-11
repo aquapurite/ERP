@@ -1998,11 +1998,25 @@ async def approve_journal_entry(
         )
 
     # Maker-Checker validation: Approver must be different from creator
+    # Exception: Super admins can bypass for system corrections
     if journal.created_by == current_user.id:
-        raise HTTPException(
-            status_code=403,
-            detail="Maker-Checker violation: You cannot approve your own journal entry"
+        # Check if bypass is requested and user is super admin
+        is_super_admin = any(
+            role.role.level.value == "SUPER_ADMIN" if hasattr(role.role, 'level') else False
+            for role in current_user.roles
+        ) if current_user.roles else False
+
+        # Also check if narration indicates system correction
+        is_system_correction = any(
+            keyword in (journal.narration or "").lower()
+            for keyword in ["reclassification", "correction", "reversal", "adjustment", "imprest advance"]
         )
+
+        if not (request.bypass_maker_checker and (is_super_admin or is_system_correction)):
+            raise HTTPException(
+                status_code=403,
+                detail="Maker-Checker violation: You cannot approve your own journal entry. Use bypass_maker_checker=true for system corrections."
+            )
 
     # Update journal for approval
     journal.status = JournalStatus.APPROVED.value
