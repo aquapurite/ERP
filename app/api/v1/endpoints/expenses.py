@@ -47,6 +47,26 @@ async def list_expense_categories(
     return result.scalars().all()
 
 
+@router.get("/categories/dropdown")
+async def get_category_dropdown(
+    db: DB,
+):
+    """Get expense categories for dropdown (active only)."""
+    query = select(ExpenseCategory).where(ExpenseCategory.is_active == True).order_by(ExpenseCategory.name)
+    result = await db.execute(query)
+    categories = result.scalars().all()
+    return [
+        {
+            "id": str(cat.id),
+            "code": cat.code,
+            "name": cat.name,
+            "gl_account_id": str(cat.gl_account_id) if cat.gl_account_id else None,
+            "requires_receipt": cat.requires_receipt
+        }
+        for cat in categories
+    ]
+
+
 @router.post("/categories", response_model=ExpenseCategoryResponse,
              dependencies=[Depends(require_permissions("expenses:create"))])
 async def create_expense_category(
