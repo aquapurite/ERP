@@ -401,56 +401,95 @@ async def create_product(
     Create a new product.
     Requires: products:create permission
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Log full request data for debugging
+    logger.info(f"[CREATE_PRODUCT] ========== START ==========")
+    logger.info(f"[CREATE_PRODUCT] name={data.name}")
+    logger.info(f"[CREATE_PRODUCT] sku={data.sku}")
+    logger.info(f"[CREATE_PRODUCT] slug={data.slug}")
+    logger.info(f"[CREATE_PRODUCT] category_id={data.category_id}")
+    logger.info(f"[CREATE_PRODUCT] brand_id={data.brand_id}")
+    logger.info(f"[CREATE_PRODUCT] mrp={data.mrp}, selling_price={data.selling_price}")
+    logger.info(f"[CREATE_PRODUCT] item_type={data.item_type}, model_code={data.model_code}")
+
     service = ProductService(db)
 
     # Check SKU uniqueness
+    logger.info(f"[CREATE_PRODUCT] Checking SKU uniqueness: {data.sku}")
     existing = await service.get_product_by_sku(data.sku)
     if existing:
+        logger.error(f"[CREATE_PRODUCT] FAILED: SKU '{data.sku}' already exists (existing product id: {existing.id})")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Product with SKU '{data.sku}' already exists"
         )
 
     # Check slug uniqueness
+    logger.info(f"[CREATE_PRODUCT] Checking slug uniqueness: {data.slug}")
     existing_slug = await service.get_product_by_slug(data.slug)
     if existing_slug:
+        logger.error(f"[CREATE_PRODUCT] FAILED: Slug '{data.slug}' already exists (existing product id: {existing_slug.id})")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Product with slug '{data.slug}' already exists"
         )
 
     # Validate category exists
+    logger.info(f"[CREATE_PRODUCT] Checking category exists: {data.category_id}")
     category = await service.get_category_by_id(data.category_id)
     if not category:
+        logger.error(f"[CREATE_PRODUCT] FAILED: Category not found for id={data.category_id}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Category not found"
+            detail=f"Category not found. The selected category (id: {data.category_id}) does not exist in the database."
         )
+    logger.info(f"[CREATE_PRODUCT] Category found: {category.name}")
 
     # Validate brand exists
+    logger.info(f"[CREATE_PRODUCT] Checking brand exists: {data.brand_id}")
     brand = await service.get_brand_by_id(data.brand_id)
     if not brand:
+        logger.error(f"[CREATE_PRODUCT] FAILED: Brand not found for id={data.brand_id}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Brand not found"
+            detail=f"Brand not found. The selected brand (id: {data.brand_id}) does not exist in the database."
         )
+    logger.info(f"[CREATE_PRODUCT] Brand found: {brand.name}")
 
-    product = await service.create_product(data)
+    try:
+        logger.info(f"[CREATE_PRODUCT] Creating product...")
+        product = await service.create_product(data)
+        logger.info(f"[CREATE_PRODUCT] Product created with id: {product.id}")
 
-    # ORCHESTRATION: Auto-setup serialization (model_code, serial sequence)
-    orchestration = ProductOrchestrationService(db)
-    orchestration_result = await orchestration.on_product_created(product)
+        # ORCHESTRATION: Auto-setup serialization (model_code, serial sequence)
+        orchestration = ProductOrchestrationService(db)
+        orchestration_result = await orchestration.on_product_created(product)
+        logger.info(f"[CREATE_PRODUCT] Orchestration complete")
 
-    # Commit orchestration changes
-    await db.commit()
+        # Commit orchestration changes
+        await db.commit()
+        logger.info(f"[CREATE_PRODUCT] Commit complete")
 
-    # Invalidate product caches
-    cache = get_cache()
-    await cache.invalidate_products()
+        # Invalidate product caches
+        cache = get_cache()
+        await cache.invalidate_products()
 
-    # Re-fetch with all relationships loaded (refresh strips relationships)
-    final_product = await service.get_product_by_id(product.id, include_all=True)
-    return _build_product_detail_response(final_product)
+        # Re-fetch with all relationships loaded (refresh strips relationships)
+        final_product = await service.get_product_by_id(product.id, include_all=True)
+        logger.info(f"[CREATE_PRODUCT] ========== SUCCESS ==========")
+        return _build_product_detail_response(final_product)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[CREATE_PRODUCT] UNEXPECTED ERROR: {type(e).__name__}: {str(e)}")
+        import traceback
+        logger.error(f"[CREATE_PRODUCT] Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create product: {str(e)}"
+        )
 
 
 @router.put(
