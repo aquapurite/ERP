@@ -149,6 +149,7 @@ class ProductBase(BaseModel):
     min_stock_level: int = Field(default=10, ge=0)
     max_stock_level: Optional[int] = Field(None, ge=0)
 
+    is_active: bool = True
     is_featured: bool = False
     is_bestseller: bool = False
     is_new_arrival: bool = False
