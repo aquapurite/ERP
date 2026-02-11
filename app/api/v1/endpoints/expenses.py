@@ -438,7 +438,7 @@ async def mark_expense_paid(
 
 # ==================== DASHBOARD ====================
 
-@router.get("/dashboard/summary", response_model=ExpenseDashboard,
+@router.get("/dashboard/stats", response_model=ExpenseDashboard,
             dependencies=[Depends(require_permissions("expenses:view"))])
 async def get_expense_dashboard(
     db: DB,
