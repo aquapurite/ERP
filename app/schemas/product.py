@@ -118,7 +118,7 @@ class ProductBase(BaseModel):
 
     # Master Product File - FG/Item Code
     fg_code: Optional[str] = Field(None, max_length=20, description="Formal product code e.g., WPRAIEL001")
-    model_code: Optional[str] = Field(None, max_length=10, description="3-letter model code for barcode e.g., IEL")
+    model_code: Optional[str] = Field(None, min_length=3, max_length=3, description="3-letter model code for SKU e.g., IEL, HMR, OPT")
     item_type: ProductItemType = Field(default=ProductItemType.FINISHED_GOODS, description="FG, SP, CO, CN, AC")
 
     short_description: Optional[str] = Field(None, max_length=500)
@@ -187,9 +187,14 @@ class ProductCreate(ProductBase):
     @field_validator("model_code")
     @classmethod
     def validate_model_code(cls, v):
-        """Model code should be uppercase letters only."""
+        """Model code must be exactly 3 uppercase letters (A-Z)."""
         if v is not None:
-            return v.upper()
+            v = v.upper().strip()
+            if len(v) != 3:
+                raise ValueError("Model code must be exactly 3 letters (e.g., IEL, HMR, OPT)")
+            if not v.isalpha():
+                raise ValueError("Model code must contain only letters (A-Z)")
+            return v
         return v
 
 
@@ -201,7 +206,7 @@ class ProductUpdate(BaseModel):
 
     # Master Product File - FG/Item Code
     fg_code: Optional[str] = Field(None, max_length=20)
-    model_code: Optional[str] = Field(None, max_length=10)
+    model_code: Optional[str] = Field(None, min_length=3, max_length=3, description="3-letter model code")
     item_type: Optional[ProductItemType] = None
 
     short_description: Optional[str] = Field(None, max_length=500)
@@ -259,9 +264,14 @@ class ProductUpdate(BaseModel):
     @field_validator("model_code")
     @classmethod
     def validate_model_code(cls, v):
-        """Model code should be uppercase letters only."""
+        """Model code must be exactly 3 uppercase letters (A-Z)."""
         if v is not None:
-            return v.upper()
+            v = v.upper().strip()
+            if len(v) != 3:
+                raise ValueError("Model code must be exactly 3 letters (e.g., IEL, HMR, OPT)")
+            if not v.isalpha():
+                raise ValueError("Model code must contain only letters (A-Z)")
+            return v
         return v
 
 

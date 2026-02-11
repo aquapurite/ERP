@@ -1115,6 +1115,9 @@ async def migrate_sku_format(
         parent_code = cat_info.get('parent_code', 'XX')
         subcat_code = cat_info.get('cat_code', 'XX')
 
+        # Ensure model_code is exactly 3 characters (uppercase)
+        model_code = model_code[:3].upper()
+
         # Build SKU prefix
         if parent_code == 'SP' or item_type == 'SP':
             # Spare Parts: No item_type in SKU
