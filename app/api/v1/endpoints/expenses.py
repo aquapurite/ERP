@@ -14,7 +14,7 @@ from math import ceil
 import uuid
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends
-from sqlalchemy import select, func, and_, or_, text, case
+from sqlalchemy import select, func, and_, or_, text
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, CurrentUser, require_permissions
@@ -488,26 +488,23 @@ async def get_expense_dashboard(
     first_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     first_of_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    # Status counts
-    result = await db.execute(
-        select(
-            func.count().label("total"),
-            func.sum(func.case((ExpenseVoucher.status == "DRAFT", 1), else_=0)).label("draft"),
-            func.sum(func.case((ExpenseVoucher.status == "PENDING_APPROVAL", 1), else_=0)).label("pending"),
-            func.sum(func.case((ExpenseVoucher.status == "APPROVED", 1), else_=0)).label("approved"),
-            func.sum(func.case((ExpenseVoucher.status == "POSTED", 1), else_=0)).label("posted"),
-            func.sum(func.case((ExpenseVoucher.status == "PAID", 1), else_=0)).label("paid"),
-            func.sum(func.case((ExpenseVoucher.status == "REJECTED", 1), else_=0)).label("rejected"),
+    # Total count
+    result = await db.execute(select(func.count()).select_from(ExpenseVoucher))
+    total_vouchers = result.scalar() or 0
+
+    # Status counts (individual queries for simplicity)
+    async def get_status_count(status: str) -> int:
+        result = await db.execute(
+            select(func.count()).where(ExpenseVoucher.status == status)
         )
-    )
-    counts = result.one()
-    total_vouchers = counts[0] or 0
-    draft_count = counts[1] or 0
-    pending_approval_count = counts[2] or 0
-    approved_count = counts[3] or 0
-    posted_count = counts[4] or 0
-    paid_count = counts[5] or 0
-    rejected_count = counts[6] or 0
+        return result.scalar() or 0
+
+    draft_count = await get_status_count("DRAFT")
+    pending_approval_count = await get_status_count("PENDING_APPROVAL")
+    approved_count = await get_status_count("APPROVED")
+    posted_count = await get_status_count("POSTED")
+    paid_count = await get_status_count("PAID")
+    rejected_count = await get_status_count("REJECTED")
 
     # This month total
     result = await db.execute(
