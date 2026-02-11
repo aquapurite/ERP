@@ -1139,28 +1139,29 @@ async def migrate_sku_format(
         })
 
         if not dry_run:
-            # Update product SKU
-            await db.execute(text('''
-                UPDATE products
-                SET sku = :new_sku, updated_at = NOW()
-                WHERE id = :product_id
-            '''), {'new_sku': new_sku, 'product_id': product_id})
+            try:
+                # Convert product_id to string for SQL parameter
+                pid_str = str(product_id)
 
-            # Update model_code_references
-            await db.execute(text('''
-                UPDATE model_code_references
-                SET product_sku = :new_sku, updated_at = NOW()
-                WHERE product_id = :product_id
-            '''), {'new_sku': new_sku, 'product_id': product_id})
+                # Update product SKU
+                await db.execute(text(
+                    "UPDATE products SET sku = :new_sku, updated_at = NOW() WHERE id = CAST(:product_id AS UUID)"
+                ), {'new_sku': new_sku, 'product_id': pid_str})
 
-            # Update product_serial_sequences
-            await db.execute(text('''
-                UPDATE product_serial_sequences
-                SET product_sku = :new_sku, updated_at = NOW()
-                WHERE product_id = :product_id
-            '''), {'new_sku': new_sku, 'product_id': product_id})
+                # Update model_code_references (may not exist for all products)
+                await db.execute(text(
+                    "UPDATE model_code_references SET product_sku = :new_sku, updated_at = NOW() WHERE product_id = CAST(:product_id AS UUID)"
+                ), {'new_sku': new_sku, 'product_id': pid_str})
 
-            logger.info(f"[SKU_MIGRATION] Updated: {old_sku} -> {new_sku}")
+                # Update product_serial_sequences (may not exist for all products)
+                await db.execute(text(
+                    "UPDATE product_serial_sequences SET product_sku = :new_sku, updated_at = NOW() WHERE product_id = CAST(:product_id AS UUID)"
+                ), {'new_sku': new_sku, 'product_id': pid_str})
+
+                logger.info(f"[SKU_MIGRATION] Updated: {old_sku} -> {new_sku}")
+            except Exception as e:
+                logger.error(f"[SKU_MIGRATION] Failed to update {old_sku}: {str(e)}")
+                raise
 
     if not dry_run:
         await db.commit()
