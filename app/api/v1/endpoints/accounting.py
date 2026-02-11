@@ -3570,3 +3570,151 @@ async def recalculate_account_balances(
         "accounts_fixed": fixed_count,
         "details": results if results else None
     }
+
+
+# ==================== Fix Orphaned GL Entries ====================
+
+@router.post(
+    "/fix-orphaned-gl-entries",
+    dependencies=[Depends(require_permissions("finance:manage"))]
+)
+async def fix_orphaned_gl_entries(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    dry_run: bool = Query(True, description="If True, only report issues without fixing"),
+):
+    """
+    Find and fix orphaned GL entries that cause Trial Balance imbalance.
+
+    Orphaned entries are GL entries belonging to journal entries where
+    total debits != total credits (unbalanced journals).
+
+    This is typically caused by:
+    - Vendor invoice auto-posting errors
+    - Partial journal postings
+    - GST entries going to wrong accounts
+
+    Args:
+        dry_run: If True (default), only reports issues. Set to False to actually delete orphaned entries.
+
+    Returns:
+        Summary of orphaned entries found and optionally deleted.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Step 1: Find all journal entries where GL totals don't match
+    # Group GL entries by journal_entry_id and sum debits/credits
+    gl_totals_query = select(
+        GeneralLedger.journal_entry_id,
+        func.sum(GeneralLedger.debit_amount).label("total_debit"),
+        func.sum(GeneralLedger.credit_amount).label("total_credit"),
+        func.count(GeneralLedger.id).label("entry_count")
+    ).where(
+        GeneralLedger.journal_entry_id.isnot(None)
+    ).group_by(GeneralLedger.journal_entry_id)
+
+    gl_totals_result = await db.execute(gl_totals_query)
+    gl_totals = gl_totals_result.all()
+
+    orphaned_journals = []
+    for row in gl_totals:
+        total_debit = row.total_debit or Decimal("0")
+        total_credit = row.total_credit or Decimal("0")
+        diff = abs(total_debit - total_credit)
+
+        if diff > Decimal("0.01"):
+            orphaned_journals.append({
+                "journal_entry_id": row.journal_entry_id,
+                "total_debit": float(total_debit),
+                "total_credit": float(total_credit),
+                "difference": float(diff),
+                "entry_count": row.entry_count
+            })
+
+    # Step 2: Also find GL entries without a journal_entry_id (completely orphaned)
+    no_journal_query = select(
+        GeneralLedger.id,
+        GeneralLedger.account_id,
+        GeneralLedger.debit_amount,
+        GeneralLedger.credit_amount,
+        GeneralLedger.narration
+    ).where(
+        GeneralLedger.journal_entry_id.is_(None)
+    )
+
+    no_journal_result = await db.execute(no_journal_query)
+    no_journal_entries = no_journal_result.all()
+
+    orphaned_no_journal = [{
+        "gl_id": str(row.id),
+        "account_id": str(row.account_id),
+        "debit": float(row.debit_amount or 0),
+        "credit": float(row.credit_amount or 0),
+        "narration": (row.narration or "")[:50]
+    } for row in no_journal_entries]
+
+    # Step 3: Calculate total imbalance from orphaned journals
+    total_orphan_imbalance = sum(o["difference"] for o in orphaned_journals)
+    total_no_journal = sum(e["debit"] - e["credit"] for e in orphaned_no_journal)
+
+    if dry_run:
+        return {
+            "mode": "dry_run",
+            "message": "Found orphaned GL entries. Set dry_run=False to delete them.",
+            "orphaned_journal_entries": len(orphaned_journals),
+            "entries_without_journal": len(orphaned_no_journal),
+            "total_imbalance_from_journals": total_orphan_imbalance,
+            "total_imbalance_from_no_journal": total_no_journal,
+            "orphaned_journals": orphaned_journals[:10],  # Show first 10
+            "no_journal_entries": orphaned_no_journal[:10]
+        }
+
+    # Step 4: Delete orphaned entries (dry_run=False)
+    deleted_count = 0
+    affected_accounts = set()
+
+    # Delete GL entries from unbalanced journals
+    for orphan in orphaned_journals:
+        journal_id = orphan["journal_entry_id"]
+
+        # Get GL entries for this journal
+        gl_query = select(GeneralLedger).where(
+            GeneralLedger.journal_entry_id == journal_id
+        )
+        gl_result = await db.execute(gl_query)
+        gl_entries = gl_result.scalars().all()
+
+        for entry in gl_entries:
+            affected_accounts.add(entry.account_id)
+            await db.delete(entry)
+            deleted_count += 1
+
+    # Delete GL entries without journal
+    for orphan in orphaned_no_journal:
+        gl_id = orphan["gl_id"]
+        gl_result = await db.execute(
+            select(GeneralLedger).where(GeneralLedger.id == gl_id)
+        )
+        entry = gl_result.scalar()
+        if entry:
+            affected_accounts.add(entry.account_id)
+            await db.delete(entry)
+            deleted_count += 1
+
+    await db.flush()
+
+    # Step 5: Recalculate balances for affected accounts
+    for account_id in affected_accounts:
+        await recalculate_account_current_balance(db, account_id)
+
+    await db.commit()
+
+    return {
+        "mode": "fix",
+        "message": f"Deleted {deleted_count} orphaned GL entries and recalculated balances",
+        "deleted_entries": deleted_count,
+        "accounts_recalculated": len(affected_accounts),
+        "orphaned_journals_fixed": len(orphaned_journals),
+        "no_journal_entries_fixed": len(orphaned_no_journal)
+    }

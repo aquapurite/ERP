@@ -118,7 +118,7 @@ class ProductBase(BaseModel):
 
     # Master Product File - FG/Item Code
     fg_code: Optional[str] = Field(None, max_length=20, description="Formal product code e.g., WPRAIEL001")
-    model_code: Optional[str] = Field(None, max_length=10, description="3-letter model code for barcode e.g., IEL")
+    model_code: Optional[str] = Field(None, min_length=3, max_length=3, description="3-letter model code for SKU e.g., IEL, HMR, OPT")
     item_type: ProductItemType = Field(default=ProductItemType.FINISHED_GOODS, description="FG, SP, CO, CN, AC")
 
     short_description: Optional[str] = Field(None, max_length=500)
@@ -129,7 +129,7 @@ class ProductBase(BaseModel):
     brand_id: uuid.UUID
 
     mrp: Decimal = Field(..., ge=0, description="Maximum Retail Price")
-    selling_price: Decimal = Field(..., ge=0, description="Selling price")
+    selling_price: Optional[Decimal] = Field(None, ge=0, description="Selling price (defaults to MRP if not provided)")
     dealer_price: Optional[Decimal] = Field(None, ge=0)
     cost_price: Optional[Decimal] = Field(None, ge=0)
 
@@ -149,6 +149,7 @@ class ProductBase(BaseModel):
     min_stock_level: int = Field(default=10, ge=0)
     max_stock_level: Optional[int] = Field(None, ge=0)
 
+    is_active: bool = True
     is_featured: bool = False
     is_bestseller: bool = False
     is_new_arrival: bool = False
@@ -174,8 +175,11 @@ class ProductCreate(ProductBase):
     @field_validator("selling_price")
     @classmethod
     def selling_price_less_than_mrp(cls, v, info):
-        """Validate selling price is not greater than MRP."""
+        """Validate selling price is not greater than MRP. Defaults to MRP if not provided."""
         mrp = info.data.get("mrp")
+        # If selling_price is None, 0, or not provided, default to MRP
+        if v is None or (isinstance(v, (int, float, Decimal)) and v == 0):
+            return mrp if mrp is not None else Decimal("0")
         if mrp is not None and v > mrp:
             raise ValueError("Selling price cannot be greater than MRP")
         return v
@@ -183,9 +187,14 @@ class ProductCreate(ProductBase):
     @field_validator("model_code")
     @classmethod
     def validate_model_code(cls, v):
-        """Model code should be uppercase letters only."""
+        """Model code must be exactly 3 uppercase letters (A-Z)."""
         if v is not None:
-            return v.upper()
+            v = v.upper().strip()
+            if len(v) != 3:
+                raise ValueError("Model code must be exactly 3 letters (e.g., IEL, HMR, OPT)")
+            if not v.isalpha():
+                raise ValueError("Model code must contain only letters (A-Z)")
+            return v
         return v
 
 
@@ -197,7 +206,7 @@ class ProductUpdate(BaseModel):
 
     # Master Product File - FG/Item Code
     fg_code: Optional[str] = Field(None, max_length=20)
-    model_code: Optional[str] = Field(None, max_length=10)
+    model_code: Optional[str] = Field(None, min_length=3, max_length=3, description="3-letter model code")
     item_type: Optional[ProductItemType] = None
 
     short_description: Optional[str] = Field(None, max_length=500)
@@ -255,9 +264,14 @@ class ProductUpdate(BaseModel):
     @field_validator("model_code")
     @classmethod
     def validate_model_code(cls, v):
-        """Model code should be uppercase letters only."""
+        """Model code must be exactly 3 uppercase letters (A-Z)."""
         if v is not None:
-            return v.upper()
+            v = v.upper().strip()
+            if len(v) != 3:
+                raise ValueError("Model code must be exactly 3 letters (e.g., IEL, HMR, OPT)")
+            if not v.isalpha():
+                raise ValueError("Model code must contain only letters (A-Z)")
+            return v
         return v
 
 

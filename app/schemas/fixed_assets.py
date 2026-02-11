@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from app.schemas.base import BaseResponseSchema
 
 from app.models.fixed_assets import (
-    DepreciationMethod, AssetStatus, TransferStatus, MaintenanceStatus
+    DepreciationMethod, AssetStatus, TransferStatus, MaintenanceStatus, CapexRequestStatus
 )
 
 
@@ -476,3 +476,202 @@ class AssetRegisterReport(BaseModel):
     custodian: Optional[str] = None
 
     status: AssetStatus
+
+
+# ==================== CAPEX Request Schemas ====================
+
+class CapexRequestBase(BaseModel):
+    """Base schema for CAPEX Request."""
+    request_date: date
+    asset_category_id: UUID
+    asset_name: str = Field(..., max_length=200)
+    description: Optional[str] = None
+    justification: str
+    quantity: int = Field(1, ge=1)
+    estimated_cost: Decimal = Field(..., ge=0)
+    estimated_gst: Decimal = Field(Decimal("0"), ge=0)
+    vendor_id: Optional[UUID] = None
+    vendor_quotation_no: Optional[str] = Field(None, max_length=50)
+    quotation_date: Optional[date] = None
+    expected_delivery_date: Optional[date] = None
+    urgency: str = Field("NORMAL", pattern="^(LOW|NORMAL|HIGH|URGENT)$")
+    cost_center_id: Optional[UUID] = None
+    department_id: Optional[UUID] = None
+    notes: Optional[str] = None
+
+
+class CapexRequestCreate(CapexRequestBase):
+    """Schema for creating CAPEX Request."""
+    roi_analysis: Optional[dict] = None
+
+
+class CapexRequestUpdate(BaseModel):
+    """Schema for updating CAPEX Request (only DRAFT status)."""
+    request_date: Optional[date] = None
+    asset_category_id: Optional[UUID] = None
+    asset_name: Optional[str] = Field(None, max_length=200)
+    description: Optional[str] = None
+    justification: Optional[str] = None
+    quantity: Optional[int] = Field(None, ge=1)
+    estimated_cost: Optional[Decimal] = Field(None, ge=0)
+    estimated_gst: Optional[Decimal] = Field(None, ge=0)
+    vendor_id: Optional[UUID] = None
+    vendor_quotation_no: Optional[str] = Field(None, max_length=50)
+    quotation_date: Optional[date] = None
+    expected_delivery_date: Optional[date] = None
+    urgency: Optional[str] = Field(None, pattern="^(LOW|NORMAL|HIGH|URGENT)$")
+    cost_center_id: Optional[UUID] = None
+    department_id: Optional[UUID] = None
+    notes: Optional[str] = None
+    roi_analysis: Optional[dict] = None
+
+
+class CapexRequestResponse(BaseResponseSchema):
+    """Response schema for CAPEX Request (list view)."""
+    id: UUID
+    request_number: str
+    request_date: date
+    financial_year: str
+
+    asset_category_id: UUID
+    category_code: Optional[str] = None
+    category_name: Optional[str] = None
+
+    asset_name: str
+    description: Optional[str] = None
+    quantity: int
+
+    estimated_cost: Decimal
+    estimated_gst: Decimal
+    estimated_total: Decimal
+    actual_cost: Optional[Decimal] = None
+
+    vendor_name: Optional[str] = None
+    urgency: str
+    cost_center_name: Optional[str] = None
+
+    status: str
+    approval_level: Optional[str] = None
+
+    requested_by_name: Optional[str] = None
+    approved_by_name: Optional[str] = None
+    approved_at: Optional[datetime] = None
+
+    created_at: datetime
+    updated_at: datetime
+
+
+class CapexRequestDetailResponse(CapexRequestResponse):
+    """Detailed response schema for CAPEX Request."""
+    justification: str
+    vendor_id: Optional[UUID] = None
+    vendor_quotation_no: Optional[str] = None
+    quotation_date: Optional[date] = None
+    expected_delivery_date: Optional[date] = None
+    cost_center_id: Optional[UUID] = None
+    department_id: Optional[UUID] = None
+    department_name: Optional[str] = None
+
+    rejection_reason: Optional[str] = None
+    rejected_by_name: Optional[str] = None
+    rejected_at: Optional[datetime] = None
+
+    purchase_order_id: Optional[UUID] = None
+    po_number: Optional[str] = None
+    po_created_at: Optional[datetime] = None
+
+    grn_id: Optional[UUID] = None
+    received_at: Optional[datetime] = None
+
+    asset_id: Optional[UUID] = None
+    asset_code: Optional[str] = None
+    capitalized_at: Optional[datetime] = None
+    capitalized_by_name: Optional[str] = None
+
+    roi_analysis: Optional[dict] = None
+    attachments: Optional[dict] = None
+    notes: Optional[str] = None
+
+    submitted_at: Optional[datetime] = None
+
+
+class CapexRequestListResponse(BaseModel):
+    """Response for listing CAPEX Requests."""
+    items: List[CapexRequestResponse]
+    total: int
+    page: int = 1
+    size: int = 50
+    pages: int = 1
+
+
+# ==================== CAPEX Workflow Schemas ====================
+
+class CapexSubmitRequest(BaseModel):
+    """Request to submit CAPEX for approval."""
+    pass
+
+
+class CapexApprovalRequest(BaseModel):
+    """Request to approve CAPEX."""
+    pass
+
+
+class CapexRejectionRequest(BaseModel):
+    """Request to reject CAPEX."""
+    reason: str = Field(..., min_length=10, max_length=500)
+
+
+class CapexCreatePORequest(BaseModel):
+    """Request to create PO from approved CAPEX."""
+    vendor_id: UUID
+    expected_delivery_date: Optional[date] = None
+    terms_and_conditions: Optional[str] = None
+
+
+class CapexReceiveRequest(BaseModel):
+    """Request to mark CAPEX goods as received."""
+    grn_id: UUID
+    received_date: date
+
+
+class CapexCapitalizeRequest(BaseModel):
+    """Request to capitalize and create asset from CAPEX."""
+    capitalization_date: date
+    actual_cost: Decimal = Field(..., ge=0)
+    installation_cost: Decimal = Field(Decimal("0"), ge=0)
+    other_costs: Decimal = Field(Decimal("0"), ge=0)
+    location_details: Optional[str] = None
+    serial_number: Optional[str] = None
+    model_number: Optional[str] = None
+    custodian_employee_id: Optional[UUID] = None
+    warehouse_id: Optional[UUID] = None
+
+
+class CapexAttachmentRequest(BaseModel):
+    """Request to add attachment to CAPEX."""
+    file_url: str
+    file_name: str
+    file_type: Optional[str] = None
+    file_size: Optional[int] = None
+
+
+# ==================== CAPEX Dashboard Schemas ====================
+
+class CapexDashboard(BaseModel):
+    """CAPEX Dashboard statistics."""
+    total_requests: int
+    draft_count: int
+    pending_approval_count: int
+    approved_count: int
+    po_created_count: int
+    received_count: int
+    capitalized_count: int
+    rejected_count: int
+
+    total_estimated_this_year: Decimal
+    total_approved_this_year: Decimal
+    total_capitalized_this_year: Decimal
+    pending_approval_amount: Decimal
+
+    category_wise: List[dict]
+    monthly_trend: List[dict]

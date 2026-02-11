@@ -58,3 +58,13 @@ class RolePermissionUpdate(BaseModel):
         ...,
         description="Complete list of permission IDs for the role"
     )
+
+
+class PermissionCreate(BaseModel):
+    """Schema for creating a new permission."""
+    code: str = Field(..., max_length=100, description="Unique permission code")
+    name: str = Field(..., max_length=200, description="Display name")
+    description: Optional[str] = Field(None, description="Permission description")
+    module_id: uuid.UUID = Field(..., description="Module this permission belongs to")
+    action: Optional[str] = Field(None, max_length=50, description="Action type (read, create, update, delete, etc.)")
+    resource: Optional[str] = Field(None, max_length=100, description="Resource being protected")

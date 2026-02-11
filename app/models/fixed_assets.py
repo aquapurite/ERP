@@ -58,6 +58,18 @@ class MaintenanceStatus(str, Enum):
     CANCELLED = "CANCELLED"
 
 
+class CapexRequestStatus(str, Enum):
+    """CAPEX request lifecycle status."""
+    DRAFT = "DRAFT"
+    PENDING_APPROVAL = "PENDING_APPROVAL"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    PO_CREATED = "PO_CREATED"
+    RECEIVED = "RECEIVED"
+    CAPITALIZED = "CAPITALIZED"
+    CANCELLED = "CANCELLED"
+
+
 # ==================== Asset Category ====================
 
 class AssetCategory(Base):
@@ -629,3 +641,247 @@ class AssetMaintenance(Base):
 
     def __repr__(self) -> str:
         return f"<AssetMaintenance(number='{self.maintenance_number}', type='{self.maintenance_type}')>"
+
+
+# ==================== CAPEX Request ====================
+
+class CapexRequest(Base):
+    """
+    Capital Expenditure (CAPEX) Request for fixed asset purchases.
+    Full approval workflow before asset purchase.
+    """
+    __tablename__ = "capex_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+
+    # Request Identification
+    request_number: Mapped[str] = mapped_column(
+        String(30),
+        unique=True,
+        nullable=False,
+        index=True,
+        comment="CAPEX-YYYYMM-XXXX"
+    )
+    request_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    financial_year: Mapped[str] = mapped_column(
+        String(10),
+        nullable=False,
+        comment="e.g., 2025-26"
+    )
+
+    # Asset Details
+    asset_category_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("asset_categories.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True
+    )
+    asset_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    justification: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="Business justification for the purchase"
+    )
+    quantity: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    # Cost Estimation
+    estimated_cost: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        comment="Estimated total cost"
+    )
+    estimated_gst: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        default=Decimal("0")
+    )
+    estimated_total: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        comment="Estimated cost + GST"
+    )
+
+    # Vendor
+    vendor_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        comment="Preferred vendor"
+    )
+    vendor_quotation_no: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    quotation_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+
+    # Timeline
+    expected_delivery_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    urgency: Mapped[str] = mapped_column(
+        String(20),
+        default="NORMAL",
+        comment="LOW, NORMAL, HIGH, URGENT"
+    )
+
+    # Department/Cost Center
+    cost_center_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        comment="Department requesting the asset"
+    )
+    department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True
+    )
+
+    # Status
+    status: Mapped[str] = mapped_column(
+        String(50),
+        default="DRAFT",
+        nullable=False,
+        index=True,
+        comment="DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, PO_CREATED, RECEIVED, CAPITALIZED, CANCELLED"
+    )
+
+    # Maker-Checker Workflow
+    requested_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+        comment="Who created the request"
+    )
+    submitted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
+    # Approval level based on amount
+    approval_level: Mapped[Optional[str]] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="LEVEL_1 (<=50K), LEVEL_2 (<=5L), LEVEL_3 (>5L)"
+    )
+
+    # Approval
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    approved_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+    rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    rejected_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    rejected_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
+    # Purchase Order Link
+    purchase_order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        comment="PO created after approval"
+    )
+    po_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    po_created_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
+    # GRN Link
+    grn_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        comment="GRN when goods received"
+    )
+    received_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
+    # Asset Link (after capitalization)
+    asset_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("assets.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Asset created after capitalization"
+    )
+    capitalized_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+    capitalized_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    actual_cost: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(14, 2),
+        nullable=True,
+        comment="Actual cost after capitalization"
+    )
+
+    # ROI Analysis (optional)
+    roi_analysis: Mapped[Optional[dict]] = mapped_column(
+        JSONB,
+        nullable=True,
+        comment="Payback period, NPV, ROI if provided"
+    )
+
+    # Attachments (quotations, specs)
+    attachments: Mapped[Optional[dict]] = mapped_column(
+        JSONB,
+        nullable=True,
+        default=dict,
+        comment="Array of attachment URLs"
+    )
+
+    # Notes
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+    # Relationships
+    asset_category: Mapped["AssetCategory"] = relationship(
+        "AssetCategory",
+        foreign_keys=[asset_category_id]
+    )
+    asset: Mapped[Optional["Asset"]] = relationship(
+        "Asset",
+        foreign_keys=[asset_id]
+    )
+    requester: Mapped["User"] = relationship(
+        "User",
+        foreign_keys=[requested_by]
+    )
+    approver: Mapped[Optional["User"]] = relationship(
+        "User",
+        foreign_keys=[approved_by]
+    )
+
+    __table_args__ = (
+        Index('idx_capex_status', 'status'),
+        Index('idx_capex_date', 'request_date'),
+        Index('idx_capex_category', 'asset_category_id'),
+        Index('idx_capex_fy', 'financial_year'),
+    )
+
+    def __repr__(self) -> str:
+        return f"<CapexRequest(number='{self.request_number}', status='{self.status}')>"

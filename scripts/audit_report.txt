@@ -1,0 +1,95 @@
+======================================================================
+CODEBASE AUDIT REPORT
+======================================================================
+
+## 1. Single Source of Truth Check
+--------------------------------------------------
+  [WARNING] app/services/accounting_service.py
+    Service defines account codes directly without importing from account_codes.py
+    Recommendation: Import AccountCode from app.core.account_codes and use enum values
+
+## 2. Validation Coverage Check
+--------------------------------------------------
+  [INFO] app/main.py
+    Startup validation not called in main.py
+    Recommendation: Add startup validation to application startup event
+
+## 3. Pattern-Based Audit
+--------------------------------------------------
+
+### hardcoded_account_codes
+    Hardcoded account codes (should use AccountCode enum)
+    Found: 63 occurrences
+    [WARNING] app/core/startup_validation.py:59
+        ("1010", "Cash"),
+    [WARNING] app/core/startup_validation.py:60
+        ("1200", "Inventory"),
+    [WARNING] app/core/startup_validation.py:61
+        ("1300", "Accounts Receivable"),
+    [WARNING] app/core/startup_validation.py:62
+        ("1400", "GST Input Credit"),
+    [WARNING] app/core/startup_validation.py:63
+        ("1410", "CGST Input Credit"),
+    ... and 58 more
+
+### hardcoded_status_values
+    Hardcoded status comparisons (consider using enums)
+    Found: 128 occurrences
+    [INFO] app/models/return_order.py:262
+        return self.status == "APPROVED" and self.net_refund_amount > 0
+    [INFO] app/models/return_order.py:661
+        return self.status == "COMPLETED"
+    [INFO] app/models/return_order.py:665
+        return self.status == "FAILED" and self.retry_count < 3
+    [INFO] app/jobs/order_jobs.py:84
+        if payment_status == "captured":
+    [INFO] app/jobs/order_jobs.py:86
+        elif payment_status == "authorized":
+    ... and 123 more
+
+### magic_numbers_finance
+    Magic numbers in financial calculations
+    Found: 110 occurrences
+    [INFO] app/models/amc.py:69
+        tax_amount = Column(Numeric(12, 2), default=0)
+    [INFO] app/models/amc.py:155
+        tax_rate = Column(Numeric(5, 2), default=18)
+    [INFO] app/schemas/commission.py:47
+        tds_rate: Decimal = Field(Decimal("10"), ge=0, le=100)
+    [INFO] app/schemas/commission.py:156
+        tds_rate_override: Optional[Decimal] = Field(None, ge=0, le=100)
+    [INFO] app/schemas/commission.py:252
+        tds_rate: Decimal = Field(Decimal("0"), ge=0)
+    ... and 105 more
+
+### duplicate_dict_definitions
+    Multiple dictionary definitions with similar names
+    Found: 2 occurrences
+    [WARNING] app/services/accounting_service.py:33
+        ACCOUNT_CODES = {
+    [WARNING] app/services/auto_journal_service.py:73
+        DEFAULT_ACCOUNTS = {
+
+### get_or_create_pattern
+    get_or_create patterns that might create unvalidated entries
+    Found: 29 occurrences
+    [WARNING] app/services/auto_journal_service.py:125
+        async def get_or_create_account(
+    [WARNING] app/services/auto_journal_service.py:167
+        return await self.get_or_create_account(
+    [WARNING] app/services/auto_journal_service.py:192
+        return await self.get_or_create_account(
+    [WARNING] app/services/auto_journal_service.py:243
+        ar_account = await self.get_or_create_account(
+    [WARNING] app/services/auto_journal_service.py:250
+        sales_account = await self.get_or_create_account(
+    ... and 24 more
+
+======================================================================
+SUMMARY
+======================================================================
+  Errors: 0
+  Warnings: 95
+  Info: 239
+
+⚠️ AUDIT PASSED WITH WARNINGS - Review before deployment

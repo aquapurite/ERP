@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.fixed_assets import (
-    AssetCategory, Asset, DepreciationEntry, AssetTransfer, AssetMaintenance,
-    DepreciationMethod, AssetStatus, TransferStatus, MaintenanceStatus
+    AssetCategory, Asset, DepreciationEntry, AssetTransfer, AssetMaintenance, CapexRequest,
+    DepreciationMethod, AssetStatus, TransferStatus, MaintenanceStatus, CapexRequestStatus
 )
 from app.models.user import User
 from app.schemas.fixed_assets import (
@@ -27,6 +27,11 @@ from app.schemas.fixed_assets import (
     AssetMaintenanceCreate, AssetMaintenanceUpdate, AssetMaintenanceResponse, AssetMaintenanceListResponse,
     # Other
     AssetDisposeRequest, FixedAssetsDashboard,
+    # CAPEX
+    CapexRequestCreate, CapexRequestUpdate, CapexRequestResponse, CapexRequestDetailResponse,
+    CapexRequestListResponse, CapexSubmitRequest, CapexApprovalRequest, CapexRejectionRequest,
+    CapexCreatePORequest, CapexReceiveRequest, CapexCapitalizeRequest, CapexAttachmentRequest,
+    CapexDashboard,
 )
 from app.api.deps import DB, CurrentUser, get_current_user, require_permissions
 
@@ -1336,4 +1341,796 @@ async def get_fixed_assets_dashboard(
         category_wise=category_wise,
         warranty_expiring_soon=warranty_expiring_soon,
         insurance_expiring_soon=insurance_expiring_soon,
+    )
+
+
+# ==================== CAPEX Request Helper Functions ====================
+
+async def generate_capex_number(db: AsyncSession) -> str:
+    """Generate unique CAPEX request number."""
+    today = date.today()
+    prefix = f"CAPEX-{today.strftime('%Y%m')}"
+
+    result = await db.execute(
+        select(func.count(CapexRequest.id))
+        .where(CapexRequest.request_number.like(f"{prefix}%"))
+    )
+    count = result.scalar() or 0
+
+    return f"{prefix}-{(count + 1):04d}"
+
+
+def get_capex_financial_year(dt: date) -> str:
+    """Get financial year string for a date."""
+    if dt.month >= 4:  # April onwards
+        return f"{dt.year}-{str(dt.year + 1)[2:]}"
+    else:
+        return f"{dt.year - 1}-{str(dt.year)[2:]}"
+
+
+def get_capex_approval_level(amount: Decimal) -> str:
+    """Determine approval level based on estimated cost."""
+    if amount <= Decimal("50000"):
+        return "LEVEL_1"
+    elif amount <= Decimal("500000"):
+        return "LEVEL_2"
+    else:
+        return "LEVEL_3"
+
+
+# ==================== CAPEX Requests ====================
+
+@router.get("/capex", response_model=CapexRequestListResponse, dependencies=[Depends(require_permissions("assets:view"))])
+async def list_capex_requests(
+    db: DB,
+    current_user: CurrentUser,
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=100),
+    status_filter: Optional[CapexRequestStatus] = Query(None, alias="status"),
+    category_id: Optional[UUID] = None,
+    cost_center_id: Optional[UUID] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    search: Optional[str] = None,
+):
+    """List CAPEX requests with filters."""
+    query = select(CapexRequest).options(
+        selectinload(CapexRequest.asset_category),
+        selectinload(CapexRequest.requester),
+        selectinload(CapexRequest.approver),
+    )
+
+    if status_filter:
+        query = query.where(CapexRequest.status == status_filter)
+    if category_id:
+        query = query.where(CapexRequest.asset_category_id == category_id)
+    if cost_center_id:
+        query = query.where(CapexRequest.cost_center_id == cost_center_id)
+    if date_from:
+        query = query.where(CapexRequest.request_date >= date_from)
+    if date_to:
+        query = query.where(CapexRequest.request_date <= date_to)
+    if search:
+        query = query.where(
+            (CapexRequest.request_number.ilike(f"%{search}%")) |
+            (CapexRequest.asset_name.ilike(f"%{search}%"))
+        )
+
+    # Count
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Paginate
+    query = query.offset((page - 1) * size).limit(size)
+    query = query.order_by(CapexRequest.request_date.desc(), CapexRequest.request_number.desc())
+
+    result = await db.execute(query)
+    requests = result.scalars().all()
+
+    items = [
+        CapexRequestResponse(
+            id=r.id,
+            request_number=r.request_number,
+            request_date=r.request_date,
+            financial_year=r.financial_year,
+            asset_category_id=r.asset_category_id,
+            category_code=r.asset_category.code if r.asset_category else None,
+            category_name=r.asset_category.name if r.asset_category else None,
+            asset_name=r.asset_name,
+            description=r.description,
+            quantity=r.quantity,
+            estimated_cost=r.estimated_cost,
+            estimated_gst=r.estimated_gst,
+            estimated_total=r.estimated_total,
+            actual_cost=r.actual_cost,
+            urgency=r.urgency,
+            status=r.status,
+            approval_level=r.approval_level,
+            requested_by_name=r.requester.full_name if r.requester else None,
+            approved_by_name=r.approver.full_name if r.approver else None,
+            approved_at=r.approved_at,
+            created_at=r.created_at,
+            updated_at=r.updated_at,
+        )
+        for r in requests
+    ]
+
+    pages = (total + size - 1) // size
+    return CapexRequestListResponse(items=items, total=total, page=page, size=size, pages=pages)
+
+
+@router.post("/capex", response_model=CapexRequestDetailResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permissions("assets:create"))])
+async def create_capex_request(
+    capex_in: CapexRequestCreate,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Create CAPEX request (DRAFT status)."""
+    # Verify asset category exists
+    cat_result = await db.execute(
+        select(AssetCategory).where(AssetCategory.id == capex_in.asset_category_id)
+    )
+    category = cat_result.scalar_one_or_none()
+    if not category:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset category not found"
+        )
+
+    # Generate request number
+    request_number = await generate_capex_number(db)
+
+    # Calculate estimated total
+    estimated_total = capex_in.estimated_cost + capex_in.estimated_gst
+
+    capex = CapexRequest(
+        request_number=request_number,
+        request_date=capex_in.request_date,
+        financial_year=get_capex_financial_year(capex_in.request_date),
+        asset_category_id=capex_in.asset_category_id,
+        asset_name=capex_in.asset_name,
+        description=capex_in.description,
+        justification=capex_in.justification,
+        quantity=capex_in.quantity,
+        estimated_cost=capex_in.estimated_cost,
+        estimated_gst=capex_in.estimated_gst,
+        estimated_total=estimated_total,
+        vendor_id=capex_in.vendor_id,
+        vendor_quotation_no=capex_in.vendor_quotation_no,
+        quotation_date=capex_in.quotation_date,
+        expected_delivery_date=capex_in.expected_delivery_date,
+        urgency=capex_in.urgency,
+        cost_center_id=capex_in.cost_center_id,
+        department_id=capex_in.department_id,
+        notes=capex_in.notes,
+        roi_analysis=capex_in.roi_analysis,
+        status=CapexRequestStatus.DRAFT,
+        requested_by=current_user.id,
+    )
+
+    db.add(capex)
+    await db.commit()
+    await db.refresh(capex)
+
+    return CapexRequestDetailResponse(
+        id=capex.id,
+        request_number=capex.request_number,
+        request_date=capex.request_date,
+        financial_year=capex.financial_year,
+        asset_category_id=capex.asset_category_id,
+        category_code=category.code,
+        category_name=category.name,
+        asset_name=capex.asset_name,
+        description=capex.description,
+        quantity=capex.quantity,
+        estimated_cost=capex.estimated_cost,
+        estimated_gst=capex.estimated_gst,
+        estimated_total=capex.estimated_total,
+        justification=capex.justification,
+        vendor_id=capex.vendor_id,
+        vendor_quotation_no=capex.vendor_quotation_no,
+        quotation_date=capex.quotation_date,
+        expected_delivery_date=capex.expected_delivery_date,
+        urgency=capex.urgency,
+        cost_center_id=capex.cost_center_id,
+        department_id=capex.department_id,
+        notes=capex.notes,
+        roi_analysis=capex.roi_analysis,
+        status=capex.status,
+        requested_by_name=current_user.full_name,
+        created_at=capex.created_at,
+        updated_at=capex.updated_at,
+    )
+
+
+@router.get("/capex/{capex_id}", response_model=CapexRequestDetailResponse, dependencies=[Depends(require_permissions("assets:view"))])
+async def get_capex_request(
+    capex_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Get CAPEX request by ID."""
+    result = await db.execute(
+        select(CapexRequest)
+        .options(
+            selectinload(CapexRequest.asset_category),
+            selectinload(CapexRequest.requester),
+            selectinload(CapexRequest.approver),
+            selectinload(CapexRequest.asset),
+        )
+        .where(CapexRequest.id == capex_id)
+    )
+    capex = result.scalar_one_or_none()
+
+    if not capex:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="CAPEX request not found"
+        )
+
+    # Get rejected by name if rejected
+    rejected_by_name = None
+    if capex.rejected_by:
+        rejected_result = await db.execute(
+            select(User).where(User.id == capex.rejected_by)
+        )
+        rejected_user = rejected_result.scalar_one_or_none()
+        rejected_by_name = rejected_user.full_name if rejected_user else None
+
+    # Get capitalized by name
+    capitalized_by_name = None
+    if capex.capitalized_by:
+        cap_result = await db.execute(
+            select(User).where(User.id == capex.capitalized_by)
+        )
+        cap_user = cap_result.scalar_one_or_none()
+        capitalized_by_name = cap_user.full_name if cap_user else None
+
+    return CapexRequestDetailResponse(
+        id=capex.id,
+        request_number=capex.request_number,
+        request_date=capex.request_date,
+        financial_year=capex.financial_year,
+        asset_category_id=capex.asset_category_id,
+        category_code=capex.asset_category.code if capex.asset_category else None,
+        category_name=capex.asset_category.name if capex.asset_category else None,
+        asset_name=capex.asset_name,
+        description=capex.description,
+        quantity=capex.quantity,
+        estimated_cost=capex.estimated_cost,
+        estimated_gst=capex.estimated_gst,
+        estimated_total=capex.estimated_total,
+        actual_cost=capex.actual_cost,
+        justification=capex.justification,
+        vendor_id=capex.vendor_id,
+        vendor_quotation_no=capex.vendor_quotation_no,
+        quotation_date=capex.quotation_date,
+        expected_delivery_date=capex.expected_delivery_date,
+        urgency=capex.urgency,
+        cost_center_id=capex.cost_center_id,
+        department_id=capex.department_id,
+        notes=capex.notes,
+        roi_analysis=capex.roi_analysis,
+        attachments=capex.attachments,
+        status=capex.status,
+        approval_level=capex.approval_level,
+        rejection_reason=capex.rejection_reason,
+        rejected_by_name=rejected_by_name,
+        rejected_at=capex.rejected_at,
+        purchase_order_id=capex.purchase_order_id,
+        po_number=capex.po_number,
+        po_created_at=capex.po_created_at,
+        grn_id=capex.grn_id,
+        received_at=capex.received_at,
+        asset_id=capex.asset_id,
+        asset_code=capex.asset.asset_code if capex.asset else None,
+        capitalized_at=capex.capitalized_at,
+        capitalized_by_name=capitalized_by_name,
+        submitted_at=capex.submitted_at,
+        requested_by_name=capex.requester.full_name if capex.requester else None,
+        approved_by_name=capex.approver.full_name if capex.approver else None,
+        approved_at=capex.approved_at,
+        created_at=capex.created_at,
+        updated_at=capex.updated_at,
+    )
+
+
+@router.put("/capex/{capex_id}", response_model=CapexRequestDetailResponse, dependencies=[Depends(require_permissions("assets:update"))])
+async def update_capex_request(
+    capex_id: UUID,
+    capex_in: CapexRequestUpdate,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Update CAPEX request (only DRAFT status)."""
+    result = await db.execute(
+        select(CapexRequest).where(CapexRequest.id == capex_id)
+    )
+    capex = result.scalar_one_or_none()
+
+    if not capex:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="CAPEX request not found"
+        )
+
+    if capex.status != CapexRequestStatus.DRAFT:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot update CAPEX request with status {capex.status}"
+        )
+
+    update_data = capex_in.model_dump(exclude_unset=True)
+
+    # Recalculate estimated total if costs changed
+    estimated_cost = update_data.get('estimated_cost', capex.estimated_cost)
+    estimated_gst = update_data.get('estimated_gst', capex.estimated_gst)
+    update_data['estimated_total'] = estimated_cost + estimated_gst
+
+    # Update financial year if date changed
+    if 'request_date' in update_data:
+        update_data['financial_year'] = get_capex_financial_year(update_data['request_date'])
+
+    for key, value in update_data.items():
+        setattr(capex, key, value)
+
+    await db.commit()
+    await db.refresh(capex)
+
+    return await get_capex_request(capex_id, db, current_user)
+
+
+@router.delete("/capex/{capex_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_permissions("assets:delete"))])
+async def delete_capex_request(
+    capex_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Delete CAPEX request (only DRAFT status)."""
+    result = await db.execute(
+        select(CapexRequest).where(CapexRequest.id == capex_id)
+    )
+    capex = result.scalar_one_or_none()
+
+    if not capex:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="CAPEX request not found"
+        )
+
+    if capex.status != CapexRequestStatus.DRAFT:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete CAPEX request with status {capex.status}"
+        )
+
+    await db.delete(capex)
+    await db.commit()
+
+
+# ==================== CAPEX Workflow Endpoints ====================
+
+@router.post("/capex/{capex_id}/submit", response_model=CapexRequestDetailResponse, dependencies=[Depends(require_permissions("assets:update"))])
+async def submit_capex_request(
+    capex_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Submit CAPEX request for approval."""
+    result = await db.execute(
+        select(CapexRequest).where(CapexRequest.id == capex_id)
+    )
+    capex = result.scalar_one_or_none()
+
+    if not capex:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="CAPEX request not found"
+        )
+
+    if capex.status != CapexRequestStatus.DRAFT:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot submit CAPEX request with status {capex.status}"
+        )
+
+    # Determine approval level
+    approval_level = get_capex_approval_level(capex.estimated_total)
+
+    capex.status = CapexRequestStatus.PENDING_APPROVAL.value
+    capex.submitted_at = datetime.now(timezone.utc)
+    capex.approval_level = approval_level
+
+    await db.commit()
+    await db.refresh(capex)
+
+    return await get_capex_request(capex_id, db, current_user)
+
+
+@router.post("/capex/{capex_id}/approve", response_model=CapexRequestDetailResponse, dependencies=[Depends(require_permissions("assets:approve"))])
+async def approve_capex_request(
+    capex_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Approve CAPEX request (maker cannot be checker)."""
+    result = await db.execute(
+        select(CapexRequest).where(CapexRequest.id == capex_id)
+    )
+    capex = result.scalar_one_or_none()
+
+    if not capex:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="CAPEX request not found"
+        )
+
+    if capex.status != CapexRequestStatus.PENDING_APPROVAL:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot approve CAPEX request with status {capex.status}"
+        )
+
+    # Maker-Checker validation
+    if capex.requested_by == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Requester cannot approve their own CAPEX request"
+        )
+
+    capex.status = CapexRequestStatus.APPROVED.value
+    capex.approved_by = current_user.id
+    capex.approved_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    await db.refresh(capex)
+
+    return await get_capex_request(capex_id, db, current_user)
+
+
+@router.post("/capex/{capex_id}/reject", response_model=CapexRequestDetailResponse, dependencies=[Depends(require_permissions("assets:approve"))])
+async def reject_capex_request(
+    capex_id: UUID,
+    reject_in: CapexRejectionRequest,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Reject CAPEX request."""
+    result = await db.execute(
+        select(CapexRequest).where(CapexRequest.id == capex_id)
+    )
+    capex = result.scalar_one_or_none()
+
+    if not capex:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="CAPEX request not found"
+        )
+
+    if capex.status != CapexRequestStatus.PENDING_APPROVAL:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot reject CAPEX request with status {capex.status}"
+        )
+
+    capex.status = CapexRequestStatus.REJECTED.value
+    capex.rejected_by = current_user.id
+    capex.rejected_at = datetime.now(timezone.utc)
+    capex.rejection_reason = reject_in.reason
+
+    await db.commit()
+    await db.refresh(capex)
+
+    return await get_capex_request(capex_id, db, current_user)
+
+
+@router.post("/capex/{capex_id}/create-po", response_model=CapexRequestDetailResponse, dependencies=[Depends(require_permissions("assets:update"))])
+async def create_po_from_capex(
+    capex_id: UUID,
+    po_in: CapexCreatePORequest,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Create Purchase Order from approved CAPEX request."""
+    result = await db.execute(
+        select(CapexRequest).where(CapexRequest.id == capex_id)
+    )
+    capex = result.scalar_one_or_none()
+
+    if not capex:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="CAPEX request not found"
+        )
+
+    if capex.status != CapexRequestStatus.APPROVED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot create PO for CAPEX request with status {capex.status}"
+        )
+
+    # In a real implementation, this would call the purchase service to create PO
+    # For now, we'll just update the CAPEX status
+    po_number = f"PO-CAPEX-{datetime.now().strftime('%Y%m%d')}-{str(capex.id)[:4].upper()}"
+
+    capex.status = CapexRequestStatus.PO_CREATED.value
+    capex.vendor_id = po_in.vendor_id
+    capex.po_number = po_number
+    capex.po_created_at = datetime.now(timezone.utc)
+    if po_in.expected_delivery_date:
+        capex.expected_delivery_date = po_in.expected_delivery_date
+
+    await db.commit()
+    await db.refresh(capex)
+
+    return await get_capex_request(capex_id, db, current_user)
+
+
+@router.post("/capex/{capex_id}/receive", response_model=CapexRequestDetailResponse, dependencies=[Depends(require_permissions("assets:update"))])
+async def receive_capex_goods(
+    capex_id: UUID,
+    receive_in: CapexReceiveRequest,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Mark CAPEX goods as received (after GRN)."""
+    result = await db.execute(
+        select(CapexRequest).where(CapexRequest.id == capex_id)
+    )
+    capex = result.scalar_one_or_none()
+
+    if not capex:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="CAPEX request not found"
+        )
+
+    if capex.status != CapexRequestStatus.PO_CREATED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot receive goods for CAPEX request with status {capex.status}"
+        )
+
+    capex.status = CapexRequestStatus.RECEIVED.value
+    capex.grn_id = receive_in.grn_id
+    capex.received_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    await db.refresh(capex)
+
+    return await get_capex_request(capex_id, db, current_user)
+
+
+@router.post("/capex/{capex_id}/capitalize", response_model=CapexRequestDetailResponse, dependencies=[Depends(require_permissions("assets:create"))])
+async def capitalize_capex(
+    capex_id: UUID,
+    cap_in: CapexCapitalizeRequest,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Capitalize CAPEX and create asset."""
+    result = await db.execute(
+        select(CapexRequest)
+        .options(selectinload(CapexRequest.asset_category))
+        .where(CapexRequest.id == capex_id)
+    )
+    capex = result.scalar_one_or_none()
+
+    if not capex:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="CAPEX request not found"
+        )
+
+    if capex.status != CapexRequestStatus.RECEIVED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot capitalize CAPEX request with status {capex.status}"
+        )
+
+    # Generate asset code
+    asset_code = await generate_asset_code(db)
+
+    # Calculate capitalized value
+    capitalized_value = cap_in.actual_cost + cap_in.installation_cost + cap_in.other_costs
+
+    # Create the asset
+    asset = Asset(
+        asset_code=asset_code,
+        name=capex.asset_name,
+        description=capex.description,
+        category_id=capex.asset_category_id,
+        serial_number=cap_in.serial_number,
+        model_number=cap_in.model_number,
+        warehouse_id=cap_in.warehouse_id,
+        location_details=cap_in.location_details,
+        custodian_employee_id=cap_in.custodian_employee_id,
+        department_id=capex.department_id,
+        purchase_date=capex.request_date,
+        purchase_price=cap_in.actual_cost,
+        vendor_id=capex.vendor_id,
+        po_number=capex.po_number,
+        capitalization_date=cap_in.capitalization_date,
+        installation_cost=cap_in.installation_cost,
+        other_costs=cap_in.other_costs,
+        capitalized_value=capitalized_value,
+        salvage_value=Decimal("0"),
+        accumulated_depreciation=Decimal("0"),
+        current_book_value=capitalized_value,
+        status=AssetStatus.ACTIVE,
+    )
+
+    db.add(asset)
+    await db.flush()  # Get the asset ID
+
+    # Update CAPEX request
+    capex.status = CapexRequestStatus.CAPITALIZED.value
+    capex.asset_id = asset.id
+    capex.actual_cost = cap_in.actual_cost
+    capex.capitalized_at = datetime.now(timezone.utc)
+    capex.capitalized_by = current_user.id
+
+    await db.commit()
+    await db.refresh(capex)
+
+    return await get_capex_request(capex_id, db, current_user)
+
+
+@router.post("/capex/{capex_id}/attachments", response_model=CapexRequestDetailResponse, dependencies=[Depends(require_permissions("assets:update"))])
+async def add_capex_attachment(
+    capex_id: UUID,
+    attachment_in: CapexAttachmentRequest,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Add attachment to CAPEX request."""
+    result = await db.execute(
+        select(CapexRequest).where(CapexRequest.id == capex_id)
+    )
+    capex = result.scalar_one_or_none()
+
+    if not capex:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="CAPEX request not found"
+        )
+
+    if capex.status in [CapexRequestStatus.CAPITALIZED, CapexRequestStatus.CANCELLED]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot add attachment to CAPEX request with status {capex.status}"
+        )
+
+    # Initialize attachments if needed
+    if not capex.attachments:
+        capex.attachments = {"files": []}
+
+    # Add attachment
+    attachment = {
+        "url": attachment_in.file_url,
+        "name": attachment_in.file_name,
+        "type": attachment_in.file_type,
+        "size": attachment_in.file_size,
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        "uploaded_by": str(current_user.id),
+    }
+    capex.attachments["files"].append(attachment)
+
+    await db.commit()
+    await db.refresh(capex)
+
+    return await get_capex_request(capex_id, db, current_user)
+
+
+# ==================== CAPEX Dashboard ====================
+
+@router.get("/capex/dashboard/stats", response_model=CapexDashboard, dependencies=[Depends(require_permissions("assets:view"))])
+async def get_capex_dashboard(
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Get CAPEX dashboard statistics."""
+    today = date.today()
+    fy_start = date(today.year if today.month >= 4 else today.year - 1, 4, 1)
+
+    # Request counts by status
+    status_counts = await db.execute(
+        select(CapexRequest.status, func.count(CapexRequest.id))
+        .group_by(CapexRequest.status)
+    )
+    status_dict = dict(status_counts.all())
+
+    total_requests = sum(status_dict.values())
+    draft_count = status_dict.get(CapexRequestStatus.DRAFT, 0)
+    pending_approval_count = status_dict.get(CapexRequestStatus.PENDING_APPROVAL, 0)
+    approved_count = status_dict.get(CapexRequestStatus.APPROVED, 0)
+    po_created_count = status_dict.get(CapexRequestStatus.PO_CREATED, 0)
+    received_count = status_dict.get(CapexRequestStatus.RECEIVED, 0)
+    capitalized_count = status_dict.get(CapexRequestStatus.CAPITALIZED, 0)
+    rejected_count = status_dict.get(CapexRequestStatus.REJECTED, 0)
+
+    # Total estimated this year
+    estimated_result = await db.execute(
+        select(func.sum(CapexRequest.estimated_total))
+        .where(CapexRequest.request_date >= fy_start)
+    )
+    total_estimated_this_year = estimated_result.scalar() or Decimal("0")
+
+    # Total approved this year
+    approved_result = await db.execute(
+        select(func.sum(CapexRequest.estimated_total))
+        .where(CapexRequest.request_date >= fy_start)
+        .where(CapexRequest.status.in_([
+            CapexRequestStatus.APPROVED, CapexRequestStatus.PO_CREATED,
+            CapexRequestStatus.RECEIVED, CapexRequestStatus.CAPITALIZED
+        ]))
+    )
+    total_approved_this_year = approved_result.scalar() or Decimal("0")
+
+    # Total capitalized this year
+    capitalized_result = await db.execute(
+        select(func.sum(CapexRequest.actual_cost))
+        .where(CapexRequest.request_date >= fy_start)
+        .where(CapexRequest.status == CapexRequestStatus.CAPITALIZED)
+    )
+    total_capitalized_this_year = capitalized_result.scalar() or Decimal("0")
+
+    # Pending approval amount
+    pending_result = await db.execute(
+        select(func.sum(CapexRequest.estimated_total))
+        .where(CapexRequest.status == CapexRequestStatus.PENDING_APPROVAL)
+    )
+    pending_approval_amount = pending_result.scalar() or Decimal("0")
+
+    # Category-wise distribution
+    category_result = await db.execute(
+        select(AssetCategory.name, func.count(CapexRequest.id), func.sum(CapexRequest.estimated_total))
+        .join(CapexRequest, CapexRequest.asset_category_id == AssetCategory.id)
+        .where(CapexRequest.request_date >= fy_start)
+        .group_by(AssetCategory.id)
+    )
+    category_wise = [
+        {"category": name, "count": count or 0, "amount": float(amt or 0)}
+        for name, count, amt in category_result.all()
+    ]
+
+    # Monthly trend (last 6 months)
+    monthly_trend = []
+    for i in range(5, -1, -1):
+        m = today.month - i
+        y = today.year
+        if m <= 0:
+            m += 12
+            y -= 1
+        m_start = date(y, m, 1)
+        m_end = date(y + (1 if m == 12 else 0), (m % 12) + 1, 1)
+
+        m_result = await db.execute(
+            select(func.count(CapexRequest.id), func.sum(CapexRequest.estimated_total))
+            .where(CapexRequest.request_date >= m_start)
+            .where(CapexRequest.request_date < m_end)
+        )
+        row = m_result.first()
+        monthly_trend.append({
+            "month": m_start.strftime("%b %Y"),
+            "count": row[0] or 0,
+            "amount": float(row[1] or 0)
+        })
+
+    return CapexDashboard(
+        total_requests=total_requests,
+        draft_count=draft_count,
+        pending_approval_count=pending_approval_count,
+        approved_count=approved_count,
+        po_created_count=po_created_count,
+        received_count=received_count,
+        capitalized_count=capitalized_count,
+        rejected_count=rejected_count,
+        total_estimated_this_year=total_estimated_this_year,
+        total_approved_this_year=total_approved_this_year,
+        total_capitalized_this_year=total_capitalized_this_year,
+        pending_approval_amount=pending_approval_amount,
+        category_wise=category_wise,
+        monthly_trend=monthly_trend,
     )

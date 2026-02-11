@@ -1,13 +1,15 @@
 from typing import Optional, List
 import uuid
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, Query, Depends
+from fastapi import APIRouter, Query, Depends, HTTPException
 from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser, Permissions, require_permissions
-from app.schemas.permission import PermissionListResponse, PermissionResponse, PermissionsByModule
+from app.schemas.permission import PermissionListResponse, PermissionResponse, PermissionsByModule, PermissionCreate
 from app.services.rbac_service import RBACService
 from app.models.module import Module
+from app.models.permission import Permission
 
 
 router = APIRouter(tags=["Permissions"])
@@ -141,3 +143,66 @@ async def get_my_permissions(
         ],
         "permissions": list(permission_codes),
     }
+
+
+@router.post(
+    "",
+    response_model=PermissionResponse,
+    dependencies=[Depends(require_permissions("access_control:manage"))]
+)
+async def create_permission(
+    db: DB,
+    data: PermissionCreate,
+):
+    """
+    Create a new permission.
+    Requires: access_control:manage permission
+    """
+    # Check if permission code already exists
+    result = await db.execute(
+        select(Permission).where(Permission.code == data.code)
+    )
+    existing = result.scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Permission with code '{data.code}' already exists")
+
+    # Verify module exists
+    result = await db.execute(
+        select(Module).where(Module.id == data.module_id)
+    )
+    module = result.scalar_one_or_none()
+    if not module:
+        raise HTTPException(status_code=400, detail=f"Module with ID '{data.module_id}' not found")
+
+    # Create permission
+    permission = Permission(
+        id=uuid.uuid4(),
+        code=data.code,
+        name=data.name,
+        description=data.description,
+        module_id=data.module_id,
+        action=data.action,
+        resource=data.resource,
+        is_active=True,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db.add(permission)
+    await db.commit()
+    await db.refresh(permission)
+
+    return PermissionResponse(
+        id=permission.id,
+        name=permission.name,
+        code=permission.code,
+        description=permission.description,
+        action=permission.action,
+        is_active=permission.is_active,
+        module={
+            "id": module.id,
+            "name": module.name,
+            "code": module.code,
+        },
+        created_at=permission.created_at,
+        updated_at=permission.updated_at,
+    )
