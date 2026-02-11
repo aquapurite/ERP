@@ -2673,17 +2673,20 @@ async def get_trial_balance(
         debit = Decimal("0")
         credit = Decimal("0")
 
-        # Assets and Expenses have debit balances (positive = debit)
+        # Balance formula: opening + sum(debits) - sum(credits)
+        # Assets and Expenses: positive balance = normal (debit), negative = abnormal (credit)
+        # Liabilities, Equity, Revenue: negative balance = normal (credit), positive = abnormal (debit)
         if account.account_type in [AccountType.ASSET, AccountType.EXPENSE]:
             if balance > 0:
                 debit = balance
             else:
                 credit = abs(balance)
         else:  # Liabilities, Equity, Revenue have credit balances
-            if balance > 0:
-                credit = balance
+            # For these account types, a negative balance (credits > debits) is NORMAL
+            if balance < 0:
+                credit = abs(balance)  # Normal credit balance
             else:
-                debit = abs(balance)
+                debit = balance  # Abnormal debit balance
 
         total_debit += debit
         total_credit += credit
