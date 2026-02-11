@@ -3721,6 +3721,111 @@ async def fix_orphaned_gl_entries(
 
 
 @router.post(
+    "/fix-group-account-gl-entries",
+    dependencies=[Depends(require_permissions("finance:manage"))]
+)
+async def fix_group_account_gl_entries(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    dry_run: bool = Query(True, description="If True, only report. Set False to delete entries."),
+):
+    """
+    Find and delete GL entries that were incorrectly posted to GROUP accounts.
+
+    Group accounts (is_group=True) should not have direct GL postings.
+    This cleans up erroneous entries that cause Trial Balance imbalance.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Find group accounts with GL entries
+    group_accounts_query = select(ChartOfAccount).where(
+        ChartOfAccount.is_group == True
+    )
+    group_result = await db.execute(group_accounts_query)
+    group_accounts = group_result.scalars().all()
+
+    issues = []
+    total_debit = Decimal("0")
+    total_credit = Decimal("0")
+
+    for account in group_accounts:
+        # Check for GL entries
+        gl_query = select(GeneralLedger).where(
+            GeneralLedger.account_id == account.id
+        )
+        gl_result = await db.execute(gl_query)
+        gl_entries = gl_result.scalars().all()
+
+        if gl_entries:
+            account_debit = sum(e.debit_amount or Decimal("0") for e in gl_entries)
+            account_credit = sum(e.credit_amount or Decimal("0") for e in gl_entries)
+            total_debit += account_debit
+            total_credit += account_credit
+
+            issues.append({
+                "account_code": account.account_code,
+                "account_name": account.account_name,
+                "entry_count": len(gl_entries),
+                "total_debit": float(account_debit),
+                "total_credit": float(account_credit),
+                "entries": [
+                    {
+                        "id": str(e.id),
+                        "debit": float(e.debit_amount or 0),
+                        "credit": float(e.credit_amount or 0),
+                        "narration": (e.narration or "")[:50],
+                        "date": str(e.transaction_date) if e.transaction_date else None
+                    }
+                    for e in gl_entries[:5]  # Show first 5 entries
+                ]
+            })
+
+    if dry_run:
+        return {
+            "mode": "dry_run",
+            "message": f"Found {len(issues)} group accounts with GL entries",
+            "total_debit_in_group_accounts": float(total_debit),
+            "total_credit_in_group_accounts": float(total_credit),
+            "net_imbalance": float(total_debit - total_credit),
+            "issues": issues,
+            "action": "Set dry_run=False to delete these entries"
+        }
+
+    # Delete the entries
+    deleted_count = 0
+    affected_account_ids = set()
+
+    for account in group_accounts:
+        gl_query = select(GeneralLedger).where(
+            GeneralLedger.account_id == account.id
+        )
+        gl_result = await db.execute(gl_query)
+        gl_entries = gl_result.scalars().all()
+
+        for entry in gl_entries:
+            affected_account_ids.add(account.id)
+            await db.delete(entry)
+            deleted_count += 1
+
+    # Also set allow_direct_posting=False for group accounts
+    for account in group_accounts:
+        if account.allow_direct_posting:
+            account.allow_direct_posting = False
+
+    await db.commit()
+
+    return {
+        "mode": "fix",
+        "message": f"Deleted {deleted_count} GL entries from {len(issues)} group accounts",
+        "deleted_entries": deleted_count,
+        "group_accounts_cleaned": len(issues),
+        "total_debit_removed": float(total_debit),
+        "total_credit_removed": float(total_credit)
+    }
+
+
+@router.post(
     "/fix-trial-balance-imbalance",
     dependencies=[Depends(require_permissions("finance:manage"))]
 )
