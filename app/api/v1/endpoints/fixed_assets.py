@@ -209,6 +209,31 @@ async def create_asset_category(
     )
 
 
+@router.get("/categories/dropdown", dependencies=[Depends(require_permissions("assets:view"))])
+async def get_categories_dropdown(
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Get asset categories for dropdown selection."""
+    result = await db.execute(
+        select(AssetCategory)
+        .where(AssetCategory.is_active == True)
+        .order_by(AssetCategory.name)
+    )
+    categories = result.scalars().all()
+
+    return [
+        {
+            "id": str(cat.id),
+            "code": cat.code,
+            "name": cat.name,
+            "depreciation_method": cat.depreciation_method,
+            "depreciation_rate": float(cat.depreciation_rate),
+        }
+        for cat in categories
+    ]
+
+
 @router.put("/categories/{category_id}", response_model=AssetCategoryResponse, dependencies=[Depends(require_permissions("assets:update"))])
 async def update_asset_category(
     category_id: UUID,
