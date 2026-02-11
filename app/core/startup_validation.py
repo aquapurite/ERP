@@ -18,7 +18,7 @@ from typing import List, Dict, Any
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import async_session_maker
+from app.database import async_session_factory
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +204,7 @@ async def run_startup_validations(fail_on_error: bool = False) -> Dict[str, Any]
 
     all_errors: List[ValidationError] = []
 
-    async with async_session_maker() as db:
+    async with async_session_factory() as db:
         # Run all validations
         all_errors.extend(await validate_chart_of_accounts(db))
         all_errors.extend(await validate_account_code_consistency(db))
