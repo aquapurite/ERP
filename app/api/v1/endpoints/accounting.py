@@ -2003,7 +2003,7 @@ async def approve_journal_entry(
         # Check if narration indicates system correction
         is_system_correction = any(
             keyword in (journal.narration or "").lower()
-            for keyword in ["reclassification", "correction", "reversal", "adjustment", "imprest advance", "recording imprest"]
+            for keyword in ["reclassification", "correction", "corrected", "reversal", "adjustment", "imprest advance", "recording imprest"]
         )
 
         # Allow bypass only for system corrections with explicit flag
