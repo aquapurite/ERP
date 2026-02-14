@@ -950,15 +950,15 @@ const transformVendorResponse = (vendor: Record<string, unknown>): Vendor => {
 };
 
 export const vendorsApi = {
-  list: async (params?: { page?: number; size?: number; limit?: number; status?: string; search?: string }) => {
+  list: async (params?: { page?: number; size?: number; limit?: number; status?: string; search?: string; vendor_type?: string }) => {
     // Backend uses 'limit', not 'size'
-    const apiParams = {
-      ...params,
+    const apiParams: Record<string, unknown> = {
       limit: params?.limit || params?.size || 100,
       skip: params?.page ? (params.page - 1) * (params?.limit || params?.size || 100) : 0,
     };
-    delete (apiParams as Record<string, unknown>).size;
-    delete (apiParams as Record<string, unknown>).page;
+    if (params?.status) apiParams.status = params.status;
+    if (params?.search) apiParams.search = params.search;
+    if (params?.vendor_type) apiParams.vendor_type = params.vendor_type;
     const { data } = await apiClient.get<{ items: Record<string, unknown>[]; total: number; pages: number }>('/vendors', { params: apiParams });
     return {
       ...data,

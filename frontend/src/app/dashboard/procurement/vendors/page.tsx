@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Pencil, Trash2, Building, Phone, Mail, Lock, Loader2, Barcode } from 'lucide-react';
+import { MoreHorizontal, Plus, Pencil, Trash2, Building, Phone, Mail, Lock, Loader2, Barcode, Factory, Truck, Wrench, Package, Box, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -46,6 +46,16 @@ import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
 import { vendorsApi } from '@/lib/api';
 import { Vendor } from '@/types';
+
+const vendorTypeFilters = [
+  { value: 'ALL', label: 'All', icon: Users },
+  { value: 'MANUFACTURER', label: 'Manufacturer', icon: Factory },
+  { value: 'SPARE_PARTS', label: 'Spare Parts', icon: Package },
+  { value: 'DISTRIBUTOR', label: 'Distributor', icon: Truck },
+  { value: 'RAW_MATERIAL', label: 'Raw Material', icon: Box },
+  { value: 'SERVICE_PROVIDER', label: 'Service Provider', icon: Wrench },
+  { value: 'TRANSPORTER', label: 'Transporter', icon: Truck },
+] as const;
 
 const tierColors: Record<string, string> = {
   'A+': 'bg-purple-100 text-purple-800',
@@ -243,6 +253,7 @@ const emptyFormData: VendorFormData = {
 export default function VendorsPage() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
+  const [selectedVendorType, setSelectedVendorType] = useState<string>('ALL');
 
   // Create dialog state
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -286,10 +297,20 @@ export default function VendorsPage() {
     fetchNextCode(value);
   };
 
+  // Reset page when filter changes
+  const handleVendorTypeFilter = (type: string) => {
+    setSelectedVendorType(type);
+    setPage(0);
+  };
+
   // Fetch vendors
   const { data, isLoading } = useQuery({
-    queryKey: ['vendors', page, pageSize],
-    queryFn: () => vendorsApi.list({ page: page + 1, size: pageSize }),
+    queryKey: ['vendors', page, pageSize, selectedVendorType],
+    queryFn: () => vendorsApi.list({
+      page: page + 1,
+      size: pageSize,
+      ...(selectedVendorType !== 'ALL' && { vendor_type: selectedVendorType }),
+    }),
   });
 
   // Create mutation
@@ -734,6 +755,31 @@ export default function VendorsPage() {
           </Dialog>
         }
       />
+
+      {/* Vendor Type Filter Buttons */}
+      <div className="flex flex-wrap gap-2">
+        {vendorTypeFilters.map((filter) => {
+          const Icon = filter.icon;
+          const isActive = selectedVendorType === filter.value;
+          return (
+            <Button
+              key={filter.value}
+              variant={isActive ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => handleVendorTypeFilter(filter.value)}
+              className={isActive ? '' : 'text-muted-foreground'}
+            >
+              <Icon className="mr-1.5 h-4 w-4" />
+              {filter.label}
+              {isActive && data?.total !== undefined && (
+                <span className="ml-1.5 rounded-full bg-primary-foreground/20 px-1.5 py-0.5 text-xs">
+                  {data.total}
+                </span>
+              )}
+            </Button>
+          );
+        })}
+      </div>
 
       <DataTable
         columns={columns}
