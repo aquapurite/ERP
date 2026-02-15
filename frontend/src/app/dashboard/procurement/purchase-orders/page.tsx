@@ -1141,7 +1141,7 @@ export default function PurchaseOrdersPage() {
                 Create GRN
               </DropdownMenuItem>
             )}
-            {isSuperAdmin && row.original.status === 'DRAFT' && (
+            {row.original.status === 'DRAFT' && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
