@@ -1,5 +1,6 @@
 """API endpoints for Purchase/Procurement management (P2P Cycle)."""
 from typing import Optional, List
+import uuid
 from uuid import UUID
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -394,13 +395,12 @@ async def create_purchase_requisition(
 ):
     """Create a new Purchase Requisition.
 
-    Uses atomic sequence generation with financial year format: PR/APL/25-26/00001
+    Drafts use temporary identifier. Official number assigned on submit.
     """
     today = date.today()
 
-    # Generate PR number using atomic sequence service
-    service = DocumentSequenceService(db)
-    pr_number = await service.get_next_number("PR")
+    # Use temporary identifier for drafts (official number assigned on submit)
+    pr_number = f"DRAFT-{uuid.uuid4().hex[:12]}"
 
     # Calculate estimated total
     estimated_total = sum(
@@ -707,6 +707,11 @@ async def submit_purchase_requisition(
     if not pr.items:
         raise HTTPException(status_code=400, detail="Cannot submit PR without items")
 
+    # Assign official PR number on submit (deferred numbering)
+    if pr.requisition_number.startswith("DRAFT-"):
+        service = DocumentSequenceService(db)
+        pr.requisition_number = await service.get_next_number("PR")
+
     pr.status = RequisitionStatus.SUBMITTED.value
 
     # Create approval request
@@ -913,9 +918,8 @@ async def convert_requisition_to_po(
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
 
-    # Generate PO number using atomic sequence service
-    service = DocumentSequenceService(db)
-    po_number = await service.get_next_number("PO")
+    # Use temporary identifier for drafts (official number assigned on submit)
+    po_number = f"DRAFT-{uuid.uuid4().hex[:12]}"
 
     # Get warehouse
     wh_result = await db.execute(
@@ -1094,8 +1098,7 @@ async def convert_requisition_to_po(
             )
             db.add(delivery_schedule)
 
-    # Mark PR as converted
-    pr.status = RequisitionStatus.CONVERTED.value
+    # Link PR to PO (PR stays APPROVED until PO is approved)
     pr.converted_to_po_id = po.id
 
     await db.commit()
@@ -1388,9 +1391,8 @@ async def create_purchase_order(
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
 
-    # Generate PO number using atomic sequence service
-    service = DocumentSequenceService(db)
-    po_number = await service.get_next_number("PO")
+    # Use temporary identifier for drafts (official number assigned on submit)
+    po_number = f"DRAFT-{uuid.uuid4().hex[:12]}"
 
     # Determine if inter-state (for IGST)
     # Get warehouse state
@@ -1903,6 +1905,16 @@ async def delete_purchase_order(
             detail=f"Cannot delete PO with status '{po.status}'. Only DRAFT or CANCELLED POs can be deleted."
         )
 
+    # Reset linked PR back to APPROVED if this PO was created from a PR
+    if po.requisition_id:
+        pr_result = await db.execute(
+            select(PurchaseRequisition).where(PurchaseRequisition.id == po.requisition_id)
+        )
+        linked_pr = pr_result.scalar_one_or_none()
+        if linked_pr and linked_pr.status == RequisitionStatus.CONVERTED.value:
+            linked_pr.status = RequisitionStatus.APPROVED.value
+            linked_pr.converted_to_po_id = None
+
     # Delete PO items first (cascade should handle this, but being explicit)
     await db.execute(
         delete(PurchaseOrderItem).where(PurchaseOrderItem.purchase_order_id == po_id)
@@ -2127,6 +2139,11 @@ async def submit_purchase_order(
             detail=f"Cannot submit PO in '{po.status}' status. Allowed actions: {', '.join(allowed) if allowed else 'None (terminal state)'}"
         )
 
+    # Assign official PO number on submit (deferred numbering)
+    if po.po_number.startswith("DRAFT-"):
+        service = DocumentSequenceService(db)
+        po.po_number = await service.get_next_number("PO")
+
     # Transition using state machine
     transition_po(po, POStat.PENDING_APPROVAL, user_id=current_user.id)
 
@@ -2196,11 +2213,25 @@ async def approve_purchase_order(
     po_data_for_serials = None
 
     if request.action == "APPROVE":
+        # Assign official PO number if still a draft number (direct approval path)
+        if po.po_number.startswith("DRAFT-"):
+            service = DocumentSequenceService(db)
+            po.po_number = await service.get_next_number("PO")
+
         # Direct status change - no state machine
         po.status = "APPROVED"
         po.approved_by = current_user.id
         po.approved_at = datetime.now(timezone.utc)
         print(f"=== PO APPROVE === Set status to APPROVED")
+
+        # Mark linked PR as CONVERTED (PR becomes CONVERTED only when PO is approved)
+        if po.requisition_id:
+            pr_result = await db.execute(
+                select(PurchaseRequisition).where(PurchaseRequisition.id == po.requisition_id)
+            )
+            linked_pr = pr_result.scalar_one_or_none()
+            if linked_pr:
+                linked_pr.status = RequisitionStatus.CONVERTED.value
 
         # Update all delivery schedules to ADVANCE_PENDING status
         for schedule in po.delivery_schedules:
