@@ -104,7 +104,7 @@ class ModelCodeResponse(BaseResponseSchema):
     id: UUID
     product_id: Optional[UUID] = None
     product_sku: Optional[str] = None
-    fg_code: str
+    fg_code: Optional[str] = None
     model_code: str
     # item_type removed from database - computed from fg_code prefix for backward compatibility
     item_type: Optional[str] = None
