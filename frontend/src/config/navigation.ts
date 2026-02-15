@@ -326,8 +326,8 @@ export const navigation: NavItem[] = [
       { title: 'E-Way Bills', href: '/dashboard/billing/eway-bills', icon: Truck, permissions: ['FINANCE_VIEW'] },
 
       // -------- EXPENSES --------
-      { title: '── Expenses ──', href: '#', permissions: ['EXPENSES_VIEW'] },
-      { title: 'Expense Vouchers', href: '/dashboard/finance/expenses', icon: Receipt, permissions: ['EXPENSES_VIEW'] },
+      { title: '── Expenses ──', href: '#', permissions: ['EXPENSE_VIEW'] },
+      { title: 'Expense Vouchers', href: '/dashboard/finance/expenses', icon: Receipt, permissions: ['EXPENSE_VIEW'] },
 
       // -------- ASSETS --------
       { title: '── Assets ──', href: '#', permissions: ['ASSETS_VIEW'] },
