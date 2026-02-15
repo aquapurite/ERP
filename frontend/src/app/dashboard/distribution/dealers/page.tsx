@@ -298,8 +298,8 @@ export default function DealersPage() {
       toast.error('Dealer name is required');
       return;
     }
-    if (!formData.gst_number.trim() || formData.gst_number.length !== 15) {
-      toast.error('Valid GSTIN (15 characters) is required');
+    if (formData.gst_number.trim() && formData.gst_number.length !== 15) {
+      toast.error('GSTIN must be exactly 15 characters');
       return;
     }
     if (!formData.pan.trim() || formData.pan.length !== 10) {
@@ -493,7 +493,7 @@ export default function DealersPage() {
             <div className="text-sm font-medium text-muted-foreground mt-2">Tax Information</div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="gst_number">GSTIN * (15 characters)</Label>
+                <Label htmlFor="gst_number">GSTIN (15 characters)</Label>
                 <Input
                   id="gst_number"
                   placeholder="22AAAAA0000A1Z5"

@@ -1339,7 +1339,7 @@ export const dealersApi = {
     type?: string;
     email: string;
     phone: string;
-    gst_number: string;
+    gst_number?: string;
     pan: string;
     contact_person: string;
     pricing_tier?: string;
@@ -1353,11 +1353,10 @@ export const dealersApi = {
     region: string;
   }) => {
     // Transform frontend fields to backend required fields
-    const payload = {
+    const payload: Record<string, unknown> = {
       name: dealer.name,
       legal_name: dealer.name,
       dealer_type: dealer.type || 'DEALER',
-      gstin: dealer.gst_number,
       pan: dealer.pan,
       contact_person: dealer.contact_person || dealer.name,
       email: dealer.email,
@@ -1373,6 +1372,9 @@ export const dealersApi = {
       tier: dealer.pricing_tier || 'STANDARD',
       credit_limit: dealer.credit_limit || 0,
     };
+    if (dealer.gst_number?.trim()) {
+      payload.gst_number = dealer.gst_number;
+    }
     const { data } = await apiClient.post<Dealer>('/dealers', payload);
     return data;
   },

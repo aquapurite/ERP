@@ -26,7 +26,7 @@ class DealerBase(BaseModel):
     tier: str = "STANDARD"  # VARCHAR in DB: PLATINUM, GOLD, SILVER, BRONZE, STANDARD
 
     # GST & Tax
-    gstin: str = Field(..., min_length=15, max_length=15, alias="gst_number")
+    gstin: Optional[str] = Field(None, min_length=15, max_length=15, alias="gst_number")
     pan: str = Field(..., min_length=10, max_length=10)
     tan: Optional[str] = Field(None, min_length=10, max_length=10)
     gst_registration_type: str = Field("REGULAR", max_length=30)

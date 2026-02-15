@@ -159,9 +159,9 @@ class Dealer(Base):
     )
 
     # GST & Tax
-    gstin: Mapped[str] = mapped_column(
+    gstin: Mapped[Optional[str]] = mapped_column(
         String(15),
-        nullable=False,
+        nullable=True,
         index=True,
         comment="GSTIN number"
     )

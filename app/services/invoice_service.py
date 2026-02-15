@@ -241,6 +241,17 @@ class InvoiceService:
         if not customer:
             raise InvoiceGenerationError(f"No customer found for order {order.order_number}")
 
+        # B2B GSTIN enforcement: GSTIN is mandatory for B2B channel invoices
+        customer_gstin = getattr(customer, 'gst_number', None)
+        is_b2b_order = bool(order.dealer_id) or getattr(order, 'source', None) in (
+            'DEALER', 'DISTRIBUTOR', 'B2B', 'CORPORATE', 'B2B_PORTAL'
+        )
+        if is_b2b_order and not customer_gstin:
+            raise InvoiceGenerationError(
+                f"GSTIN is required for B2B invoice. Order {order.order_number} is from B2B channel "
+                f"but customer has no GSTIN. Please update the customer/dealer GSTIN first."
+            )
+
         # 2. Check if invoice already exists
         if await self.check_invoice_exists_for_order(order.id):
             logger.warning(f"Invoice already exists for order {order.order_number}, skipping auto-generation")
