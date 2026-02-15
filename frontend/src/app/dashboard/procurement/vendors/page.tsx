@@ -51,7 +51,6 @@ const vendorTypeFilters = [
   { value: 'ALL', label: 'All', icon: Users },
   { value: 'MANUFACTURER', label: 'Manufacturer', icon: Factory },
   { value: 'SPARE_PARTS', label: 'Spare Parts', icon: Package },
-  { value: 'DISTRIBUTOR', label: 'Distributor', icon: Truck },
   { value: 'RAW_MATERIAL', label: 'Raw Material', icon: Box },
   { value: 'SERVICE_PROVIDER', label: 'Service Provider', icon: Wrench },
   { value: 'TRANSPORTER', label: 'Transporter', icon: Truck },
@@ -145,6 +144,24 @@ function getColumns(
       },
     },
     {
+      accessorKey: 'vendor_type',
+      header: 'Type',
+      cell: ({ row }) => {
+        const vendorType = row.original.vendor_type || '';
+        const filter = vendorTypeFilters.find(f => f.value === vendorType);
+        if (!filter || filter.value === 'ALL') {
+          return <span className="text-sm text-muted-foreground">-</span>;
+        }
+        const Icon = filter.icon;
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-muted text-xs font-medium">
+            <Icon className="h-3.5 w-3.5" />
+            {filter.label}
+          </span>
+        );
+      },
+    },
+    {
       accessorKey: 'contact',
       header: 'Contact',
       cell: ({ row }) => (
@@ -212,7 +229,7 @@ type VendorFormData = {
   gst_number: string;
   pan_number: string;
   tier: 'PLATINUM' | 'GOLD' | 'SILVER' | 'BRONZE';
-  vendor_type: 'MANUFACTURER' | 'DISTRIBUTOR' | 'SPARE_PARTS' | 'SERVICE_PROVIDER' | 'RAW_MATERIAL' | 'TRANSPORTER';
+  vendor_type: 'MANUFACTURER' | 'SPARE_PARTS' | 'SERVICE_PROVIDER' | 'RAW_MATERIAL' | 'TRANSPORTER';
   contact_person: string;
   address_line1: string;
   city: string;
@@ -386,12 +403,12 @@ export default function VendorsPage() {
       gst_number: vendor.gst_number || '',
       pan_number: vendor.pan_number || '',
       tier: (vendor.tier as VendorFormData['tier']) || 'SILVER',
-      vendor_type: 'MANUFACTURER', // Default, would need to fetch from backend
+      vendor_type: (vendor.vendor_type as VendorFormData['vendor_type']) || 'MANUFACTURER',
       contact_person: vendor.contact_person || '',
-      address_line1: '',
+      address_line1: vendor.address_line1 || '',
       city: vendor.city || '',
       state: vendor.state || '',
-      pincode: '',
+      pincode: vendor.pincode || '',
       // Bank Details
       bank_name: vendor.bank_name || '',
       bank_branch: vendor.bank_branch || '',
@@ -430,8 +447,12 @@ export default function VendorsPage() {
       gstin: editFormData.gst_number || undefined,
       pan: editFormData.pan_number || undefined,
       contact_person: editFormData.contact_person || undefined,
+      address_line1: editFormData.address_line1 || undefined,
       city: editFormData.city || undefined,
       state: editFormData.state || undefined,
+      pincode: editFormData.pincode || undefined,
+      vendor_type: editFormData.vendor_type || undefined,
+      grade: editFormData.tier || undefined,
       // Bank Details
       bank_name: editFormData.bank_name || undefined,
       bank_branch: editFormData.bank_branch || undefined,
@@ -513,7 +534,6 @@ export default function VendorsPage() {
                       <SelectContent>
                         <SelectItem value="MANUFACTURER">Manufacturer (MFR)</SelectItem>
                         <SelectItem value="SPARE_PARTS">Spare Parts (SPR)</SelectItem>
-                        <SelectItem value="DISTRIBUTOR">Distributor (DST)</SelectItem>
                         <SelectItem value="RAW_MATERIAL">Raw Material (RAW)</SelectItem>
                         <SelectItem value="SERVICE_PROVIDER">Service Provider (SVC)</SelectItem>
                         <SelectItem value="TRANSPORTER">Transporter (TRN)</SelectItem>
@@ -822,6 +842,57 @@ export default function VendorsPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
+                <Label htmlFor="edit-vendor-type">Vendor Type</Label>
+                <Select
+                  value={editFormData.vendor_type}
+                  onValueChange={(value: VendorFormData['vendor_type']) =>
+                    setEditFormData({ ...editFormData, vendor_type: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="MANUFACTURER">Manufacturer</SelectItem>
+                    <SelectItem value="SPARE_PARTS">Spare Parts</SelectItem>
+                    <SelectItem value="RAW_MATERIAL">Raw Material</SelectItem>
+                    <SelectItem value="SERVICE_PROVIDER">Service Provider</SelectItem>
+                    <SelectItem value="TRANSPORTER">Transporter</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-tier">Tier</Label>
+                <Select
+                  value={editFormData.tier}
+                  onValueChange={(value: VendorFormData['tier']) =>
+                    setEditFormData({ ...editFormData, tier: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select tier" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PLATINUM">Platinum</SelectItem>
+                    <SelectItem value="GOLD">Gold</SelectItem>
+                    <SelectItem value="SILVER">Silver</SelectItem>
+                    <SelectItem value="BRONZE">Bronze</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="text-sm font-medium text-muted-foreground mt-2">Contact Information</div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-contact-person">Contact Person</Label>
+                <Input
+                  id="edit-contact-person"
+                  value={editFormData.contact_person}
+                  onChange={(e) => setEditFormData({ ...editFormData, contact_person: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="edit-email">Email</Label>
                 <Input
                   id="edit-email"
@@ -830,14 +901,14 @@ export default function VendorsPage() {
                   onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-phone">Phone</Label>
-                <Input
-                  id="edit-phone"
-                  value={editFormData.phone}
-                  onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
-                />
-              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-phone">Phone</Label>
+              <Input
+                id="edit-phone"
+                value={editFormData.phone}
+                onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
+              />
             </div>
 
             <div className="text-sm font-medium text-muted-foreground mt-2">Tax Information</div>
@@ -858,6 +929,45 @@ export default function VendorsPage() {
                   value={editFormData.pan_number}
                   maxLength={10}
                   onChange={(e) => setEditFormData({ ...editFormData, pan_number: e.target.value.toUpperCase() })}
+                />
+              </div>
+            </div>
+
+            <div className="text-sm font-medium text-muted-foreground mt-2">Address Information</div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-address">Address</Label>
+              <Input
+                id="edit-address"
+                placeholder="Street address"
+                value={editFormData.address_line1}
+                onChange={(e) => setEditFormData({ ...editFormData, address_line1: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-city">City</Label>
+                <Input
+                  id="edit-city"
+                  value={editFormData.city}
+                  onChange={(e) => setEditFormData({ ...editFormData, city: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-state">State</Label>
+                <Input
+                  id="edit-state"
+                  value={editFormData.state}
+                  onChange={(e) => setEditFormData({ ...editFormData, state: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-pincode">Pincode</Label>
+                <Input
+                  id="edit-pincode"
+                  placeholder="110001"
+                  maxLength={6}
+                  value={editFormData.pincode}
+                  onChange={(e) => setEditFormData({ ...editFormData, pincode: e.target.value })}
                 />
               </div>
             </div>
