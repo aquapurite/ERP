@@ -1103,12 +1103,13 @@ async def convert_requisition_to_po(
 
     await db.commit()
 
-    # Load full PO with items and delivery schedules
+    # Load full PO with items, delivery schedules, and vendor
     result = await db.execute(
         select(PurchaseOrder)
         .options(
             selectinload(PurchaseOrder.items),
-            selectinload(PurchaseOrder.delivery_schedules)
+            selectinload(PurchaseOrder.delivery_schedules),
+            selectinload(PurchaseOrder.vendor),
         )
         .where(PurchaseOrder.id == po.id)
     )
@@ -1694,24 +1695,24 @@ async def create_purchase_order(
             )
             db.add(delivery_schedule)
 
-    # If created from PR, update PR status
+    # If created from PR, link PR to PO (PR stays APPROVED until PO is approved)
     if po_in.requisition_id:
         pr_result = await db.execute(
             select(PurchaseRequisition).where(PurchaseRequisition.id == po_in.requisition_id)
         )
         pr = pr_result.scalar_one_or_none()
         if pr:
-            pr.status = RequisitionStatus.CONVERTED.value
             pr.converted_to_po_id = po.id
 
     await db.commit()
 
-    # Load full PO with items and delivery schedules
+    # Load full PO with items, delivery schedules, and vendor
     result = await db.execute(
         select(PurchaseOrder)
         .options(
             selectinload(PurchaseOrder.items),
-            selectinload(PurchaseOrder.delivery_schedules)
+            selectinload(PurchaseOrder.delivery_schedules),
+            selectinload(PurchaseOrder.vendor),
         )
         .where(PurchaseOrder.id == po.id)
     )
@@ -1941,7 +1942,8 @@ async def update_purchase_order(
         select(PurchaseOrder)
         .options(
             selectinload(PurchaseOrder.items),
-            selectinload(PurchaseOrder.delivery_schedules)
+            selectinload(PurchaseOrder.delivery_schedules),
+            selectinload(PurchaseOrder.vendor),
         )
         .where(PurchaseOrder.id == po_id)
     )
@@ -2097,7 +2099,8 @@ async def update_purchase_order(
         select(PurchaseOrder)
         .options(
             selectinload(PurchaseOrder.items),
-            selectinload(PurchaseOrder.delivery_schedules)
+            selectinload(PurchaseOrder.delivery_schedules),
+            selectinload(PurchaseOrder.vendor),
         )
         .where(PurchaseOrder.id == po_id)
     )
@@ -2154,7 +2157,8 @@ async def submit_purchase_order(
         select(PurchaseOrder)
         .options(
             selectinload(PurchaseOrder.items),
-            selectinload(PurchaseOrder.delivery_schedules)
+            selectinload(PurchaseOrder.delivery_schedules),
+            selectinload(PurchaseOrder.vendor),
         )
         .where(PurchaseOrder.id == po_id)
     )
@@ -2172,6 +2176,7 @@ async def approve_purchase_order(
     request: POApproveRequest = POApproveRequest(),
 ):
     """Approve or reject a purchase order."""
+    import logging
     print(f"=== PO APPROVE START === po_id={po_id}, action={request.action}")
 
     result = await db.execute(
@@ -2314,14 +2319,14 @@ async def approve_purchase_order(
         select(PurchaseOrder)
         .options(
             selectinload(PurchaseOrder.items),
-            selectinload(PurchaseOrder.delivery_schedules)
+            selectinload(PurchaseOrder.delivery_schedules),
+            selectinload(PurchaseOrder.vendor),
         )
         .where(PurchaseOrder.id == po_id)
     )
     po = result.scalar_one()
 
     # Generate serials AFTER approval is committed (so approval succeeds even if serial gen fails)
-    import logging
     logging.info(f"Serial generation check: should_generate={should_generate_serials}, has_data={serial_gen_data is not None}")
 
     if should_generate_serials and serial_gen_data:
@@ -2399,7 +2404,8 @@ async def approve_purchase_order(
         select(PurchaseOrder)
         .options(
             selectinload(PurchaseOrder.items),
-            selectinload(PurchaseOrder.delivery_schedules)
+            selectinload(PurchaseOrder.delivery_schedules),
+            selectinload(PurchaseOrder.vendor),
         )
         .where(PurchaseOrder.id == po_id)
     )
@@ -2546,7 +2552,18 @@ async def send_po_to_vendor(
         transition_po(po, POStat.SENT_TO_VENDOR, user_id=current_user.id)
 
     await db.commit()
-    await db.refresh(po)
+
+    # Reload with all relationships for response
+    result = await db.execute(
+        select(PurchaseOrder)
+        .options(
+            selectinload(PurchaseOrder.items),
+            selectinload(PurchaseOrder.delivery_schedules),
+            selectinload(PurchaseOrder.vendor),
+        )
+        .where(PurchaseOrder.id == po_id)
+    )
+    po = result.scalar_one()
 
     logging.info(f"PO SEND: Success - {po.po_number} -> SENT_TO_VENDOR")
     return po
@@ -2589,7 +2606,18 @@ async def confirm_purchase_order(
     transition_po(po, POStat.ACKNOWLEDGED, user_id=current_user.id)
 
     await db.commit()
-    await db.refresh(po)
+
+    # Reload with all relationships for response
+    result = await db.execute(
+        select(PurchaseOrder)
+        .options(
+            selectinload(PurchaseOrder.items),
+            selectinload(PurchaseOrder.delivery_schedules),
+            selectinload(PurchaseOrder.vendor),
+        )
+        .where(PurchaseOrder.id == po_id)
+    )
+    po = result.scalar_one()
 
     logging.info(f"PO CONFIRM: Success - {po.po_number} -> ACKNOWLEDGED")
     return po
@@ -6482,10 +6510,14 @@ async def convert_proforma_to_po(
 
     await db.commit()
 
-    # Reload PO with items
+    # Reload PO with all relationships for response
     result = await db.execute(
         select(PurchaseOrder)
-        .options(selectinload(PurchaseOrder.items))
+        .options(
+            selectinload(PurchaseOrder.items),
+            selectinload(PurchaseOrder.delivery_schedules),
+            selectinload(PurchaseOrder.vendor),
+        )
         .where(PurchaseOrder.id == po.id)
     )
     po = result.scalar_one()

@@ -649,10 +649,10 @@ class PurchaseOrder(Base):
         try:
             # Check if object is detached from session
             if sa_inspect(self).detached:
-                return f"<PurchaseOrder(id={self.id})>"
+                return "<PurchaseOrder(detached)>"
             return f"<PurchaseOrder(number='{self.po_number}', status='{self.status}')>"
         except Exception:
-            return f"<PurchaseOrder(id={getattr(self, 'id', 'unknown')})>"
+            return "<PurchaseOrder(unknown)>"
 
 
 class PurchaseOrderItem(Base):
