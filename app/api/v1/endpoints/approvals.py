@@ -30,6 +30,7 @@ from app.models.approval import (
 )
 from app.models.purchase import PurchaseOrder, POStatus, PurchaseRequisition, RequisitionStatus
 from app.models.vendor import Vendor, VendorStatus
+from app.models.dealer import Dealer, DealerStatus
 from app.schemas.approval import (
     ApprovalRequestResponse,
     ApprovalRequestBrief,
@@ -460,6 +461,7 @@ async def list_pending_approvals(
         "PURCHASE_ORDER": "PURCHASE_ORDER",
         "PURCHASE_REQUISITION": "PURCHASE_ORDER",  # Map PR to PO for display
         "VENDOR_ONBOARDING": "VENDOR",
+        "DEALER_ONBOARDING": "DEALER_ONBOARDING",
         "STOCK_TRANSFER": "TRANSFER",
         "STOCK_ADJUSTMENT": "TRANSFER",
         "JOURNAL_ENTRY": "JOURNAL_ENTRY",
@@ -629,6 +631,7 @@ async def get_approval_history(
             "PURCHASE_ORDER": "PURCHASE_ORDER",
             "PURCHASE_REQUISITION": "PURCHASE_ORDER",
             "VENDOR_ONBOARDING": "VENDOR",
+            "DEALER_ONBOARDING": "DEALER_ONBOARDING",
             "STOCK_TRANSFER": "TRANSFER",
             "STOCK_ADJUSTMENT": "TRANSFER",
             "JOURNAL_ENTRY": "JOURNAL_ENTRY",
@@ -868,6 +871,14 @@ async def approve_request(
             from app.services.vendor_orchestration_service import VendorOrchestrationService
             orchestration = VendorOrchestrationService(db)
             await orchestration.on_vendor_approved(vendor, current_user.id)
+    elif approval.entity_type == ApprovalEntityType.DEALER_ONBOARDING:
+        dealer_result = await db.execute(
+            select(Dealer).where(Dealer.id == approval.entity_id)
+        )
+        dealer = dealer_result.scalar_one_or_none()
+        if dealer:
+            dealer.status = DealerStatus.ACTIVE.value
+            dealer.onboarded_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(approval)
@@ -957,6 +968,14 @@ async def reject_request(
         if vendor:
             vendor.status = VendorStatus.INACTIVE.value
             vendor.internal_notes = f"Rejected: {request.reason}"
+    elif approval.entity_type == ApprovalEntityType.DEALER_ONBOARDING:
+        dealer_result = await db.execute(
+            select(Dealer).where(Dealer.id == approval.entity_id)
+        )
+        dealer = dealer_result.scalar_one_or_none()
+        if dealer:
+            dealer.status = DealerStatus.INACTIVE.value
+            dealer.internal_notes = f"Rejected: {request.reason}"
 
     await db.commit()
     await db.refresh(approval)
@@ -1080,6 +1099,14 @@ async def bulk_approve(
                     vendor.verified_by = current_user.id
                     vendor.approved_by = current_user.id
                     vendor.approved_at = datetime.now(timezone.utc)
+            elif approval.entity_type == ApprovalEntityType.DEALER_ONBOARDING:
+                dealer_result = await db.execute(
+                    select(Dealer).where(Dealer.id == approval.entity_id)
+                )
+                dealer = dealer_result.scalar_one_or_none()
+                if dealer:
+                    dealer.status = DealerStatus.ACTIVE.value
+                    dealer.onboarded_at = datetime.now(timezone.utc)
 
             # History
             history = ApprovalHistory(
