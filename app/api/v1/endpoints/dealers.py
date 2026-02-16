@@ -278,6 +278,31 @@ async def update_dealer(
     return dealer
 
 
+@router.delete("/{dealer_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_dealer(
+    dealer_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a dealer. Only PENDING_APPROVAL dealers can be deleted."""
+    result = await db.execute(
+        select(Dealer).where(Dealer.id == dealer_id)
+    )
+    dealer = result.scalar_one_or_none()
+
+    if not dealer:
+        raise HTTPException(status_code=404, detail="Dealer not found")
+
+    if dealer.status not in (DealerStatus.PENDING_APPROVAL, DealerStatus.INACTIVE):
+        raise HTTPException(
+            status_code=400,
+            detail="Only PENDING_APPROVAL or INACTIVE dealers can be deleted"
+        )
+
+    await db.delete(dealer)
+    await db.commit()
+
+
 @router.post("/{dealer_id}/approve", response_model=DealerResponse)
 async def approve_dealer(
     dealer_id: UUID,
