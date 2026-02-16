@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Pencil, Eye, Store, CreditCard, Target, Gift, MapPin } from 'lucide-react';
+import { MoreHorizontal, Plus, Pencil, Eye, Store, CreditCard, Target, Gift, MapPin, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -23,6 +23,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -47,7 +57,8 @@ const tierColors: Record<string, string> = {
 
 const getColumns = (
   router: ReturnType<typeof useRouter>,
-  onEdit: (dealer: Dealer) => void
+  onEdit: (dealer: Dealer) => void,
+  onDelete: (dealer: Dealer) => void
 ): ColumnDef<Dealer>[] => [
   {
     accessorKey: 'name',
@@ -151,6 +162,15 @@ const getColumns = (
             <Pencil className="mr-2 h-4 w-4" />
             Edit
           </DropdownMenuItem>
+          {row.original.status !== 'ACTIVE' && (
+            <DropdownMenuItem
+              onClick={() => onDelete(row.original)}
+              className="text-red-600 focus:text-red-600"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     ),
@@ -205,6 +225,7 @@ export default function DealersPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedDealer, setSelectedDealer] = useState<Dealer | null>(null);
   const [formData, setFormData] = useState<DealerFormData>(initialFormData);
+  const [deleteTarget, setDeleteTarget] = useState<Dealer | null>(null);
 
   const queryClient = useQueryClient();
 
@@ -280,7 +301,7 @@ export default function DealersPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Dealer> }) =>
+    mutationFn: ({ id, data }: { id: string; data: Partial<Dealer> & Record<string, unknown> }) =>
       dealersApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dealers'] });
@@ -290,6 +311,19 @@ export default function DealersPage() {
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to update dealer');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => dealersApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dealers'] });
+      toast.success('Dealer deleted successfully');
+      setDeleteTarget(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to delete dealer');
+      setDeleteTarget(null);
     },
   });
 
@@ -323,15 +357,36 @@ export default function DealersPage() {
       return;
     }
 
-    const dealerData = {
-      ...formData,
-      credit_limit: parseFloat(formData.credit_limit) || 0,
-    };
-
     if (selectedDealer) {
-      updateMutation.mutate({ id: selectedDealer.id, data: dealerData });
+      updateMutation.mutate({
+        id: selectedDealer.id,
+        data: {
+          name: formData.name,
+          type: formData.type,
+          dealer_type: formData.type,
+          pricing_tier: formData.pricing_tier,
+          tier: formData.pricing_tier,
+          contact_person: formData.contact_person,
+          email: formData.email,
+          phone: formData.phone,
+          pan: formData.pan,
+          gst_number: formData.gst_number,
+          gstin: formData.gst_number,
+          credit_limit: parseFloat(formData.credit_limit) || 0,
+          address_line1: formData.address_line1,
+          city: formData.city,
+          district: formData.district,
+          state: formData.state,
+          state_code: formData.state_code,
+          pincode: formData.pincode,
+          region: formData.region,
+        } as Partial<Dealer> & Record<string, unknown>,
+      });
     } else {
-      createMutation.mutate(dealerData);
+      createMutation.mutate({
+        ...formData,
+        credit_limit: parseFloat(formData.credit_limit) || 0,
+      });
     }
   };
 
@@ -349,7 +404,7 @@ export default function DealersPage() {
       />
 
       <DataTable
-        columns={getColumns(router, handleEdit)}
+        columns={getColumns(router, handleEdit, (dealer) => setDeleteTarget(dealer))}
         data={data?.items ?? []}
         searchKey="name"
         searchPlaceholder="Search dealers..."
@@ -643,6 +698,29 @@ export default function DealersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Dealer</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{deleteTarget?.name}</strong> ({deleteTarget?.code || deleteTarget?.dealer_code})?
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

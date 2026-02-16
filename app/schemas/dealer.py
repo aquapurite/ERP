@@ -109,11 +109,20 @@ class DealerCreate(DealerBase):
 
 class DealerUpdate(BaseModel):
     """Schema for updating Dealer."""
+    model_config = ConfigDict(populate_by_name=True)
+
     name: Optional[str] = None
     legal_name: Optional[str] = None
     display_name: Optional[str] = None
+    dealer_type: Optional[str] = None  # VARCHAR: DISTRIBUTOR, DEALER, SUB_DEALER, etc.
     status: Optional[str] = None  # VARCHAR: ACTIVE, INACTIVE, SUSPENDED, PENDING
     tier: Optional[str] = None  # VARCHAR: PLATINUM, GOLD, SILVER, BRONZE, STANDARD
+
+    # GST & Tax
+    gstin: Optional[str] = Field(None, min_length=15, max_length=15, alias="gst_number")
+    pan: Optional[str] = Field(None, min_length=10, max_length=10)
+
+    # Contact
     contact_person: Optional[str] = None
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
@@ -124,7 +133,9 @@ class DealerUpdate(BaseModel):
     registered_address_line1: Optional[str] = None
     registered_address_line2: Optional[str] = None
     registered_city: Optional[str] = None
+    registered_district: Optional[str] = None
     registered_state: Optional[str] = None
+    registered_state_code: Optional[str] = Field(None, min_length=2, max_length=2)
     registered_pincode: Optional[str] = None
 
     shipping_address_line1: Optional[str] = None
@@ -134,6 +145,7 @@ class DealerUpdate(BaseModel):
 
     # Territory
     region: Optional[str] = None
+    state: Optional[str] = None
     territory: Optional[str] = None
     assigned_pincodes: Optional[List[str]] = None
 

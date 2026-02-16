@@ -1378,9 +1378,43 @@ export const dealersApi = {
     const { data } = await apiClient.post<Dealer>('/dealers', payload);
     return data;
   },
-  update: async (id: string, dealer: Partial<Dealer>) => {
-    const { data } = await apiClient.put<Dealer>(`/dealers/${id}`, dealer);
+  update: async (id: string, dealer: Partial<Dealer> & Record<string, unknown>) => {
+    // Transform frontend field names to backend field names (same as create)
+    const payload: Record<string, unknown> = {};
+    if (dealer.name !== undefined) payload.name = dealer.name;
+    if (dealer.name !== undefined) payload.legal_name = dealer.name;
+    if (dealer.type || dealer.dealer_type) payload.dealer_type = dealer.type || dealer.dealer_type;
+    if (dealer.pricing_tier || dealer.tier) payload.tier = dealer.pricing_tier || dealer.tier;
+    if (dealer.contact_person !== undefined) payload.contact_person = dealer.contact_person;
+    if (dealer.email !== undefined) payload.email = dealer.email;
+    if (dealer.phone !== undefined) payload.phone = dealer.phone;
+    if (dealer.pan !== undefined) payload.pan = dealer.pan;
+    if (dealer.credit_limit !== undefined) payload.credit_limit = dealer.credit_limit;
+    if (dealer.region !== undefined) payload.region = dealer.region;
+    // Address fields: frontend uses short names, backend uses registered_ prefix
+    const addr1 = (dealer as Record<string, unknown>).address_line1 ?? dealer.registered_address_line1;
+    if (addr1 !== undefined) payload.registered_address_line1 = addr1;
+    const city = (dealer as Record<string, unknown>).city ?? dealer.registered_city;
+    if (city !== undefined) payload.registered_city = city;
+    const district = (dealer as Record<string, unknown>).district ?? dealer.registered_district;
+    if (district !== undefined) payload.registered_district = district;
+    const state = (dealer as Record<string, unknown>).state ?? dealer.registered_state;
+    if (state !== undefined) {
+      payload.registered_state = state;
+      payload.state = state;
+    }
+    const stateCode = (dealer as Record<string, unknown>).state_code ?? dealer.registered_state_code;
+    if (stateCode !== undefined) payload.registered_state_code = stateCode;
+    const pincode = (dealer as Record<string, unknown>).pincode ?? dealer.registered_pincode;
+    if (pincode !== undefined) payload.registered_pincode = pincode;
+    // GSTIN - send as gst_number (alias)
+    const gstin = (dealer as Record<string, unknown>).gst_number ?? dealer.gstin;
+    if (gstin && (gstin as string).trim()) payload.gst_number = gstin;
+    const { data } = await apiClient.put<Dealer>(`/dealers/${id}`, payload);
     return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/dealers/${id}`);
   },
   getLedger: async (id: string, params?: { skip?: number; limit?: number; start_date?: string; end_date?: string }) => {
     const { data } = await apiClient.get<{
