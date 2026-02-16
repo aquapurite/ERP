@@ -174,6 +174,56 @@ async def create_dealer(
     return dealer
 
 
+@router.post("/backfill-approvals")
+async def backfill_dealer_approvals(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """One-time: Create approval requests for existing PENDING_APPROVAL dealers that don't have one."""
+    from app.api.v1.endpoints.approvals import _create_approval_request
+
+    # Find PENDING_APPROVAL dealers without an approval request
+    result = await db.execute(
+        select(Dealer).where(Dealer.status == DealerStatus.PENDING_APPROVAL)
+    )
+    pending_dealers = result.scalars().all()
+
+    created = []
+    for dealer in pending_dealers:
+        # Check if approval request already exists
+        existing = await db.execute(
+            select(ApprovalRequest).where(
+                ApprovalRequest.entity_type == ApprovalEntityType.DEALER_ONBOARDING,
+                ApprovalRequest.entity_id == dealer.id,
+            )
+        )
+        if existing.scalar_one_or_none():
+            continue
+
+        await _create_approval_request(
+            db=db,
+            entity_type=ApprovalEntityType.DEALER_ONBOARDING,
+            entity_id=dealer.id,
+            entity_number=dealer.dealer_code,
+            amount=dealer.credit_limit,
+            title=f"Dealer Onboarding: {dealer.name} ({dealer.dealer_code})",
+            requested_by=current_user.id,
+            description=f"Existing {dealer.dealer_type} onboarding request (backfilled)",
+            extra_info={
+                "dealer_name": dealer.name,
+                "dealer_type": dealer.dealer_type,
+                "region": dealer.region,
+                "contact_person": dealer.contact_person,
+                "contact_phone": dealer.contact_phone,
+                "credit_limit": float(dealer.credit_limit),
+            },
+        )
+        created.append({"dealer_code": dealer.dealer_code, "name": dealer.name})
+
+    await db.commit()
+    return {"backfilled": len(created), "dealers": created}
+
+
 @router.get("", response_model=DealerListResponse)
 async def list_dealers(
     db: DB,
@@ -366,56 +416,6 @@ async def approve_dealer(
     await db.refresh(dealer)
 
     return dealer
-
-
-@router.post("/backfill-approvals")
-async def backfill_dealer_approvals(
-    db: DB,
-    current_user: User = Depends(get_current_user),
-):
-    """One-time: Create approval requests for existing PENDING_APPROVAL dealers that don't have one."""
-    from app.api.v1.endpoints.approvals import _create_approval_request
-
-    # Find PENDING_APPROVAL dealers without an approval request
-    result = await db.execute(
-        select(Dealer).where(Dealer.status == DealerStatus.PENDING_APPROVAL)
-    )
-    pending_dealers = result.scalars().all()
-
-    created = []
-    for dealer in pending_dealers:
-        # Check if approval request already exists
-        existing = await db.execute(
-            select(ApprovalRequest).where(
-                ApprovalRequest.entity_type == ApprovalEntityType.DEALER_ONBOARDING,
-                ApprovalRequest.entity_id == dealer.id,
-            )
-        )
-        if existing.scalar_one_or_none():
-            continue
-
-        await _create_approval_request(
-            db=db,
-            entity_type=ApprovalEntityType.DEALER_ONBOARDING,
-            entity_id=dealer.id,
-            entity_number=dealer.dealer_code,
-            amount=dealer.credit_limit,
-            title=f"Dealer Onboarding: {dealer.name} ({dealer.dealer_code})",
-            requested_by=current_user.id,
-            description=f"Existing {dealer.dealer_type} onboarding request (backfilled)",
-            extra_info={
-                "dealer_name": dealer.name,
-                "dealer_type": dealer.dealer_type,
-                "region": dealer.region,
-                "contact_person": dealer.contact_person,
-                "contact_phone": dealer.contact_phone,
-                "credit_limit": float(dealer.credit_limit),
-            },
-        )
-        created.append({"dealer_code": dealer.dealer_code, "name": dealer.name})
-
-    await db.commit()
-    return {"backfilled": len(created), "dealers": created}
 
 
 # ==================== Dealer Pricing ====================
