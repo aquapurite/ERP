@@ -3,7 +3,7 @@ from datetime import datetime, date
 from typing import Optional, List
 from decimal import Decimal
 from uuid import UUID
-from pydantic import BaseModel, Field, ConfigDict, EmailStr, field_validator
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, field_validator, model_validator
 
 from app.schemas.base import BaseResponseSchema
 
@@ -165,6 +165,14 @@ class DealerUpdate(BaseModel):
 
 class DealerResponse(BaseResponseSchema):
     """Response schema for Dealer."""
+
+    @field_validator('assigned_pincodes', 'existing_brands', mode='before')
+    @classmethod
+    def fix_jsonb_null(cls, v):
+        if v is None or v == 'null':
+            return None
+        return v
+
     id: UUID
     dealer_code: str
     status: str
