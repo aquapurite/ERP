@@ -149,7 +149,7 @@ async def create_dealer(
             "dealer_type": dealer.dealer_type,
             "region": dealer.region,
             "contact_person": dealer.contact_person,
-            "contact_phone": dealer.contact_phone,
+            "phone": dealer.phone,
             "credit_limit": float(dealer.credit_limit),
         },
     )
@@ -214,7 +214,7 @@ async def backfill_dealer_approvals(
                 "dealer_type": dealer.dealer_type,
                 "region": dealer.region,
                 "contact_person": dealer.contact_person,
-                "contact_phone": dealer.contact_phone,
+                "phone": dealer.phone,
                 "credit_limit": float(dealer.credit_limit),
             },
         )
