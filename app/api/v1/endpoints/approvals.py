@@ -19,6 +19,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, get_current_user
 from app.models.user import User
+from app.models.role import RoleLevel
 from app.models.approval import (
     ApprovalRequest,
     ApprovalHistory,
@@ -54,6 +55,11 @@ router = APIRouter(prefix="/approvals", tags=["Approvals"])
 
 
 # ============== Helper Functions ==============
+
+def _is_super_admin(user: User) -> bool:
+    """Check if user has SUPER_ADMIN role level."""
+    return any(role.level == RoleLevel.SUPER_ADMIN.name for role in user.roles)
+
 
 def _get_user_name(user: Optional[User]) -> Optional[str]:
     """Get user display name."""
@@ -808,8 +814,8 @@ async def approve_request(
             detail=f"Only PENDING requests can be approved. Current status: {approval.status}"
         )
 
-    # Maker-Checker validation
-    if approval.requested_by == current_user.id:
+    # Maker-Checker validation (SUPER_ADMIN can override)
+    if approval.requested_by == current_user.id and not _is_super_admin(current_user):
         raise HTTPException(
             status_code=403,
             detail="Maker-Checker violation: You cannot approve your own request"
@@ -917,8 +923,8 @@ async def reject_request(
             detail=f"Only PENDING requests can be rejected. Current status: {approval.status}"
         )
 
-    # Maker-Checker validation
-    if approval.requested_by == current_user.id:
+    # Maker-Checker validation (SUPER_ADMIN can override)
+    if approval.requested_by == current_user.id and not _is_super_admin(current_user):
         raise HTTPException(
             status_code=403,
             detail="Maker-Checker violation: You cannot reject your own request"
@@ -1067,7 +1073,7 @@ async def bulk_approve(
                 failed.append({"id": str(req_id), "error": f"Status is {approval.status}"})
                 continue
 
-            if approval.requested_by == current_user.id:
+            if approval.requested_by == current_user.id and not _is_super_admin(current_user):
                 failed.append({"id": str(req_id), "error": "Cannot approve own request"})
                 continue
 
