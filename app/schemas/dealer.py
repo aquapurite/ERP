@@ -296,6 +296,8 @@ class DealerListResponse(BaseModel):
 
 class DealerBrief(BaseModel):
     """Brief dealer for dropdowns and list views."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     dealer_code: str
     name: str

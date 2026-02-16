@@ -154,18 +154,19 @@ async def create_dealer(
 @router.get("", response_model=DealerListResponse)
 async def list_dealers(
     db: DB,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=100),
     search: Optional[str] = None,
     dealer_type: Optional[DealerType] = None,
     status: Optional[DealerStatus] = None,
     tier: Optional[DealerTier] = None,
-    region_id: Optional[UUID] = None,
+    region: Optional[str] = None,
     city: Optional[str] = None,
     credit_status: Optional[CreditStatus] = None,
     current_user: User = Depends(get_current_user),
 ):
     """List dealers with filters."""
+    skip = (page - 1) * size
     query = select(Dealer)
     count_query = select(func.count(Dealer.id))
 
@@ -182,10 +183,10 @@ async def list_dealers(
         filters.append(Dealer.status == status)
     if tier:
         filters.append(Dealer.tier == tier)
-    if region_id:
-        filters.append(Dealer.region_id == region_id)
+    if region:
+        filters.append(Dealer.region == region)
     if city:
-        filters.append(Dealer.city.ilike(f"%{city}%"))
+        filters.append(Dealer.registered_city.ilike(f"%{city}%"))
     if credit_status:
         filters.append(Dealer.credit_status == credit_status)
 
@@ -196,15 +197,18 @@ async def list_dealers(
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
-    query = query.order_by(Dealer.created_at.desc()).offset(skip).limit(limit)
+    query = query.order_by(Dealer.created_at.desc()).offset(skip).limit(size)
     result = await db.execute(query)
     dealers = result.scalars().all()
 
+    pages = (total + size - 1) // size if total > 0 else 1
+
     return DealerListResponse(
-        items=[DealerBrief.model_validate(d) for d in dealers],
+        items=[DealerResponse.model_validate(d) for d in dealers],
         total=total,
-        skip=skip,
-        limit=limit
+        page=page,
+        size=size,
+        pages=pages
     )
 
 
@@ -268,8 +272,6 @@ async def update_dealer(
     for field, value in update_data.items():
         setattr(dealer, field, value)
 
-    dealer.updated_by = current_user.id
-
     await db.commit()
     await db.refresh(dealer)
 
@@ -295,8 +297,6 @@ async def approve_dealer(
         raise HTTPException(status_code=400, detail="Dealer is not pending approval")
 
     dealer.status = DealerStatus.ACTIVE.value
-    dealer.approved_by = current_user.id
-    dealer.approved_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(dealer)
@@ -480,11 +480,10 @@ async def get_dealer_ledger(
     return DealerCreditLedgerListResponse(
         items=[DealerCreditLedgerResponse.model_validate(e) for e in entries],
         total=total,
+        opening_balance=Decimal("0"),
         total_debit=totals.total_debit,
         total_credit=totals.total_credit,
-        closing_balance=dealer.current_balance,
-        skip=skip,
-        limit=limit
+        closing_balance=dealer.outstanding_amount,
     )
 
 
@@ -504,7 +503,7 @@ async def record_dealer_payment(
     if not dealer:
         raise HTTPException(status_code=404, detail="Dealer not found")
 
-    new_balance = dealer.current_balance - payment_in.credit_amount + payment_in.debit_amount
+    new_balance = dealer.outstanding_amount - payment_in.credit_amount + payment_in.debit_amount
 
     ledger = DealerCreditLedger(
         dealer_id=dealer_id,
@@ -515,26 +514,24 @@ async def record_dealer_payment(
         reference_id=payment_in.reference_id,
         debit_amount=payment_in.debit_amount,
         credit_amount=payment_in.credit_amount,
-        running_balance=new_balance,
+        balance=new_balance,
         payment_mode=payment_in.payment_mode,
-        payment_reference=payment_in.payment_reference,
-        narration=payment_in.narration,
-        created_by=current_user.id,
+        transaction_reference=payment_in.transaction_reference,
+        remarks=payment_in.remarks,
     )
 
     db.add(ledger)
 
     # Update dealer balance
-    dealer.current_balance = new_balance
-    dealer.last_payment_date = payment_in.transaction_date
+    dealer.outstanding_amount = new_balance
 
     # Update credit status
     if new_balance > dealer.credit_limit:
-        dealer.credit_status = CreditStatus.OVER_LIMI.valueT.value
+        dealer.credit_status = CreditStatus.BLOCKED.value
     elif new_balance > dealer.credit_limit * Decimal("0.8"):
-        dealer.credit_status = CreditStatus.WARNIN.valueG.value
+        dealer.credit_status = CreditStatus.ON_HOLD.value
     else:
-        dealer.credit_status = CreditStatus.NORMA.valueL.value
+        dealer.credit_status = CreditStatus.ACTIVE.value
 
     await db.commit()
     await db.refresh(ledger)
@@ -647,11 +644,15 @@ async def list_dealer_schemes(
     result = await db.execute(query)
     schemes = result.scalars().all()
 
+    page = (skip // limit) + 1
+    pages = (total + limit - 1) // limit if total > 0 else 1
+
     return DealerSchemeListResponse(
         items=[DealerSchemeResponse.model_validate(s) for s in schemes],
         total=total,
-        skip=skip,
-        limit=limit
+        page=page,
+        size=limit,
+        pages=pages
     )
 
 
@@ -732,7 +733,7 @@ async def get_dealer_performance_report(
     end_date: date,
     db: DB,
     dealer_id: Optional[UUID] = None,
-    region_id: Optional[UUID] = None,
+    region: Optional[str] = None,
     tier: Optional[DealerTier] = None,
     current_user: User = Depends(get_current_user),
 ):
@@ -744,8 +745,8 @@ async def get_dealer_performance_report(
     filters = []
     if dealer_id:
         filters.append(Dealer.id == dealer_id)
-    if region_id:
-        filters.append(Dealer.region_id == region_id)
+    if region:
+        filters.append(Dealer.region == region)
     if tier:
         filters.append(Dealer.tier == tier)
 
@@ -802,8 +803,8 @@ async def get_dealer_performance_report(
             "target_value": float(targets.target_value),
             "achievement_percentage": round(achievement_pct, 2),
             "credit_limit": float(dealer.credit_limit),
-            "current_balance": float(dealer.current_balance),
-            "available_credit": float(dealer.credit_limit - dealer.current_balance),
+            "current_balance": float(dealer.outstanding_amount),
+            "available_credit": float(dealer.credit_limit - dealer.outstanding_amount),
         })
 
     return {
@@ -826,14 +827,14 @@ async def get_dealer_performance_report(
 async def get_dealer_aging_report(
     db: DB,
     as_of_date: date = Query(default_factory=date.today),
-    region_id: Optional[UUID] = None,
+    region: Optional[str] = None,
     current_user: User = Depends(get_current_user),
 ):
     """Get dealer aging report (Accounts Receivable)."""
-    query = select(Dealer).where(Dealer.current_balance > 0)
+    query = select(Dealer).where(Dealer.outstanding_amount > 0)
 
-    if region_id:
-        query = query.where(Dealer.region_id == region_id)
+    if region:
+        query = query.where(Dealer.region == region)
 
     result = await db.execute(query)
     dealers = result.scalars().all()
