@@ -460,15 +460,6 @@ export default function ExpensesPage() {
                 <DropdownMenuItem onClick={() => submitMutation.mutate(row.original.id)}>
                   <Send className="mr-2 h-4 w-4" /> Submit for Approval
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-destructive"
-                  onClick={() => {
-                    setSelectedVoucher(row.original);
-                    setIsDeleteDialogOpen(true);
-                  }}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" /> Delete
-                </DropdownMenuItem>
               </>
             )}
             {row.original.status === 'PENDING_APPROVAL' && (
@@ -482,6 +473,20 @@ export default function ExpensesPage() {
                   setIsRejectDialogOpen(true);
                 }}>
                   <XCircle className="mr-2 h-4 w-4 text-red-600" /> Reject
+                </DropdownMenuItem>
+              </>
+            )}
+            {!['APPROVED', 'POSTED', 'PAID'].includes(row.original.status) && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive"
+                  onClick={() => {
+                    setSelectedVoucher(row.original);
+                    setIsDeleteDialogOpen(true);
+                  }}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" /> Delete
                 </DropdownMenuItem>
               </>
             )}
