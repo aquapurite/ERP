@@ -303,6 +303,32 @@ class OrderService:
         if not customer:
             raise ValueError("Customer not found")
 
+        # B2B credit limit check if dealer_id is provided
+        if getattr(data, 'dealer_id', None):
+            from app.models.dealer import Dealer
+            dealer_result = await self.db.execute(
+                select(Dealer).where(Dealer.id == data.dealer_id)
+            )
+            dealer = dealer_result.scalar_one_or_none()
+            if not dealer:
+                raise ValueError("Dealer not found")
+            if dealer.credit_status in ("BLOCKED", "ON_HOLD"):
+                raise ValueError(
+                    f"Dealer credit is {dealer.credit_status}. Cannot place order."
+                )
+            # Estimate order total from items for credit check
+            estimated_total = Decimal("0.00")
+            for item_data in data.items:
+                price = item_data.unit_price or Decimal("0.00")
+                estimated_total += price * item_data.quantity
+            available_credit = dealer.credit_limit - dealer.outstanding_amount
+            if estimated_total > available_credit:
+                raise ValueError(
+                    f"Order total ({estimated_total}) exceeds available credit "
+                    f"({available_credit}). Credit limit: {dealer.credit_limit}, "
+                    f"Outstanding: {dealer.outstanding_amount}."
+                )
+
         # Process shipping address
         shipping_address = await self._process_address(
             data.shipping_address,
@@ -496,6 +522,8 @@ class OrderService:
         # Update timestamps based on status
         if new_status == OrderStatus.CONFIRMED:
             order.confirmed_at = datetime.now(timezone.utc)
+        elif new_status == OrderStatus.SHIPPED:
+            order.shipped_at = datetime.now(timezone.utc)
         elif new_status == OrderStatus.DELIVERED:
             order.delivered_at = datetime.now(timezone.utc)
             # Calculate partner commission on delivery
@@ -514,6 +542,51 @@ class OrderService:
         self.db.add(status_history)
 
         await self.db.commit()
+
+        # Send notifications for key status transitions
+        try:
+            from app.services.notification_service import (
+                NotificationService, NotificationType, NotificationChannel
+            )
+            notification_service = NotificationService(self.db)
+            customer = order.customer
+
+            if customer and customer.phone:
+                if new_status == OrderStatus.CONFIRMED:
+                    await notification_service.send_notification(
+                        recipient_phone=customer.phone,
+                        recipient_email=getattr(customer, 'email', None),
+                        notification_type=NotificationType.ORDER_CONFIRMED,
+                        channel=NotificationChannel.SMS,
+                        template_data={
+                            "customer_name": customer.first_name or "Customer",
+                            "order_number": order.order_number,
+                            "amount": str(order.total_amount),
+                        },
+                    )
+                elif new_status == OrderStatus.SHIPPED:
+                    await notification_service.send_notification(
+                        recipient_phone=customer.phone,
+                        recipient_email=getattr(customer, 'email', None),
+                        notification_type=NotificationType.ORDER_SHIPPED,
+                        channel=NotificationChannel.SMS,
+                        template_data={
+                            "order_number": order.order_number,
+                            "transporter": order.courier_name or "our logistics partner",
+                            "tracking_url": f"https://aquapurite.com/track/order/{order.order_number}",
+                        },
+                    )
+                elif new_status == OrderStatus.DELIVERED:
+                    await notification_service.send_order_delivered_notifications(
+                        customer_phone=customer.phone,
+                        customer_email=getattr(customer, 'email', None),
+                        customer_name=customer.first_name or "Customer",
+                        order_number=order.order_number,
+                        installation_number=f"INS-{order.order_number}",
+                    )
+        except Exception as e:
+            logger.warning(f"Failed to send notification for order {order.order_number} status {new_status}: {e}")
+
         return await self.get_order_by_id(order_id, include_all=True)
 
     async def add_payment(

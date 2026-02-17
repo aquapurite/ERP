@@ -140,6 +140,7 @@ class OrderCreate(BaseModel):
     region_id: Optional[uuid.UUID] = None
     customer_segment: Optional[str] = None  # For segment-based pricing (VIP, DEALER, etc.)
     partner_code: Optional[str] = None  # Community Partner referral code for commission attribution
+    dealer_id: Optional[uuid.UUID] = None  # Dealer ID for B2B orders (triggers credit limit check)
 
 
 class OrderUpdate(BaseModel):

@@ -8,16 +8,22 @@ from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
+import logging
+
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.approval import (
     ApprovalRequest,
     ApprovalHistory,
     ApprovalEntityType,
     ApprovalStatus,
+    ApprovalLevel,
     get_approval_level,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ApprovalService:
@@ -112,6 +118,68 @@ class ApprovalService:
             comments="Submitted for approval",
         )
         db.add(history)
+
+        # Auto-route to appropriate approver based on approval level
+        try:
+            from app.models.user import User, UserRole
+            from app.models.role import Role
+
+            # Map approval level to required role level
+            level_to_role = {
+                ApprovalLevel.LEVEL_1: "MANAGER",
+                ApprovalLevel.LEVEL_2: "HEAD",
+                ApprovalLevel.LEVEL_3: "DIRECTOR",
+            }
+            required_role_level = level_to_role.get(approval_level, "MANAGER")
+
+            # Find an active user with the required role level
+            approver_result = await db.execute(
+                select(User)
+                .join(UserRole, UserRole.user_id == User.id)
+                .join(Role, Role.id == UserRole.role_id)
+                .where(
+                    User.is_active == True,
+                    Role.is_active == True,
+                    Role.level == required_role_level,
+                )
+                .limit(1)
+            )
+            approver = approver_result.scalar_one_or_none()
+
+            if approver:
+                approval.current_approver_id = approver.id
+                logger.info(
+                    f"Approval {approval.request_number} routed to "
+                    f"{approver.full_name} (role level: {required_role_level})"
+                )
+
+                # Send SMS notification to approver
+                from app.services.notification_service import (
+                    NotificationService, NotificationChannel, NotificationType
+                )
+                notification_service = NotificationService(db)
+                if approver.phone:
+                    await notification_service.send_notification(
+                        recipient_phone=approver.phone,
+                        recipient_email=approver.email,
+                        notification_type=NotificationType.ORDER_CONFIRMED,
+                        channel=NotificationChannel.SMS,
+                        custom_message=(
+                            f"Approval Required: {title} ({approval.request_number}). "
+                            f"Amount: Rs.{amount}. Priority: {priority}. "
+                            f"Please review and approve/reject."
+                        ),
+                        template_data={},
+                    )
+            else:
+                logger.warning(
+                    f"No approver found for level {required_role_level} "
+                    f"for approval {approval.request_number}"
+                )
+        except Exception as e:
+            logger.warning(
+                f"Failed to auto-route approval {approval.request_number}: {e}"
+            )
 
         return approval
 

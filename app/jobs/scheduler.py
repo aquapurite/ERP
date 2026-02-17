@@ -49,7 +49,10 @@ def start_scheduler():
         from app.jobs.order_jobs import (
             check_pending_payments,
             process_abandoned_carts,
+            update_order_tracking,
         )
+        from app.jobs.banking_jobs import auto_reconcile_bank_transactions
+        from app.jobs.warranty_jobs import check_warranty_expiry
 
         # Add scheduled jobs
 
@@ -100,6 +103,37 @@ def start_scheduler():
             hours=1,
             id='process_abandoned_carts',
             name='Process Abandoned Carts',
+            replace_existing=True,
+        )
+
+        # Update order tracking every 30 minutes
+        scheduler.add_job(
+            update_order_tracking,
+            'interval',
+            minutes=30,
+            id='update_order_tracking',
+            name='Update Order Tracking',
+            replace_existing=True,
+        )
+
+        # Auto-reconcile bank transactions every 2 hours
+        scheduler.add_job(
+            auto_reconcile_bank_transactions,
+            'interval',
+            hours=2,
+            id='auto_reconcile_bank_transactions',
+            name='Auto Reconcile Bank Transactions',
+            replace_existing=True,
+        )
+
+        # Check warranty/AMC expiry daily at 9 AM IST
+        scheduler.add_job(
+            check_warranty_expiry,
+            'cron',
+            hour=9,
+            minute=0,
+            id='check_warranty_expiry',
+            name='Check Warranty/AMC Expiry',
             replace_existing=True,
         )
 
