@@ -124,6 +124,7 @@ export const navigation: NavItem[] = [
   },
 
   // ==================== 2. INTELLIGENCE (AI) ====================
+  // Consolidated AI Insights Hub - all AI agents accessible from one place
   {
     title: 'Intelligence',
     icon: Brain,
@@ -132,9 +133,29 @@ export const navigation: NavItem[] = [
     children: [
       { title: 'AI Hub', href: '/dashboard/ai', icon: Lightbulb, permissions: [] },
       { title: 'Insights Dashboard', href: '/dashboard/insights', icon: TrendingUp, permissions: [] },
+
+      // -------- DEMAND & SUPPLY --------
+      { title: '── Demand & Supply ──', href: '#', permissions: [] },
+      { title: 'S&OP Dashboard', href: '/dashboard/ai/snop', icon: Target, permissions: [] },
+      { title: 'Demand Forecasting', href: '/dashboard/ai/demand-forecasting', icon: LineChart, permissions: [] },
+      { title: 'Supply Planning', href: '/dashboard/ai/supply-planning', icon: GitBranch, permissions: [] },
+      { title: 'Scenario Analysis', href: '/dashboard/ai/scenarios', icon: Layers, permissions: [] },
+
+      // -------- INVENTORY INTELLIGENCE --------
+      { title: '── Inventory Intelligence ──', href: '#', permissions: [] },
+      { title: 'Inventory Optimization', href: '/dashboard/ai/inventory-optimization', icon: Boxes, permissions: [] },
       { title: 'Reorder Suggestions', href: '/dashboard/insights/reorder', icon: PackageSearch, permissions: [] },
-      { title: 'Churn Risk Analysis', href: '/dashboard/insights/churn-risk', icon: AlertTriangle, permissions: [] },
       { title: 'Slow Moving Stock', href: '/dashboard/insights/slow-moving', icon: Clock, permissions: [] },
+
+      // -------- FULFILLMENT AI --------
+      { title: '── Fulfillment AI ──', href: '#', permissions: [] },
+      { title: 'Order Allocation', href: '/dashboard/ai/order-allocation', icon: GitBranch, permissions: [] },
+      { title: 'Putaway Intelligence', href: '/dashboard/ai/putaway', icon: Route, permissions: [] },
+      { title: 'Allocation Rules', href: '/dashboard/ai/allocation-rules', icon: Network, permissions: [] },
+
+      // -------- AI AGENTS & MORE --------
+      { title: '── AI Agents & More ──', href: '#', permissions: [] },
+      { title: 'Churn Risk Analysis', href: '/dashboard/insights/churn-risk', icon: AlertTriangle, permissions: [] },
       { title: 'Campaigns', href: '/dashboard/marketing/campaigns', icon: Megaphone, permissions: ['MARKETING_VIEW'] },
     ],
   },

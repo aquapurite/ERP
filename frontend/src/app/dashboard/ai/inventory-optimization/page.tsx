@@ -1,5 +1,5 @@
 'use client';
 import { InventoryOptimizationContent } from '@/components/snop/inventory-optimization-content';
-export default function InventoryOptimizationPage() {
+export default function AIInventoryOptimizationPage() {
   return <InventoryOptimizationContent />;
 }
