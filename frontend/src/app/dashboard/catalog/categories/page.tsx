@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MoreHorizontal, Plus, Pencil, Trash2, FolderTree, ChevronRight, ChevronDown, Loader2, Folder, FolderOpen } from 'lucide-react';
+import { MoreHorizontal, Plus, Pencil, Trash2, FolderTree, ChevronRight, ChevronDown, Loader2, Folder, FolderOpen, FolderPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -275,6 +275,13 @@ export default function CategoriesPage() {
     setIsDeleteDialogOpen(true);
   };
 
+  const handleAddSubcategory = (parent: Category) => {
+    setCreateFormData({ ...defaultFormData, parent_id: parent.id });
+    setIsCreateDialogOpen(true);
+    // Auto-expand the parent so the new subcategory is visible after creation
+    setExpandedRoots(prev => new Set(prev).add(parent.id));
+  };
+
   const confirmDelete = () => {
     if (categoryToDelete) {
       deleteMutation.mutate(categoryToDelete.id);
@@ -347,7 +354,10 @@ export default function CategoriesPage() {
         title="Categories"
         description="Manage product categories and subcategories"
         actions={
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+          <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
+              setIsCreateDialogOpen(open);
+              if (!open) setCreateFormData(defaultFormData);
+            }}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="mr-2 h-4 w-4" />
@@ -356,9 +366,15 @@ export default function CategoriesPage() {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Create New Category</DialogTitle>
+                <DialogTitle>
+                  {createFormData.parent_id
+                    ? `Add Subcategory under "${rootCategories.find((c: Category) => c.id === createFormData.parent_id)?.name}"`
+                    : 'Create New Category'}
+                </DialogTitle>
                 <DialogDescription>
-                  Add a new product category to organize your catalog.
+                  {createFormData.parent_id
+                    ? 'Add a subcategory. Products are assigned to subcategories.'
+                    : 'Add a root category. You can add subcategories to it afterwards.'}
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
@@ -519,7 +535,7 @@ export default function CategoriesPage() {
                       {/* Root Category Row */}
                       <TableRow className="bg-muted/50 hover:bg-muted/70">
                         <TableCell>
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-3 group">
                             <CollapsibleTrigger asChild>
                               <Button variant="ghost" size="icon" className="h-8 w-8">
                                 {children.length > 0 ? (
@@ -544,11 +560,18 @@ export default function CategoriesPage() {
                               <div className="font-semibold text-primary truncate">{root.name}</div>
                               <div className="text-xs text-muted-foreground truncate">{root.slug}</div>
                             </div>
-                            {children.length > 0 && (
-                              <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                                {children.length} sub
-                              </span>
-                            )}
+                            <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                              {children.length > 0 ? `${children.length} sub` : 'no sub'}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Add Subcategory"
+                              onClick={(e) => { e.stopPropagation(); handleAddSubcategory(root); }}
+                            >
+                              <FolderPlus className="h-3.5 w-3.5 text-primary" />
+                            </Button>
                           </div>
                         </TableCell>
                         <TableCell className="max-w-[200px]">
@@ -571,6 +594,11 @@ export default function CategoriesPage() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => handleAddSubcategory(root)}>
+                                <FolderPlus className="mr-2 h-4 w-4" />
+                                Add Subcategory
+                              </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => handleEdit(root)}>
                                 <Pencil className="mr-2 h-4 w-4" />
