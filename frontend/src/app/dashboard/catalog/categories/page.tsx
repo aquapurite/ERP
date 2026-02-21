@@ -65,6 +65,7 @@ import { cn } from '@/lib/utils';
 
 interface CategoryFormData {
   name: string;
+  code: string;
   slug: string;
   description: string;
   parent_id: string;
@@ -74,6 +75,7 @@ interface CategoryFormData {
 
 const defaultFormData: CategoryFormData = {
   name: '',
+  code: '',
   slug: '',
   description: '',
   parent_id: '',
@@ -231,6 +233,7 @@ export default function CategoriesPage() {
     }
     createMutation.mutate({
       name: createFormData.name,
+      code: createFormData.code.trim().toUpperCase() || undefined,
       slug: createFormData.slug || createFormData.name.toLowerCase().replace(/\s+/g, '-'),
       description: createFormData.description || undefined,
       parent_id: createFormData.parent_id || undefined,
@@ -243,6 +246,7 @@ export default function CategoriesPage() {
     setEditingCategory(category);
     setEditFormData({
       name: category.name,
+      code: category.code || '',
       slug: category.slug,
       description: category.description || '',
       parent_id: category.parent_id || '',
@@ -261,6 +265,7 @@ export default function CategoriesPage() {
       id: editingCategory.id,
       data: {
         name: editFormData.name,
+        code: editFormData.code.trim().toUpperCase() || undefined,
         slug: editFormData.slug || editFormData.name.toLowerCase().replace(/\s+/g, '-'),
         description: editFormData.description || undefined,
         parent_id: editFormData.parent_id || undefined,
@@ -303,7 +308,12 @@ export default function CategoriesPage() {
             )}
           </div>
           <div className="min-w-0">
-            <div className={cn("font-medium truncate", !isChild && "text-primary")}>
+            <div className={cn("font-medium truncate flex items-center gap-2", !isChild && "text-primary")}>
+              {category.code && (
+                <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded text-muted-foreground flex-shrink-0">
+                  [{category.code}]
+                </span>
+              )}
               {category.name}
             </div>
             <div className="text-xs text-muted-foreground truncate">{category.slug}</div>
@@ -389,6 +399,21 @@ export default function CategoriesPage() {
                     }
                   />
                 </div>
+                {!createFormData.parent_id && (
+                  <div className="space-y-2">
+                    <Label htmlFor="create-code">Product Line Code</Label>
+                    <Input
+                      id="create-code"
+                      placeholder="e.g., WP, WD, SP (2-3 letters)"
+                      maxLength={10}
+                      value={createFormData.code}
+                      onChange={(e) =>
+                        setCreateFormData({ ...createFormData, code: e.target.value.toUpperCase() })
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">Short code used in SKU generation (e.g., WP for Water Purifiers)</p>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="create-slug">Slug</Label>
                   <Input
@@ -659,6 +684,21 @@ export default function CategoriesPage() {
                 }
               />
             </div>
+            {!editFormData.parent_id && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-code">Product Line Code</Label>
+                <Input
+                  id="edit-code"
+                  placeholder="e.g., WP, WD, SP (2-3 letters)"
+                  maxLength={10}
+                  value={editFormData.code}
+                  onChange={(e) =>
+                    setEditFormData({ ...editFormData, code: e.target.value.toUpperCase() })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">Short code used in SKU generation (e.g., WP for Water Purifiers)</p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="edit-slug">Slug</Label>
               <Input
