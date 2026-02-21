@@ -129,6 +129,7 @@ class ProductBase(BaseModel):
     brand_id: uuid.UUID
 
     mrp: Decimal = Field(..., ge=0, description="Maximum Retail Price")
+    selling_price: Optional[Decimal] = Field(None, ge=0, description="Selling price to customer")
     dealer_price: Optional[Decimal] = Field(None, ge=0)
     cost_price: Optional[Decimal] = Field(None, ge=0)
 
@@ -204,6 +205,7 @@ class ProductUpdate(BaseModel):
     brand_id: Optional[uuid.UUID] = None
 
     mrp: Optional[Decimal] = Field(None, ge=0)
+    selling_price: Optional[Decimal] = Field(None, ge=0)
     dealer_price: Optional[Decimal] = Field(None, ge=0)
     cost_price: Optional[Decimal] = Field(None, ge=0)
 
