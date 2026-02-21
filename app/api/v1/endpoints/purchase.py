@@ -408,12 +408,21 @@ async def create_purchase_requisition(
         for item in pr_in.items
     )
 
+    # Validate delivery: warehouse required for WAREHOUSE type, address for DIRECT
+    delivery_type = (pr_in.delivery_type or "WAREHOUSE").upper()
+    if delivery_type == "WAREHOUSE" and not pr_in.delivery_warehouse_id:
+        raise HTTPException(status_code=400, detail="delivery_warehouse_id is required when delivery_type is WAREHOUSE")
+    if delivery_type == "DIRECT" and not pr_in.delivery_address:
+        raise HTTPException(status_code=400, detail="delivery_address is required when delivery_type is DIRECT")
+
     # Create PR
     pr = PurchaseRequisition(
         requisition_number=pr_number,
         requesting_department=pr_in.requesting_department,
         required_by_date=pr_in.required_by_date,
+        delivery_type=delivery_type,
         delivery_warehouse_id=pr_in.delivery_warehouse_id,
+        delivery_address=pr_in.delivery_address,
         priority=pr_in.priority,
         reason=pr_in.reason,
         notes=pr_in.notes,
@@ -1392,15 +1401,24 @@ async def create_purchase_order(
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
 
+    # Validate delivery type
+    delivery_type = (getattr(po_in, 'delivery_type', None) or "WAREHOUSE").upper()
+    if delivery_type == "WAREHOUSE" and not po_in.delivery_warehouse_id:
+        raise HTTPException(status_code=400, detail="delivery_warehouse_id is required when delivery_type is WAREHOUSE")
+    if delivery_type == "DIRECT" and not po_in.delivery_address:
+        raise HTTPException(status_code=400, detail="delivery_address is required when delivery_type is DIRECT")
+
     # Use temporary identifier for drafts (official number assigned on submit)
     po_number = f"DRAFT-{uuid.uuid4().hex[:12]}"
 
     # Determine if inter-state (for IGST)
     # Get warehouse state
-    wh_result = await db.execute(
-        select(Warehouse).where(Warehouse.id == po_in.delivery_warehouse_id)
-    )
-    warehouse = wh_result.scalar_one_or_none()
+    warehouse = None
+    if po_in.delivery_warehouse_id:
+        wh_result = await db.execute(
+            select(Warehouse).where(Warehouse.id == po_in.delivery_warehouse_id)
+        )
+        warehouse = wh_result.scalar_one_or_none()
 
     is_inter_state = False
     if warehouse and vendor.gst_state_code:
@@ -1434,8 +1452,10 @@ async def create_purchase_order(
                 "phone": company_row[9],
             }
 
-    # Prepare Ship To (from input or default to warehouse address)
+    # Prepare Ship To (from input, warehouse address, or delivery_address for DIRECT)
     ship_to = po_in.ship_to
+    if not ship_to and delivery_type == "DIRECT" and po_in.delivery_address:
+        ship_to = po_in.delivery_address
     if not ship_to and warehouse:
         ship_to = {
             "name": warehouse.name,
@@ -1459,6 +1479,7 @@ async def create_purchase_order(
         vendor_id=vendor.id,
         vendor_name=vendor.name,
         vendor_gstin=vendor.gstin,
+        delivery_type=delivery_type,
         delivery_warehouse_id=po_in.delivery_warehouse_id,
         requisition_id=po_in.requisition_id,
         expected_delivery_date=po_in.expected_delivery_date,
@@ -2483,8 +2504,11 @@ async def send_po_to_vendor(
     serials_generated = 0
     serial_summaries = []
 
-    # Only generate serials if none exist
-    if existing_count == 0 and po.items:
+    # Skip barcode generation for direct-delivery POs (no warehouse = no inventory tracking)
+    is_direct_delivery = getattr(po, 'delivery_type', 'WAREHOUSE') == 'DIRECT'
+
+    # Only generate serials if none exist and PO delivers to a warehouse
+    if existing_count == 0 and po.items and not is_direct_delivery:
         serial_service = SerializationService(db)
 
         # Build items for serial generation

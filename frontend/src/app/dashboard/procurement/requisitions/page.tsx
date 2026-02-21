@@ -94,8 +94,21 @@ interface PRFormItem {
   monthly_quantities?: Record<string, number>; // e.g., {"2026-01": 500, "2026-02": 500}
 }
 
+interface DeliveryAddress {
+  deliver_to?: string;
+  address_line1?: string;
+  address_line2?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  contact_person?: string;
+  contact_phone?: string;
+}
+
 interface PRFormData {
+  delivery_type: string;
   delivery_warehouse_id: string;
+  delivery_address?: DeliveryAddress;
   required_by_date: string;
   priority: number;
   reason: string;
@@ -221,14 +234,18 @@ export default function PurchaseRequisitionsPage() {
     priority: number;
     reason: string;
     notes: string;
+    delivery_type: string;
     delivery_warehouse_id: string;
+    delivery_address?: DeliveryAddress;
     items: PRFormItem[];
   }>({
     required_by_date: '',
     priority: 5,
     reason: '',
     notes: '',
+    delivery_type: 'WAREHOUSE',
     delivery_warehouse_id: '',
+    delivery_address: undefined,
     items: [],
   });
   const [editNewItem, setEditNewItem] = useState({
@@ -248,7 +265,9 @@ export default function PurchaseRequisitionsPage() {
   const [nextPRNumber, setNextPRNumber] = useState<string>('');
   const [isLoadingPRNumber, setIsLoadingPRNumber] = useState(false);
   const [formData, setFormData] = useState<PRFormData>({
+    delivery_type: 'WAREHOUSE',
     delivery_warehouse_id: '',
+    delivery_address: undefined,
     required_by_date: '',
     priority: 5,
     reason: '',
@@ -393,7 +412,9 @@ export default function PurchaseRequisitionsPage() {
   const createMutation = useMutation({
     mutationFn: async (params: { data: PRFormData; submitForApproval: boolean }) => {
       const payload = {
-        delivery_warehouse_id: params.data.delivery_warehouse_id,
+        delivery_type: params.data.delivery_type || 'WAREHOUSE',
+        delivery_warehouse_id: params.data.delivery_type === 'DIRECT' ? null : (params.data.delivery_warehouse_id || null),
+        delivery_address: params.data.delivery_type === 'DIRECT' ? params.data.delivery_address : null,
         required_by_date: params.data.required_by_date || null,
         priority: params.data.priority,
         reason: params.data.reason || null,
@@ -461,7 +482,9 @@ export default function PurchaseRequisitionsPage() {
       priority?: number;
       reason?: string;
       notes?: string;
+      delivery_type?: string;
       delivery_warehouse_id?: string;
+      delivery_address?: DeliveryAddress;
       items?: PRFormItem[];
     } }) =>
       requisitionsApi.update(id, data),
@@ -471,7 +494,7 @@ export default function PurchaseRequisitionsPage() {
       toast.success('PR updated successfully');
       setIsEditDialogOpen(false);
       setSelectedPR(null);
-      setEditPRData({ required_by_date: '', priority: 5, reason: '', notes: '', delivery_warehouse_id: '', items: [] });
+      setEditPRData({ required_by_date: '', priority: 5, reason: '', notes: '', delivery_type: 'WAREHOUSE', delivery_warehouse_id: '', delivery_address: undefined, items: [] });
       setEditNewItem({ product_id: '', quantity: 1, estimated_price: 0 });
       setEditSelectedCategoryId('all');
     },
@@ -514,7 +537,9 @@ export default function PurchaseRequisitionsPage() {
         priority: fullDetails.priority || pr.priority || 5,
         reason: fullDetails.reason || pr.reason || '',
         notes: fullDetails.notes || pr.notes || '',
+        delivery_type: fullDetails.delivery_type || (pr as any).delivery_type || 'WAREHOUSE',
         delivery_warehouse_id: fullDetails.delivery_warehouse_id || pr.delivery_warehouse_id || '',
+        delivery_address: fullDetails.delivery_address || (pr as any).delivery_address || undefined,
         items: items,
       });
     } catch {
@@ -524,7 +549,9 @@ export default function PurchaseRequisitionsPage() {
         priority: pr.priority || 5,
         reason: pr.reason || '',
         notes: pr.notes || '',
+        delivery_type: (pr as any).delivery_type || 'WAREHOUSE',
         delivery_warehouse_id: pr.delivery_warehouse_id || '',
+        delivery_address: (pr as any).delivery_address || undefined,
         items: pr.items ? pr.items.map((item: any) => ({
           product_id: item.product_id,
           product_name: item.product_name,
@@ -557,12 +584,16 @@ export default function PurchaseRequisitionsPage() {
 
   const handleUpdatePR = () => {
     if (!selectedPR) return;
-    if (!editPRData.delivery_warehouse_id) {
-      toast.error('Please select a warehouse');
-      return;
-    }
     if (editPRData.items.length === 0) {
       toast.error('Please add at least one item');
+      return;
+    }
+    if (editPRData.delivery_type === 'WAREHOUSE' && !editPRData.delivery_warehouse_id) {
+      toast.error('Please select a delivery warehouse');
+      return;
+    }
+    if (editPRData.delivery_type === 'DIRECT' && !editPRData.delivery_address?.address_line1) {
+      toast.error('Please enter a delivery address');
       return;
     }
     updateMutation.mutate({
@@ -572,7 +603,9 @@ export default function PurchaseRequisitionsPage() {
         priority: editPRData.priority,
         reason: editPRData.reason || undefined,
         notes: editPRData.notes || undefined,
-        delivery_warehouse_id: editPRData.delivery_warehouse_id,
+        delivery_type: editPRData.delivery_type || 'WAREHOUSE',
+        delivery_warehouse_id: editPRData.delivery_type === 'DIRECT' ? undefined : (editPRData.delivery_warehouse_id || undefined),
+        delivery_address: editPRData.delivery_type === 'DIRECT' ? editPRData.delivery_address : undefined,
         items: editPRData.items,
       },
     });
@@ -791,7 +824,9 @@ export default function PurchaseRequisitionsPage() {
   // Helper functions
   const resetForm = () => {
     setFormData({
+      delivery_type: 'WAREHOUSE',
       delivery_warehouse_id: '',
+      delivery_address: undefined,
       required_by_date: '',
       priority: 5,
       reason: '',
@@ -866,16 +901,32 @@ export default function PurchaseRequisitionsPage() {
   };
 
   const handleSaveDraft = () => {
-    if (!formData.delivery_warehouse_id || formData.items.length === 0) {
-      toast.error('Please select warehouse and add at least one item');
+    if (formData.items.length === 0) {
+      toast.error('Please add at least one item');
+      return;
+    }
+    if (formData.delivery_type === 'WAREHOUSE' && !formData.delivery_warehouse_id) {
+      toast.error('Please select a delivery warehouse');
+      return;
+    }
+    if (formData.delivery_type === 'DIRECT' && !formData.delivery_address?.address_line1) {
+      toast.error('Please enter a delivery address');
       return;
     }
     createMutation.mutate({ data: formData, submitForApproval: false });
   };
 
   const handleSubmitForApproval = () => {
-    if (!formData.delivery_warehouse_id || formData.items.length === 0) {
-      toast.error('Please select warehouse and add at least one item');
+    if (formData.items.length === 0) {
+      toast.error('Please add at least one item');
+      return;
+    }
+    if (formData.delivery_type === 'WAREHOUSE' && !formData.delivery_warehouse_id) {
+      toast.error('Please select a delivery warehouse');
+      return;
+    }
+    if (formData.delivery_type === 'DIRECT' && !formData.delivery_address?.address_line1) {
+      toast.error('Please enter a delivery address');
       return;
     }
     createMutation.mutate({ data: formData, submitForApproval: true });
@@ -1089,24 +1140,103 @@ export default function PurchaseRequisitionsPage() {
                     <Lock className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Delivery Warehouse *</Label>
-                    <Select
-                      value={formData.delivery_warehouse_id || 'select'}
-                      onValueChange={(value) => setFormData({ ...formData, delivery_warehouse_id: value === 'select' ? '' : value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select warehouse" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="select" disabled>Select warehouse</SelectItem>
-                        {warehouses.filter((w: Warehouse) => w.id && w.id.trim() !== '').map((w: Warehouse) => (
-                          <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                <div className="space-y-3">
+                  {/* Delivery Type Toggle */}
+                  <div className="flex items-center gap-4">
+                    <Label className="font-medium">Delivery Type *</Label>
+                    <div className="flex items-center gap-2 rounded-lg border p-1 bg-muted/30">
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, delivery_type: 'WAREHOUSE', delivery_address: undefined })}
+                        className={`px-3 py-1 rounded text-sm font-medium transition-colors ${formData.delivery_type === 'WAREHOUSE' ? 'bg-white shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                      >
+                        Warehouse
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, delivery_type: 'DIRECT', delivery_warehouse_id: '' })}
+                        className={`px-3 py-1 rounded text-sm font-medium transition-colors ${formData.delivery_type === 'DIRECT' ? 'bg-white shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                      >
+                        Direct Address
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Warehouse selection (shown when WAREHOUSE type) */}
+                  {formData.delivery_type === 'WAREHOUSE' && (
+                    <div className="space-y-2">
+                      <Label>Delivery Warehouse *</Label>
+                      <Select
+                        value={formData.delivery_warehouse_id || 'select'}
+                        onValueChange={(value) => setFormData({ ...formData, delivery_warehouse_id: value === 'select' ? '' : value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select warehouse" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="select" disabled>Select warehouse</SelectItem>
+                          {warehouses.filter((w: Warehouse) => w.id && w.id.trim() !== '').map((w: Warehouse) => (
+                            <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* Direct delivery address form (shown when DIRECT type) */}
+                  {formData.delivery_type === 'DIRECT' && (
+                    <div className="space-y-2 p-3 border rounded-lg bg-amber-50/30">
+                      <Label className="text-sm font-medium text-amber-700">Direct Delivery Address</Label>
+                      <div className="text-xs text-muted-foreground mb-2">Items will be delivered directly to this address. No barcodes will be generated.</div>
+                      <Input
+                        placeholder="Deliver To (Name / Company) *"
+                        value={formData.delivery_address?.deliver_to || ''}
+                        onChange={(e) => setFormData({ ...formData, delivery_address: { ...formData.delivery_address, deliver_to: e.target.value } })}
+                      />
+                      <Input
+                        placeholder="Address Line 1 *"
+                        value={formData.delivery_address?.address_line1 || ''}
+                        onChange={(e) => setFormData({ ...formData, delivery_address: { ...formData.delivery_address, address_line1: e.target.value } })}
+                      />
+                      <Input
+                        placeholder="Address Line 2 (Optional)"
+                        value={formData.delivery_address?.address_line2 || ''}
+                        onChange={(e) => setFormData({ ...formData, delivery_address: { ...formData.delivery_address, address_line2: e.target.value } })}
+                      />
+                      <div className="grid grid-cols-3 gap-2">
+                        <Input
+                          placeholder="City *"
+                          value={formData.delivery_address?.city || ''}
+                          onChange={(e) => setFormData({ ...formData, delivery_address: { ...formData.delivery_address, city: e.target.value } })}
+                        />
+                        <Input
+                          placeholder="State *"
+                          value={formData.delivery_address?.state || ''}
+                          onChange={(e) => setFormData({ ...formData, delivery_address: { ...formData.delivery_address, state: e.target.value } })}
+                        />
+                        <Input
+                          placeholder="Pincode *"
+                          value={formData.delivery_address?.pincode || ''}
+                          onChange={(e) => setFormData({ ...formData, delivery_address: { ...formData.delivery_address, pincode: e.target.value } })}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          placeholder="Contact Person"
+                          value={formData.delivery_address?.contact_person || ''}
+                          onChange={(e) => setFormData({ ...formData, delivery_address: { ...formData.delivery_address, contact_person: e.target.value } })}
+                        />
+                        <Input
+                          placeholder="Contact Phone"
+                          value={formData.delivery_address?.contact_phone || ''}
+                          onChange={(e) => setFormData({ ...formData, delivery_address: { ...formData.delivery_address, contact_phone: e.target.value } })}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Priority</Label>
                     <Select
@@ -1680,7 +1810,7 @@ export default function PurchaseRequisitionsPage() {
         if (!open) {
           setIsEditDialogOpen(false);
           setSelectedPR(null);
-          setEditPRData({ required_by_date: '', priority: 5, reason: '', notes: '', delivery_warehouse_id: '', items: [] });
+          setEditPRData({ required_by_date: '', priority: 5, reason: '', notes: '', delivery_type: 'WAREHOUSE', delivery_warehouse_id: '', delivery_address: undefined, items: [] });
           setEditNewItem({ product_id: '', quantity: 1, estimated_price: 0 });
           setEditSelectedCategoryId('all');
         }
@@ -1693,25 +1823,89 @@ export default function PurchaseRequisitionsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            {/* Row 1: Warehouse and Priority */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Delivery Warehouse *</Label>
-                <Select
-                  value={editPRData.delivery_warehouse_id || 'select'}
-                  onValueChange={(value) => setEditPRData({ ...editPRData, delivery_warehouse_id: value === 'select' ? '' : value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select warehouse" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="select" disabled>Select warehouse</SelectItem>
-                    {warehouses.filter((w: Warehouse) => w.id && w.id.trim() !== '').map((w: Warehouse) => (
-                      <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {/* Row 1: Delivery Type + Warehouse/Address and Priority */}
+            <div className="space-y-3">
+              {/* Delivery Type Toggle */}
+              <div className="flex items-center gap-4">
+                <Label className="font-medium">Delivery Type *</Label>
+                <div className="flex items-center gap-2 rounded-lg border p-1 bg-muted/30">
+                  <button
+                    type="button"
+                    onClick={() => setEditPRData({ ...editPRData, delivery_type: 'WAREHOUSE', delivery_address: undefined })}
+                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${editPRData.delivery_type === 'WAREHOUSE' ? 'bg-white shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    Warehouse
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditPRData({ ...editPRData, delivery_type: 'DIRECT', delivery_warehouse_id: '' })}
+                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${editPRData.delivery_type === 'DIRECT' ? 'bg-white shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    Direct Address
+                  </button>
+                </div>
               </div>
+
+              {editPRData.delivery_type === 'WAREHOUSE' && (
+                <div className="space-y-2">
+                  <Label>Delivery Warehouse *</Label>
+                  <Select
+                    value={editPRData.delivery_warehouse_id || 'select'}
+                    onValueChange={(value) => setEditPRData({ ...editPRData, delivery_warehouse_id: value === 'select' ? '' : value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select warehouse" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="select" disabled>Select warehouse</SelectItem>
+                      {warehouses.filter((w: Warehouse) => w.id && w.id.trim() !== '').map((w: Warehouse) => (
+                        <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {editPRData.delivery_type === 'DIRECT' && (
+                <div className="space-y-2 p-3 border rounded-lg bg-amber-50/30">
+                  <Label className="text-sm font-medium text-amber-700">Direct Delivery Address</Label>
+                  <Input
+                    placeholder="Deliver To (Name / Company) *"
+                    value={editPRData.delivery_address?.deliver_to || ''}
+                    onChange={(e) => setEditPRData({ ...editPRData, delivery_address: { ...editPRData.delivery_address, deliver_to: e.target.value } })}
+                  />
+                  <Input
+                    placeholder="Address Line 1 *"
+                    value={editPRData.delivery_address?.address_line1 || ''}
+                    onChange={(e) => setEditPRData({ ...editPRData, delivery_address: { ...editPRData.delivery_address, address_line1: e.target.value } })}
+                  />
+                  <Input
+                    placeholder="Address Line 2 (Optional)"
+                    value={editPRData.delivery_address?.address_line2 || ''}
+                    onChange={(e) => setEditPRData({ ...editPRData, delivery_address: { ...editPRData.delivery_address, address_line2: e.target.value } })}
+                  />
+                  <div className="grid grid-cols-3 gap-2">
+                    <Input
+                      placeholder="City *"
+                      value={editPRData.delivery_address?.city || ''}
+                      onChange={(e) => setEditPRData({ ...editPRData, delivery_address: { ...editPRData.delivery_address, city: e.target.value } })}
+                    />
+                    <Input
+                      placeholder="State *"
+                      value={editPRData.delivery_address?.state || ''}
+                      onChange={(e) => setEditPRData({ ...editPRData, delivery_address: { ...editPRData.delivery_address, state: e.target.value } })}
+                    />
+                    <Input
+                      placeholder="Pincode *"
+                      value={editPRData.delivery_address?.pincode || ''}
+                      onChange={(e) => setEditPRData({ ...editPRData, delivery_address: { ...editPRData.delivery_address, pincode: e.target.value } })}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Priority (1-10)</Label>
                 <Select
@@ -1954,7 +2148,7 @@ export default function PurchaseRequisitionsPage() {
               onClick={() => {
                 setIsEditDialogOpen(false);
                 setSelectedPR(null);
-                setEditPRData({ required_by_date: '', priority: 5, reason: '', notes: '', delivery_warehouse_id: '', items: [] });
+                setEditPRData({ required_by_date: '', priority: 5, reason: '', notes: '', delivery_type: 'WAREHOUSE', delivery_warehouse_id: '', delivery_address: undefined, items: [] });
                 setEditNewItem({ product_id: '', quantity: 1, estimated_price: 0 });
                 setEditSelectedCategoryId('all');
               }}

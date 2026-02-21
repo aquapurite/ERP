@@ -3,7 +3,7 @@ from datetime import datetime, date
 from typing import Optional, List
 from decimal import Decimal
 from uuid import UUID
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 from app.schemas.base import BaseResponseSchema
 
@@ -74,10 +74,24 @@ class PurchaseRequisitionBase(BaseModel):
     """Base schema for Purchase Requisition."""
     requesting_department: Optional[str] = None
     required_by_date: Optional[date] = None
-    delivery_warehouse_id: UUID
+    delivery_type: str = Field("WAREHOUSE", description="WAREHOUSE or DIRECT")
+    delivery_warehouse_id: Optional[UUID] = None
+    delivery_address: Optional[dict] = Field(
+        None,
+        description="Freeform address for direct delivery. Keys: deliver_to, address_line1, address_line2, city, state, pincode, contact_person, contact_phone"
+    )
     priority: int = Field(5, ge=1, le=10)
     reason: Optional[str] = None
     notes: Optional[str] = None
+
+    @field_validator('delivery_type')
+    @classmethod
+    def validate_delivery_type(cls, v):
+        allowed = {'WAREHOUSE', 'DIRECT'}
+        v = v.upper()
+        if v not in allowed:
+            raise ValueError(f"delivery_type must be one of {allowed}")
+        return v
 
 
 class PurchaseRequisitionCreate(PurchaseRequisitionBase):
@@ -89,7 +103,9 @@ class PurchaseRequisitionUpdate(BaseModel):
     """Schema for updating PR. Supports full editing including items."""
     requesting_department: Optional[str] = None
     required_by_date: Optional[date] = None
+    delivery_type: Optional[str] = None
     delivery_warehouse_id: Optional[UUID] = None
+    delivery_address: Optional[dict] = None
     priority: Optional[int] = Field(None, ge=1, le=10)
     reason: Optional[str] = None
     notes: Optional[str] = None
@@ -107,8 +123,10 @@ class PurchaseRequisitionResponse(BaseResponseSchema):
     requested_by_name: Optional[str] = None  # Computed from relationship
     requesting_department: Optional[str] = None
     required_by_date: Optional[date] = None
+    delivery_type: str = "WAREHOUSE"
     delivery_warehouse_id: Optional[UUID] = None
     delivery_warehouse_name: Optional[str] = None  # Computed from relationship
+    delivery_address: Optional[dict] = None
     priority: int = 5
     reason: Optional[str] = None
     notes: Optional[str] = None
@@ -289,9 +307,22 @@ class PODeliveryPaymentRequest(BaseModel):
 class PurchaseOrderBase(BaseModel):
     """Base schema for Purchase Order."""
     vendor_id: UUID
-    delivery_warehouse_id: UUID
+    delivery_type: str = Field("WAREHOUSE", description="WAREHOUSE or DIRECT")
+    delivery_warehouse_id: Optional[UUID] = None
     expected_delivery_date: Optional[date] = None
-    delivery_address: Optional[dict] = None
+    delivery_address: Optional[dict] = Field(
+        None,
+        description="Freeform address for direct delivery. Keys: deliver_to, address_line1, address_line2, city, state, pincode, contact_person, contact_phone"
+    )
+
+    @field_validator('delivery_type')
+    @classmethod
+    def validate_po_delivery_type(cls, v):
+        allowed = {'WAREHOUSE', 'DIRECT'}
+        v = v.upper()
+        if v not in allowed:
+            raise ValueError(f"delivery_type must be one of {allowed}")
+        return v
     # Bill To & Ship To addresses
     # Format: {"name": "", "address_line1": "", "address_line2": "", "city": "", "state": "", "pincode": "", "gstin": "", "state_code": ""}
     bill_to: Optional[dict] = Field(
@@ -363,7 +394,8 @@ class PurchaseOrderResponse(BaseResponseSchema):
     vendor_address: Optional[dict] = None  # JSON field in model
 
     # Warehouse/Delivery info
-    delivery_warehouse_id: UUID
+    delivery_type: str = "WAREHOUSE"
+    delivery_warehouse_id: Optional[UUID] = None
     expected_delivery_date: Optional[date] = None
     delivery_address: Optional[dict] = None
     bill_to: Optional[dict] = None

@@ -457,6 +457,8 @@ export interface PurchaseOrder {
   vendor_name?: string;
   warehouse_id: string;
   delivery_warehouse_id?: string;
+  delivery_type?: string;
+  delivery_address?: Record<string, string>;
   status: POStatus;
   po_date?: string;
   credit_days?: number;

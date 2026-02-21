@@ -217,10 +217,16 @@ class PurchaseRequisition(Base):
 
     # Delivery Requirements
     required_by_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    delivery_warehouse_id: Mapped[uuid.UUID] = mapped_column(
+    delivery_type: Mapped[str] = mapped_column(String(20), nullable=False, default="WAREHOUSE")
+    delivery_warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("warehouses.id", ondelete="RESTRICT"),
-        nullable=False
+        nullable=True
+    )
+    delivery_address: Mapped[Optional[dict]] = mapped_column(
+        JSONB,
+        nullable=True,
+        comment="Freeform delivery address for non-warehouse deliveries"
     )
 
     # Priority
@@ -425,16 +431,17 @@ class PurchaseOrder(Base):
     )
 
     # Delivery
-    delivery_warehouse_id: Mapped[uuid.UUID] = mapped_column(
+    delivery_type: Mapped[str] = mapped_column(String(20), nullable=False, default="WAREHOUSE")
+    delivery_warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("warehouses.id", ondelete="RESTRICT"),
-        nullable=False
+        nullable=True
     )
     expected_delivery_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     delivery_address: Mapped[Optional[dict]] = mapped_column(
         JSONB,
         nullable=True,
-        comment="Delivery address if different from warehouse"
+        comment="Freeform delivery address for non-warehouse deliveries (delivery_type=DIRECT)"
     )
 
     # Vendor Details Snapshot

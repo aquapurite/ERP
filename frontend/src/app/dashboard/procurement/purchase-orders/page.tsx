@@ -89,6 +89,8 @@ interface PurchaseOrder {
   vendor_id: string;
   vendor?: { id: string; name: string; code?: string; vendor_code?: string };
   delivery_warehouse_id?: string;
+  delivery_type?: string;
+  delivery_address?: Record<string, string>;
   warehouse_id?: string;
   warehouse?: { id: string; name: string };
   status: string;
@@ -877,9 +879,10 @@ export default function PurchaseOrdersPage() {
     }
 
     // Get delivery_warehouse_id from ship_to if it's a warehouse, otherwise use bill_to warehouse
+    const isDirectDelivery = shipToType === 'other';
     const deliveryWarehouseId = formData.ship_to?.warehouse_id || formData.bill_to?.warehouse_id;
 
-    if (!deliveryWarehouseId) {
+    if (!isDirectDelivery && !deliveryWarehouseId) {
       toast.error('Please select a valid warehouse for Bill To or Ship To address');
       return;
     }
@@ -887,7 +890,16 @@ export default function PurchaseOrdersPage() {
     const poPayload = {
       requisition_id: formData.requisition_id,  // Link PO to PR
       vendor_id: formData.vendor_id,
-      delivery_warehouse_id: deliveryWarehouseId,
+      delivery_type: isDirectDelivery ? 'DIRECT' : 'WAREHOUSE',
+      delivery_warehouse_id: isDirectDelivery ? null : (deliveryWarehouseId || undefined),
+      delivery_address: isDirectDelivery ? {
+        deliver_to: formData.ship_to?.name || '',
+        address_line1: formData.ship_to?.address_line1 || '',
+        address_line2: formData.ship_to?.address_line2 || '',
+        city: formData.ship_to?.city || '',
+        state: formData.ship_to?.state || '',
+        pincode: formData.ship_to?.pincode || '',
+      } : undefined,
       expected_delivery_date: formData.expected_delivery_date || undefined,
       credit_days: formData.credit_days,
       advance_required: formData.advance_required || 0,  // Advance payment required
