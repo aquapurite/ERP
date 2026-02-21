@@ -84,6 +84,8 @@ export default function NewProductPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isSkuGenerated, setIsSkuGenerated] = useState(false);
   const [isGeneratingSku, setIsGeneratingSku] = useState(false);
+  const [modelCodeError, setModelCodeError] = useState<string>('');
+  const [isCheckingModelCode, setIsCheckingModelCode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Cascading category state
@@ -134,6 +136,24 @@ export default function NewProductPage() {
   const watchCategoryId = form.watch('category_id');
   const watchItemType = form.watch('item_type');
   const watchModelCode = form.watch('model_code');
+
+  // Check model code uniqueness
+  const checkModelCode = async (code: string) => {
+    if (!code || code.length < 1) { setModelCodeError(''); return; }
+    setIsCheckingModelCode(true);
+    try {
+      const { data } = await apiClient.get('/products/check-model-code', { params: { code } });
+      if (!data.available) {
+        setModelCodeError(`Already used by ${data.used_by}. Choose a unique code.`);
+      } else {
+        setModelCodeError('');
+      }
+    } catch {
+      setModelCodeError('');
+    } finally {
+      setIsCheckingModelCode(false);
+    }
+  };
 
   // Auto-generate SKU when all hierarchy fields are filled (including model_code)
   useEffect(() => {
@@ -234,6 +254,10 @@ export default function NewProductPage() {
   });
 
   const onSubmit = (data: ProductFormData) => {
+    if (modelCodeError) {
+      toast.error('Please fix the model code error before submitting.');
+      return;
+    }
     // Generate slug if not provided
     if (!data.slug) {
       data.slug = data.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
@@ -511,16 +535,20 @@ export default function NewProductPage() {
                     maxLength={5}
                     {...form.register('model_code', {
                       onChange: (e) => {
-                        // Uppercase and remove non-letters
                         const value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
                         form.setValue('model_code', value);
                         setIsSkuGenerated(false);
+                        setModelCodeError('');
                       }
                     })}
-                    className="font-mono uppercase"
+                    onBlur={(e) => checkModelCode(e.target.value)}
+                    className={`font-mono uppercase ${modelCodeError ? 'border-destructive' : ''}`}
                   />
                   {form.formState.errors.model_code && (
                     <p className="text-sm text-destructive">{form.formState.errors.model_code.message}</p>
+                  )}
+                  {modelCodeError && (
+                    <p className="text-sm text-destructive">{isCheckingModelCode ? 'Checking...' : modelCodeError}</p>
                   )}
                   <p className="text-xs text-muted-foreground">
                     1-5 letters for model identification in SKU (e.g., ELITZ → AP-WP-RU-FG-ELITZ-001)

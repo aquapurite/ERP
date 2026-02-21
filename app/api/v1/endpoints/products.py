@@ -167,6 +167,34 @@ async def get_top_selling_products(
     return {"items": products}
 
 
+# ==================== MODEL CODE CHECK ====================
+
+@router.get("/check-model-code")
+async def check_model_code(
+    db: DB,
+    code: str = Query(..., min_length=1, max_length=5, description="Model code to check"),
+    exclude_id: Optional[uuid.UUID] = Query(None, description="Product ID to exclude (for updates)"),
+):
+    """
+    Check if a model code is already in use by another product.
+    Returns {available: true} if code is free, {available: false, used_by: <sku>} if taken.
+    """
+    from sqlalchemy import select
+    from app.models.product import Product
+
+    code_upper = code.upper().strip()
+    query = select(Product).where(Product.model_code == code_upper)
+    if exclude_id:
+        query = query.where(Product.id != exclude_id)
+
+    result = await db.execute(query)
+    existing = result.scalar_one_or_none()
+
+    if existing:
+        return {"available": False, "used_by": existing.sku, "message": f"Model code '{code_upper}' is already used by product {existing.sku}"}
+    return {"available": True, "message": f"Model code '{code_upper}' is available"}
+
+
 # ==================== SKU GENERATION ====================
 
 @router.get("/next-sku")
@@ -415,6 +443,20 @@ async def create_product(
 
     service = ProductService(db)
 
+    # Check model_code uniqueness
+    if data.model_code:
+        from sqlalchemy import select
+        from app.models.product import Product as ProductModel
+        mc_result = await db.execute(
+            select(ProductModel).where(ProductModel.model_code == data.model_code.upper())
+        )
+        mc_existing = mc_result.scalar_one_or_none()
+        if mc_existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Model code '{data.model_code.upper()}' is already in use by product '{mc_existing.sku}'. Each product must have a unique model code."
+            )
+
     # Check SKU uniqueness
     logger.info(f"[CREATE_PRODUCT] Checking SKU uniqueness: {data.sku}")
     existing = await service.get_product_by_sku(data.sku)
@@ -533,6 +575,23 @@ async def update_product(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Brand not found"
+            )
+
+    # Check model_code uniqueness (only if being changed)
+    if data.model_code and data.model_code.upper() != (old_model_code or '').upper():
+        from sqlalchemy import select
+        from app.models.product import Product as ProductModel
+        mc_result = await db.execute(
+            select(ProductModel).where(
+                ProductModel.model_code == data.model_code.upper(),
+                ProductModel.id != product_id
+            )
+        )
+        mc_existing = mc_result.scalar_one_or_none()
+        if mc_existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Model code '{data.model_code.upper()}' is already in use by product '{mc_existing.sku}'."
             )
 
     updated = await service.update_product(product_id, data)
