@@ -367,30 +367,35 @@ class OrderService:
             pricing_rules_applied = []
 
             if not unit_price:
-                if data.channel_id:
-                    # Use channel-specific pricing with rules
-                    try:
-                        price_result = await pricing_service.calculate_price(
-                            product_id=item_data.product_id,
-                            channel_id=data.channel_id,
-                            quantity=item_data.quantity,
-                            variant_id=item_data.variant_id,
-                            customer_segment=customer_segment,
-                        )
-                        unit_price = Decimal(str(price_result["unit_price"]))
-                        if price_result.get("mrp"):
-                            unit_mrp = Decimal(str(price_result["mrp"]))
-                        pricing_rules_applied = price_result.get("rules_applied", [])
-                        logger.info(
-                            f"Channel pricing applied for product {item_data.product_id}: "
-                            f"price={unit_price}, source={price_result['price_source']}"
-                        )
-                    except Exception as e:
-                        logger.warning(f"Channel pricing failed, using product price: {e}")
-                        unit_price = product.selling_price or product.mrp
-                else:
-                    # Fallback to product master pricing
-                    unit_price = product.selling_price or product.mrp
+                if not data.channel_id:
+                    raise ValueError(
+                        "A sales channel is required to determine pricing. "
+                        "Please select a channel when creating this order."
+                    )
+                # Use channel-specific pricing with rules
+                try:
+                    price_result = await pricing_service.calculate_price(
+                        product_id=item_data.product_id,
+                        channel_id=data.channel_id,
+                        quantity=item_data.quantity,
+                        variant_id=item_data.variant_id,
+                        customer_segment=customer_segment,
+                    )
+                    unit_price = Decimal(str(price_result["unit_price"]))
+                    if price_result.get("mrp"):
+                        unit_mrp = Decimal(str(price_result["mrp"]))
+                    pricing_rules_applied = price_result.get("rules_applied", [])
+                    logger.info(
+                        f"Channel pricing applied for product {item_data.product_id}: "
+                        f"price={unit_price}, source={price_result['price_source']}"
+                    )
+                except ValueError:
+                    raise
+                except Exception as e:
+                    raise ValueError(
+                        f"No channel pricing configured for product '{product.name}' in this channel. "
+                        f"Set up pricing in Sales > Channels > Pricing."
+                    ) from e
 
             # Override with variant pricing if applicable
             if variant:

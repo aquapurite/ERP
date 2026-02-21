@@ -47,7 +47,6 @@ interface ProductFormData {
   category_id?: string;
   item_type?: 'FG' | 'SP';
   mrp: number;
-  selling_price?: number; // Legacy - use Channel Pricing instead
   cost_price?: number;    // Legacy - auto-calculated from GRNs
   gst_rate?: number;
   hsn_code?: string;
@@ -72,7 +71,6 @@ const productSchema = z.object({
   category_id: z.string().optional(),
   item_type: z.enum(['FG', 'SP']).optional(),
   mrp: z.coerce.number().min(0, 'MRP must be positive'),
-  selling_price: z.coerce.number().min(0).optional(), // Legacy - use Channel Pricing
   cost_price: z.coerce.number().min(0).optional(),    // Legacy - auto-calculated from GRNs
   gst_rate: z.coerce.number().min(0).max(100).optional(),
   hsn_code: z.string().optional(),
@@ -86,15 +84,6 @@ const productSchema = z.object({
   warranty_months: z.coerce.number().min(0).optional(),
   meta_title: z.string().optional(),
   meta_description: z.string().optional(),
-}).refine((data) => {
-  // Only validate if selling_price is provided
-  if (data.selling_price && data.selling_price > data.mrp) {
-    return false;
-  }
-  return true;
-}, {
-  message: 'Selling price cannot be greater than MRP',
-  path: ['selling_price'],
 });
 
 const formatCurrency = (value: number) => {
@@ -193,7 +182,6 @@ export default function ProductDetailPage() {
       category_id: product.category_id || product.category?.id || '',
       item_type: (product.item_type as 'FG' | 'SP') || 'FG',
       mrp: product.mrp || 0,
-      selling_price: product.selling_price || 0,
       cost_price: product.cost_price || 0,
       gst_rate: product.gst_rate || 18,
       hsn_code: product.hsn_code || '',
@@ -377,7 +365,6 @@ export default function ProductDetailPage() {
       category_id: data.category_id || undefined,
       item_type: data.item_type || undefined,
       mrp: data.mrp,
-      selling_price: data.selling_price,
       cost_price: data.cost_price || undefined,
       gst_rate: data.gst_rate || undefined,
       hsn_code: data.hsn_code || undefined,

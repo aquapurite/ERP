@@ -129,7 +129,6 @@ class ProductBase(BaseModel):
     brand_id: uuid.UUID
 
     mrp: Decimal = Field(..., ge=0, description="Maximum Retail Price")
-    selling_price: Optional[Decimal] = Field(None, ge=0, description="Selling price (defaults to MRP if not provided)")
     dealer_price: Optional[Decimal] = Field(None, ge=0)
     cost_price: Optional[Decimal] = Field(None, ge=0)
 
@@ -172,18 +171,6 @@ class ProductCreate(ProductBase):
     documents: Optional[List[ProductDocumentCreate]] = []
     extra_data: Optional[dict] = None
 
-    @field_validator("selling_price")
-    @classmethod
-    def selling_price_less_than_mrp(cls, v, info):
-        """Validate selling price is not greater than MRP. Defaults to MRP if not provided."""
-        mrp = info.data.get("mrp")
-        # If selling_price is None, 0, or not provided, default to MRP
-        if v is None or (isinstance(v, (int, float, Decimal)) and v == 0):
-            return mrp if mrp is not None else Decimal("0")
-        if mrp is not None and v > mrp:
-            raise ValueError("Selling price cannot be greater than MRP")
-        return v
-
     @field_validator("model_code")
     @classmethod
     def validate_model_code(cls, v):
@@ -217,7 +204,6 @@ class ProductUpdate(BaseModel):
     brand_id: Optional[uuid.UUID] = None
 
     mrp: Optional[Decimal] = Field(None, ge=0)
-    selling_price: Optional[Decimal] = Field(None, ge=0)
     dealer_price: Optional[Decimal] = Field(None, ge=0)
     cost_price: Optional[Decimal] = Field(None, ge=0)
 
@@ -249,17 +235,6 @@ class ProductUpdate(BaseModel):
     meta_keywords: Optional[str] = None
 
     extra_data: Optional[dict] = None
-
-    @field_validator("selling_price")
-    @classmethod
-    def selling_price_less_than_mrp(cls, v, info):
-        """Validate selling price is not greater than MRP."""
-        if v is None:
-            return v
-        mrp = info.data.get("mrp")
-        if mrp is not None and v > mrp:
-            raise ValueError("Selling price cannot be greater than MRP")
-        return v
 
     @field_validator("model_code")
     @classmethod
@@ -315,9 +290,9 @@ class ProductResponse(BaseResponseSchema):
     brand: Optional[BrandBrief] = None
 
     mrp: Decimal
-    selling_price: Decimal
+    selling_price: Optional[Decimal] = None
     dealer_price: Optional[Decimal] = None
-    discount_percentage: float
+    discount_percentage: float = 0.0
 
     hsn_code: Optional[str] = None
     gst_rate: Optional[Decimal] = None
@@ -417,7 +392,7 @@ class ProductBriefResponse(BaseResponseSchema):
     model_code: Optional[str] = None
     item_type: str = "FG"  # VARCHAR in DB
     mrp: Decimal
-    selling_price: Decimal
+    selling_price: Optional[Decimal] = None
     primary_image_url: Optional[str] = None
     category_name: str
     brand_name: str
@@ -445,7 +420,7 @@ class MasterProductFileResponse(BaseResponseSchema):
     chargeable_weight_kg: float = 0.0
     # Pricing
     mrp: Decimal
-    selling_price: Decimal
+    selling_price: Optional[Decimal] = None
     hsn_code: Optional[str] = None
     gst_rate: Optional[Decimal] = None
     # Status

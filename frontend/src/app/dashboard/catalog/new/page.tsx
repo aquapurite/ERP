@@ -48,7 +48,6 @@ const productSchema = z.object({
   item_type: z.enum(['FG', 'SP']).default('FG'),
   model_code: z.string().min(1, 'Model name is required').max(5, 'Model name must be 5 characters or less').regex(/^[A-Za-z]+$/, 'Model name must contain only letters'),
   mrp: z.coerce.number().min(0, 'MRP must be positive'),
-  selling_price: z.coerce.number().min(0, 'Selling price must be positive').optional(),
   gst_rate: z.coerce.number().min(0).max(100, 'GST rate must be between 0 and 100').optional(),
   hsn_code: z.string().optional(),
   weight: z.coerce.number().min(0).optional(),
@@ -121,7 +120,6 @@ export default function NewProductPage() {
       item_type: 'FG',
       model_code: '',
       mrp: 0,
-      selling_price: 0,
       gst_rate: 18,
       warranty_months: 12,
       is_active: true,
@@ -251,7 +249,6 @@ export default function NewProductPage() {
       brand_id: data.brand_id,
       category_id: data.category_id,
       mrp: data.mrp,
-      selling_price: data.selling_price,
       item_type: data.item_type,
       model_code: data.model_code,
     });

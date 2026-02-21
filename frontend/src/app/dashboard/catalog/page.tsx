@@ -137,11 +137,6 @@ export default function ProductsPage() {
       cell: ({ row }) => formatCurrency(row.original.mrp),
     },
     {
-      accessorKey: 'selling_price',
-      header: 'Selling Price',
-      cell: ({ row }) => formatCurrency(row.original.selling_price),
-    },
-    {
       accessorKey: 'is_active',
       header: 'Status',
       cell: ({ row }) => (

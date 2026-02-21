@@ -163,7 +163,7 @@ export interface Product {
   category_id?: string;
   brand_id?: string;
   mrp: number;
-  selling_price: number;
+  selling_price?: number;
   cost_price?: number;
   gst_rate?: number;
   hsn_code?: string;

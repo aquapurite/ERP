@@ -110,10 +110,10 @@ class Product(Base):
         nullable=False,
         comment="Maximum Retail Price"
     )
-    selling_price: Mapped[Decimal] = mapped_column(
+    selling_price: Mapped[Optional[Decimal]] = mapped_column(
         Numeric(12, 2),
-        nullable=False,
-        comment="Selling price to customer"
+        nullable=True,
+        comment="Selling price to customer (deprecated: use ChannelPricing)"
     )
     dealer_price: Mapped[Optional[Decimal]] = mapped_column(
         Numeric(12, 2),
