@@ -123,7 +123,8 @@ interface PurchaseOrder {
   delivery_warehouse_id?: string;
   warehouse_id?: string;
   warehouse?: { name: string };
-  total_amount: number;
+  total_amount?: number;
+  grand_total?: number;
   items?: POItem[];
 }
 
@@ -238,6 +239,10 @@ export default function GRNPage() {
     vehicle_number: '',
   });
 
+  // Full PO details fetched on selection (list API doesn't return items)
+  const [selectedPODetails, setSelectedPODetails] = useState<PurchaseOrder | null>(null);
+  const [isLoadingPO, setIsLoadingPO] = useState(false);
+
   // Item quantities state - maps po_item_id to received quantity
   const [itemQuantities, setItemQuantities] = useState<Record<string, number>>({});
 
@@ -310,8 +315,8 @@ export default function GRNPage() {
     queryFn: () => warehousesApi.list({ is_active: true }),
   });
 
-  // Get selected PO details
-  const selectedPO = (purchaseOrders?.items ?? []).find((po: PurchaseOrder) => po.id === formData.po_id);
+  // selectedPODetails holds the full PO (fetched on selection); fall back to list summary
+  const selectedPO = selectedPODetails || (purchaseOrders?.items ?? []).find((po: PurchaseOrder) => po.id === formData.po_id);
 
   // Mutations
   const createMutation = useMutation({
@@ -400,6 +405,7 @@ export default function GRNPage() {
       vehicle_number: '',
     });
     setItemQuantities({});
+    setSelectedPODetails(null);
     setScannedSerials([]);
     setSerialInput('');
     setIsCreateDialogOpen(false);
@@ -424,8 +430,8 @@ export default function GRNPage() {
       uom: string;
     }[] = [];
 
-    const po = (purchaseOrders?.items ?? []).find((p: PurchaseOrder) => p.id === formData.po_id);
-    if (!po?.items) {
+    const po = selectedPODetails || (purchaseOrders?.items ?? []).find((p: PurchaseOrder) => p.id === formData.po_id);
+    if (!po?.items || po.items.length === 0) {
       toast.error('No items found in selected PO');
       return;
     }
@@ -476,28 +482,44 @@ export default function GRNPage() {
     });
   };
 
-  const handlePOChange = (poId: string) => {
-    const po = (purchaseOrders?.items ?? []).find((p: PurchaseOrder) => p.id === poId);
+  const handlePOChange = async (poId: string) => {
+    const poSummary = (purchaseOrders?.items ?? []).find((p: PurchaseOrder) => p.id === poId);
     setFormData({
       ...formData,
       po_id: poId,
-      warehouse_id: po?.delivery_warehouse_id || po?.warehouse_id || '',
+      warehouse_id: poSummary?.delivery_warehouse_id || poSummary?.warehouse_id || '',
     });
-    // Initialize item quantities - default to pending quantity for each item
-    if (po?.items) {
-      const initialQuantities: Record<string, number> = {};
-      po.items.forEach((item: POItem) => {
-        if (item.id) {
-          const ordered = item.quantity_ordered || item.quantity || 0;
-          const received = item.quantity_received || 0;
-          const pending = ordered - received;
-          // Default to pending quantity (what's left to receive)
-          initialQuantities[item.id] = Math.max(0, pending);
-        }
-      });
-      setItemQuantities(initialQuantities);
-    } else {
-      setItemQuantities({});
+    setSelectedPODetails(null);
+    setItemQuantities({});
+
+    // Fetch full PO details to get items and accurate amount
+    setIsLoadingPO(true);
+    try {
+      const fullPO = await purchaseOrdersApi.getById(poId);
+      setSelectedPODetails(fullPO);
+      if (fullPO?.items) {
+        const initialQuantities: Record<string, number> = {};
+        fullPO.items.forEach((item: POItem) => {
+          if (item.id) {
+            const ordered = item.quantity_ordered || item.quantity || 0;
+            const received = item.quantity_received || 0;
+            const pending = ordered - received;
+            initialQuantities[item.id] = Math.max(0, pending);
+          }
+        });
+        setItemQuantities(initialQuantities);
+      }
+      // Auto-fill warehouse from full PO if not set
+      if (fullPO?.delivery_warehouse_id || fullPO?.warehouse_id) {
+        setFormData(prev => ({
+          ...prev,
+          warehouse_id: prev.warehouse_id || fullPO.delivery_warehouse_id || fullPO.warehouse_id || '',
+        }));
+      }
+    } catch {
+      toast.error('Failed to load PO details');
+    } finally {
+      setIsLoadingPO(false);
     }
   };
 
@@ -662,31 +684,38 @@ export default function GRNPage() {
                     </Select>
                   </div>
 
-                  {selectedPO && (
+                  {formData.po_id && (
                     <Card>
                       <CardHeader className="py-3">
                         <CardTitle className="text-sm font-medium">PO Details</CardTitle>
                       </CardHeader>
                       <CardContent className="py-2">
+                        {isLoadingPO ? (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Loading PO details...
+                          </div>
+                        ) : (
                         <div className="grid grid-cols-2 gap-2 text-sm">
                           <div>
                             <span className="text-muted-foreground">Vendor:</span>{' '}
-                            <span className="font-medium">{selectedPO.vendor?.name}</span>
+                            <span className="font-medium">{selectedPO?.vendor?.name}</span>
                           </div>
                           <div>
                             <span className="text-muted-foreground">Warehouse:</span>{' '}
-                            <span className="font-medium">{selectedPO.warehouse?.name}</span>
+                            <span className="font-medium">{selectedPO?.warehouse?.name}</span>
                           </div>
                           <div>
                             <span className="text-muted-foreground">Amount:</span>{' '}
-                            <span className="font-medium">{formatCurrency(selectedPO.total_amount)}</span>
+                            <span className="font-medium">{formatCurrency(selectedPO?.grand_total ?? selectedPO?.total_amount ?? 0)}</span>
                           </div>
                           <div>
                             <span className="text-muted-foreground">Items:</span>{' '}
-                            <span className="font-medium">{selectedPO.items?.length || 0} products</span>
+                            <span className="font-medium">{selectedPO?.items?.length || 0} products</span>
                           </div>
                         </div>
-                        {selectedPO.items && selectedPO.items.length > 0 && (
+                        )}
+                        {!isLoadingPO && selectedPO?.items && selectedPO.items.length > 0 && (
                           <div className="mt-3 border-t pt-3">
                             <p className="text-xs font-medium mb-2">Enter quantities to receive:</p>
                             <div className="space-y-2 max-h-64 overflow-y-auto">
