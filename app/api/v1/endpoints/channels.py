@@ -846,6 +846,7 @@ async def get_channel_pricing(
             "margin_percentage": p.margin_percentage,
             "product_name": p.product.name if p.product else None,
             "product_sku": p.product.sku if p.product else None,
+            "master_mrp": p.product.mrp if p.product else None,
             "created_at": p.created_at,
             "updated_at": p.updated_at,
         }

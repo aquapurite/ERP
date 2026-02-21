@@ -25,6 +25,7 @@ from app.models.channel import (
     SalesChannel, ChannelPricing, ChannelStatus, PricingRule
 )
 from app.models.product import Product, ProductVariant
+from app.models.dealer import DealerPricing, DealerTierPricing
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +120,102 @@ class PricingService:
             "hsn_code": product.hsn_code,
         }
 
+    async def get_dealer_pricing(
+        self,
+        dealer_id: uuid.UUID,
+        product_id: uuid.UUID,
+        dealer_tier: Optional[str] = None,
+        variant_id: Optional[uuid.UUID] = None,
+    ) -> Optional[Decimal]:
+        """
+        Get dealer-specific price using the pricing waterfall:
+        1. DealerPricing (individual negotiated price) — special_price > dealer_price
+        2. DealerTierPricing (tier-based) — fixed_price or discount_percentage off channel MRP
+
+        Returns the price if found, else None (caller checks ChannelPricing).
+        """
+        now = datetime.now(timezone.utc).date()
+
+        # Step 1: Individual dealer pricing
+        stmt = select(DealerPricing).where(
+            and_(
+                DealerPricing.dealer_id == dealer_id,
+                DealerPricing.product_id == product_id,
+                DealerPricing.is_active == True,
+                or_(
+                    DealerPricing.effective_from.is_(None),
+                    DealerPricing.effective_from <= now
+                ),
+                or_(
+                    DealerPricing.effective_to.is_(None),
+                    DealerPricing.effective_to >= now
+                ),
+            )
+        )
+        if variant_id:
+            stmt = stmt.where(DealerPricing.variant_id == variant_id)
+        else:
+            stmt = stmt.where(DealerPricing.variant_id.is_(None))
+
+        result = await self.db.execute(stmt)
+        dealer_pricing = result.scalar_one_or_none()
+
+        if dealer_pricing:
+            # Use special_price if set, else dealer_price
+            price = dealer_pricing.special_price or dealer_pricing.dealer_price
+            logger.info(
+                f"Dealer pricing found: dealer={dealer_id}, product={product_id}, "
+                f"price={price}, source=DEALER_PRICING"
+            )
+            return price
+
+        # Step 2: Tier-based pricing
+        if dealer_tier:
+            tier_stmt = select(DealerTierPricing).where(
+                and_(
+                    DealerTierPricing.tier == dealer_tier,
+                    DealerTierPricing.product_id == product_id,
+                    DealerTierPricing.is_active == True,
+                    or_(
+                        DealerTierPricing.effective_from.is_(None),
+                        DealerTierPricing.effective_from <= now
+                    ),
+                    or_(
+                        DealerTierPricing.effective_to.is_(None),
+                        DealerTierPricing.effective_to >= now
+                    ),
+                )
+            )
+            if variant_id:
+                tier_stmt = tier_stmt.where(DealerTierPricing.variant_id == variant_id)
+            else:
+                tier_stmt = tier_stmt.where(DealerTierPricing.variant_id.is_(None))
+
+            tier_result = await self.db.execute(tier_stmt)
+            tier_pricing = tier_result.scalar_one_or_none()
+
+            if tier_pricing:
+                if tier_pricing.fixed_price:
+                    logger.info(
+                        f"Tier pricing found: tier={dealer_tier}, product={product_id}, "
+                        f"price={tier_pricing.fixed_price}, source=TIER_PRICING_FIXED"
+                    )
+                    return tier_pricing.fixed_price
+                else:
+                    # Apply discount to product master MRP
+                    product_data = await self.get_product_base_price(product_id)
+                    base_mrp = product_data["mrp"]
+                    if base_mrp and base_mrp > 0:
+                        tier_price = base_mrp * (1 - tier_pricing.discount_percentage / 100)
+                        tier_price = tier_price.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                        logger.info(
+                            f"Tier pricing found: tier={dealer_tier}, product={product_id}, "
+                            f"price={tier_price}, source=TIER_PRICING_DISCOUNT"
+                        )
+                        return tier_price
+
+        return None
+
     async def calculate_price(
         self,
         product_id: uuid.UUID,
@@ -127,11 +224,19 @@ class PricingService:
         variant_id: Optional[uuid.UUID] = None,
         customer_segment: str = "STANDARD",
         promo_code: Optional[str] = None,
+        dealer_id: Optional[uuid.UUID] = None,
+        dealer_tier: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Calculate final price for a product on a channel.
 
         This is the main pricing calculation method used by order creation.
+
+        Pricing waterfall (dealer orders):
+        1. DealerPricing (individual negotiated) → special_price or dealer_price
+        2. DealerTierPricing (tier-based) → fixed_price or discount from MRP
+        3. ChannelPricing → transfer_price (B2B) or selling_price
+        4. BLOCK — raise ValueError if no pricing found
 
         Args:
             product_id: Product UUID
@@ -140,43 +245,68 @@ class PricingService:
             variant_id: Product variant (optional)
             customer_segment: Customer type (STANDARD, VIP, DEALER, etc.)
             promo_code: Promotional code (optional)
+            dealer_id: Dealer UUID (triggers dealer pricing waterfall)
+            dealer_tier: Dealer tier string (for tier-based pricing)
 
         Returns:
-            Dictionary with:
-            - base_price: Starting price (from ChannelPricing or Product)
-            - final_price: After all rules applied
-            - discount_amount: Total discount
-            - discount_percentage: Discount as percentage
-            - rules_applied: List of rules that were applied
-            - price_source: 'CHANNEL_PRICING' or 'PRODUCT_MASTER'
+            Dictionary with pricing details and price_source.
+        Raises:
+            ValueError: If no pricing is configured for this product/channel/dealer.
         """
-        # Step 1: Get channel pricing (or fallback to product)
-        channel_pricing = await self.get_channel_pricing(
-            product_id, channel_id, variant_id
-        )
+        price_source = None
+        mrp = None
+        max_discount_pct = None
+        transfer_price = None
 
-        if channel_pricing and channel_pricing.selling_price:
-            base_price = channel_pricing.selling_price
-            mrp = channel_pricing.mrp
-            max_discount_pct = channel_pricing.max_discount_percentage
-            price_source = "CHANNEL_PRICING"
-            transfer_price = channel_pricing.transfer_price
-        else:
-            # Fallback to product master pricing
-            product_pricing = await self.get_product_base_price(product_id)
-            base_price = product_pricing["selling_price"]
-            mrp = product_pricing["mrp"]
-            max_discount_pct = Decimal("25")  # Default max discount
-            price_source = "PRODUCT_MASTER"
-            transfer_price = product_pricing["dealer_price"]
+        # Step 1: Dealer-specific pricing (if dealer order)
+        if dealer_id:
+            dealer_price = await self.get_dealer_pricing(
+                dealer_id, product_id, dealer_tier, variant_id
+            )
+            if dealer_price:
+                base_price = dealer_price
+                price_source = "DEALER_PRICING"
+                # Get MRP from product master for invoice display
+                product_pricing = await self.get_product_base_price(product_id)
+                mrp = product_pricing["mrp"]
+                max_discount_pct = None  # No guard rail for negotiated dealer price
 
-        # For dealer/B2B channels, use transfer price if available
-        channel = await self._get_channel(channel_id)
-        if channel and channel.channel_type in ["B2B", "DEALER", "DEALER_PORTAL", "DISTRIBUTOR"]:
-            if transfer_price and transfer_price > 0:
-                base_price = transfer_price
+        # Step 2: Channel pricing
+        if price_source is None:
+            channel_pricing = await self.get_channel_pricing(
+                product_id, channel_id, variant_id
+            )
 
-        # Step 2: Apply pricing rules
+            if channel_pricing and (channel_pricing.selling_price or channel_pricing.transfer_price):
+                mrp = channel_pricing.mrp
+                max_discount_pct = channel_pricing.max_discount_percentage
+                price_source = "CHANNEL_PRICING"
+                transfer_price = channel_pricing.transfer_price
+
+                # For B2B/dealer channels, use transfer price if available
+                channel = await self._get_channel(channel_id)
+                if channel and channel.channel_type in ["B2B", "DEALER", "DEALER_PORTAL", "DISTRIBUTOR"]:
+                    if transfer_price and transfer_price > 0:
+                        base_price = transfer_price
+                    elif channel_pricing.selling_price:
+                        base_price = channel_pricing.selling_price
+                    else:
+                        price_source = None  # No valid price
+                else:
+                    base_price = channel_pricing.selling_price
+            else:
+                price_source = None
+
+        # Block if no pricing found
+        if price_source is None:
+            raise ValueError(
+                f"No pricing configured for this product in this channel"
+                + (f"/dealer" if dealer_id else "")
+                + f". Set up pricing in Channel Pricing"
+                + (f" or Dealer Pricing." if dealer_id else ".")
+            )
+
+        # Step 3: Apply pricing rules
         rules_result = await self._apply_pricing_rules(
             base_price=base_price,
             product_id=product_id,
@@ -189,7 +319,7 @@ class PricingService:
         final_price = rules_result["final_price"]
         rules_applied = rules_result["rules_applied"]
 
-        # Step 3: Validate against max discount threshold
+        # Step 4: Validate against max discount threshold
         if max_discount_pct and mrp and mrp > 0:
             min_allowed_price = mrp * (1 - max_discount_pct / 100)
             if final_price < min_allowed_price:

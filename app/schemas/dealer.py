@@ -399,7 +399,23 @@ class DealerPricingUpdate(BaseModel):
 class DealerPricingResponse(BaseResponseSchema):
     """Response schema for DealerPricing."""
     id: UUID
+    dealer_id: UUID
+    product_id: UUID
+    variant_id: Optional[UUID] = None
+    mrp: Decimal
+    dealer_price: Decimal
+    special_price: Optional[Decimal] = None
+    margin_percentage: Optional[Decimal] = None
+    minimum_margin: Optional[Decimal] = None
+    moq: int = 1
+    effective_from: date
+    effective_to: Optional[date] = None
+    is_active: bool
     dealer_margin: Decimal
+    # Product details from joined Product table
+    product_name: Optional[str] = None
+    product_sku: Optional[str] = None
+    master_mrp: Optional[Decimal] = None
     created_at: datetime
     updated_at: datetime
 

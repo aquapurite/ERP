@@ -304,29 +304,30 @@ class OrderService:
             raise ValueError("Customer not found")
 
         # B2B credit limit check if dealer_id is provided
+        order_dealer = None  # Store dealer for pricing waterfall
         if getattr(data, 'dealer_id', None):
             from app.models.dealer import Dealer
             dealer_result = await self.db.execute(
                 select(Dealer).where(Dealer.id == data.dealer_id)
             )
-            dealer = dealer_result.scalar_one_or_none()
-            if not dealer:
+            order_dealer = dealer_result.scalar_one_or_none()
+            if not order_dealer:
                 raise ValueError("Dealer not found")
-            if dealer.credit_status in ("BLOCKED", "ON_HOLD"):
+            if order_dealer.credit_status in ("BLOCKED", "ON_HOLD"):
                 raise ValueError(
-                    f"Dealer credit is {dealer.credit_status}. Cannot place order."
+                    f"Dealer credit is {order_dealer.credit_status}. Cannot place order."
                 )
             # Estimate order total from items for credit check
             estimated_total = Decimal("0.00")
             for item_data in data.items:
                 price = item_data.unit_price or Decimal("0.00")
                 estimated_total += price * item_data.quantity
-            available_credit = dealer.credit_limit - dealer.outstanding_amount
+            available_credit = order_dealer.credit_limit - order_dealer.outstanding_amount
             if estimated_total > available_credit:
                 raise ValueError(
                     f"Order total ({estimated_total}) exceeds available credit "
-                    f"({available_credit}). Credit limit: {dealer.credit_limit}, "
-                    f"Outstanding: {dealer.outstanding_amount}."
+                    f"({available_credit}). Credit limit: {order_dealer.credit_limit}, "
+                    f"Outstanding: {order_dealer.outstanding_amount}."
                 )
 
         # Process shipping address
@@ -372,7 +373,7 @@ class OrderService:
                         "A sales channel is required to determine pricing. "
                         "Please select a channel when creating this order."
                     )
-                # Use channel-specific pricing with rules
+                # Use channel-specific pricing with dealer waterfall
                 try:
                     price_result = await pricing_service.calculate_price(
                         product_id=item_data.product_id,
@@ -380,21 +381,24 @@ class OrderService:
                         quantity=item_data.quantity,
                         variant_id=item_data.variant_id,
                         customer_segment=customer_segment,
+                        dealer_id=data.dealer_id if getattr(data, 'dealer_id', None) else None,
+                        dealer_tier=order_dealer.tier if order_dealer else None,
                     )
                     unit_price = Decimal(str(price_result["unit_price"]))
                     if price_result.get("mrp"):
                         unit_mrp = Decimal(str(price_result["mrp"]))
                     pricing_rules_applied = price_result.get("rules_applied", [])
                     logger.info(
-                        f"Channel pricing applied for product {item_data.product_id}: "
+                        f"Pricing applied for product {item_data.product_id}: "
                         f"price={unit_price}, source={price_result['price_source']}"
                     )
                 except ValueError:
                     raise
                 except Exception as e:
                     raise ValueError(
-                        f"No channel pricing configured for product '{product.name}' in this channel. "
-                        f"Set up pricing in Sales > Channels > Pricing."
+                        f"No pricing configured for product '{product.name}' in this channel"
+                        + (f" or dealer" if getattr(data, 'dealer_id', None) else "")
+                        + f". Set up pricing in Sales > Channels > Pricing."
                     ) from e
 
             # Override with variant pricing if applicable

@@ -1468,6 +1468,39 @@ export const dealersApi = {
     );
     return data;
   },
+  getPricing: async (dealerId: string) => {
+    const { data } = await apiClient.get<DealerPricingRecord[]>(`/dealers/${dealerId}/pricing`);
+    return data;
+  },
+  setPricing: async (dealerId: string, pricing: {
+    product_id: string;
+    mrp: number;
+    dealer_price: number;
+    special_price?: number;
+    margin_percentage?: number;
+    moq?: number;
+    effective_from: string;
+    effective_to?: string;
+    is_active?: boolean;
+  }) => {
+    const payload = {
+      dealer_id: dealerId,
+      product_id: pricing.product_id,
+      mrp: pricing.mrp,
+      dealer_price: pricing.dealer_price,
+      special_price: pricing.special_price || undefined,
+      margin_percentage: pricing.margin_percentage || undefined,
+      moq: pricing.moq || 1,
+      effective_from: pricing.effective_from,
+      effective_to: pricing.effective_to || undefined,
+      is_active: pricing.is_active !== undefined ? pricing.is_active : true,
+    };
+    const { data } = await apiClient.post<DealerPricingRecord>(`/dealers/${dealerId}/pricing`, payload);
+    return data;
+  },
+  deletePricing: async (dealerId: string, pricingId: string) => {
+    await apiClient.delete(`/dealers/${dealerId}/pricing/${pricingId}`);
+  },
 };
 
 // Dealer types for API
@@ -1516,6 +1549,28 @@ interface DealerScheme {
   rules: Record<string, unknown>;
   total_budget?: number;
   utilized_budget: number;
+}
+
+export interface DealerPricingRecord {
+  id: string;
+  dealer_id: string;
+  product_id: string;
+  variant_id?: string;
+  mrp: number;
+  dealer_price: number;
+  special_price?: number;
+  margin_percentage?: number;
+  minimum_margin?: number;
+  moq: number;
+  effective_from: string;
+  effective_to?: string;
+  is_active: boolean;
+  dealer_margin: number;
+  product_name?: string;
+  product_sku?: string;
+  master_mrp?: number;
+  created_at: string;
+  updated_at: string;
 }
 
 // Dashboard API - aggregates data from multiple real endpoints

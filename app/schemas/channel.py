@@ -257,10 +257,24 @@ class ChannelPricingUpdate(BaseModel):
 class ChannelPricingResponse(BaseResponseSchema):
     """Response schema for ChannelPricing."""
     id: UUID
+    channel_id: UUID
+    product_id: UUID
+    variant_id: Optional[UUID] = None
+    mrp: Decimal
+    selling_price: Decimal
+    transfer_price: Optional[Decimal] = None
+    discount_percentage: Optional[Decimal] = None
+    max_discount_percentage: Optional[Decimal] = None
+    is_active: bool = True
+    is_listed: bool = True
+    effective_from: Optional[datetime] = None
+    effective_to: Optional[datetime] = None
     margin_percentage: Decimal
     # Product details from joined Product table
     product_name: Optional[str] = None
     product_sku: Optional[str] = None
+    # MRP from product master (authoritative source)
+    master_mrp: Optional[Decimal] = None
     created_at: datetime
     updated_at: datetime
 

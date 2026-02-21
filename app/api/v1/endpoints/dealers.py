@@ -412,6 +412,11 @@ async def approve_dealer(
         linked_approval.approved_at = datetime.now(timezone.utc)
         linked_approval.approval_comments = "Approved directly from dealer management"
 
+    # ORCHESTRATION: Send welcome email with brochure
+    from app.services.dealer_orchestration_service import DealerOrchestrationService
+    orchestration = DealerOrchestrationService(db)
+    await orchestration.on_dealer_approved(dealer, current_user.id)
+
     await db.commit()
     await db.refresh(dealer)
 
@@ -426,14 +431,41 @@ async def get_dealer_pricing(
     db: DB,
     current_user: User = Depends(get_current_user),
 ):
-    """Get special pricing for a dealer."""
+    """Get special pricing for a dealer, including product details."""
+    from app.models.product import Product
     result = await db.execute(
         select(DealerPricing)
+        .options(selectinload(DealerPricing.product))
         .where(DealerPricing.dealer_id == dealer_id)
         .order_by(DealerPricing.created_at.desc())
     )
-    pricing = result.scalars().all()
-    return [DealerPricingResponse.model_validate(p) for p in pricing]
+    pricing_list = result.scalars().all()
+
+    items = []
+    for p in pricing_list:
+        item_dict = {
+            "id": p.id,
+            "dealer_id": p.dealer_id,
+            "product_id": p.product_id,
+            "variant_id": p.variant_id,
+            "mrp": p.mrp,
+            "dealer_price": p.dealer_price,
+            "special_price": p.special_price,
+            "margin_percentage": p.margin_percentage,
+            "minimum_margin": p.minimum_margin,
+            "moq": p.moq,
+            "effective_from": p.effective_from,
+            "effective_to": p.effective_to,
+            "is_active": p.is_active,
+            "dealer_margin": p.dealer_margin,
+            "product_name": p.product.name if p.product else None,
+            "product_sku": p.product.sku if p.product else None,
+            "master_mrp": p.product.mrp if p.product else None,
+            "created_at": p.created_at,
+            "updated_at": p.updated_at,
+        }
+        items.append(DealerPricingResponse.model_validate(item_dict))
+    return items
 
 
 @router.post("/{dealer_id}/pricing", response_model=DealerPricingResponse, status_code=status.HTTP_201_CREATED)
@@ -467,17 +499,62 @@ async def create_dealer_pricing(
             detail="Active pricing already exists for this product"
         )
 
+    # Exclude dealer_id from model_dump since it comes from URL path
+    pricing_data = pricing_in.model_dump(exclude={"dealer_id"})
     pricing = DealerPricing(
         dealer_id=dealer_id,
-        **pricing_in.model_dump(),
-        created_by=current_user.id,
+        **pricing_data,
     )
 
     db.add(pricing)
     await db.commit()
     await db.refresh(pricing)
 
-    return pricing
+    return DealerPricingResponse.model_validate({
+        "id": pricing.id,
+        "dealer_id": pricing.dealer_id,
+        "product_id": pricing.product_id,
+        "variant_id": pricing.variant_id,
+        "mrp": pricing.mrp,
+        "dealer_price": pricing.dealer_price,
+        "special_price": pricing.special_price,
+        "margin_percentage": pricing.margin_percentage,
+        "minimum_margin": pricing.minimum_margin,
+        "moq": pricing.moq,
+        "effective_from": pricing.effective_from,
+        "effective_to": pricing.effective_to,
+        "is_active": pricing.is_active,
+        "dealer_margin": pricing.dealer_margin,
+        "product_name": None,
+        "product_sku": None,
+        "master_mrp": None,
+        "created_at": pricing.created_at,
+        "updated_at": pricing.updated_at,
+    })
+
+
+@router.delete("/{dealer_id}/pricing/{pricing_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_dealer_pricing(
+    dealer_id: UUID,
+    pricing_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete (deactivate) dealer pricing."""
+    result = await db.execute(
+        select(DealerPricing).where(
+            and_(
+                DealerPricing.id == pricing_id,
+                DealerPricing.dealer_id == dealer_id,
+            )
+        )
+    )
+    pricing = result.scalar_one_or_none()
+    if not pricing:
+        raise HTTPException(status_code=404, detail="Dealer pricing not found")
+
+    pricing.is_active = False
+    await db.commit()
 
 
 # ==================== Tier Pricing ====================

@@ -67,6 +67,8 @@ interface ChannelPricing {
   // Product details from server-side join
   product_name?: string;
   product_sku?: string;
+  // MRP from product master (authoritative — backfilled from products table)
+  master_mrp?: number;
 }
 
 interface Channel {
@@ -357,14 +359,15 @@ export default function ChannelPricingPage() {
     const items = pricingData?.items || [];
     if (items.length === 0) return [];
 
-    return items.map((pricing: ChannelPricing & { product_name?: string; product_sku?: string }) => {
+    return items.map((pricing: ChannelPricing) => {
       // Use product_name/sku from API response (server-side join), fallback to productMap
       const product = productMap.get(pricing.product_id);
       return {
         product_id: pricing.product_id,
         product_name: pricing.product_name || product?.name || `Unknown Product`,
         product_sku: pricing.product_sku || product?.sku || '-',
-        master_mrp: product?.mrp || pricing.mrp,
+        // master_mrp from API is the authoritative product MRP; fallback to product map then channel mrp
+        master_mrp: pricing.master_mrp || product?.mrp || pricing.mrp,
         pricing_id: pricing.id,
         channel_mrp: pricing.mrp,
         selling_price: pricing.selling_price,
@@ -561,9 +564,29 @@ export default function ChannelPricingPage() {
     {
       accessorKey: 'master_mrp',
       header: 'MRP (Master)',
-      cell: ({ row }) => (
-        <span className="font-mono text-sm">{formatCurrency(row.original.master_mrp)}</span>
-      ),
+      cell: ({ row }) => {
+        const masterMrp = row.original.master_mrp;
+        const channelMrp = row.original.channel_mrp;
+        const hasPricing = row.original.has_pricing;
+
+        if (!masterMrp || masterMrp === 0) {
+          return <span className="text-muted-foreground italic text-sm">No MRP set</span>;
+        }
+
+        return (
+          <div className="space-y-0.5">
+            <span className="font-mono text-sm">{formatCurrency(masterMrp)}</span>
+            {hasPricing && channelMrp !== undefined && channelMrp > 0 && channelMrp !== masterMrp && (
+              <div className="text-xs text-amber-600">channel: {formatCurrency(channelMrp)}</div>
+            )}
+            {hasPricing && channelMrp !== undefined && channelMrp === 0 && (
+              <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
+                Channel MRP not set
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       accessorKey: 'selling_price',

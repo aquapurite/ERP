@@ -70,7 +70,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Checkbox } from '@/components/ui/checkbox';
-import { dealersApi } from '@/lib/api';
+import { dealersApi, productsApi, DealerPricingRecord } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 interface Territory {
@@ -201,6 +201,16 @@ export default function DealerDetailPage({ params }: { params: Promise<{ id: str
   const [isAddTargetOpen, setIsAddTargetOpen] = useState(false);
   const [isAssignSchemeOpen, setIsAssignSchemeOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isAddPricingOpen, setIsAddPricingOpen] = useState(false);
+  const [pricingForm, setPricingForm] = useState({
+    product_id: '',
+    mrp: 0,
+    dealer_price: 0,
+    special_price: '',
+    moq: 1,
+    effective_from: new Date().toISOString().split('T')[0],
+    effective_to: '',
+  });
 
   // Form states
   const [territoryForm, setTerritoryForm] = useState({ pincode: '', is_exclusive: false });
@@ -448,6 +458,53 @@ export default function DealerDetailPage({ params }: { params: Promise<{ id: str
     },
   });
 
+  // Dealer Pricing queries and mutations
+  const { data: dealerPricing = [], isLoading: pricingLoading } = useQuery<DealerPricingRecord[]>({
+    queryKey: ['dealer-pricing', id],
+    queryFn: () => dealersApi.getPricing(id),
+  });
+
+  const { data: productsData } = useQuery({
+    queryKey: ['products-for-dealer-pricing'],
+    queryFn: () => productsApi.list({ size: 200 }),
+    staleTime: 5 * 60 * 1000,
+  });
+  const availableProducts: Array<{ id: string; name: string; sku: string; mrp: number }> =
+    productsData?.items || [];
+
+  const addPricingMutation = useMutation({
+    mutationFn: (data: Parameters<typeof dealersApi.setPricing>[1]) =>
+      dealersApi.setPricing(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dealer-pricing', id] });
+      toast.success('Dealer pricing saved');
+      setIsAddPricingOpen(false);
+      setPricingForm({
+        product_id: '',
+        mrp: 0,
+        dealer_price: 0,
+        special_price: '',
+        moq: 1,
+        effective_from: new Date().toISOString().split('T')[0],
+        effective_to: '',
+      });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to save pricing');
+    },
+  });
+
+  const deletePricingMutation = useMutation({
+    mutationFn: (pricingId: string) => dealersApi.deletePricing(id, pricingId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dealer-pricing', id] });
+      toast.success('Pricing removed');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to remove pricing');
+    },
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -568,6 +625,7 @@ export default function DealerDetailPage({ params }: { params: Promise<{ id: str
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="territory">Territory</TabsTrigger>
           <TabsTrigger value="credit">Credit Ledger</TabsTrigger>
+          <TabsTrigger value="pricing">Pricing</TabsTrigger>
           <TabsTrigger value="targets">Targets</TabsTrigger>
           <TabsTrigger value="schemes">Schemes</TabsTrigger>
           <TabsTrigger value="orders">Orders</TabsTrigger>
@@ -805,6 +863,110 @@ export default function DealerDetailPage({ params }: { params: Promise<{ id: str
                   ))}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Pricing Tab */}
+        <TabsContent value="pricing" className="space-y-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Dealer Pricing</CardTitle>
+                <CardDescription>Negotiated product prices for this dealer</CardDescription>
+              </div>
+              <Button onClick={() => setIsAddPricingOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" /> Set Pricing
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {pricingLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                </div>
+              ) : dealerPricing.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <IndianRupee className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p className="font-medium">No dealer pricing configured</p>
+                  <p className="text-sm mt-1">Set negotiated prices for this dealer to override channel pricing.</p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Product</TableHead>
+                      <TableHead className="text-right">MRP (Master)</TableHead>
+                      <TableHead className="text-right">Dealer Price</TableHead>
+                      <TableHead className="text-right">Special Price</TableHead>
+                      <TableHead className="text-right">Margin</TableHead>
+                      <TableHead>Effective Dates</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dealerPricing.map((p) => {
+                      const effectivePrice = p.special_price || p.dealer_price;
+                      const margin = p.master_mrp && p.master_mrp > 0
+                        ? (((p.master_mrp - effectivePrice) / p.master_mrp) * 100).toFixed(1)
+                        : p.dealer_margin?.toFixed(1) || '0.0';
+                      return (
+                        <TableRow key={p.id}>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium">{p.product_name || p.product_id}</p>
+                              {p.product_sku && (
+                                <p className="text-xs text-muted-foreground">{p.product_sku}</p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {formatCurrency(p.master_mrp || p.mrp)}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm font-medium">
+                            {formatCurrency(p.dealer_price)}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {p.special_price ? (
+                              <span className="text-green-600 font-medium">{formatCurrency(p.special_price)}</span>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className={`font-medium ${parseFloat(margin) >= 20 ? 'text-green-600' : parseFloat(margin) >= 10 ? 'text-yellow-600' : 'text-red-600'}`}>
+                              {margin}%
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            <span>{p.effective_from}</span>
+                            {p.effective_to && <span> → {p.effective_to}</span>}
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={p.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                              {p.is_active ? 'Active' : 'Inactive'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive"
+                              onClick={() => {
+                                if (confirm(`Remove pricing for ${p.product_name || 'this product'}?`)) {
+                                  deletePricingMutation.mutate(p.id);
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1117,6 +1279,145 @@ export default function DealerDetailPage({ params }: { params: Promise<{ id: str
               target_quantity: parseInt(targetForm.target_quantity),
             })}>
               Assign Target
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Set Dealer Pricing Dialog */}
+      <Dialog open={isAddPricingOpen} onOpenChange={setIsAddPricingOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Set Dealer Pricing</DialogTitle>
+            <DialogDescription>Set a negotiated price for a product for this dealer</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label>Product</Label>
+              <Select
+                value={pricingForm.product_id}
+                onValueChange={(value) => {
+                  const product = availableProducts.find(p => p.id === value);
+                  setPricingForm({
+                    ...pricingForm,
+                    product_id: value,
+                    mrp: product?.mrp || 0,
+                    dealer_price: product?.mrp || 0,
+                  });
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a product" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableProducts.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name} ({p.sku}) — ₹{p.mrp?.toLocaleString() || 0}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {pricingForm.product_id && (
+              <div className="p-3 bg-muted rounded-lg">
+                <p className="text-xs text-muted-foreground mb-1">MRP (Master Data)</p>
+                <p className="font-bold text-lg">{formatCurrency(pricingForm.mrp)}</p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Dealer Price <span className="text-red-500">*</span></Label>
+                <Input
+                  type="number"
+                  placeholder="0.00"
+                  value={pricingForm.dealer_price || ''}
+                  onChange={(e) => setPricingForm({ ...pricingForm, dealer_price: parseFloat(e.target.value) || 0 })}
+                />
+                <p className="text-xs text-muted-foreground">Standard negotiated price</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Special Price</Label>
+                <Input
+                  type="number"
+                  placeholder="Optional"
+                  value={pricingForm.special_price}
+                  onChange={(e) => setPricingForm({ ...pricingForm, special_price: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">Overrides dealer price if set</p>
+              </div>
+            </div>
+
+            {pricingForm.mrp > 0 && pricingForm.dealer_price > 0 && (
+              <div className="p-3 bg-muted rounded-lg text-sm">
+                <div className="flex justify-between">
+                  <span>Margin on dealer price:</span>
+                  <span className="font-medium">
+                    {(((pricingForm.mrp - pricingForm.dealer_price) / pricingForm.mrp) * 100).toFixed(1)}%
+                  </span>
+                </div>
+                {pricingForm.special_price && parseFloat(pricingForm.special_price) > 0 && (
+                  <div className="flex justify-between mt-1 text-green-600">
+                    <span>Margin on special price:</span>
+                    <span className="font-medium">
+                      {(((pricingForm.mrp - parseFloat(pricingForm.special_price)) / pricingForm.mrp) * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>MOQ (Minimum Order Quantity)</Label>
+              <Input
+                type="number"
+                placeholder="1"
+                value={pricingForm.moq}
+                onChange={(e) => setPricingForm({ ...pricingForm, moq: parseInt(e.target.value) || 1 })}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Effective From <span className="text-red-500">*</span></Label>
+                <Input
+                  type="date"
+                  value={pricingForm.effective_from}
+                  onChange={(e) => setPricingForm({ ...pricingForm, effective_from: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Effective To</Label>
+                <Input
+                  type="date"
+                  value={pricingForm.effective_to}
+                  onChange={(e) => setPricingForm({ ...pricingForm, effective_to: e.target.value })}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddPricingOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (!pricingForm.product_id || !pricingForm.dealer_price) {
+                  toast.error('Product and Dealer Price are required');
+                  return;
+                }
+                addPricingMutation.mutate({
+                  product_id: pricingForm.product_id,
+                  mrp: pricingForm.mrp,
+                  dealer_price: pricingForm.dealer_price,
+                  special_price: pricingForm.special_price ? parseFloat(pricingForm.special_price) : undefined,
+                  moq: pricingForm.moq,
+                  effective_from: pricingForm.effective_from,
+                  effective_to: pricingForm.effective_to || undefined,
+                });
+              }}
+              disabled={addPricingMutation.isPending}
+            >
+              Save Pricing
             </Button>
           </DialogFooter>
         </DialogContent>
