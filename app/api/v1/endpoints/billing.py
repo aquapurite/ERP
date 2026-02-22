@@ -1947,7 +1947,7 @@ async def list_payment_receipts(
     end_date: Optional[date] = None,
     current_user: User = Depends(get_current_user),
 ):
-    """List payment receipts."""
+    """List payment receipts with customer/dealer/invoice names."""
     query = select(PaymentReceipt)
     count_query = select(func.count(PaymentReceipt.id))
     amount_query = select(func.coalesce(func.sum(PaymentReceipt.amount), 0))
@@ -1977,8 +1977,40 @@ async def list_payment_receipts(
     result = await db.execute(query)
     receipts = result.scalars().all()
 
+    # Build response with display names
+    receipt_items = []
+    for r in receipts:
+        item = PaymentReceiptResponse.model_validate(r)
+
+        # Populate customer name
+        if r.customer_id:
+            cust_result = await db.execute(
+                select(User.first_name, User.last_name).where(User.id == r.customer_id)
+            )
+            cust_row = cust_result.one_or_none()
+            if cust_row:
+                item.customer_name = f"{cust_row[0]} {cust_row[1]}".strip() if cust_row[1] else cust_row[0]
+
+        # Populate dealer name
+        if r.dealer_id:
+            dealer_result = await db.execute(select(Dealer.name).where(Dealer.id == r.dealer_id))
+            dealer_name = dealer_result.scalar_one_or_none()
+            item.dealer_name = dealer_name
+
+        # Populate invoice number
+        if r.invoice_id:
+            inv_result = await db.execute(select(TaxInvoice.invoice_number).where(TaxInvoice.id == r.invoice_id))
+            inv_number = inv_result.scalar_one_or_none()
+            item.invoice_number = inv_number
+
+        # If no customer_name but has dealer_name, use dealer as display
+        if not item.customer_name and item.dealer_name:
+            item.customer_name = item.dealer_name
+
+        receipt_items.append(item)
+
     return PaymentReceiptListResponse(
-        items=[PaymentReceiptResponse.model_validate(r) for r in receipts],
+        items=receipt_items,
         total=total,
         total_amount=total_amount,
         skip=skip,

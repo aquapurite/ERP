@@ -505,6 +505,11 @@ class PaymentReceiptResponse(BaseResponseSchema):
     customer_id: Optional[UUID] = None
     dealer_id: Optional[UUID] = None
 
+    # Display names (populated by endpoint)
+    customer_name: Optional[str] = None
+    dealer_name: Optional[str] = None
+    invoice_number: Optional[str] = None
+
     # Payment details
     payment_date: Optional[date] = None
     payment_mode: Optional[str] = None

@@ -51,17 +51,18 @@ import { formatDate, formatCurrency } from '@/lib/utils';
 interface PaymentReceipt {
   id: string;
   receipt_number: string;
-  receipt_date: string;
+  payment_date: string;
   customer_id: string;
   dealer_id?: string;
-  customer?: { name: string; email?: string; phone?: string };
+  customer_name?: string;
+  dealer_name?: string;
   invoice_id?: string;
-  invoice?: { invoice_number: string };
+  invoice_number?: string;
   amount: number;
   payment_mode: string;
-  reference_number?: string;
+  transaction_reference?: string;
   bank_name?: string;
-  notes?: string;
+  remarks?: string;
   created_at: string;
 }
 
@@ -226,27 +227,32 @@ export default function PaymentReceiptsPage() {
       ),
     },
     {
-      accessorKey: 'customer',
-      header: 'Customer',
+      accessorKey: 'customer_name',
+      header: 'Customer / Dealer',
       cell: ({ row }) => (
-        <span className="text-sm">{row.original.customer?.name || 'N/A'}</span>
+        <div className="text-sm">
+          <span>{row.original.customer_name || row.original.dealer_name || 'N/A'}</span>
+          {row.original.dealer_id && (
+            <span className="ml-1.5 text-[10px] font-medium text-blue-600 bg-blue-50 px-1 py-0.5 rounded">Dealer</span>
+          )}
+        </div>
       ),
     },
     {
-      accessorKey: 'invoice',
+      accessorKey: 'invoice_number',
       header: 'Invoice',
       cell: ({ row }) => (
         <span className="text-sm text-muted-foreground font-mono">
-          {row.original.invoice?.invoice_number || '-'}
+          {row.original.invoice_number || '-'}
         </span>
       ),
     },
     {
-      accessorKey: 'receipt_date',
+      accessorKey: 'payment_date',
       header: 'Date',
       cell: ({ row }) => (
         <span className="text-sm text-muted-foreground">
-          {formatDate(row.original.receipt_date)}
+          {formatDate(row.original.payment_date)}
         </span>
       ),
     },
@@ -499,13 +505,14 @@ export default function PaymentReceiptsPage() {
             <div className="mt-6 space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm">Customer</CardTitle>
+                  <CardTitle className="text-sm">
+                    {selectedReceipt.dealer_id ? 'Dealer' : 'Customer'}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-lg font-medium">{selectedReceipt.customer?.name}</div>
-                  {selectedReceipt.customer?.phone && (
-                    <div className="text-sm text-muted-foreground">{selectedReceipt.customer.phone}</div>
-                  )}
+                  <div className="text-lg font-medium">
+                    {selectedReceipt.customer_name || selectedReceipt.dealer_name || 'N/A'}
+                  </div>
                 </CardContent>
               </Card>
 
@@ -513,7 +520,7 @@ export default function PaymentReceiptsPage() {
                 <Card>
                   <CardContent className="pt-4">
                     <div className="text-xs text-muted-foreground">Date</div>
-                    <div className="font-medium">{formatDate(selectedReceipt.receipt_date)}</div>
+                    <div className="font-medium">{formatDate(selectedReceipt.payment_date)}</div>
                   </CardContent>
                 </Card>
                 <Card>
@@ -527,20 +534,20 @@ export default function PaymentReceiptsPage() {
                 </Card>
               </div>
 
-              {selectedReceipt.invoice && (
+              {selectedReceipt.invoice_number && (
                 <Card>
                   <CardContent className="pt-4">
                     <div className="text-xs text-muted-foreground">Against Invoice</div>
-                    <div className="font-mono font-medium">{selectedReceipt.invoice.invoice_number}</div>
+                    <div className="font-mono font-medium">{selectedReceipt.invoice_number}</div>
                   </CardContent>
                 </Card>
               )}
 
-              {selectedReceipt.reference_number && (
+              {selectedReceipt.transaction_reference && (
                 <Card>
                   <CardContent className="pt-4">
                     <div className="text-xs text-muted-foreground">Reference Number</div>
-                    <div className="font-mono">{selectedReceipt.reference_number}</div>
+                    <div className="font-mono">{selectedReceipt.transaction_reference}</div>
                   </CardContent>
                 </Card>
               )}
@@ -554,11 +561,11 @@ export default function PaymentReceiptsPage() {
                 </CardContent>
               </Card>
 
-              {selectedReceipt.notes && (
+              {selectedReceipt.remarks && (
                 <Card>
                   <CardContent className="pt-4">
                     <div className="text-xs text-muted-foreground">Notes</div>
-                    <div className="text-sm">{selectedReceipt.notes}</div>
+                    <div className="text-sm">{selectedReceipt.remarks}</div>
                   </CardContent>
                 </Card>
               )}
