@@ -1982,14 +1982,22 @@ async def list_payment_receipts(
     for r in receipts:
         item = PaymentReceiptResponse.model_validate(r)
 
-        # Populate customer name
+        # Populate customer name (check customers table first, then users)
         if r.customer_id:
             cust_result = await db.execute(
-                select(User.first_name, User.last_name).where(User.id == r.customer_id)
+                select(Customer.first_name, Customer.last_name).where(Customer.id == r.customer_id)
             )
             cust_row = cust_result.one_or_none()
             if cust_row:
                 item.customer_name = f"{cust_row[0]} {cust_row[1]}".strip() if cust_row[1] else cust_row[0]
+            else:
+                # Fallback to users table
+                user_result = await db.execute(
+                    select(User.first_name, User.last_name).where(User.id == r.customer_id)
+                )
+                user_row = user_result.one_or_none()
+                if user_row:
+                    item.customer_name = f"{user_row[0]} {user_row[1]}".strip() if user_row[1] else user_row[0]
 
         # Populate dealer name
         if r.dealer_id:
@@ -1997,11 +2005,16 @@ async def list_payment_receipts(
             dealer_name = dealer_result.scalar_one_or_none()
             item.dealer_name = dealer_name
 
-        # Populate invoice number
+        # Populate invoice number + fallback customer name from invoice
         if r.invoice_id:
-            inv_result = await db.execute(select(TaxInvoice.invoice_number).where(TaxInvoice.id == r.invoice_id))
-            inv_number = inv_result.scalar_one_or_none()
-            item.invoice_number = inv_number
+            inv_result = await db.execute(
+                select(TaxInvoice.invoice_number, TaxInvoice.customer_name).where(TaxInvoice.id == r.invoice_id)
+            )
+            inv_row = inv_result.one_or_none()
+            if inv_row:
+                item.invoice_number = inv_row[0]
+                if not item.customer_name and not item.dealer_name:
+                    item.customer_name = inv_row[1]
 
         # If no customer_name but has dealer_name, use dealer as display
         if not item.customer_name and item.dealer_name:
