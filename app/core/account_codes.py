@@ -41,14 +41,14 @@ class AccountCode(str, Enum):
 
     # ==================== ASSETS (1XXX) ====================
 
-    # Cash & Bank (101X-102X)
-    CASH = "1010"
-    BANK_HDFC = "1020"
+    # Cash & Bank (101X-102X, 1101)
+    CASH = "1101"         # 1101 = CASH IN HAND (production DB)
+    BANK_HDFC = "1020"    # 1020 = Bank Account
     BANK_ICICI = "1021"
 
-    # Accounts Receivable (11XX)
-    AR_CUSTOMERS = "1110"
-    AR_DEALERS = "1120"
+    # Accounts Receivable
+    AR_CUSTOMERS = "1301"   # 1301 = Trade Debtors (production DB)
+    AR_DEALERS = "1301"     # Same AR account for dealers
 
     # Inventory (12XX)
     INVENTORY = "1200"
@@ -244,8 +244,8 @@ COA_STRUCTURE = {
     "1000": AccountInfo("1000", "Assets", "ASSET", "ASSET", is_group=True),
 
     # Current Assets
-    "1010": AccountInfo("1010", "Cash in Hand", "ASSET", "CASH", parent_code="1000"),
-    "1020": AccountInfo("1020", "Bank - HDFC", "ASSET", "BANK", parent_code="1000"),
+    "1101": AccountInfo("1101", "Cash in Hand", "ASSET", "CASH", parent_code="1000"),
+    "1020": AccountInfo("1020", "Bank Account", "ASSET", "BANK", parent_code="1000"),
 
     # Receivables
     "1110": AccountInfo("1110", "Trade Receivables - Customers", "ASSET", "ACCOUNTS_RECEIVABLE", parent_code="1000"),
