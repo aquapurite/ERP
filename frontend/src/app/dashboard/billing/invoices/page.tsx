@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, Download, FileText, Send, Loader2, Shield, XCircle, Printer, Trash2, Package, AlertTriangle, Search } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, Download, FileText, Send, Loader2, Shield, XCircle, Printer, Trash2, Package, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/providers/auth-provider';
 import { Button } from '@/components/ui/button';
@@ -57,9 +57,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
-import { invoicesApi, customersApi, dealersApi, warehousesApi, productsApi, inventoryApi } from '@/lib/api';
+import { invoicesApi, customersApi, dealersApi, warehousesApi, productsApi, inventoryApi, categoriesApi } from '@/lib/api';
 import { formatDate, formatCurrency } from '@/lib/utils';
-import type { Product } from '@/types';
+import type { Product, Category } from '@/types';
 
 interface Invoice {
   id: string;
@@ -116,7 +116,15 @@ interface FormItem {
   unit_price: number;
   tax_rate: number;
   available_stock: number | null;
+  category_id: string;
+  subcategory_id: string;
 }
+
+const EMPTY_ITEM: FormItem = {
+  product_id: '', product_name: '', hsn_code: '84212110',
+  quantity: 1, unit_price: 0, tax_rate: 18, available_stock: null,
+  category_id: '', subcategory_id: '',
+};
 
 export default function InvoicesPage() {
   const { permissions } = useAuth();
@@ -130,12 +138,11 @@ export default function InvoicesPage() {
   const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
-  // Product search state
-  const [productSearchTerms, setProductSearchTerms] = useState<Record<number, string>>({});
-  const [activeSearchIndex, setActiveSearchIndex] = useState<number | null>(null);
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  // Per-item cascading dropdown data
+  const [subcategoriesMap, setSubcategoriesMap] = useState<Record<number, Category[]>>({});
+  const [productsMap, setProductsMap] = useState<Record<number, Product[]>>({});
+  const [loadingSubcats, setLoadingSubcats] = useState<Record<number, boolean>>({});
+  const [loadingProducts, setLoadingProducts] = useState<Record<number, boolean>>({});
 
   const [formData, setFormData] = useState({
     entity_type: '' as '' | 'customer' | 'dealer',
@@ -144,9 +151,10 @@ export default function InvoicesPage() {
     invoice_date: new Date().toISOString().split('T')[0],
     due_date: '',
     notes: '',
-    items: [{ product_id: '', product_name: '', hsn_code: '84212110', quantity: 1, unit_price: 0, tax_rate: 18, available_stock: null as number | null }] as FormItem[],
+    items: [{ ...EMPTY_ITEM }] as FormItem[],
   });
 
+  // ---- Data queries ----
   const { data, isLoading } = useQuery({
     queryKey: ['invoices', page, pageSize],
     queryFn: () => invoicesApi.list({ page: page + 1, size: pageSize }),
@@ -168,37 +176,12 @@ export default function InvoicesPage() {
     queryFn: () => warehousesApi.dropdown(),
   });
 
-  const { data: productSearchResults } = useQuery({
-    queryKey: ['products-search', debouncedSearchTerm],
-    queryFn: () => productsApi.list({ search: debouncedSearchTerm, size: 10, is_active: true }),
-    enabled: debouncedSearchTerm.length >= 2,
+  const { data: rootCategories } = useQuery({
+    queryKey: ['categories-roots'],
+    queryFn: () => categoriesApi.getRoots(),
   });
 
-  // Debounce product search
-  const handleProductSearchChange = useCallback((index: number, value: string) => {
-    setProductSearchTerms(prev => ({ ...prev, [index]: value }));
-    setActiveSearchIndex(index);
-
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-    searchTimeoutRef.current = setTimeout(() => {
-      setDebouncedSearchTerm(value);
-    }, 300);
-  }, []);
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setActiveSearchIndex(null);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Fetch stock for a product in the selected warehouse
+  // ---- Stock check ----
   const fetchStockForProduct = useCallback(async (productId: string, index: number, warehouseId?: string) => {
     const wId = warehouseId || formData.warehouse_id;
     if (!wId || !productId) return;
@@ -218,8 +201,64 @@ export default function InvoicesPage() {
     }
   }, [formData.warehouse_id]);
 
-  // Handle product select from search dropdown
-  const handleProductSelect = useCallback((index: number, product: Product) => {
+  // ---- Cascading: Category change ----
+  const handleCategoryChange = useCallback(async (index: number, categoryId: string) => {
+    // Update item category_id, reset subcategory & product
+    setFormData(prev => {
+      const newItems = [...prev.items];
+      newItems[index] = { ...newItems[index], category_id: categoryId, subcategory_id: '', product_id: '', product_name: '', hsn_code: '84212110', unit_price: 0, tax_rate: 18, available_stock: null };
+      return { ...prev, items: newItems };
+    });
+    setProductsMap(prev => ({ ...prev, [index]: [] }));
+
+    if (!categoryId) {
+      setSubcategoriesMap(prev => ({ ...prev, [index]: [] }));
+      return;
+    }
+
+    // Fetch subcategories
+    setLoadingSubcats(prev => ({ ...prev, [index]: true }));
+    try {
+      const result = await categoriesApi.getChildren(categoryId);
+      const items = result?.items ?? result ?? [];
+      setSubcategoriesMap(prev => ({ ...prev, [index]: Array.isArray(items) ? items : [] }));
+    } catch {
+      setSubcategoriesMap(prev => ({ ...prev, [index]: [] }));
+    }
+    setLoadingSubcats(prev => ({ ...prev, [index]: false }));
+  }, []);
+
+  // ---- Cascading: Subcategory change ----
+  const handleSubcategoryChange = useCallback(async (index: number, subcategoryId: string) => {
+    // Update item subcategory_id, reset product
+    setFormData(prev => {
+      const newItems = [...prev.items];
+      newItems[index] = { ...newItems[index], subcategory_id: subcategoryId, product_id: '', product_name: '', hsn_code: '84212110', unit_price: 0, tax_rate: 18, available_stock: null };
+      return { ...prev, items: newItems };
+    });
+
+    if (!subcategoryId) {
+      setProductsMap(prev => ({ ...prev, [index]: [] }));
+      return;
+    }
+
+    // Fetch products in this subcategory
+    setLoadingProducts(prev => ({ ...prev, [index]: true }));
+    try {
+      const result = await productsApi.list({ category_id: subcategoryId, size: 100, is_active: true });
+      setProductsMap(prev => ({ ...prev, [index]: result?.items ?? [] }));
+    } catch {
+      setProductsMap(prev => ({ ...prev, [index]: [] }));
+    }
+    setLoadingProducts(prev => ({ ...prev, [index]: false }));
+  }, []);
+
+  // ---- Cascading: Product select ----
+  const handleProductSelect = useCallback((index: number, productId: string) => {
+    const products = productsMap[index] ?? [];
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+
     const isDealer = formData.entity_type === 'dealer';
     const price = isDealer && product.dealer_price ? product.dealer_price : (product.selling_price || product.mrp || 0);
 
@@ -237,20 +276,15 @@ export default function InvoicesPage() {
       return { ...prev, items: newItems };
     });
 
-    setProductSearchTerms(prev => ({ ...prev, [index]: '' }));
-    setActiveSearchIndex(null);
-    setDebouncedSearchTerm('');
-
     // Fetch stock
     if (formData.warehouse_id) {
       fetchStockForProduct(product.id, index);
     }
-  }, [formData.entity_type, formData.warehouse_id, fetchStockForProduct]);
+  }, [productsMap, formData.entity_type, formData.warehouse_id, fetchStockForProduct]);
 
-  // Handle warehouse change — re-fetch stock for all items
+  // ---- Warehouse change — re-fetch stock for all items ----
   const handleWarehouseChange = useCallback((warehouseId: string) => {
     setFormData(prev => ({ ...prev, warehouse_id: warehouseId }));
-    // Re-fetch stock for all items that have a product_id
     formData.items.forEach((item, index) => {
       if (item.product_id) {
         fetchStockForProduct(item.product_id, index, warehouseId);
@@ -258,6 +292,7 @@ export default function InvoicesPage() {
     });
   }, [formData.items, fetchStockForProduct]);
 
+  // ---- Mutations ----
   const createMutation = useMutation({
     mutationFn: invoicesApi.create,
     onSuccess: () => {
@@ -297,6 +332,7 @@ export default function InvoicesPage() {
     onError: (error: Error) => toast.error(error.message || 'Failed to delete invoice'),
   });
 
+  // ---- Form helpers ----
   const resetForm = () => {
     setFormData({
       entity_type: '' as '' | 'customer' | 'dealer',
@@ -305,11 +341,10 @@ export default function InvoicesPage() {
       invoice_date: new Date().toISOString().split('T')[0],
       due_date: '',
       notes: '',
-      items: [{ product_id: '', product_name: '', hsn_code: '84212110', quantity: 1, unit_price: 0, tax_rate: 18, available_stock: null }],
+      items: [{ ...EMPTY_ITEM }],
     });
-    setProductSearchTerms({});
-    setActiveSearchIndex(null);
-    setDebouncedSearchTerm('');
+    setSubcategoriesMap({});
+    setProductsMap({});
     setIsDialogOpen(false);
   };
 
@@ -364,6 +399,10 @@ export default function InvoicesPage() {
       toast.error('Warehouse is required');
       return;
     }
+    if (formData.items.some(item => !item.product_id)) {
+      toast.error('Please select a product for all items');
+      return;
+    }
     if (formData.items.some(item => !item.unit_price || item.unit_price <= 0)) {
       toast.error('All items must have a price greater than 0');
       return;
@@ -390,7 +429,7 @@ export default function InvoicesPage() {
   const addItem = () => {
     setFormData({
       ...formData,
-      items: [...formData.items, { product_id: '', product_name: '', hsn_code: '84212110', quantity: 1, unit_price: 0, tax_rate: 18, available_stock: null }],
+      items: [...formData.items, { ...EMPTY_ITEM }],
     });
   };
 
@@ -406,16 +445,21 @@ export default function InvoicesPage() {
         ...formData,
         items: formData.items.filter((_, i) => i !== index),
       });
-      // Clean up search term for removed index
-      setProductSearchTerms(prev => {
-        const next = { ...prev };
-        delete next[index];
-        return next;
-      });
+      // Clean up maps
+      setSubcategoriesMap(prev => { const n = { ...prev }; delete n[index]; return n; });
+      setProductsMap(prev => { const n = { ...prev }; delete n[index]; return n; });
     }
   };
 
-  // GST preview calculations
+  const clearItemProduct = (index: number) => {
+    const newItems = [...formData.items];
+    newItems[index] = { ...EMPTY_ITEM };
+    setFormData({ ...formData, items: newItems });
+    setSubcategoriesMap(prev => ({ ...prev, [index]: [] }));
+    setProductsMap(prev => ({ ...prev, [index]: [] }));
+  };
+
+  // ---- GST preview ----
   const gstPreview = useMemo(() => {
     let subtotal = 0;
     let totalTax = 0;
@@ -434,14 +478,10 @@ export default function InvoicesPage() {
       taxBreakdown[item.tax_rate].tax += lineTax;
     }
 
-    return {
-      subtotal,
-      totalTax,
-      grandTotal: subtotal + totalTax,
-      taxBreakdown,
-    };
+    return { subtotal, totalTax, grandTotal: subtotal + totalTax, taxBreakdown };
   }, [formData.items]);
 
+  // ---- Table columns ----
   const columns: ColumnDef<Invoice>[] = [
     {
       accessorKey: 'invoice_number',
@@ -469,9 +509,7 @@ export default function InvoicesPage() {
       accessorKey: 'invoice_date',
       header: 'Invoice Date',
       cell: ({ row }) => (
-        <span className="text-sm text-muted-foreground">
-          {formatDate(row.original.invoice_date)}
-        </span>
+        <span className="text-sm text-muted-foreground">{formatDate(row.original.invoice_date)}</span>
       ),
     },
     {
@@ -493,9 +531,7 @@ export default function InvoicesPage() {
         <div>
           <div className="font-medium">{formatCurrency(row.original.total_amount)}</div>
           {row.original.paid_amount > 0 && row.original.paid_amount < row.original.total_amount && (
-            <div className="text-xs text-muted-foreground">
-              Paid: {formatCurrency(row.original.paid_amount)}
-            </div>
+            <div className="text-xs text-muted-foreground">Paid: {formatCurrency(row.original.paid_amount)}</div>
           )}
         </div>
       ),
@@ -532,51 +568,33 @@ export default function InvoicesPage() {
             <DropdownMenuLabel>Actions</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => handleViewInvoice(row.original)}>
-              <Eye className="mr-2 h-4 w-4" />
-              View Details
+              <Eye className="mr-2 h-4 w-4" /> View Details
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handleDownload(row.original)}>
-              <Download className="mr-2 h-4 w-4" />
-              Download
+              <Download className="mr-2 h-4 w-4" /> Download
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handlePrint(row.original)}>
-              <Printer className="mr-2 h-4 w-4" />
-              Print
+              <Printer className="mr-2 h-4 w-4" /> Print
             </DropdownMenuItem>
             {row.original.status === 'DRAFT' && (
-              <DropdownMenuItem>
-                <Send className="mr-2 h-4 w-4" />
-                Send to Customer
-              </DropdownMenuItem>
+              <DropdownMenuItem><Send className="mr-2 h-4 w-4" /> Send to Customer</DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
             {!row.original.irn && row.original.status !== 'CANCELLED' && (
-              <DropdownMenuItem
-                onClick={() => generateIRNMutation.mutate(row.original.id)}
-                disabled={generateIRNMutation.isPending}
-              >
-                <Shield className="mr-2 h-4 w-4" />
-                Generate IRN
+              <DropdownMenuItem onClick={() => generateIRNMutation.mutate(row.original.id)} disabled={generateIRNMutation.isPending}>
+                <Shield className="mr-2 h-4 w-4" /> Generate IRN
               </DropdownMenuItem>
             )}
             {row.original.irn && (
-              <DropdownMenuItem
-                onClick={() => cancelIRNMutation.mutate({ id: row.original.id, reason: 'Cancelled' })}
-                className="text-destructive"
-              >
-                <XCircle className="mr-2 h-4 w-4" />
-                Cancel IRN
+              <DropdownMenuItem onClick={() => cancelIRNMutation.mutate({ id: row.original.id, reason: 'Cancelled' })} className="text-destructive">
+                <XCircle className="mr-2 h-4 w-4" /> Cancel IRN
               </DropdownMenuItem>
             )}
             {isSuperAdmin && (
               <>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onClick={() => { setInvoiceToDelete(row.original); setIsDeleteOpen(true); }}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
+                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => { setInvoiceToDelete(row.original); setIsDeleteOpen(true); }}>
+                  <Trash2 className="mr-2 h-4 w-4" /> Delete
                 </DropdownMenuItem>
               </>
             )}
@@ -589,6 +607,7 @@ export default function InvoicesPage() {
   const customers = customersData?.items ?? [];
   const dealers = dealersData?.items ?? [];
   const warehouses = warehousesDropdown ?? [];
+  const categories = rootCategories?.items ?? rootCategories ?? [];
 
   return (
     <div className="space-y-6">
@@ -599,8 +618,7 @@ export default function InvoicesPage() {
           <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) resetForm(); else setIsDialogOpen(true); }}>
             <DialogTrigger asChild>
               <Button onClick={() => setIsDialogOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Create Invoice
+                <Plus className="mr-2 h-4 w-4" /> Create Invoice
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -620,14 +638,7 @@ export default function InvoicesPage() {
                           setFormData(prev => ({ ...prev, entity_type: '', entity_id: '' }));
                         } else {
                           const [type, id] = value.split('::');
-                          setFormData(prev => {
-                            // Reset item prices when switching entity type
-                            const newItems = prev.items.map(item => ({
-                              ...item,
-                              // Prices will be recalculated on next product select
-                            }));
-                            return { ...prev, entity_type: type as 'customer' | 'dealer', entity_id: id, items: newItems };
-                          });
+                          setFormData(prev => ({ ...prev, entity_type: type as 'customer' | 'dealer', entity_id: id }));
                         }
                       }}
                     >
@@ -679,7 +690,7 @@ export default function InvoicesPage() {
                         <SelectItem value="select" disabled>Select warehouse</SelectItem>
                         {warehouses
                           .filter((w: { id: string; is_active?: boolean }) => w.is_active !== false)
-                          .map((w: { id: string; name: string; code: string; city?: string; state?: string }) => (
+                          .map((w: { id: string; name: string; code: string; city?: string }) => (
                             <SelectItem key={w.id} value={w.id}>
                               {w.name} ({w.code}){w.city ? ` - ${w.city}` : ''}
                             </SelectItem>
@@ -693,19 +704,11 @@ export default function InvoicesPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Invoice Date *</Label>
-                    <Input
-                      type="date"
-                      value={formData.invoice_date}
-                      onChange={(e) => setFormData({ ...formData, invoice_date: e.target.value })}
-                    />
+                    <Input type="date" value={formData.invoice_date} onChange={(e) => setFormData({ ...formData, invoice_date: e.target.value })} />
                   </div>
                   <div className="space-y-2">
                     <Label>Due Date *</Label>
-                    <Input
-                      type="date"
-                      value={formData.due_date}
-                      onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                    />
+                    <Input type="date" value={formData.due_date} onChange={(e) => setFormData({ ...formData, due_date: e.target.value })} />
                   </div>
                 </div>
 
@@ -718,93 +721,119 @@ export default function InvoicesPage() {
                     </Button>
                   </div>
                   {formData.items.map((item, index) => (
-                    <div key={index} className="p-3 border rounded-lg space-y-2 bg-muted/30">
-                      {/* Product search row */}
-                      <div className="flex items-start gap-2">
-                        <div className="flex-1 relative" ref={activeSearchIndex === index ? dropdownRef : undefined}>
-                          <Label className="text-xs text-muted-foreground">Product</Label>
-                          {item.product_id ? (
-                            <div className="flex items-center gap-2 mt-1">
-                              <div className="flex-1 text-sm font-medium truncate">{item.product_name}</div>
-                              {/* Stock badge */}
-                              {item.available_stock !== null && formData.warehouse_id && (
-                                <Badge variant={item.available_stock >= item.quantity ? 'default' : 'destructive'} className="text-xs whitespace-nowrap">
-                                  <Package className="h-3 w-3 mr-1" />
-                                  {item.available_stock} in stock
-                                </Badge>
-                              )}
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={() => {
-                                  const newItems = [...formData.items];
-                                  newItems[index] = { ...newItems[index], product_id: '', product_name: '', hsn_code: '84212110', unit_price: 0, tax_rate: 18, available_stock: null };
-                                  setFormData({ ...formData, items: newItems });
-                                }}
-                              >
-                                <XCircle className="h-3.5 w-3.5 text-muted-foreground" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="relative mt-1">
-                                <Search className="absolute left-2 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                                <Input
-                                  placeholder="Search product name or SKU..."
-                                  className="pl-7 h-9"
-                                  value={productSearchTerms[index] || ''}
-                                  onChange={(e) => handleProductSearchChange(index, e.target.value)}
-                                  onFocus={() => setActiveSearchIndex(index)}
-                                />
-                              </div>
-                              {/* Search dropdown */}
-                              {activeSearchIndex === index && debouncedSearchTerm.length >= 2 && productSearchResults?.items && productSearchResults.items.length > 0 && (
-                                <div className="absolute z-50 mt-1 w-full bg-popover border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                                  {productSearchResults.items.map((product: Product) => (
-                                    <button
-                                      key={product.id}
-                                      type="button"
-                                      className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-0"
-                                      onClick={() => handleProductSelect(index, product)}
-                                    >
-                                      <div className="font-medium truncate">{product.name}</div>
-                                      <div className="text-xs text-muted-foreground flex flex-wrap gap-2">
-                                        <span>SKU: {product.sku}</span>
-                                        {product.hsn_code && <span>HSN: {product.hsn_code}</span>}
-                                        <span>MRP: {formatCurrency(product.mrp)}</span>
-                                        {product.dealer_price && <span>Dealer: {formatCurrency(product.dealer_price)}</span>}
-                                      </div>
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                              {/* Or type manually */}
-                              {activeSearchIndex !== index && !item.product_id && (
-                                <Input
-                                  placeholder="Or type product name"
-                                  className="mt-1 h-9"
-                                  value={item.product_name}
-                                  onChange={(e) => updateItem(index, 'product_name', e.target.value)}
-                                />
-                              )}
-                            </>
+                    <div key={index} className="p-3 border rounded-lg space-y-3 bg-muted/30">
+                      {/* Product selected — show summary */}
+                      {item.product_id ? (
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1">
+                            <div className="text-sm font-medium">{item.product_name}</div>
+                            <div className="text-xs text-muted-foreground">HSN: {item.hsn_code} | MRP: {formatCurrency(item.unit_price)}</div>
+                          </div>
+                          {/* Stock badge */}
+                          {item.available_stock !== null && formData.warehouse_id && (
+                            <Badge variant={item.available_stock >= item.quantity ? 'default' : 'destructive'} className="text-xs whitespace-nowrap">
+                              <Package className="h-3 w-3 mr-1" />
+                              {item.available_stock} in stock
+                            </Badge>
                           )}
-                        </div>
-                        <div className="pt-5">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0"
-                            onClick={() => removeItem(index)}
-                            disabled={formData.items.length === 1}
-                          >
+                          <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => clearItemProduct(index)}>
+                            Change
+                          </Button>
+                          <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => removeItem(index)} disabled={formData.items.length === 1}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </div>
-                      </div>
+                      ) : (
+                        /* Cascading dropdowns: Category → Subcategory → Product */
+                        <div className="flex items-start gap-2">
+                          <div className="flex-1 grid grid-cols-3 gap-2">
+                            {/* Category */}
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Category</Label>
+                              <Select
+                                value={item.category_id || 'select'}
+                                onValueChange={(value) => {
+                                  if (value === 'select') return;
+                                  handleCategoryChange(index, value);
+                                }}
+                              >
+                                <SelectTrigger className="h-9 text-xs">
+                                  <SelectValue placeholder="Select category" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="select" disabled>Select category</SelectItem>
+                                  {(Array.isArray(categories) ? categories : [])
+                                    .filter((c: Category) => c.is_active !== false)
+                                    .map((c: Category) => (
+                                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            {/* Subcategory */}
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Subcategory</Label>
+                              <Select
+                                value={item.subcategory_id || 'select'}
+                                onValueChange={(value) => {
+                                  if (value === 'select') return;
+                                  handleSubcategoryChange(index, value);
+                                }}
+                                disabled={!item.category_id || loadingSubcats[index]}
+                              >
+                                <SelectTrigger className="h-9 text-xs">
+                                  <SelectValue placeholder={loadingSubcats[index] ? 'Loading...' : 'Select subcategory'} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="select" disabled>Select subcategory</SelectItem>
+                                  {(subcategoriesMap[index] ?? [])
+                                    .filter((c: Category) => c.is_active !== false)
+                                    .map((c: Category) => (
+                                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                    ))}
+                                  {item.category_id && !loadingSubcats[index] && (subcategoriesMap[index] ?? []).length === 0 && (
+                                    <SelectItem value="none" disabled>No subcategories</SelectItem>
+                                  )}
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            {/* Product */}
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Product</Label>
+                              <Select
+                                value={item.product_id || 'select'}
+                                onValueChange={(value) => {
+                                  if (value === 'select') return;
+                                  handleProductSelect(index, value);
+                                }}
+                                disabled={!item.subcategory_id || loadingProducts[index]}
+                              >
+                                <SelectTrigger className="h-9 text-xs">
+                                  <SelectValue placeholder={loadingProducts[index] ? 'Loading...' : 'Select product'} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="select" disabled>Select product</SelectItem>
+                                  {(productsMap[index] ?? []).map((p: Product) => (
+                                    <SelectItem key={p.id} value={p.id}>
+                                      {p.name} ({p.sku})
+                                    </SelectItem>
+                                  ))}
+                                  {item.subcategory_id && !loadingProducts[index] && (productsMap[index] ?? []).length === 0 && (
+                                    <SelectItem value="none" disabled>No products</SelectItem>
+                                  )}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                          <div className="pt-5">
+                            <Button type="button" variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => removeItem(index)} disabled={formData.items.length === 1}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Stock warning */}
                       {item.available_stock !== null && item.available_stock < item.quantity && formData.warehouse_id && (
@@ -814,56 +843,33 @@ export default function InvoicesPage() {
                         </div>
                       )}
 
-                      {/* Fields row: HSN, Qty, Price, GST%, Line Total */}
-                      <div className="grid grid-cols-12 gap-2 items-end">
-                        <div className="col-span-2 space-y-1">
-                          <Label className="text-xs text-muted-foreground">HSN</Label>
-                          <Input
-                            placeholder="HSN Code"
-                            className="h-8 text-xs font-mono"
-                            value={item.hsn_code}
-                            onChange={(e) => updateItem(index, 'hsn_code', e.target.value)}
-                          />
-                        </div>
-                        <div className="col-span-2 space-y-1">
-                          <Label className="text-xs text-muted-foreground">Qty</Label>
-                          <Input
-                            type="number"
-                            min="1"
-                            className="h-8 text-xs"
-                            value={item.quantity}
-                            onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
-                          />
-                        </div>
-                        <div className="col-span-3 space-y-1">
-                          <Label className="text-xs text-muted-foreground">Unit Price</Label>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            className="h-8 text-xs"
-                            value={item.unit_price}
-                            onChange={(e) => updateItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
-                          />
-                        </div>
-                        <div className="col-span-2 space-y-1">
-                          <Label className="text-xs text-muted-foreground">GST %</Label>
-                          <Input
-                            type="number"
-                            min="0"
-                            max="28"
-                            className="h-8 text-xs"
-                            value={item.tax_rate}
-                            onChange={(e) => updateItem(index, 'tax_rate', parseFloat(e.target.value) || 0)}
-                          />
-                        </div>
-                        <div className="col-span-3 space-y-1">
-                          <Label className="text-xs text-muted-foreground">Line Total</Label>
-                          <div className="h-8 flex items-center text-xs font-semibold text-right">
-                            {formatCurrency(item.quantity * item.unit_price * (1 + item.tax_rate / 100))}
+                      {/* Fields row (only shown when product selected): HSN, Qty, Price, GST%, Line Total */}
+                      {item.product_id && (
+                        <div className="grid grid-cols-12 gap-2 items-end">
+                          <div className="col-span-2 space-y-1">
+                            <Label className="text-xs text-muted-foreground">HSN</Label>
+                            <Input placeholder="HSN" className="h-8 text-xs font-mono" value={item.hsn_code} onChange={(e) => updateItem(index, 'hsn_code', e.target.value)} />
+                          </div>
+                          <div className="col-span-2 space-y-1">
+                            <Label className="text-xs text-muted-foreground">Qty</Label>
+                            <Input type="number" min="1" className="h-8 text-xs" value={item.quantity} onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)} />
+                          </div>
+                          <div className="col-span-3 space-y-1">
+                            <Label className="text-xs text-muted-foreground">Unit Price</Label>
+                            <Input type="number" min="0" step="0.01" className="h-8 text-xs" value={item.unit_price} onChange={(e) => updateItem(index, 'unit_price', parseFloat(e.target.value) || 0)} />
+                          </div>
+                          <div className="col-span-2 space-y-1">
+                            <Label className="text-xs text-muted-foreground">GST %</Label>
+                            <Input type="number" min="0" max="28" className="h-8 text-xs" value={item.tax_rate} onChange={(e) => updateItem(index, 'tax_rate', parseFloat(e.target.value) || 0)} />
+                          </div>
+                          <div className="col-span-3 space-y-1">
+                            <Label className="text-xs text-muted-foreground">Line Total</Label>
+                            <div className="h-8 flex items-center text-xs font-semibold">
+                              {formatCurrency(item.quantity * item.unit_price * (1 + item.tax_rate / 100))}
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -896,11 +902,7 @@ export default function InvoicesPage() {
                 {/* Notes */}
                 <div className="space-y-2">
                   <Label>Notes</Label>
-                  <Textarea
-                    placeholder="Additional notes (optional)"
-                    value={formData.notes}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  />
+                  <Textarea placeholder="Additional notes (optional)" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} />
                 </div>
               </div>
               <DialogFooter>
@@ -939,9 +941,7 @@ export default function InvoicesPage() {
           {selectedInvoice && (
             <div className="mt-6 space-y-6">
               <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Customer</CardTitle>
-                </CardHeader>
+                <CardHeader><CardTitle className="text-sm">Customer</CardTitle></CardHeader>
                 <CardContent>
                   <div className="text-lg font-medium">{selectedInvoice.customer?.name}</div>
                   {selectedInvoice.customer?.gstin && (
@@ -966,9 +966,7 @@ export default function InvoicesPage() {
               </div>
 
               <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Items</CardTitle>
-                </CardHeader>
+                <CardHeader><CardTitle className="text-sm">Items</CardTitle></CardHeader>
                 <CardContent>
                   <div className="space-y-3">
                     {selectedInvoice.items?.map((item, idx) => (
@@ -1033,17 +1031,11 @@ export default function InvoicesPage() {
 
               <div className="flex gap-2">
                 <Button className="flex-1" onClick={() => handleDownload(selectedInvoice)}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Download
+                  <Download className="mr-2 h-4 w-4" /> Download
                 </Button>
                 {!selectedInvoice.irn && (
-                  <Button
-                    variant="outline"
-                    onClick={() => generateIRNMutation.mutate(selectedInvoice.id)}
-                    disabled={generateIRNMutation.isPending}
-                  >
-                    <Shield className="mr-2 h-4 w-4" />
-                    Generate IRN
+                  <Button variant="outline" onClick={() => generateIRNMutation.mutate(selectedInvoice.id)} disabled={generateIRNMutation.isPending}>
+                    <Shield className="mr-2 h-4 w-4" /> Generate IRN
                   </Button>
                 )}
               </div>
@@ -1058,8 +1050,7 @@ export default function InvoicesPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Invoice</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete invoice <strong>{invoiceToDelete?.invoice_number}</strong>?
-              This action cannot be undone.
+              Are you sure you want to delete invoice <strong>{invoiceToDelete?.invoice_number}</strong>? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
