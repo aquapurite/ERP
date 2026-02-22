@@ -4416,6 +4416,8 @@ export const fixedAssetsApi = {
       model_number: string;
       manufacturer: string;
       warehouse_id: string;
+      location_type: string;
+      location_address: Record<string, string>;
       location_details: string;
       custodian_employee_id: string;
       department_id: string;
@@ -4442,6 +4444,9 @@ export const fixedAssetsApi = {
     }) => {
       const { data } = await apiClient.post<Asset>(`/fixed-assets/assets/${id}/dispose`, disposal);
       return data;
+    },
+    delete: async (id: string) => {
+      await apiClient.delete(`/fixed-assets/assets/${id}`);
     },
   },
 

@@ -740,6 +740,48 @@ async def dispose_asset(
     )
 
 
+@router.delete("/assets/{asset_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_permissions("assets:delete"))])
+async def delete_asset(
+    asset_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Delete an asset. Only allowed if no depreciation entries or transfers exist."""
+    result = await db.execute(
+        select(Asset).where(Asset.id == asset_id)
+    )
+    asset = result.scalar_one_or_none()
+
+    if not asset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset not found"
+        )
+
+    # Check for depreciation entries
+    dep_count = await db.execute(
+        select(func.count(DepreciationEntry.id)).where(DepreciationEntry.asset_id == asset_id)
+    )
+    if dep_count.scalar() or 0 > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete asset with depreciation entries. Dispose it instead."
+        )
+
+    # Check for transfers
+    transfer_count = await db.execute(
+        select(func.count(AssetTransfer.id)).where(AssetTransfer.asset_id == asset_id)
+    )
+    if transfer_count.scalar() or 0 > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete asset with transfer records. Dispose it instead."
+        )
+
+    await db.delete(asset)
+    await db.commit()
+
+
 # ==================== Depreciation ====================
 
 @router.post("/depreciation/run", response_model=List[DepreciationEntryResponse], dependencies=[Depends(require_permissions("assets:update"))])

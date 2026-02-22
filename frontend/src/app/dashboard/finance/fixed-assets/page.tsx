@@ -22,6 +22,8 @@ import {
   CheckCircle,
   Clock,
   XCircle,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -62,6 +64,16 @@ import {
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 import {
   fixedAssetsApi,
@@ -176,7 +188,11 @@ export default function FixedAssetsPage() {
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState(false);
   const [disposeDialogOpen, setDisposeDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
+  const [editLocationType, setEditLocationType] = useState<string>('WAREHOUSE');
+  const [editManualAddress, setEditManualAddress] = useState({ name: '', address_line1: '', address_line2: '', city: '', state: '', pincode: '' });
 
   // CAPEX states
   const [capexDialogOpen, setCapexDialogOpen] = useState(false);
@@ -334,6 +350,35 @@ export default function FixedAssetsPage() {
     },
   });
 
+  const updateAssetMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+      fixedAssetsApi.assets.update(id, data as any),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fixed-assets'] });
+      queryClient.invalidateQueries({ queryKey: ['fixed-assets-dashboard'] });
+      setEditDialogOpen(false);
+      setSelectedAsset(null);
+      toast.success('Asset updated successfully');
+    },
+    onError: () => {
+      toast.error('Failed to update asset');
+    },
+  });
+
+  const deleteAssetMutation = useMutation({
+    mutationFn: fixedAssetsApi.assets.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fixed-assets'] });
+      queryClient.invalidateQueries({ queryKey: ['fixed-assets-dashboard'] });
+      setDeleteDialogOpen(false);
+      setSelectedAsset(null);
+      toast.success('Asset deleted successfully');
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.detail || 'Failed to delete asset');
+    },
+  });
+
   const approveTransferMutation = useMutation({
     mutationFn: fixedAssetsApi.transfers.approve,
     onSuccess: () => {
@@ -443,6 +488,29 @@ export default function FixedAssetsPage() {
       payload.location_address = manualAddress;
     }
     createAssetMutation.mutate(payload as any);
+  };
+
+  const handleUpdateAsset = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!selectedAsset) return;
+    const formData = new FormData(e.currentTarget);
+    const payload: Record<string, unknown> = {
+      name: formData.get('edit_name') as string,
+      description: formData.get('edit_description') as string || undefined,
+      serial_number: formData.get('edit_serial_number') as string || undefined,
+      manufacturer: formData.get('edit_manufacturer') as string || undefined,
+      department_id: formData.get('edit_department_id') as string || undefined,
+      location_type: editLocationType,
+      notes: formData.get('edit_notes') as string || undefined,
+    };
+    if (editLocationType === 'WAREHOUSE') {
+      payload.warehouse_id = formData.get('edit_warehouse_id') as string || undefined;
+      payload.location_address = undefined;
+    } else {
+      payload.warehouse_id = undefined;
+      payload.location_address = editManualAddress;
+    }
+    updateAssetMutation.mutate({ id: selectedAsset.id, data: payload });
   };
 
   const handleRunDepreciation = (e: React.FormEvent<HTMLFormElement>) => {
@@ -943,6 +1011,17 @@ export default function FixedAssetsPage() {
                               <DropdownMenuItem
                                 onClick={() => {
                                   setSelectedAsset(asset);
+                                  setEditLocationType(asset.location_type || 'WAREHOUSE');
+                                  setEditManualAddress(asset.location_address ? { name: asset.location_address.name || '', address_line1: asset.location_address.address_line1 || '', address_line2: asset.location_address.address_line2 || '', city: asset.location_address.city || '', state: asset.location_address.state || '', pincode: asset.location_address.pincode || '' } : { name: '', address_line1: '', address_line2: '', city: '', state: '', pincode: '' });
+                                  setEditDialogOpen(true);
+                                }}
+                              >
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedAsset(asset);
                                   setTransferDialogOpen(true);
                                 }}
                               >
@@ -970,6 +1049,16 @@ export default function FixedAssetsPage() {
                                   Dispose
                                 </DropdownMenuItem>
                               )}
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedAsset(asset);
+                                  setDeleteDialogOpen(true);
+                                }}
+                                className="text-destructive"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -981,6 +1070,127 @@ export default function FixedAssetsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Edit Asset Dialog */}
+        <Dialog open={editDialogOpen} onOpenChange={(open) => { setEditDialogOpen(open); if (!open) setSelectedAsset(null); }}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit Asset{selectedAsset ? `: ${selectedAsset.asset_code}` : ''}</DialogTitle>
+              <DialogDescription>Update asset details.</DialogDescription>
+            </DialogHeader>
+            {selectedAsset && (
+              <form onSubmit={handleUpdateAsset} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_name">Asset Name *</Label>
+                    <Input id="edit_name" name="edit_name" defaultValue={selectedAsset.name} required />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_manufacturer">Manufacturer</Label>
+                    <Input id="edit_manufacturer" name="edit_manufacturer" defaultValue={selectedAsset.manufacturer || ''} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_serial_number">Serial Number</Label>
+                    <Input id="edit_serial_number" name="edit_serial_number" defaultValue={selectedAsset.serial_number || ''} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_department_id">Department</Label>
+                    <Select name="edit_department_id" defaultValue={selectedAsset.department_id || undefined}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {departments?.map((dept) => (
+                          <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Location Type</Label>
+                    <Select value={editLocationType} onValueChange={(v) => setEditLocationType(v)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select location type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="WAREHOUSE">Warehouse</SelectItem>
+                        <SelectItem value="OFFICE">Office</SelectItem>
+                        <SelectItem value="BRANCH">Branch</SelectItem>
+                        <SelectItem value="OTHER">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {editLocationType === 'WAREHOUSE' && (
+                    <div className="space-y-2">
+                      <Label htmlFor="edit_warehouse_id">Warehouse</Label>
+                      <Select name="edit_warehouse_id" defaultValue={selectedAsset.warehouse_id || undefined}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select warehouse" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {warehouses?.map((wh) => (
+                            <SelectItem key={wh.id} value={wh.id}>{wh.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+                {editLocationType !== 'WAREHOUSE' && (
+                  <div className="border rounded-lg p-4 space-y-3">
+                    <Label className="text-sm font-medium">Location Address</Label>
+                    <Input placeholder="Location Name *" value={editManualAddress.name} onChange={(e) => setEditManualAddress(prev => ({ ...prev, name: e.target.value }))} required />
+                    <Input placeholder="Address Line 1" value={editManualAddress.address_line1} onChange={(e) => setEditManualAddress(prev => ({ ...prev, address_line1: e.target.value }))} />
+                    <Input placeholder="Address Line 2" value={editManualAddress.address_line2} onChange={(e) => setEditManualAddress(prev => ({ ...prev, address_line2: e.target.value }))} />
+                    <div className="grid grid-cols-3 gap-3">
+                      <Input placeholder="City" value={editManualAddress.city} onChange={(e) => setEditManualAddress(prev => ({ ...prev, city: e.target.value }))} />
+                      <Input placeholder="State" value={editManualAddress.state} onChange={(e) => setEditManualAddress(prev => ({ ...prev, state: e.target.value }))} />
+                      <Input placeholder="Pincode" value={editManualAddress.pincode} onChange={(e) => setEditManualAddress(prev => ({ ...prev, pincode: e.target.value }))} />
+                    </div>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label htmlFor="edit_description">Description</Label>
+                  <Textarea id="edit_description" name="edit_description" defaultValue={selectedAsset.description || ''} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit_notes">Notes</Label>
+                  <Textarea id="edit_notes" name="edit_notes" defaultValue={selectedAsset.notes || ''} />
+                </div>
+                <DialogFooter>
+                  <Button type="submit" disabled={updateAssetMutation.isPending}>
+                    {updateAssetMutation.isPending ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </DialogFooter>
+              </form>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Asset Confirmation */}
+        <AlertDialog open={deleteDialogOpen} onOpenChange={(open) => { setDeleteDialogOpen(open); if (!open) setSelectedAsset(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Asset</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete <strong>{selectedAsset?.asset_code}</strong> — {selectedAsset?.name}? This action cannot be undone. Assets with depreciation entries or transfers cannot be deleted.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => selectedAsset && deleteAssetMutation.mutate(selectedAsset.id)}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleteAssetMutation.isPending ? 'Deleting...' : 'Delete'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Categories Tab */}
         <TabsContent value="categories" className="space-y-4">
