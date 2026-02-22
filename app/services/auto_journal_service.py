@@ -228,8 +228,8 @@ class AutoJournalService:
         existing = await self.db.execute(
             select(JournalEntry).where(
                 and_(
-                    JournalEntry.reference_type == "TaxInvoice",
-                    JournalEntry.reference_id == invoice_id
+                    JournalEntry.source_type == "TaxInvoice",
+                    JournalEntry.source_id == invoice_id
                 )
             )
         )
@@ -254,14 +254,18 @@ class AutoJournalService:
             AccountSubType.SALES_REVENUE.value
         )
 
+        # Get financial period
+        period = await self._get_or_create_period()
+
         # Create journal entry
         journal = JournalEntry(
             entry_type="SALES",
             entry_number=f"JV-SALE-{invoice.invoice_number}",
             entry_date=invoice.invoice_date,
-            reference_type="TaxInvoice",
-            reference_id=invoice_id,
-            reference_number=invoice.invoice_number,
+            period_id=period.id,
+            source_type="TaxInvoice",
+            source_id=invoice_id,
+            source_number=invoice.invoice_number,
             narration=f"Sales invoice {invoice.invoice_number} to {invoice.customer_name}",
             status=JournalEntryStatus.DRAFT.value,
             created_by=user_id,
@@ -415,8 +419,8 @@ class AutoJournalService:
         existing = await self.db.execute(
             select(JournalEntry).where(
                 and_(
-                    JournalEntry.reference_type == "PaymentReceipt",
-                    JournalEntry.reference_id == receipt_id
+                    JournalEntry.source_type == "PaymentReceipt",
+                    JournalEntry.source_id == receipt_id
                 )
             )
         )
@@ -451,14 +455,18 @@ class AutoJournalService:
                 AccountSubType.ACCOUNTS_RECEIVABLE.value
             )
 
+        # Get financial period
+        period = await self._get_or_create_period()
+
         # Create journal entry
         journal = JournalEntry(
             entry_type="RECEIPT",
             entry_number=f"JV-REC-{receipt.receipt_number}",
             entry_date=receipt.receipt_date,
-            reference_type="PaymentReceipt",
-            reference_id=receipt_id,
-            reference_number=receipt.receipt_number,
+            period_id=period.id,
+            source_type="PaymentReceipt",
+            source_id=receipt_id,
+            source_number=receipt.receipt_number,
             narration=f"Payment received via {receipt.payment_mode}",
             status=JournalEntryStatus.DRAFT.value,
             created_by=user_id,
@@ -664,8 +672,8 @@ class AutoJournalService:
         existing = await self.db.execute(
             select(JournalEntry).where(
                 and_(
-                    JournalEntry.reference_type == "PurchaseInvoice",
-                    JournalEntry.reference_id == purchase_invoice_id
+                    JournalEntry.source_type == "PurchaseInvoice",
+                    JournalEntry.source_id == purchase_invoice_id
                 )
             )
         )
@@ -690,15 +698,19 @@ class AutoJournalService:
             AccountSubType.COST_OF_GOODS.value
         )
 
+        # Get financial period
+        period = await self._get_or_create_period()
+
         # Create journal entry
         vendor_name = invoice.vendor.name if invoice.vendor else "Vendor"
         journal = JournalEntry(
             entry_type="PURCHASE",
             entry_number=f"JV-PUR-{invoice.invoice_number}",
             entry_date=invoice.invoice_date,
-            reference_type="PurchaseInvoice",
-            reference_id=purchase_invoice_id,
-            reference_number=invoice.invoice_number,
+            period_id=period.id,
+            source_type="PurchaseInvoice",
+            source_id=purchase_invoice_id,
+            source_number=invoice.invoice_number,
             narration=f"Purchase invoice {invoice.invoice_number} from {vendor_name}",
             status=JournalEntryStatus.DRAFT.value,
             created_by=user_id,
@@ -1181,8 +1193,8 @@ class AutoJournalService:
         existing = await self.db.execute(
             select(JournalEntry).where(
                 and_(
-                    JournalEntry.reference_type == "BankTransaction",
-                    JournalEntry.reference_id == bank_transaction_id
+                    JournalEntry.source_type == "BankTransaction",
+                    JournalEntry.source_id == bank_transaction_id
                 )
             )
         )
@@ -1201,14 +1213,18 @@ class AutoJournalService:
         if not contra_ledger:
             raise AutoJournalError(f"Contra account not found: {contra_account_code}")
 
+        # Get financial period
+        period = await self._get_or_create_period()
+
         # Create journal
         journal = JournalEntry(
             entry_type="PAYMENT",
             entry_number=f"JV-BANK-{txn.id.hex[:8].upper()}",
             entry_date=txn.transaction_date,
-            reference_type="BankTransaction",
-            reference_id=bank_transaction_id,
-            reference_number=txn.reference_number,
+            period_id=period.id,
+            source_type="BankTransaction",
+            source_id=bank_transaction_id,
+            source_number=txn.reference_number,
             narration=txn.description[:500] if txn.description else "Bank transaction",
             status=JournalEntryStatus.DRAFT.value,
             created_by=user_id,

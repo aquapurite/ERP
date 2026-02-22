@@ -99,6 +99,7 @@ interface ExpenseVoucher {
   approval_level?: string;
   rejection_reason?: string;
   journal_entry_id?: string;
+  journal_entry_number?: string;
   payment_reference?: string;
   attachments?: { files?: Array<{ name: string; url: string }> };
   created_by_name?: string;
@@ -436,6 +437,23 @@ export default function ExpensesPage() {
       cell: ({ row }) => (
         <StatusBadge status={row.original.status} />
       ),
+    },
+    {
+      id: 'journal_entry',
+      header: 'JV #',
+      cell: ({ row }) => {
+        const jeNumber = row.original.journal_entry_number;
+        if (!jeNumber) return <span className="text-muted-foreground">-</span>;
+        return (
+          <a
+            href="/dashboard/finance/journal-entries"
+            className="font-mono text-xs text-primary hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {jeNumber}
+          </a>
+        );
+      },
     },
     {
       id: 'actions',

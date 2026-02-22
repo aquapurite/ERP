@@ -682,6 +682,40 @@ export default function JournalEntriesPage() {
       ),
     },
     {
+      id: 'source',
+      header: 'Source',
+      cell: ({ row }) => {
+        const sourceType = row.original.source_type;
+        if (!sourceType) return <span className="text-muted-foreground">-</span>;
+        const labelMap: Record<string, string> = {
+          EXPENSE_VOUCHER: 'Expense',
+          VendorInvoice: 'Vendor Invoice',
+          VENDOR_PAYMENT: 'Vendor Payment',
+          ORDER_PAYMENT: 'Order Payment',
+          TAX_INVOICE: 'Sales Invoice',
+          TaxInvoice: 'Sales Invoice',
+          STOCK_ADJUSTMENT: 'Stock Adj.',
+          ASSET: 'Depreciation',
+          PurchaseInvoice: 'Purchase',
+          PaymentReceipt: 'Receipt',
+          BankTransaction: 'Bank Txn',
+          GRN: 'GRN',
+          PAYMENT: 'Payment',
+          SHIPMENT: 'Freight',
+          ORDER: 'Order',
+        };
+        const label = labelMap[sourceType] || sourceType;
+        return (
+          <div className="flex items-center gap-1.5">
+            <Badge variant="outline" className="text-xs font-normal">{label}</Badge>
+            {row.original.source_number && (
+              <span className="text-xs font-mono text-muted-foreground">{row.original.source_number}</span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
       accessorKey: 'total_debit',
       header: 'Debit',
       cell: ({ row }) => (

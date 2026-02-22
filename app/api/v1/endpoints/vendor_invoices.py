@@ -20,6 +20,7 @@ from app.models.accounting import ChartOfAccount, CostCenter
 from uuid import uuid4
 from datetime import date as date_type
 from app.services.auto_journal_service import AutoJournalService, AutoJournalError
+from app.services.accounting_service import AccountingService
 
 router = APIRouter()
 
@@ -868,6 +869,25 @@ async def record_payment(
     else:
         invoice.status = "PAYMENT_INITIATED"
 
+    # Auto-create journal entry for vendor payment
+    journal_entry = None
+    try:
+        # Get vendor name
+        vendor = await db.get(Vendor, invoice.vendor_id) if invoice.vendor_id else None
+        vendor_name = vendor.name if vendor else "Vendor"
+
+        journal_entry = await AccountingService(db, created_by=current_user.id).post_vendor_payment(
+            payment_id=invoice.id,
+            payment_reference=payment_reference or invoice.invoice_number,
+            vendor_name=vendor_name,
+            amount=amount,
+            payment_mode="bank",
+        )
+    except Exception:
+        # Log but don't fail the payment recording
+        import logging
+        logging.warning(f"Failed to create journal entry for vendor payment on invoice {invoice.invoice_number}")
+
     await db.commit()
 
     return {
@@ -875,4 +895,5 @@ async def record_payment(
         "amount_paid": float(invoice.amount_paid),
         "balance_due": float(invoice.balance_due),
         "status": invoice.status,
+        "journal_entry_id": str(journal_entry.id) if journal_entry else None,
     }

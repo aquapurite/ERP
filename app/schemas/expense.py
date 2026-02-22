@@ -119,6 +119,7 @@ class ExpenseVoucherResponse(BaseResponseSchema):
     posted_by: Optional[UUID] = None
     posted_at: Optional[datetime] = None
     journal_entry_id: Optional[UUID] = None
+    journal_entry_number: Optional[str] = None
     paid_at: Optional[datetime] = None
     payment_reference: Optional[str] = None
     attachments: List[dict] = []

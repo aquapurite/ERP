@@ -19,6 +19,8 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, CurrentUser, require_permissions
 from app.models.expense import ExpenseCategory, ExpenseVoucher
+from app.models.accounting import JournalEntry
+from app.services.accounting_service import AccountingService
 from app.schemas.expense import (
     ExpenseCategoryCreate, ExpenseCategoryUpdate, ExpenseCategoryResponse,
     ExpenseVoucherCreate, ExpenseVoucherUpdate, ExpenseVoucherResponse,
@@ -217,7 +219,21 @@ async def list_expense_vouchers(
     
     result = await db.execute(query)
     vouchers = result.scalars().all()
-    
+
+    # Populate journal_entry_number for vouchers with journal_entry_id
+    je_ids = [v.journal_entry_id for v in vouchers if v.journal_entry_id]
+    je_map: dict = {}
+    if je_ids:
+        je_result = await db.execute(
+            select(JournalEntry.id, JournalEntry.entry_number)
+            .where(JournalEntry.id.in_(je_ids))
+        )
+        je_map = {row[0]: row[1] for row in je_result.all()}
+
+    for v in vouchers:
+        if v.journal_entry_id and v.journal_entry_id in je_map:
+            v.journal_entry_number = je_map[v.journal_entry_id]  # type: ignore[attr-defined]
+
     return ExpenseVoucherListResponse(
         items=vouchers,
         total=total,
@@ -284,6 +300,17 @@ async def get_expense_voucher(
     voucher = result.scalar_one_or_none()
     if not voucher:
         raise HTTPException(status_code=404, detail="Voucher not found")
+
+    # Populate journal_entry_number
+    if voucher.journal_entry_id:
+        je_result = await db.execute(
+            select(JournalEntry.entry_number)
+            .where(JournalEntry.id == voucher.journal_entry_id)
+        )
+        entry_number = je_result.scalar_one_or_none()
+        if entry_number:
+            voucher.journal_entry_number = entry_number  # type: ignore[attr-defined]
+
     return voucher
 
 
@@ -437,15 +464,40 @@ async def post_expense_voucher(
     if voucher.status != "APPROVED":
         raise HTTPException(status_code=400, detail="Only APPROVED vouchers can be posted")
     
-    # TODO: Create journal entry
+    # Create journal entry
     # DR: Expense Account (from category)
     # DR: GST Input (if applicable)
+    # CR: TDS Payable (if applicable)
     # CR: Accounts Payable / Cash / Bank
-    
+    try:
+        # Load expense category to get GL account
+        category = await db.get(ExpenseCategory, voucher.expense_category_id) if voucher.expense_category_id else None
+        gl_account_id = category.gl_account_id if category else None
+
+        journal_entry = await AccountingService(db, created_by=current_user.id).post_expense_voucher(
+            voucher_id=voucher.id,
+            voucher_number=voucher.voucher_number,
+            expense_account_id=gl_account_id,
+            amount=voucher.amount,
+            gst_amount=voucher.gst_amount,
+            tds_amount=voucher.tds_amount,
+            net_amount=voucher.net_amount,
+            payment_mode=voucher.payment_mode,
+            bank_account_id=voucher.bank_account_id,
+            narration=voucher.narration or f"Expense {voucher.voucher_number}",
+            cost_center_id=voucher.cost_center_id,
+        )
+        voucher.journal_entry_id = journal_entry.id
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create journal entry: {str(e)}"
+        )
+
     voucher.status = "POSTED"
     voucher.posted_by = current_user.id
     voucher.posted_at = datetime.now(timezone.utc)
-    
+
     await db.commit()
     await db.refresh(voucher)
     return voucher
