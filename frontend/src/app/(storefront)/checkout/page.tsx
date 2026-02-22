@@ -378,9 +378,10 @@ export default function CheckoutPage() {
         const order = await ordersApi.createD2C(orderData);
 
         // Step 2: Create Razorpay payment order
+        // Use server-calculated total (order.total_amount) — backend is price authority
         const paymentOrder = await paymentsApi.createOrder({
           order_id: order.id,
-          amount: finalTotal,
+          amount: order.total_amount,
           customer_name: formData.full_name,
           customer_email: formData.email || undefined,
           customer_phone: formData.phone,

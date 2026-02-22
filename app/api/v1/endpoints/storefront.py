@@ -17,7 +17,7 @@ from app.models.product import Product, ProductImage
 from app.models.category import Category
 from app.models.brand import Brand
 from app.models.inventory import InventorySummary
-from app.models.channel import ChannelInventory, SalesChannel
+from app.models.channel import ChannelInventory, SalesChannel, ChannelPricing
 from app.services.channel_inventory_service import ChannelInventoryService
 from app.schemas.storefront import (
     StorefrontProductImage,
@@ -252,6 +252,19 @@ async def list_products(
         stock_result = await db.execute(stock_query)
         stock_map = {row.product_id: row.total_available or 0 for row in stock_result.all()}
 
+    # Fetch channel pricing for D2C channel (price authority = channel pricing)
+    channel_pricing_map: dict = {}
+    if d2c_channel and product_ids:
+        cp_query = select(ChannelPricing).where(
+            ChannelPricing.channel_id == d2c_channel.id,
+            ChannelPricing.product_id.in_(product_ids),
+            ChannelPricing.is_active == True,
+            ChannelPricing.is_listed == True,
+        )
+        cp_result = await db.execute(cp_query)
+        for cp in cp_result.scalars().all():
+            channel_pricing_map[cp.product_id] = cp
+
     # Transform to response
     items = []
     for p in products:
@@ -268,6 +281,16 @@ async def list_products(
         ]
         # Get stock quantity from pre-fetched map
         stock_qty = stock_map.get(p.id, 0)
+
+        # Price authority: channel pricing > product master
+        channel_price = channel_pricing_map.get(p.id)
+        if channel_price:
+            selling_price = float(channel_price.selling_price)
+            mrp = float(channel_price.mrp) if channel_price.mrp else float(p.mrp)
+        else:
+            selling_price = float(p.selling_price) if p.selling_price else None
+            mrp = float(p.mrp) if p.mrp else 0
+
         items.append(StorefrontProductResponse(
             id=str(p.id),
             name=p.name,
@@ -275,8 +298,8 @@ async def list_products(
             sku=p.sku,
             short_description=p.short_description,
             description=p.description,
-            mrp=float(p.mrp) if p.mrp else 0,
-            selling_price=float(p.selling_price) if p.selling_price else None,
+            mrp=mrp,
+            selling_price=selling_price,
             category_id=str(p.category_id) if p.category_id else None,
             category_name=p.category.name if p.category else None,
             brand_id=str(p.brand_id) if p.brand_id else None,
@@ -449,10 +472,30 @@ async def get_product_by_slug(slug: str, db: DB, response: Response):
         stock_result = await db.execute(stock_query)
         stock_qty = stock_result.scalar() or 0
 
+    # Channel pricing for single product (price authority = channel pricing)
+    channel_price_single = None
+    if d2c_channel:
+        cp_single_result = await db.execute(
+            select(ChannelPricing).where(
+                ChannelPricing.channel_id == d2c_channel.id,
+                ChannelPricing.product_id == product.id,
+                ChannelPricing.is_active == True,
+            )
+        )
+        channel_price_single = cp_single_result.scalar_one_or_none()
+
+    # Resolve selling price: channel pricing > product master
+    if channel_price_single:
+        d2c_mrp = float(channel_price_single.mrp) if channel_price_single.mrp else (float(product.mrp) if product.mrp else 0)
+        d2c_selling_price = float(channel_price_single.selling_price)
+    else:
+        d2c_mrp = float(product.mrp) if product.mrp else 0
+        d2c_selling_price = float(product.selling_price) if product.selling_price else None
+
     # Calculate discount percentage
     discount_pct = None
-    if product.mrp and product.selling_price and product.mrp > 0:
-        discount_pct = round(((float(product.mrp) - float(product.selling_price)) / float(product.mrp)) * 100, 1)
+    if d2c_mrp and d2c_selling_price and d2c_mrp > 0:
+        discount_pct = round(((d2c_mrp - d2c_selling_price) / d2c_mrp) * 100, 1)
 
     result_data = StorefrontProductResponse(
         id=str(product.id),
@@ -462,8 +505,8 @@ async def get_product_by_slug(slug: str, db: DB, response: Response):
         short_description=product.short_description,
         description=product.description,
         features=product.features,
-        mrp=float(product.mrp) if product.mrp else 0,
-        selling_price=float(product.selling_price) if product.selling_price else None,
+        mrp=d2c_mrp,
+        selling_price=d2c_selling_price,
         discount_percentage=discount_pct,
         gst_rate=float(product.gst_rate) if product.gst_rate else None,
         hsn_code=product.hsn_code,

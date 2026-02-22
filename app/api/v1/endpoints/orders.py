@@ -587,12 +587,29 @@ async def create_d2c_order(
 
         # Create order using service
         from app.schemas.order import OrderItemCreate, AddressInput
+        from app.models.channel import SalesChannel as _SalesChannel
+        from sqlalchemy import select as _select, or_ as _or_
 
+        # Look up D2C channel so PricingService calculates authoritative prices
+        _d2c_channel_result = await db.execute(
+            _select(_SalesChannel).where(
+                _or_(
+                    _SalesChannel.channel_type == "D2C",
+                    _SalesChannel.channel_type == "D2C_WEBSITE",
+                ),
+                _SalesChannel.status == "ACTIVE",
+            ).order_by(_SalesChannel.created_at)
+        )
+        _d2c_channel = _d2c_channel_result.scalars().first()
+        d2c_channel_id = _d2c_channel.id if _d2c_channel else None
+
+        # Do NOT pass unit_price — backend calculates from channel pricing
+        # Frontend price (item.unit_price) is informational only; backend is authoritative
         order_items = [
             OrderItemCreate(
                 product_id=item.product_id,
                 quantity=item.quantity,
-                unit_price=item.unit_price,
+                # unit_price intentionally omitted → PricingService calculates
             )
             for item in data.items
         ]
@@ -600,6 +617,7 @@ async def create_d2c_order(
         order_create = OrderCreate(
             customer_id=customer.id,
             source=OrderSource.WEBSITE,
+            channel_id=d2c_channel_id,  # Enables PricingService channel pricing waterfall
             items=order_items,
             shipping_address=AddressInput(
                 address_line1=shipping_addr["address_line1"],

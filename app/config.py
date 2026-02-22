@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     # Frontend URL for email links
     FRONTEND_URL: str = "https://erp-woad-eight.vercel.app"
 
+    # D2C channel identifier — used for channel-controlled pricing on www.aquapurite.com
+    # channel_type="D2C" is the canonical lookup; this is informational
+    D2C_CHANNEL_ID: str = "d94d36fa-6b27-425e-8d3d-f84bc7f38a4c"
+
     # Redis Cache Settings
     REDIS_URL: Optional[str] = None  # e.g., "redis://localhost:6379/0"
     CACHE_ENABLED: bool = True
