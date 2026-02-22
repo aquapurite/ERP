@@ -760,6 +760,54 @@ async def create_d2c_order(
         # Get allocation failure reason if it was set
         failure_reason = allocation_failure_reason if 'allocation_failure_reason' in dir() else None
 
+        # ── ORDER CONFIRMATION EMAIL ────────────────────────────────────────
+        # Send immediately after order creation — best practice (Amazon/Flipkart
+        # send within 30 seconds of order placement).
+        # Non-blocking: any email failure must NOT fail the order response.
+        if data.customer_email:
+            try:
+                from app.services.email_service import send_order_notifications
+                from sqlalchemy.orm import selectinload as sl
+                # Fetch order items with product names for the email
+                items_query = await db.execute(
+                    select(OrderItem)
+                    .options(sl(OrderItem.product))
+                    .where(OrderItem.order_id == order_id)
+                )
+                order_items_with_products = items_query.scalars().all()
+
+                email_items = [
+                    {
+                        "product_name": (oi.product.name if oi.product else f"Product {oi.product_id}"),
+                        "quantity": oi.quantity,
+                        "total_amount": float(oi.total_amount or 0),
+                    }
+                    for oi in order_items_with_products
+                ]
+
+                import asyncio as _asyncio
+                _asyncio.ensure_future(send_order_notifications(
+                    order_number=order_number,
+                    customer_email=data.customer_email,
+                    customer_phone=data.customer_phone,
+                    customer_name=data.customer_name,
+                    total_amount=order.total_amount,
+                    items=email_items,
+                    shipping_address={
+                        "address_line1": data.shipping_address.address_line1,
+                        "address_line2": data.shipping_address.address_line2 or "",
+                        "city": data.shipping_address.city,
+                        "state": data.shipping_address.state,
+                        "pincode": data.shipping_address.pincode,
+                    },
+                    payment_method=data.payment_method.upper(),
+                    expected_delivery="5-7 business days",
+                ))
+            except Exception as email_err:
+                import logging as _log
+                _log.warning(f"D2C order {order_number}: email notification error — {email_err}")
+        # ───────────────────────────────────────────────────────────────────
+
         return D2COrderResponse(
             id=order.id,
             order_number=order.order_number,

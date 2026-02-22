@@ -10,10 +10,16 @@ import {
   Phone,
   Mail,
   ArrowRight,
+  Download,
+  FileText,
+  Wrench,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
 import { companyApi } from '@/lib/storefront/api';
 import { CompanyInfo } from '@/types/storefront';
 
@@ -21,18 +27,25 @@ function OrderSuccessContent() {
   const searchParams = useSearchParams();
   const orderNumber = searchParams.get('order') || 'ORD-XXXXXX';
   const [company, setCompany] = useState<CompanyInfo | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const fetchCompany = async () => {
       try {
         const data = await companyApi.getInfo();
         setCompany(data);
-      } catch (error) {
+      } catch {
         // Silently fail - will use fallbacks
       }
     };
     fetchCompany();
   }, []);
+
+  const copyOrderNumber = () => {
+    navigator.clipboard.writeText(orderNumber);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div className="min-h-screen bg-muted/50 py-12">
@@ -46,16 +59,30 @@ function OrderSuccessContent() {
             Order Placed Successfully!
           </h1>
           <p className="text-muted-foreground">
-            Thank you for shopping with {company?.trade_name || company?.name || 'us'}
+            Thank you for shopping with {company?.trade_name || company?.name || 'Aquapurite'}
           </p>
         </div>
 
-        {/* Order Details Card */}
-        <Card className="mb-6">
+        {/* Order Number Card */}
+        <Card className="mb-6 border-primary/20">
           <CardContent className="p-6">
             <div className="text-center mb-6">
-              <p className="text-sm text-muted-foreground">Order Number</p>
-              <p className="text-2xl font-bold text-primary">{orderNumber}</p>
+              <p className="text-sm text-muted-foreground mb-1">Your Order Number</p>
+              <div className="flex items-center justify-center gap-2">
+                <p className="text-2xl font-bold text-primary">{orderNumber}</p>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={copyOrderNumber}
+                  title="Copy order number"
+                >
+                  {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+              <Badge variant="secondary" className="mt-2 bg-green-100 text-green-800 border-green-200">
+                Confirmed
+              </Badge>
             </div>
 
             <Separator className="my-4" />
@@ -79,9 +106,9 @@ function OrderSuccessContent() {
                   <Package className="h-5 w-5 text-gray-400" />
                 </div>
                 <div>
-                  <p className="font-medium text-muted-foreground">Processing</p>
+                  <p className="font-medium text-muted-foreground">Processing & Dispatch</p>
                   <p className="text-sm text-muted-foreground">
-                    We're preparing your order for dispatch
+                    Your order will be dispatched within 24–48 hours
                   </p>
                 </div>
               </div>
@@ -91,9 +118,9 @@ function OrderSuccessContent() {
                   <Truck className="h-5 w-5 text-gray-400" />
                 </div>
                 <div>
-                  <p className="font-medium text-muted-foreground">Shipping</p>
+                  <p className="font-medium text-muted-foreground">Delivery</p>
                   <p className="text-sm text-muted-foreground">
-                    Estimated delivery: 5-7 business days
+                    Estimated: 5–7 business days
                   </p>
                 </div>
               </div>
@@ -109,28 +136,55 @@ function OrderSuccessContent() {
               <li className="flex items-start gap-2">
                 <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
                 <span>
-                  You will receive an order confirmation email/SMS shortly
+                  A confirmation email has been sent to your registered email address
                 </span>
               </li>
               <li className="flex items-start gap-2">
                 <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
                 <span>
-                  Our team will process and dispatch your order within 24-48 hours
+                  Your order will be packed and dispatched within 24–48 hours
                 </span>
               </li>
               <li className="flex items-start gap-2">
                 <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
                 <span>
-                  You'll receive tracking details once your order is shipped
+                  A <strong>GST Tax Invoice</strong> will be emailed to you at the time of dispatch
                 </span>
               </li>
               <li className="flex items-start gap-2">
                 <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
                 <span>
-                  Free installation will be scheduled after delivery (for eligible products)
+                  Free installation will be scheduled after delivery for eligible products
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <FileText className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                <span>
+                  Your invoice will be available to download from{' '}
+                  <Link href="/account/orders" className="text-primary underline font-medium">
+                    My Orders
+                  </Link>{' '}
+                  once the order is dispatched
                 </span>
               </li>
             </ul>
+          </CardContent>
+        </Card>
+
+        {/* Invoice info banner */}
+        <Card className="mb-6 bg-blue-50 border-blue-200">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <FileText className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-medium text-blue-900 text-sm">About Your GST Invoice</p>
+                <p className="text-xs text-blue-700 mt-1">
+                  As per GST regulations, a tax invoice is generated at the time of dispatch (Goods Issue).
+                  You will receive the invoice by email when your order is shipped, and it will also be
+                  available to download from your account.
+                </p>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -172,13 +226,22 @@ function OrderSuccessContent() {
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Button size="lg" asChild>
+            <Link href={`/track?order=${orderNumber}`}>
+              Track My Order
+              <Truck className="h-4 w-4 ml-2" />
+            </Link>
+          </Button>
+          <Button size="lg" variant="outline" asChild>
+            <Link href="/account/orders">
+              <Download className="h-4 w-4 mr-2" />
+              My Orders & Invoices
+            </Link>
+          </Button>
+          <Button size="lg" variant="ghost" asChild>
             <Link href="/products">
               Continue Shopping
               <ArrowRight className="h-4 w-4 ml-2" />
             </Link>
-          </Button>
-          <Button size="lg" variant="outline" asChild>
-            <Link href={`/track?order=${orderNumber}`}>Track Order</Link>
           </Button>
         </div>
       </div>
