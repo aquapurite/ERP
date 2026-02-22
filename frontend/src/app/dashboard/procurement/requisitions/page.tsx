@@ -253,7 +253,8 @@ export default function PurchaseRequisitionsPage() {
     quantity: 1,
     estimated_price: 0,
   });
-  const [editSelectedCategoryId, setEditSelectedCategoryId] = useState<string>('all');
+  const [editSelectedProductLine, setEditSelectedProductLine] = useState<string>('all');
+  const [editSelectedSubcategoryId, setEditSelectedSubcategoryId] = useState<string>('all');
   // Admin status edit state
   const [isEditStatusDialogOpen, setIsEditStatusDialogOpen] = useState(false);
   const [editStatusData, setEditStatusData] = useState<{ new_status: string; reason: string }>({
@@ -282,7 +283,8 @@ export default function PurchaseRequisitionsPage() {
     monthlyQtys: {} as Record<string, number>, // e.g., {"2026-01": 500, "2026-02": 500}
   });
   const [multiDeliveryMonths, setMultiDeliveryMonths] = useState<string[]>([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
+  const [selectedProductLine, setSelectedProductLine] = useState<string>('all');
+  const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string>('all');
 
   // Generate next 12 months for multi-delivery selection
   const availableMonths = useMemo(() => {
@@ -354,6 +356,36 @@ export default function PurchaseRequisitionsPage() {
 
   const categories = categoriesData || [];
 
+  // Separate parent (product lines) and subcategories
+  const productLines = useMemo(() => categories.filter((c: any) => !c.parent_id), [categories]);
+  const subcategories = useMemo(() => {
+    if (selectedProductLine === 'all') return [];
+    return categories.filter((c: any) => c.parent_id === selectedProductLine);
+  }, [categories, selectedProductLine]);
+  const editSubcategories = useMemo(() => {
+    if (editSelectedProductLine === 'all') return [];
+    return categories.filter((c: any) => c.parent_id === editSelectedProductLine);
+  }, [categories, editSelectedProductLine]);
+
+  // Filtered products for edit dialog
+  const editFilteredProducts = useMemo(() => {
+    if (editSelectedProductLine === 'all') return allProducts;
+    const subcatIds = categories
+      .filter((c: any) => c.parent_id === editSelectedProductLine)
+      .map((c: any) => c.id);
+    const validIds = [editSelectedProductLine, ...subcatIds];
+    if (editSelectedSubcategoryId !== 'all') {
+      return allProducts.filter((p: any) => {
+        const pcId = p.category_id || p.category?.id;
+        return pcId === editSelectedSubcategoryId;
+      });
+    }
+    return allProducts.filter((p: any) => {
+      const pcId = p.category_id || p.category?.id;
+      return validIds.includes(pcId);
+    });
+  }, [allProducts, editSelectedProductLine, editSelectedSubcategoryId, categories]);
+
   const { data: vendorsData } = useQuery({
     queryKey: ['vendors-dropdown-active'],
     queryFn: () => vendorsApi.getDropdown(),
@@ -363,17 +395,32 @@ export default function PurchaseRequisitionsPage() {
   const allProducts = Array.isArray(productsData?.items) ? productsData.items : [];
   const vendors = Array.isArray(vendorsData) ? vendorsData : [];
 
-  // Filter products by selected category
+  // Filter products by selected product line and subcategory
   const products = useMemo(() => {
-    if (selectedCategoryId === 'all') {
+    if (selectedProductLine === 'all') {
       return allProducts;
     }
+    // Get subcategory IDs for the selected product line
+    const subcatIds = categories
+      .filter((c: any) => c.parent_id === selectedProductLine)
+      .map((c: any) => c.id);
+    // Include the parent itself in case products are directly assigned
+    const validIds = [selectedProductLine, ...subcatIds];
+
+    if (selectedSubcategoryId !== 'all') {
+      // Filter by specific subcategory
+      return allProducts.filter((p: any) => {
+        const productCategoryId = p.category_id || p.category?.id;
+        return productCategoryId === selectedSubcategoryId;
+      });
+    }
+
+    // Filter by all subcategories of the product line
     return allProducts.filter((p: any) => {
-      // Check both category_id and nested category.id
       const productCategoryId = p.category_id || p.category?.id;
-      return productCategoryId === selectedCategoryId;
+      return validIds.includes(productCategoryId);
     });
-  }, [allProducts, selectedCategoryId]);
+  }, [allProducts, selectedProductLine, selectedSubcategoryId, categories]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['purchase-requisitions', page, pageSize, statusFilter],
@@ -837,7 +884,8 @@ export default function PurchaseRequisitionsPage() {
     setNewItem({ product_id: '', quantity: 1, estimated_price: 0, monthlyQtys: {} });
     setMultiDeliveryMonths([]);
     setNextPRNumber('');
-    setSelectedCategoryId('all');
+    setSelectedProductLine('all');
+    setSelectedSubcategoryId('all');
     setIsDialogOpen(false);
   };
 
@@ -1332,24 +1380,45 @@ export default function PurchaseRequisitionsPage() {
                 <div className="space-y-2">
                   <Label className="text-base font-semibold">Add Items *</Label>
                   <div className="border rounded-lg p-4 space-y-4">
-                    {/* Category Filter - Full width row */}
-                    <div className="grid grid-cols-2 gap-4">
+                    {/* Category Filter - Product Line → Subcategory cascade */}
+                    <div className="grid grid-cols-3 gap-4">
                       <div className="space-y-1">
-                        <Label className="text-sm font-medium">Product Category</Label>
+                        <Label className="text-sm font-medium">Product Line</Label>
                         <Select
-                          value={selectedCategoryId}
+                          value={selectedProductLine}
                           onValueChange={(value) => {
-                            setSelectedCategoryId(value);
-                            // Reset product selection when category changes
+                            setSelectedProductLine(value);
+                            setSelectedSubcategoryId('all');
                             setNewItem({ ...newItem, product_id: '', estimated_price: 0 });
                           }}
                         >
                           <SelectTrigger className="w-full">
-                            <SelectValue placeholder="All Categories" />
+                            <SelectValue placeholder="All Product Lines" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="all">All Categories ({allProducts.length} products)</SelectItem>
-                            {categories.map((cat: { id: string; name: string }) => (
+                            <SelectItem value="all">All Product Lines</SelectItem>
+                            {productLines.map((cat: { id: string; name: string }) => (
+                              <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-sm font-medium">Subcategory</Label>
+                        <Select
+                          value={selectedSubcategoryId}
+                          disabled={selectedProductLine === 'all'}
+                          onValueChange={(value) => {
+                            setSelectedSubcategoryId(value);
+                            setNewItem({ ...newItem, product_id: '', estimated_price: 0 });
+                          }}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder={selectedProductLine === 'all' ? 'Select product line first' : 'All Subcategories'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Subcategories</SelectItem>
+                            {subcategories.map((cat: { id: string; name: string }) => (
                               <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
                             ))}
                           </SelectContent>
@@ -1357,9 +1426,9 @@ export default function PurchaseRequisitionsPage() {
                       </div>
                       <div className="flex items-end pb-2">
                         <p className="text-sm text-muted-foreground">
-                          {selectedCategoryId === 'all'
+                          {selectedProductLine === 'all'
                             ? `Showing all ${products.length} products`
-                            : `Showing ${products.length} product(s) in selected category`}
+                            : `Showing ${products.length} product(s)`}
                         </p>
                       </div>
                     </div>
@@ -1951,23 +2020,45 @@ export default function PurchaseRequisitionsPage() {
             <div className="space-y-2">
               <Label className="text-base font-semibold">Items *</Label>
               <div className="border rounded-lg p-4 space-y-4">
-                {/* Category Filter */}
+                {/* Category Filter - Product Line → Subcategory cascade */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <Label className="text-sm font-medium">Product Category</Label>
+                    <Label className="text-sm font-medium">Product Line</Label>
                     <Select
-                      value={editSelectedCategoryId}
+                      value={editSelectedProductLine}
                       onValueChange={(value) => {
-                        setEditSelectedCategoryId(value);
+                        setEditSelectedProductLine(value);
+                        setEditSelectedSubcategoryId('all');
                         setEditNewItem({ ...editNewItem, product_id: '', estimated_price: 0 });
                       }}
                     >
                       <SelectTrigger className="w-full">
-                        <SelectValue placeholder="All Categories" />
+                        <SelectValue placeholder="All Product Lines" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">All Categories</SelectItem>
-                        {categories.map((cat: { id: string; name: string }) => (
+                        <SelectItem value="all">All Product Lines</SelectItem>
+                        {productLines.map((cat: { id: string; name: string }) => (
+                          <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-sm font-medium">Subcategory</Label>
+                    <Select
+                      value={editSelectedSubcategoryId}
+                      disabled={editSelectedProductLine === 'all'}
+                      onValueChange={(value) => {
+                        setEditSelectedSubcategoryId(value);
+                        setEditNewItem({ ...editNewItem, product_id: '', estimated_price: 0 });
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder={editSelectedProductLine === 'all' ? 'Select product line first' : 'All Subcategories'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Subcategories</SelectItem>
+                        {editSubcategories.map((cat: { id: string; name: string }) => (
                           <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
                         ))}
                       </SelectContent>
@@ -1982,10 +2073,7 @@ export default function PurchaseRequisitionsPage() {
                     <Select
                       value={editNewItem.product_id || 'select'}
                       onValueChange={(value) => {
-                        const filteredProducts = editSelectedCategoryId === 'all'
-                          ? allProducts
-                          : allProducts.filter((p: any) => (p.category_id || p.category?.id) === editSelectedCategoryId);
-                        const product = filteredProducts.find((p: Product) => p.id === value);
+                        const product = editFilteredProducts.find((p: Product) => p.id === value);
                         setEditNewItem({
                           ...editNewItem,
                           product_id: value === 'select' ? '' : value,
@@ -1998,9 +2086,7 @@ export default function PurchaseRequisitionsPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="select" disabled>Select product</SelectItem>
-                        {(editSelectedCategoryId === 'all'
-                          ? allProducts
-                          : allProducts.filter((p: any) => (p.category_id || p.category?.id) === editSelectedCategoryId))
+                        {editFilteredProducts
                           .filter((p: Product) => p.id)
                           .map((p: Product) => (
                             <SelectItem key={p.id} value={p.id}>{p.name} ({p.sku})</SelectItem>
@@ -2041,10 +2127,7 @@ export default function PurchaseRequisitionsPage() {
                           toast.error('Please enter quantity');
                           return;
                         }
-                        const productList = editSelectedCategoryId === 'all'
-                          ? allProducts
-                          : allProducts.filter((p: any) => (p.category_id || p.category?.id) === editSelectedCategoryId);
-                        const product = productList.find((p: Product) => p.id === editNewItem.product_id);
+                        const product = editFilteredProducts.find((p: Product) => p.id === editNewItem.product_id);
                         if (!product) {
                           toast.error('Product not found');
                           return;
