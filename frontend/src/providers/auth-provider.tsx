@@ -19,6 +19,9 @@ interface AuthContextType {
   hasAllPermissions: (codes: string[]) => boolean;
 }
 
+const AUTH_CACHE_KEY = 'cached_auth';
+const AUTH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -44,6 +47,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setUser(userData);
       setPermissions(permissionsData);
+
+      // Cache to sessionStorage for fast subsequent navigations
+      try {
+        sessionStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({
+          user: userData,
+          permissions: permissionsData,
+          timestamp: Date.now(),
+        }));
+      } catch {
+        // sessionStorage may be unavailable (SSR, private mode) — ignore
+      }
     } catch {
       setUser(null);
       setPermissions(null);
@@ -53,6 +67,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const token = getAccessToken();
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
+
+    // Check sessionStorage cache first
+    try {
+      const cached = sessionStorage.getItem(AUTH_CACHE_KEY);
+      if (cached) {
+        const { user: cachedUser, permissions: cachedPerms, timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp < AUTH_CACHE_TTL) {
+          // Cache is fresh — render immediately, revalidate silently in background
+          setUser(cachedUser);
+          setPermissions(cachedPerms);
+          setIsLoading(false);
+          // Background revalidation (non-blocking)
+          fetchUserAndPermissions();
+          return;
+        }
+      }
+    } catch {
+      // Ignore cache read errors
+    }
+
+    // No valid cache — normal fetch
     fetchUserAndPermissions();
   }, [fetchUserAndPermissions]);
 
@@ -60,6 +100,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     try {
       await authApi.login(credentials);
+      // Clear stale cache on login
+      try { sessionStorage.removeItem(AUTH_CACHE_KEY); } catch { /* ignore */ }
       await fetchUserAndPermissions();
       router.push('/dashboard');
     } finally {
@@ -75,11 +117,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setPermissions(null);
       setIsLoading(false);
+      // Clear auth cache on logout
+      try { sessionStorage.removeItem(AUTH_CACHE_KEY); } catch { /* ignore */ }
       router.push('/login');
     }
   };
 
   const refreshUser = async () => {
+    try { sessionStorage.removeItem(AUTH_CACHE_KEY); } catch { /* ignore */ }
     await fetchUserAndPermissions();
   };
 

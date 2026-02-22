@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { formatDistanceToNow, format, subDays } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import Link from 'next/link';
 import {
   ShoppingCart,
@@ -19,17 +19,16 @@ import {
   CheckCircle,
   Clock,
   ArrowRight,
-  BarChart3,
-  X,
   Info,
   CreditCard,
+  X,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { dashboardApi, notificationsApi, fixedAssetsApi, hrApi } from '@/lib/api';
+import { dashboardApi, notificationsApi } from '@/lib/api';
 import {
   LineChart,
   Line,
@@ -46,21 +45,6 @@ import {
   Legend,
 } from 'recharts';
 
-interface ActivityItem {
-  type: string;
-  color: string;
-  title: string;
-  description: string;
-  timestamp: string;
-}
-
-interface TopProduct {
-  id: string;
-  name: string;
-  sku: string;
-  sales: number;
-}
-
 interface StatCardProps {
   title: string;
   value: string | number;
@@ -71,6 +55,15 @@ interface StatCardProps {
 }
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
+
+const STATUS_COLORS: Record<string, string> = {
+  DELIVERED: '#10B981',
+  SHIPPED: '#3B82F6',
+  PROCESSING: '#F59E0B',
+  PENDING: '#EF4444',
+  CONFIRMED: '#8B5CF6',
+  CANCELLED: '#6B7280',
+};
 
 const announcementTypeColors: Record<string, string> = {
   INFO: 'bg-blue-50 border-blue-200 text-blue-800',
@@ -120,7 +113,7 @@ function StatCard({ title, value, change, icon, isLoading, href }: StatCardProps
             <span className={change >= 0 ? 'text-green-500' : 'text-red-500'}>
               {change >= 0 ? '+' : ''}{change}%
             </span>
-            <span className="ml-1">from last month</span>
+            <span className="ml-1">from last period</span>
           </p>
         )}
       </CardContent>
@@ -137,22 +130,14 @@ function StatCard({ title, value, change, icon, isLoading, href }: StatCardProps
 export default function DashboardPage() {
   const queryClient = useQueryClient();
 
-  const { data: stats, isLoading } = useQuery({
-    queryKey: ['dashboard-stats'],
-    queryFn: dashboardApi.getStats,
+  // Single combined query — replaces 7+ individual queries
+  const { data: dashboard, isLoading } = useQuery({
+    queryKey: ['dashboard-combined'],
+    queryFn: () => dashboardApi.getCombined(30),
+    staleTime: 5 * 60 * 1000,
   });
 
-  const { data: recentActivity, isLoading: activityLoading } = useQuery({
-    queryKey: ['recent-activity'],
-    queryFn: () => dashboardApi.getRecentActivity(5),
-  });
-
-  const { data: topProducts, isLoading: productsLoading } = useQuery({
-    queryKey: ['top-selling-products'],
-    queryFn: () => dashboardApi.getTopSellingProducts(4),
-  });
-
-  // Additional data for enhanced dashboard
+  // Announcements kept separate (different module, already fast)
   const { data: announcements } = useQuery({
     queryKey: ['dashboard-announcements'],
     queryFn: async () => {
@@ -165,28 +150,6 @@ export default function DashboardPage() {
     },
   });
 
-  const { data: hrDashboard } = useQuery({
-    queryKey: ['hr-dashboard'],
-    queryFn: async () => {
-      try {
-        return await hrApi.getDashboard();
-      } catch {
-        return null;
-      }
-    },
-  });
-
-  const { data: fixedAssetsDashboard } = useQuery({
-    queryKey: ['fixed-assets-dashboard-mini'],
-    queryFn: async () => {
-      try {
-        return await fixedAssetsApi.getDashboard();
-      } catch {
-        return null;
-      }
-    },
-  });
-
   const dismissAnnouncementMutation = useMutation({
     mutationFn: notificationsApi.dismissAnnouncement,
     onSuccess: () => {
@@ -194,19 +157,9 @@ export default function DashboardPage() {
     },
   });
 
-  const defaultStats = {
-    total_orders: stats?.total_orders ?? 0,
-    total_revenue: stats?.total_revenue ?? 0,
-    total_customers: stats?.total_customers ?? 0,
-    total_products: stats?.total_products ?? 0,
-    pending_orders: stats?.pending_orders ?? 0,
-    pending_service_requests: stats?.pending_service_requests ?? 0,
-    low_stock_items: stats?.low_stock_items ?? 0,
-    shipments_in_transit: stats?.shipments_in_transit ?? 0,
-    orders_change: stats?.orders_change ?? 0,
-    revenue_change: stats?.revenue_change ?? 0,
-    customers_change: stats?.customers_change ?? 0,
-  };
+  const stats = dashboard?.stats;
+  const hrDashboard = dashboard?.hr_dashboard as Record<string, number> | null | undefined;
+  const fixedAssets = dashboard?.fixed_assets as Record<string, number> | null | undefined;
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -216,27 +169,26 @@ export default function DashboardPage() {
     }).format(value);
   };
 
-  // Sample data for charts (in production, this would come from API)
-  const revenueData = Array.from({ length: 7 }, (_, i) => ({
-    date: format(subDays(new Date(), 6 - i), 'MMM dd'),
-    revenue: Math.floor(Math.random() * 500000) + 100000,
-    orders: Math.floor(Math.random() * 50) + 10,
+  // Real chart data from API
+  const salesTrendData = (dashboard?.sales_trend?.labels ?? []).map((label, i) => ({
+    date: label,
+    revenue: (dashboard?.sales_trend?.revenue ?? [])[i] ?? 0,
+    orders: (dashboard?.sales_trend?.orders ?? [])[i] ?? 0,
   }));
 
-  const orderStatusData = [
-    { name: 'Delivered', value: 45, color: '#10B981' },
-    { name: 'Shipped', value: 25, color: '#3B82F6' },
-    { name: 'Processing', value: 20, color: '#F59E0B' },
-    { name: 'Pending', value: 10, color: '#EF4444' },
-  ];
+  const orderStatusData = (dashboard?.order_status?.items ?? []).map((item) => ({
+    name: item.status.charAt(0) + item.status.slice(1).toLowerCase(),
+    value: item.count,
+    color: STATUS_COLORS[item.status] ?? '#6B7280',
+  }));
 
-  const categoryData = [
-    { name: 'Electronics', sales: 45000 },
-    { name: 'Home Appliances', sales: 38000 },
-    { name: 'Kitchen', sales: 32000 },
-    { name: 'Air Conditioners', sales: 28000 },
-    { name: 'Others', sales: 15000 },
-  ];
+  const categoryData = (dashboard?.category_sales?.items ?? []).map((item) => ({
+    name: item.name,
+    sales: item.revenue,
+  }));
+
+  const topProducts = dashboard?.top_products?.items ?? [];
+  const recentActivity = dashboard?.recent_activity ?? [];
 
   return (
     <div className="space-y-6">
@@ -286,31 +238,31 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Revenue"
-          value={formatCurrency(defaultStats.total_revenue)}
-          change={defaultStats.revenue_change}
+          value={formatCurrency(stats?.total_revenue ?? 0)}
+          change={stats?.revenue_change}
           icon={<DollarSign className="h-4 w-4" />}
           isLoading={isLoading}
           href="/dashboard/reports/profit-loss"
         />
         <StatCard
           title="Total Orders"
-          value={defaultStats.total_orders.toLocaleString()}
-          change={defaultStats.orders_change}
+          value={(stats?.total_orders ?? 0).toLocaleString()}
+          change={stats?.orders_change}
           icon={<ShoppingCart className="h-4 w-4" />}
           isLoading={isLoading}
           href="/dashboard/orders"
         />
         <StatCard
           title="Total Customers"
-          value={defaultStats.total_customers.toLocaleString()}
-          change={defaultStats.customers_change}
+          value={(stats?.total_customers ?? 0).toLocaleString()}
+          change={stats?.customers_change}
           icon={<Users className="h-4 w-4" />}
           isLoading={isLoading}
           href="/dashboard/crm/customers"
         />
         <StatCard
           title="Products"
-          value={defaultStats.total_products.toLocaleString()}
+          value={(stats?.total_products ?? 0).toLocaleString()}
           icon={<Package className="h-4 w-4" />}
           isLoading={isLoading}
           href="/dashboard/catalog"
@@ -327,40 +279,32 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="h-[250px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={revenueData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="date" className="text-xs" />
-                  <YAxis yAxisId="left" className="text-xs" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                  <YAxis yAxisId="right" orientation="right" className="text-xs" />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
-                    formatter={(value, name) => [
-                      name === 'Revenue' ? formatCurrency(value as number) : value,
-                      name
-                    ]}
-                  />
-                  <Legend />
-                  <Line
-                    yAxisId="left"
-                    type="monotone"
-                    dataKey="revenue"
-                    stroke="#3B82F6"
-                    strokeWidth={2}
-                    dot={{ fill: '#3B82F6' }}
-                    name="Revenue"
-                  />
-                  <Line
-                    yAxisId="right"
-                    type="monotone"
-                    dataKey="orders"
-                    stroke="#10B981"
-                    strokeWidth={2}
-                    dot={{ fill: '#10B981' }}
-                    name="Orders"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              {isLoading ? (
+                <Skeleton className="h-full w-full" />
+              ) : salesTrendData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={salesTrendData}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis dataKey="date" className="text-xs" />
+                    <YAxis yAxisId="left" className="text-xs" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                    <YAxis yAxisId="right" orientation="right" className="text-xs" />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
+                      formatter={(value, name) => [
+                        name === 'Revenue' ? formatCurrency(value as number) : value,
+                        name
+                      ]}
+                    />
+                    <Legend />
+                    <Line yAxisId="left" type="monotone" dataKey="revenue" stroke="#3B82F6" strokeWidth={2} dot={{ fill: '#3B82F6' }} name="Revenue" />
+                    <Line yAxisId="right" type="monotone" dataKey="orders" stroke="#10B981" strokeWidth={2} dot={{ fill: '#10B981' }} name="Orders" />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                  No sales data for the last 7 days
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -373,28 +317,28 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="h-[250px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={orderStatusData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={80}
-                    paddingAngle={2}
-                    dataKey="value"
-                  >
-                    {orderStatusData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
-                    formatter={(value) => [`${value}%`, 'Percentage']}
-                  />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+              {isLoading ? (
+                <Skeleton className="h-full w-full" />
+              ) : orderStatusData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={orderStatusData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} dataKey="value">
+                      {orderStatusData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
+                      formatter={(value) => [value, 'Orders']}
+                    />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                  No order data available
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -410,7 +354,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-orange-600">
-                {isLoading ? <Skeleton className="h-8 w-16" /> : defaultStats.pending_orders}
+                {isLoading ? <Skeleton className="h-8 w-16" /> : (stats?.pending_orders ?? 0)}
               </div>
               <p className="text-xs text-muted-foreground">Requires attention</p>
             </CardContent>
@@ -425,7 +369,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-blue-600">
-                {isLoading ? <Skeleton className="h-8 w-16" /> : defaultStats.pending_service_requests}
+                {isLoading ? <Skeleton className="h-8 w-16" /> : (stats?.pending_service_requests ?? 0)}
               </div>
               <p className="text-xs text-muted-foreground">Pending assignment</p>
             </CardContent>
@@ -440,7 +384,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-600">
-                {isLoading ? <Skeleton className="h-8 w-16" /> : defaultStats.low_stock_items}
+                {isLoading ? <Skeleton className="h-8 w-16" /> : (stats?.low_stock_items ?? 0)}
               </div>
               <p className="text-xs text-muted-foreground">Below reorder level</p>
             </CardContent>
@@ -455,7 +399,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">
-                {isLoading ? <Skeleton className="h-8 w-16" /> : defaultStats.shipments_in_transit}
+                {isLoading ? <Skeleton className="h-8 w-16" /> : (stats?.shipments_in_transit ?? 0)}
               </div>
               <p className="text-xs text-muted-foreground">Shipments on the way</p>
             </CardContent>
@@ -473,18 +417,30 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="h-[200px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={categoryData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis type="number" className="text-xs" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                  <YAxis type="category" dataKey="name" className="text-xs" width={100} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
-                    formatter={(value) => [formatCurrency(value as number), 'Sales']}
-                  />
-                  <Bar dataKey="sales" fill="#3B82F6" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              {isLoading ? (
+                <Skeleton className="h-full w-full" />
+              ) : categoryData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={categoryData} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis type="number" className="text-xs" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                    <YAxis type="category" dataKey="name" className="text-xs" width={100} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
+                      formatter={(value) => [formatCurrency(value as number), 'Sales']}
+                    />
+                    <Bar dataKey="sales" radius={[0, 4, 4, 0]}>
+                      {categoryData.map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                  No category data available
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -510,28 +466,28 @@ export default function DashboardPage() {
                     <Briefcase className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm">Active Employees</span>
                   </div>
-                  <span className="font-semibold">{hrDashboard.active_employees || 0}</span>
+                  <span className="font-semibold">{hrDashboard.active_employees ?? 0}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm">Present Today</span>
                   </div>
-                  <span className="font-semibold text-green-600">{hrDashboard.present_today || 0}</span>
+                  <span className="font-semibold text-green-600">{hrDashboard.present_today ?? 0}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <AlertTriangle className="h-4 w-4 text-orange-500" />
                     <span className="text-sm">Pending Leaves</span>
                   </div>
-                  <Badge variant="secondary">{hrDashboard.pending_leave_requests || 0}</Badge>
+                  <Badge variant="secondary">{hrDashboard.pending_leave_requests ?? 0}</Badge>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <CreditCard className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm">Pending Payroll</span>
                   </div>
-                  <Badge variant="secondary">{hrDashboard.pending_payroll_approval || 0}</Badge>
+                  <Badge variant="secondary">{hrDashboard.pending_payroll_approval ?? 0}</Badge>
                 </div>
               </>
             ) : (
@@ -557,14 +513,14 @@ export default function DashboardPage() {
             </Link>
           </CardHeader>
           <CardContent className="space-y-4">
-            {fixedAssetsDashboard ? (
+            {fixedAssets ? (
               <>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Building2 className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm">Total Assets</span>
                   </div>
-                  <span className="font-semibold">{fixedAssetsDashboard.total_assets || 0}</span>
+                  <span className="font-semibold">{fixedAssets.total_assets ?? 0}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -572,7 +528,7 @@ export default function DashboardPage() {
                     <span className="text-sm">Book Value</span>
                   </div>
                   <span className="font-semibold">
-                    {formatCurrency(fixedAssetsDashboard.total_current_book_value || 0)}
+                    {formatCurrency(fixedAssets.total_current_book_value ?? 0)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -580,28 +536,25 @@ export default function DashboardPage() {
                     <Wrench className="h-4 w-4 text-orange-500" />
                     <span className="text-sm">Under Maintenance</span>
                   </div>
-                  <Badge variant="secondary">{fixedAssetsDashboard.under_maintenance || 0}</Badge>
+                  <Badge variant="secondary">{fixedAssets.under_maintenance ?? 0}</Badge>
                 </div>
                 <div className="space-y-1">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">Depreciation Progress</span>
                     <span>
-                      {fixedAssetsDashboard.total_capitalized_value
+                      {fixedAssets.total_capitalized_value
                         ? Math.round(
-                            (fixedAssetsDashboard.total_accumulated_depreciation /
-                              fixedAssetsDashboard.total_capitalized_value) *
-                              100
+                            ((fixedAssets.total_accumulated_depreciation ?? 0) /
+                              fixedAssets.total_capitalized_value) * 100
                           )
-                        : 0}
-                      %
+                        : 0}%
                     </span>
                   </div>
                   <Progress
                     value={
-                      fixedAssetsDashboard.total_capitalized_value
-                        ? (fixedAssetsDashboard.total_accumulated_depreciation /
-                            fixedAssetsDashboard.total_capitalized_value) *
-                          100
+                      fixedAssets.total_capitalized_value
+                        ? ((fixedAssets.total_accumulated_depreciation ?? 0) /
+                            fixedAssets.total_capitalized_value) * 100
                         : 0
                     }
                     className="h-2"
@@ -626,7 +579,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {activityLoading ? (
+              {isLoading ? (
                 <>
                   {[1, 2, 3, 4].map((i) => (
                     <div key={i} className="flex items-center gap-4">
@@ -638,24 +591,16 @@ export default function DashboardPage() {
                     </div>
                   ))}
                 </>
-              ) : recentActivity && recentActivity.length > 0 ? (
-                recentActivity.map((activity: ActivityItem, i: number) => (
-                  <div key={i} className="flex items-center gap-4">
-                    <div
-                      className={`h-2 w-2 rounded-full ${
-                        activity.color === 'green'
-                          ? 'bg-green-500'
-                          : activity.color === 'blue'
-                          ? 'bg-blue-500'
-                          : activity.color === 'orange'
-                          ? 'bg-orange-500'
-                          : 'bg-gray-500'
-                      }`}
-                    />
+              ) : recentActivity.length > 0 ? (
+                recentActivity.map((activity, i) => (
+                  <div key={activity.id ?? i} className="flex items-center gap-4">
+                    <div className="h-2 w-2 rounded-full bg-blue-500" />
                     <div className="flex-1">
                       <p className="text-sm font-medium">{activity.title}</p>
                       <p className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
+                        {activity.timestamp
+                          ? formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })
+                          : 'recently'}
                       </p>
                     </div>
                   </div>
@@ -673,7 +618,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {productsLoading ? (
+              {isLoading ? (
                 <>
                   {[1, 2, 3, 4].map((i) => (
                     <div key={i} className="flex items-center justify-between">
@@ -685,19 +630,16 @@ export default function DashboardPage() {
                     </div>
                   ))}
                 </>
-              ) : topProducts && topProducts.length > 0 ? (
-                topProducts.map((product: TopProduct, i: number) => (
+              ) : topProducts.length > 0 ? (
+                topProducts.map((product, i) => (
                   <div key={product.id} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <span
                         className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
-                          i === 0
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : i === 1
-                            ? 'bg-gray-100 text-gray-800'
-                            : i === 2
-                            ? 'bg-orange-100 text-orange-800'
-                            : 'bg-muted text-muted-foreground'
+                          i === 0 ? 'bg-yellow-100 text-yellow-800'
+                          : i === 1 ? 'bg-gray-100 text-gray-800'
+                          : i === 2 ? 'bg-orange-100 text-orange-800'
+                          : 'bg-muted text-muted-foreground'
                         }`}
                       >
                         {i + 1}

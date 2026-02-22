@@ -1645,6 +1645,39 @@ export const dashboardApi = {
       return [];
     }
   },
+  getCombined: async (days = 30) => {
+    const { data } = await apiClient.get(`/dashboard/combined?days=${days}`);
+    return data as {
+      stats: {
+        total_orders: number;
+        total_revenue: number;
+        total_customers: number;
+        total_products: number;
+        pending_orders: number;
+        pending_service_requests: number;
+        low_stock_items: number;
+        out_of_stock_items: number;
+        shipments_in_transit: number;
+        this_month_orders: number;
+        this_month_revenue: number;
+        revenue_change: number;
+        orders_change: number;
+        customers_change: number;
+      };
+      sales_trend: { labels: string[]; orders: number[]; revenue: number[] };
+      order_status: { items: { status: string; count: number }[] };
+      category_sales: { items: { name: string; revenue: number; percentage: number }[] };
+      top_products: { items: { id: string; name: string; sku: string; sales: number; revenue: number }[] };
+      recent_activity: {
+        id: string; action: string; entity_type: string; user_name: string;
+        description: string; created_at: string | null; type: string;
+        color: string; title: string; timestamp: string | null;
+      }[];
+      hr_dashboard: Record<string, unknown> | null;
+      fixed_assets: Record<string, unknown> | null;
+      period_days: number;
+    };
+  },
 };
 
 // Approvals API
