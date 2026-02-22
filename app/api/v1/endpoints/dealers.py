@@ -508,7 +508,15 @@ async def create_dealer_pricing(
 
     db.add(pricing)
     await db.commit()
-    await db.refresh(pricing)
+
+    # Reload with product details
+    from app.models.product import Product
+    refreshed = await db.execute(
+        select(DealerPricing)
+        .options(selectinload(DealerPricing.product))
+        .where(DealerPricing.id == pricing.id)
+    )
+    pricing = refreshed.scalar_one()
 
     return DealerPricingResponse.model_validate({
         "id": pricing.id,
@@ -525,9 +533,9 @@ async def create_dealer_pricing(
         "effective_to": pricing.effective_to,
         "is_active": pricing.is_active,
         "dealer_margin": pricing.dealer_margin,
-        "product_name": None,
-        "product_sku": None,
-        "master_mrp": None,
+        "product_name": pricing.product.name if pricing.product else None,
+        "product_sku": pricing.product.sku if pricing.product else None,
+        "master_mrp": pricing.product.mrp if pricing.product else None,
         "created_at": pricing.created_at,
         "updated_at": pricing.updated_at,
     })
