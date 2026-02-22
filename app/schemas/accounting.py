@@ -367,6 +367,22 @@ class JournalEntryListResponse(BaseModel):
 JournalListResponse = JournalEntryListResponse
 
 
+class BulkJournalErrorDetail(BaseModel):
+    """Error detail for a single failed journal entry in bulk create."""
+    index: int
+    narration: Optional[str] = None
+    error: str
+
+
+class BulkJournalCreateResponse(BaseModel):
+    """Response for bulk journal entry creation."""
+    total: int
+    success: int
+    failed: int
+    entries: List[JournalEntryResponse] = []
+    errors: List[BulkJournalErrorDetail] = []
+
+
 class JournalPostRequest(BaseModel):
     """Request to post a journal entry."""
     entry_ids: List[UUID]

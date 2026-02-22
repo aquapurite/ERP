@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, BookOpen, Trash2, CheckCircle, XCircle, Send, FileCheck, Loader2, Copy, Pencil, RotateCcw, BookMarked } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, BookOpen, Trash2, CheckCircle, XCircle, Send, FileCheck, Loader2, Copy, Pencil, RotateCcw, BookMarked, Download, Upload, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -51,6 +51,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
@@ -93,12 +94,79 @@ interface Account {
   type: string;
 }
 
+interface ParsedGroup {
+  group: string;
+  date: string;
+  type: string;
+  narration: string;
+  lines: { accountCode: string; accountId: string; accountName: string; debit: number; credit: number; description: string }[];
+  valid: boolean;
+  errors: string[];
+}
+
 const emptyLine = (): JournalLine => ({
   account_id: '',
   description: '',
   debit_amount: 0,
   credit_amount: 0,
 });
+
+function downloadCSV(filename: string, headers: string[], rows: string[][]) {
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => row.map(cell => {
+      const str = String(cell ?? '');
+      return str.includes(',') || str.includes('"') || str.includes('\n')
+        ? `"${str.replace(/"/g, '""')}"`
+        : str;
+    }).join(',')),
+  ].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function parseCSV(text: string): string[][] {
+  const rows: string[][] = [];
+  let current = '';
+  let inQuotes = false;
+  let row: string[] = [];
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"' && text[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        current += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        row.push(current.trim());
+        current = '';
+      } else if (ch === '\n' || ch === '\r') {
+        if (ch === '\r' && text[i + 1] === '\n') i++;
+        row.push(current.trim());
+        if (row.some(c => c !== '')) rows.push(row);
+        row = [];
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+  }
+  row.push(current.trim());
+  if (row.some(c => c !== '')) rows.push(row);
+  return rows;
+}
 
 export default function JournalEntriesPage() {
   const queryClient = useQueryClient();
@@ -118,6 +186,11 @@ export default function JournalEntriesPage() {
   const [reversalReason, setReversalReason] = useState('');
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
+  const [bulkUploadPhase, setBulkUploadPhase] = useState<'upload' | 'preview'>('upload');
+  const [parsedGroups, setParsedGroups] = useState<ParsedGroup[]>([]);
+  const [isExporting, setIsExporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
     entry_date: new Date().toISOString().split('T')[0],
@@ -224,6 +297,182 @@ export default function JournalEntriesPage() {
     },
     onError: (error: Error) => toast.error(error.message || 'Failed to reverse entry'),
   });
+
+  const bulkCreateMutation = useMutation({
+    mutationFn: journalEntriesApi.bulkCreate,
+    onSuccess: (result: { total: number; success: number; failed: number }) => {
+      queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+      if (result.failed === 0) {
+        toast.success(`All ${result.success} journal entries created as drafts`);
+      } else {
+        toast.warning(`${result.success} created, ${result.failed} failed`);
+      }
+      setIsBulkUploadOpen(false);
+      setBulkUploadPhase('upload');
+      setParsedGroups([]);
+    },
+    onError: (error: Error) => toast.error(error.message || 'Bulk upload failed'),
+  });
+
+  const handleExportCSV = async () => {
+    setIsExporting(true);
+    try {
+      const entries: JournalEntry[] = data?.items ?? [];
+      if (entries.length === 0) {
+        toast.error('No entries to export');
+        setIsExporting(false);
+        return;
+      }
+      const headers = ['Entry Number', 'Date', 'Type', 'Narration', 'Status', 'Account Code', 'Account Name', 'Debit', 'Credit', 'Description'];
+      const rows: string[][] = [];
+      for (const entry of entries) {
+        let detail = entry;
+        if (!entry.lines || entry.lines.length === 0) {
+          try {
+            detail = await journalEntriesApi.getById(entry.id);
+          } catch { /* use entry as-is */ }
+        }
+        if (detail.lines && detail.lines.length > 0) {
+          for (const line of detail.lines) {
+            rows.push([
+              detail.entry_number,
+              detail.entry_date,
+              detail.entry_type,
+              detail.narration,
+              detail.status,
+              line.account_code || line.account?.code || '',
+              line.account_name || line.account?.name || '',
+              String(line.debit_amount || 0),
+              String(line.credit_amount || 0),
+              line.description || '',
+            ]);
+          }
+        } else {
+          rows.push([
+            detail.entry_number, detail.entry_date, detail.entry_type, detail.narration,
+            detail.status, '', '', String(detail.total_debit), String(detail.total_credit), '',
+          ]);
+        }
+      }
+      downloadCSV(`journal-entries-${new Date().toISOString().split('T')[0]}.csv`, headers, rows);
+      toast.success('CSV exported');
+    } catch {
+      toast.error('Export failed');
+    }
+    setIsExporting(false);
+  };
+
+  const handleDownloadTemplate = () => {
+    const headers = ['Group', 'Date', 'Type', 'Narration', 'Account Code', 'Debit', 'Credit', 'Description'];
+    const today = new Date().toISOString().split('T')[0];
+    const rows: string[][] = [
+      ['1', today, 'MANUAL', 'Office rent for Feb', '4100', '50000', '0', 'Rent expense'],
+      ['1', today, 'MANUAL', 'Office rent for Feb', '2100', '0', '50000', 'Cash payment'],
+      ['2', today, 'ADJUSTMENT', 'Depreciation entry', '5200', '10000', '0', 'Furniture depreciation'],
+      ['2', today, 'ADJUSTMENT', 'Depreciation entry', '1600', '0', '10000', 'Accumulated depreciation'],
+    ];
+    downloadCSV('journal-entries-template.csv', headers, rows);
+    toast.success('Template downloaded');
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target?.result as string;
+      const rows = parseCSV(text);
+      if (rows.length < 2) {
+        toast.error('CSV file is empty or has no data rows');
+        return;
+      }
+      const header = rows[0].map(h => h.toLowerCase().replace(/[^a-z]/g, ''));
+      const groupIdx = header.indexOf('group');
+      const dateIdx = header.indexOf('date');
+      const typeIdx = header.indexOf('type');
+      const narrationIdx = header.indexOf('narration');
+      const codeIdx = header.findIndex(h => h === 'accountcode' || h === 'account');
+      const debitIdx = header.indexOf('debit');
+      const creditIdx = header.indexOf('credit');
+      const descIdx = header.findIndex(h => h === 'description' || h === 'desc');
+
+      if (groupIdx === -1 || dateIdx === -1 || codeIdx === -1 || debitIdx === -1 || creditIdx === -1) {
+        toast.error('CSV must have columns: Group, Date, Account Code, Debit, Credit');
+        return;
+      }
+
+      const acctList = Array.isArray(accountsData) ? accountsData as Account[] : [];
+      const codeToAccount = new Map(acctList.map(a => [a.code, a]));
+
+      const groupMap = new Map<string, ParsedGroup>();
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        const groupKey = row[groupIdx] || String(i);
+        if (!groupMap.has(groupKey)) {
+          groupMap.set(groupKey, {
+            group: groupKey,
+            date: row[dateIdx] || '',
+            type: (typeIdx >= 0 ? row[typeIdx] : '') || 'MANUAL',
+            narration: (narrationIdx >= 0 ? row[narrationIdx] : '') || '',
+            lines: [],
+            valid: true,
+            errors: [],
+          });
+        }
+        const g = groupMap.get(groupKey)!;
+        const code = row[codeIdx] || '';
+        const acct = codeToAccount.get(code);
+        g.lines.push({
+          accountCode: code,
+          accountId: acct?.id || '',
+          accountName: acct?.name || (code ? 'Unknown' : ''),
+          debit: parseFloat(row[debitIdx]) || 0,
+          credit: parseFloat(row[creditIdx]) || 0,
+          description: descIdx >= 0 ? (row[descIdx] || '') : '',
+        });
+      }
+
+      const groups = Array.from(groupMap.values());
+      for (const g of groups) {
+        if (!g.date) g.errors.push('Missing date');
+        if (!g.narration) g.errors.push('Missing narration');
+        if (g.lines.length < 2) g.errors.push('Need at least 2 lines');
+        const totalDr = g.lines.reduce((s, l) => s + l.debit, 0);
+        const totalCr = g.lines.reduce((s, l) => s + l.credit, 0);
+        if (Math.abs(totalDr - totalCr) > 0.01) g.errors.push(`Unbalanced: Dr ${totalDr} != Cr ${totalCr}`);
+        if (totalDr === 0) g.errors.push('Zero amount');
+        for (const l of g.lines) {
+          if (!l.accountId) g.errors.push(`Account code "${l.accountCode}" not found`);
+        }
+        g.valid = g.errors.length === 0;
+      }
+
+      setParsedGroups(groups);
+      setBulkUploadPhase('preview');
+    };
+    reader.readAsText(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleBulkSubmit = () => {
+    const validGroups = parsedGroups.filter(g => g.valid);
+    if (validGroups.length === 0) {
+      toast.error('No valid entries to upload');
+      return;
+    }
+    const entries = validGroups.map(g => ({
+      entry_type: g.type,
+      entry_date: g.date,
+      narration: g.narration,
+      lines: g.lines.map(l => ({
+        account_id: l.accountId,
+        debit_amount: l.debit,
+        credit_amount: l.credit,
+        description: l.description || undefined,
+      })),
+    }));
+    bulkCreateMutation.mutate(entries);
+  };
 
   const handleReverse = (entry: JournalEntry) => {
     setEntryToReverse(entry);
@@ -566,6 +815,18 @@ export default function JournalEntriesPage() {
                 <SelectItem value="REJECTED">Rejected</SelectItem>
               </SelectContent>
             </Select>
+            <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={isExporting}>
+              {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+              Export CSV
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleDownloadTemplate}>
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Template
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => { setIsBulkUploadOpen(true); setBulkUploadPhase('upload'); setParsedGroups([]); }}>
+              <Upload className="mr-2 h-4 w-4" />
+              Bulk Upload
+            </Button>
             <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) resetForm(); else setIsDialogOpen(true); }}>
               <DialogTrigger asChild>
                 <Button onClick={() => setIsDialogOpen(true)}>
@@ -1022,6 +1283,130 @@ export default function JournalEntriesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Bulk Upload Dialog */}
+      <Dialog open={isBulkUploadOpen} onOpenChange={(open) => { if (!open) { setIsBulkUploadOpen(false); setBulkUploadPhase('upload'); setParsedGroups([]); } }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Bulk Upload Journal Entries</DialogTitle>
+            <DialogDescription>
+              Upload a CSV file with multiple journal entries grouped by Group number.
+            </DialogDescription>
+          </DialogHeader>
+
+          {bulkUploadPhase === 'upload' && (
+            <div className="py-6 space-y-4">
+              <div className="border-2 border-dashed rounded-lg p-8 text-center space-y-4">
+                <Upload className="h-10 w-10 mx-auto text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">Select a CSV file to upload</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Format: Group, Date, Type, Narration, Account Code, Debit, Credit, Description
+                  </p>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                />
+                <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+                  Choose File
+                </Button>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                <p className="font-medium mb-1">Tips:</p>
+                <ul className="list-disc pl-4 space-y-1">
+                  <li>Use the &quot;Template&quot; button to download a sample CSV</li>
+                  <li>Rows with the same Group number become one journal entry</li>
+                  <li>Each group must have at least 2 lines and balance (debit = credit)</li>
+                  <li>Account codes must match your Chart of Accounts</li>
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {bulkUploadPhase === 'preview' && (
+            <div className="py-4 space-y-4">
+              <div className="flex items-center gap-3">
+                <Badge variant="outline" className="text-green-700 border-green-300">
+                  {parsedGroups.filter(g => g.valid).length} Valid
+                </Badge>
+                {parsedGroups.some(g => !g.valid) && (
+                  <Badge variant="outline" className="text-red-700 border-red-300">
+                    {parsedGroups.filter(g => !g.valid).length} Invalid
+                  </Badge>
+                )}
+                <span className="text-sm text-muted-foreground">
+                  {parsedGroups.reduce((s, g) => s + g.lines.length, 0)} total lines
+                </span>
+              </div>
+
+              <div className="space-y-3 max-h-[50vh] overflow-y-auto">
+                {parsedGroups.map((g, gIdx) => (
+                  <Card key={gIdx} className={g.valid ? 'border-green-200' : 'border-red-200'}>
+                    <CardHeader className="py-3 px-4">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">#{g.group}</span>
+                          <span>{g.narration || 'No narration'}</span>
+                        </CardTitle>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">{g.date}</span>
+                          <Badge variant={g.valid ? 'default' : 'destructive'} className="text-xs">
+                            {g.valid ? 'Valid' : 'Error'}
+                          </Badge>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-3">
+                      <div className="space-y-1">
+                        {g.lines.map((l, lIdx) => (
+                          <div key={lIdx} className="flex items-center justify-between text-xs py-1 border-b last:border-0">
+                            <div className="flex items-center gap-2">
+                              <span className={`font-mono ${l.accountId ? '' : 'text-red-600'}`}>{l.accountCode}</span>
+                              <span className="text-muted-foreground">{l.accountName}</span>
+                            </div>
+                            <div className="flex gap-4">
+                              {l.debit > 0 && <span className="text-green-600">{formatCurrency(l.debit)} Dr</span>}
+                              {l.credit > 0 && <span className="text-blue-600">{formatCurrency(l.credit)} Cr</span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {g.errors.length > 0 && (
+                        <div className="mt-2 text-xs text-red-600 space-y-0.5">
+                          {g.errors.map((err, eIdx) => (
+                            <div key={eIdx}>- {err}</div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            {bulkUploadPhase === 'preview' && (
+              <>
+                <Button variant="outline" onClick={() => { setBulkUploadPhase('upload'); setParsedGroups([]); }}>
+                  Back
+                </Button>
+                <Button
+                  onClick={handleBulkSubmit}
+                  disabled={bulkCreateMutation.isPending || parsedGroups.filter(g => g.valid).length === 0}
+                >
+                  {bulkCreateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Upload {parsedGroups.filter(g => g.valid).length} Entries
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

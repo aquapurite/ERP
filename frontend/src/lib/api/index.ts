@@ -2179,6 +2179,15 @@ export const journalEntriesApi = {
   delete: async (id: string) => {
     await apiClient.delete(`/accounting/journals/${id}`);
   },
+  bulkCreate: async (entries: {
+    entry_type: string;
+    entry_date: string;
+    narration: string;
+    lines: { account_id: string; debit_amount: number; credit_amount: number; description?: string }[];
+  }[]) => {
+    const { data } = await apiClient.post('/accounting/journals/bulk-create', entries);
+    return data;
+  },
 };
 
 // General Ledger API

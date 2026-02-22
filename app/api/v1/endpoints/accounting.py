@@ -30,6 +30,7 @@ from app.schemas.accounting import (
     # Journal Entry
     JournalEntryCreate, JournalEntryUpdate, JournalEntryResponse, JournalListResponse,
     JournalEntryLineCreate, JournalReverseRequest,
+    BulkJournalCreateResponse, BulkJournalErrorDetail,
     # Maker-Checker Approval
     JournalSubmitRequest, JournalApproveRequest, JournalRejectRequest,
     JournalApprovalResponse, PendingApprovalResponse,
@@ -1568,6 +1569,163 @@ async def create_journal_entry(
         "created_at": journal.created_at,
         "updated_at": journal.updated_at,
     }
+
+
+@router.post(
+    "/journals/bulk-create",
+    response_model=BulkJournalCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permissions("journals:create"))]
+)
+async def bulk_create_journal_entries(
+    entries_in: List[JournalEntryCreate],
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Bulk create journal entries. Each entry is processed independently using savepoints."""
+    created_entries = []
+    errors = []
+
+    for idx, journal_in in enumerate(entries_in):
+        savepoint = await db.begin_nested()
+        try:
+            # Validate the current period
+            period_result = await db.execute(
+                select(FinancialPeriod).where(
+                    and_(
+                        FinancialPeriod.start_date <= journal_in.entry_date,
+                        FinancialPeriod.end_date >= journal_in.entry_date,
+                        FinancialPeriod.status == PeriodStatus.OPEN,
+                    )
+                ).limit(1)
+            )
+            period = period_result.scalar_one_or_none()
+            if not period:
+                raise ValueError("No open financial period for the entry date")
+
+            # Validate debit = credit
+            total_debit = sum(line.debit_amount for line in journal_in.lines)
+            total_credit = sum(line.credit_amount for line in journal_in.lines)
+            if total_debit != total_credit:
+                raise ValueError(f"Debits ({total_debit}) must equal Credits ({total_credit})")
+            if total_debit == 0:
+                raise ValueError("Journal entry cannot have zero amount")
+
+            # Generate journal number
+            today = date.today()
+            count_result = await db.execute(
+                select(func.count(JournalEntry.id)).where(
+                    func.date(JournalEntry.created_at) == today
+                )
+            )
+            count = (count_result.scalar() or 0) + len(created_entries)
+            entry_number = f"JV-{today.strftime('%Y%m%d')}-{str(count + 1).zfill(4)}"
+
+            # Create journal entry
+            journal = JournalEntry(
+                entry_number=entry_number,
+                entry_type=journal_in.entry_type,
+                entry_date=journal_in.entry_date,
+                period_id=period.id,
+                narration=journal_in.narration,
+                source_type=journal_in.source_type,
+                source_number=journal_in.source_number,
+                source_id=journal_in.source_id,
+                total_debit=total_debit,
+                total_credit=total_credit,
+                created_by=current_user.id,
+            )
+            db.add(journal)
+            await db.flush()
+
+            # Create journal lines
+            line_number = 0
+            for line_data in journal_in.lines:
+                line_number += 1
+                account_result = await db.execute(
+                    select(ChartOfAccount).where(ChartOfAccount.id == line_data.account_id)
+                )
+                account = account_result.scalar_one_or_none()
+                if not account:
+                    raise ValueError(f"Account {line_data.account_id} not found")
+                if account.is_group:
+                    raise ValueError(f"Cannot post to group account: {account.account_name}")
+
+                line = JournalEntryLine(
+                    journal_entry_id=journal.id,
+                    line_number=line_number,
+                    account_id=line_data.account_id,
+                    debit_amount=line_data.debit_amount,
+                    credit_amount=line_data.credit_amount,
+                    cost_center_id=line_data.cost_center_id,
+                    description=line_data.description,
+                )
+                db.add(line)
+
+            await savepoint.commit()
+
+            # Load full journal with lines and their accounts
+            result = await db.execute(
+                select(JournalEntry)
+                .options(
+                    selectinload(JournalEntry.lines).selectinload(JournalEntryLine.account)
+                )
+                .where(JournalEntry.id == journal.id)
+            )
+            journal = result.scalar_one()
+
+            lines_response = []
+            for line in journal.lines:
+                lines_response.append({
+                    "id": line.id,
+                    "account_id": line.account_id,
+                    "description": line.description,
+                    "debit_amount": line.debit_amount,
+                    "credit_amount": line.credit_amount,
+                    "cost_center_id": line.cost_center_id,
+                    "line_number": line.line_number,
+                    "account_code": line.account.account_code if line.account else None,
+                    "account_name": line.account.account_name if line.account else None,
+                })
+
+            created_entries.append({
+                "id": journal.id,
+                "entry_number": journal.entry_number,
+                "entry_type": journal.entry_type,
+                "entry_date": journal.entry_date,
+                "period_id": journal.period_id,
+                "narration": journal.narration,
+                "source_type": journal.source_type,
+                "source_id": journal.source_id,
+                "source_number": journal.source_number,
+                "status": journal.status,
+                "total_debit": journal.total_debit,
+                "total_credit": journal.total_credit,
+                "created_by": journal.created_by,
+                "posted_by": journal.posted_by,
+                "posted_at": journal.posted_at,
+                "lines": lines_response,
+                "created_at": journal.created_at,
+                "updated_at": journal.updated_at,
+            })
+
+        except Exception as e:
+            await savepoint.rollback()
+            errors.append(BulkJournalErrorDetail(
+                index=idx,
+                narration=journal_in.narration,
+                error=str(e),
+            ))
+
+    await db.commit()
+
+    return BulkJournalCreateResponse(
+        total=len(entries_in),
+        success=len(created_entries),
+        failed=len(errors),
+        entries=created_entries,
+        errors=errors,
+    )
 
 
 @router.get(
