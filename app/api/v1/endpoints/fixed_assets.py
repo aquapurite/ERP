@@ -13,6 +13,11 @@ from app.models.fixed_assets import (
     AssetCategory, Asset, DepreciationEntry, AssetTransfer, AssetMaintenance, CapexRequest,
     DepreciationMethod, AssetStatus, TransferStatus, MaintenanceStatus, CapexRequestStatus
 )
+from app.models.accounting import (
+    JournalEntry, JournalEntryLine, JournalEntryStatus as JournalStatus,
+    GeneralLedger, ChartOfAccount,
+    FinancialPeriod, FinancialPeriodStatus as PeriodStatus,
+)
 from app.models.user import User
 from app.schemas.fixed_assets import (
     # Category
@@ -775,27 +780,174 @@ async def run_depreciation(
         asset.current_book_value = closing_value
         asset.last_depreciation_date = run_in.period_date
 
-        entries.append(DepreciationEntryResponse(
-            id=entry.id,
-            asset_id=asset.id,
-            asset_code=asset.asset_code,
-            asset_name=asset.name,
-            period_date=entry.period_date,
-            financial_year=entry.financial_year,
-            opening_book_value=entry.opening_book_value,
-            depreciation_method=entry.depreciation_method,
-            depreciation_rate=entry.depreciation_rate,
-            depreciation_amount=entry.depreciation_amount,
-            closing_book_value=entry.closing_book_value,
-            accumulated_depreciation=entry.accumulated_depreciation,
-            is_posted=entry.is_posted,
-            processed_at=entry.processed_at,
-            created_at=entry.created_at,
-        ))
+        entries.append((entry, asset))
+
+    # Flush depreciation entries to get their IDs
+    await db.flush()
+
+    # ─── GL Posting for depreciation entries ───
+
+    if entries:
+        import uuid as uuid_module
+
+        # Validate open financial period for the depreciation date
+        period_r = await db.execute(
+            select(FinancialPeriod).where(
+                and_(
+                    FinancialPeriod.start_date <= run_in.period_date,
+                    FinancialPeriod.end_date >= run_in.period_date,
+                    FinancialPeriod.status == PeriodStatus.OPEN,
+                )
+            ).limit(1)
+        )
+        period = period_r.scalar_one_or_none()
+
+        gl_affected_accounts = set()
+
+        for dep_entry, asset in entries:
+            # Get GL accounts from asset category
+            expense_account_id = asset.category.expense_account_id
+            dep_account_id = asset.category.depreciation_account_id
+
+            if not expense_account_id or not dep_account_id or not period:
+                # Cannot post to GL without proper account mapping or period
+                continue
+
+            # Generate journal entry number
+            today = date.today()
+            count_r = await db.execute(
+                select(func.count(JournalEntry.id)).where(
+                    func.date(JournalEntry.created_at) == today
+                )
+            )
+            jv_count = count_r.scalar() or 0
+            entry_number = f"JV-{today.strftime('%Y%m%d')}-{str(jv_count + 1).zfill(4)}"
+
+            # Create journal entry
+            journal = JournalEntry(
+                id=uuid_module.uuid4(),
+                entry_number=entry_number,
+                entry_type="DEPRECIATION",
+                entry_date=run_in.period_date,
+                period_id=period.id,
+                narration=f"Depreciation for {asset.name} - {run_in.period_date.strftime('%B %Y')}",
+                source_type="depreciation",
+                source_id=dep_entry.id,
+                total_debit=dep_entry.depreciation_amount,
+                total_credit=dep_entry.depreciation_amount,
+                created_by=current_user.id,
+                status=JournalStatus.DRAFT.value,
+            )
+            db.add(journal)
+            await db.flush()
+
+            # Debit: Depreciation Expense (6700)
+            line_dr = JournalEntryLine(
+                id=uuid_module.uuid4(),
+                journal_entry_id=journal.id,
+                line_number=1,
+                account_id=expense_account_id,
+                debit_amount=dep_entry.depreciation_amount,
+                credit_amount=Decimal("0"),
+                description=f"Depreciation expense - {asset.name}",
+            )
+            db.add(line_dr)
+
+            # Credit: Accumulated Depreciation (1600)
+            line_cr = JournalEntryLine(
+                id=uuid_module.uuid4(),
+                journal_entry_id=journal.id,
+                line_number=2,
+                account_id=dep_account_id,
+                debit_amount=Decimal("0"),
+                credit_amount=dep_entry.depreciation_amount,
+                description=f"Accumulated depreciation - {asset.name}",
+            )
+            db.add(line_cr)
+            await db.flush()
+
+            # Post to GL
+            for line in [line_dr, line_cr]:
+                gl_entry = GeneralLedger(
+                    id=uuid_module.uuid4(),
+                    account_id=line.account_id,
+                    period_id=period.id,
+                    transaction_date=run_in.period_date,
+                    journal_entry_id=journal.id,
+                    journal_line_id=line.id,
+                    debit_amount=line.debit_amount,
+                    credit_amount=line.credit_amount,
+                    running_balance=Decimal("0"),  # Will be recalculated
+                    narration=line.description,
+                )
+                db.add(gl_entry)
+                gl_affected_accounts.add(line.account_id)
+
+            await db.flush()
+
+            # Mark journal as POSTED
+            journal.status = JournalStatus.POSTED.value
+            journal.posted_by = current_user.id
+            journal.posted_at = datetime.now(timezone.utc)
+
+            # Link depreciation entry to journal
+            dep_entry.journal_entry_id = journal.id
+            dep_entry.is_posted = True
+
+        # Recalculate running balances for all affected GL accounts
+        for account_id in gl_affected_accounts:
+            # Recalculate current_balance
+            acct_r = await db.execute(
+                select(ChartOfAccount).where(ChartOfAccount.id == account_id)
+            )
+            account = acct_r.scalar_one()
+            opening_balance = account.opening_balance or Decimal("0")
+
+            gl_sum_r = await db.execute(
+                select(
+                    func.coalesce(func.sum(GeneralLedger.debit_amount), 0).label("total_debit"),
+                    func.coalesce(func.sum(GeneralLedger.credit_amount), 0).label("total_credit"),
+                ).where(GeneralLedger.account_id == account_id)
+            )
+            gl_sum = gl_sum_r.one()
+            account.current_balance = opening_balance + Decimal(str(gl_sum.total_debit)) - Decimal(str(gl_sum.total_credit))
+
+            # Recalculate running balances for all GL entries
+            gl_entries_r = await db.execute(
+                select(GeneralLedger)
+                .where(GeneralLedger.account_id == account_id)
+                .order_by(GeneralLedger.transaction_date, GeneralLedger.created_at)
+            )
+            all_gl = gl_entries_r.scalars().all()
+            running = opening_balance
+            for gl in all_gl:
+                running = running + (gl.debit_amount or Decimal("0")) - (gl.credit_amount or Decimal("0"))
+                gl.running_balance = running
 
     await db.commit()
 
-    return entries
+    # Build response
+    response_entries = []
+    for dep_entry, asset in entries:
+        response_entries.append(DepreciationEntryResponse(
+            id=dep_entry.id,
+            asset_id=asset.id,
+            asset_code=asset.asset_code,
+            asset_name=asset.name,
+            period_date=dep_entry.period_date,
+            financial_year=dep_entry.financial_year,
+            opening_book_value=dep_entry.opening_book_value,
+            depreciation_method=dep_entry.depreciation_method,
+            depreciation_rate=dep_entry.depreciation_rate,
+            depreciation_amount=dep_entry.depreciation_amount,
+            closing_book_value=dep_entry.closing_book_value,
+            accumulated_depreciation=dep_entry.accumulated_depreciation,
+            is_posted=dep_entry.is_posted,
+            processed_at=dep_entry.processed_at,
+            created_at=dep_entry.created_at,
+        ))
+
+    return response_entries
 
 
 @router.get("/depreciation", response_model=DepreciationListResponse, dependencies=[Depends(require_permissions("assets:view"))])

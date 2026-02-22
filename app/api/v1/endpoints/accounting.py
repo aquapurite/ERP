@@ -4147,3 +4147,417 @@ async def fix_trial_balance_imbalance(
         "new_difference": float(new_difference),
         "is_balanced": abs(new_difference) < Decimal("0.01")
     }
+
+
+# ==================== One-Time Data Fix: Fixed Assets GL Integration ====================
+
+@router.post("/fix-assets-data", dependencies=[Depends(require_permissions("journals:create"))])
+async def fix_assets_data(
+    db: DB,
+    current_user: CurrentUser,
+):
+    """
+    One-time data fix endpoint to connect Fixed Assets module to GL.
+    Creates missing COA accounts, maps asset categories, reverses duplicate JV,
+    and registers the ASUS Computer asset.
+    """
+    import uuid as uuid_module
+    from app.models.fixed_assets import Asset, AssetCategory, AssetStatus
+
+    results = {
+        "accounts_created": [],
+        "accounts_reparented": [],
+        "categories_updated": [],
+        "reversal_journal": None,
+        "asset_created": None,
+    }
+
+    # ─── Step 1a: Create missing COA accounts ───
+
+    # Check if accounts already exist (idempotent)
+    existing_codes = {}
+    for code in ["1500", "1550", "1600", "6700"]:
+        r = await db.execute(
+            select(ChartOfAccount).where(ChartOfAccount.account_code == code)
+        )
+        acct = r.scalar_one_or_none()
+        if acct:
+            existing_codes[code] = acct
+
+    # Get parent references
+    assets_root_r = await db.execute(
+        select(ChartOfAccount).where(ChartOfAccount.account_code == "1000")
+    )
+    assets_root = assets_root_r.scalar_one_or_none()
+    if not assets_root:
+        raise HTTPException(status_code=400, detail="Root account 1000 (Assets) not found")
+
+    # 1500 - Fixed Assets (group)
+    if "1500" not in existing_codes:
+        acct_1500 = ChartOfAccount(
+            id=uuid_module.uuid4(),
+            account_code="1500",
+            account_name="Fixed Assets",
+            account_type=AccountType.ASSET.value,
+            account_sub_type=AccountSubType.FIXED_ASSET.value,
+            parent_id=assets_root.id,
+            level=2,
+            is_group=True,
+            is_active=True,
+            is_system=False,
+            allow_direct_posting=False,
+            opening_balance=Decimal("0"),
+            current_balance=Decimal("0"),
+            sort_order=0,
+        )
+        db.add(acct_1500)
+        existing_codes["1500"] = acct_1500
+        results["accounts_created"].append("1500 - Fixed Assets (group)")
+    else:
+        acct_1500 = existing_codes["1500"]
+
+    await db.flush()
+
+    # 1550 - Computer & IT Equipment
+    if "1550" not in existing_codes:
+        acct_1550 = ChartOfAccount(
+            id=uuid_module.uuid4(),
+            account_code="1550",
+            account_name="Computer & IT Equipment",
+            account_type=AccountType.ASSET.value,
+            account_sub_type=AccountSubType.FIXED_ASSET.value,
+            parent_id=acct_1500.id,
+            level=3,
+            is_group=False,
+            is_active=True,
+            is_system=False,
+            allow_direct_posting=True,
+            opening_balance=Decimal("0"),
+            current_balance=Decimal("0"),
+            sort_order=0,
+        )
+        db.add(acct_1550)
+        existing_codes["1550"] = acct_1550
+        results["accounts_created"].append("1550 - Computer & IT Equipment")
+
+    # 1600 - Accumulated Depreciation
+    if "1600" not in existing_codes:
+        acct_1600 = ChartOfAccount(
+            id=uuid_module.uuid4(),
+            account_code="1600",
+            account_name="Accumulated Depreciation",
+            account_type=AccountType.ASSET.value,
+            account_sub_type=AccountSubType.FIXED_ASSET.value,
+            parent_id=acct_1500.id,
+            level=3,
+            is_group=False,
+            is_active=True,
+            is_system=False,
+            allow_direct_posting=True,
+            opening_balance=Decimal("0"),
+            current_balance=Decimal("0"),
+            sort_order=0,
+        )
+        db.add(acct_1600)
+        existing_codes["1600"] = acct_1600
+        results["accounts_created"].append("1600 - Accumulated Depreciation")
+
+    # 6700 - Depreciation Expense
+    if "6700" not in existing_codes:
+        acct_6700 = ChartOfAccount(
+            id=uuid_module.uuid4(),
+            account_code="6700",
+            account_name="Depreciation Expense",
+            account_type=AccountType.EXPENSE.value,
+            account_sub_type=AccountSubType.OPERATING_EXPENSE.value,
+            parent_id=None,
+            level=1,
+            is_group=False,
+            is_active=True,
+            is_system=False,
+            allow_direct_posting=True,
+            opening_balance=Decimal("0"),
+            current_balance=Decimal("0"),
+            sort_order=0,
+        )
+        db.add(acct_6700)
+        existing_codes["6700"] = acct_6700
+        results["accounts_created"].append("6700 - Depreciation Expense")
+
+    await db.flush()
+
+    # ─── Step 1b: Re-parent existing fixed asset accounts under 1500 ───
+
+    fa_codes_to_reparent = ["1510", "1520", "1530", "1540"]
+    for code in fa_codes_to_reparent:
+        r = await db.execute(
+            select(ChartOfAccount).where(ChartOfAccount.account_code == code)
+        )
+        acct = r.scalar_one_or_none()
+        if acct and acct.parent_id != acct_1500.id:
+            acct.parent_id = acct_1500.id
+            acct.level = 3
+            acct.account_sub_type = AccountSubType.FIXED_ASSET.value
+            results["accounts_reparented"].append(f"{code} - {acct.account_name}")
+
+    await db.flush()
+
+    # ─── Step 1c: Update asset categories with GL account IDs ───
+
+    # Build account lookup by code
+    acct_lookup = {}
+    for code in ["1500", "1510", "1520", "1530", "1540", "1550", "1600", "6700"]:
+        r = await db.execute(
+            select(ChartOfAccount).where(ChartOfAccount.account_code == code)
+        )
+        acct = r.scalar_one_or_none()
+        if acct:
+            acct_lookup[code] = acct.id
+
+    # Category → asset account mapping
+    category_mapping = {
+        "OFFICE_EQUIP": acct_lookup.get("1540"),
+        "FURNITURE": acct_lookup.get("1530"),
+        "VEHICLE": acct_lookup.get("1540"),
+        "PLANT": acct_lookup.get("1520"),
+        "LAND": acct_lookup.get("1510"),
+        "ELECTRICAL": acct_lookup.get("1540"),
+        "INTANGIBLE": acct_lookup.get("1550"),  # Use Computer & IT as closest match
+    }
+
+    dep_account_id = acct_lookup.get("1600")
+    exp_account_id = acct_lookup.get("6700")
+
+    cat_result = await db.execute(select(AssetCategory))
+    categories = cat_result.scalars().all()
+
+    for cat in categories:
+        asset_acct_id = category_mapping.get(cat.code)
+        updated = False
+        if asset_acct_id and cat.asset_account_id != asset_acct_id:
+            cat.asset_account_id = asset_acct_id
+            updated = True
+        if dep_account_id and cat.depreciation_account_id != dep_account_id:
+            cat.depreciation_account_id = dep_account_id
+            updated = True
+        if exp_account_id and cat.expense_account_id != exp_account_id:
+            cat.expense_account_id = exp_account_id
+            updated = True
+        if updated:
+            results["categories_updated"].append(f"{cat.code} - {cat.name}")
+
+    await db.flush()
+
+    # ─── Step 1d: Reverse JV-202602-0005 (duplicate auto-journal) ───
+
+    jv_r = await db.execute(
+        select(JournalEntry)
+        .options(selectinload(JournalEntry.lines))
+        .where(JournalEntry.entry_number == "JV-202602-0005")
+    )
+    bad_jv = jv_r.scalar_one_or_none()
+
+    if bad_jv and bad_jv.status != JournalStatus.REVERSED.value:
+        # Find the GL entries for this journal (these are the actual posted amounts)
+        gl_r = await db.execute(
+            select(GeneralLedger).where(GeneralLedger.journal_entry_id == bad_jv.id)
+        )
+        bad_gl_entries = gl_r.scalars().all()
+
+        # Find an open period for the reversal date (use today)
+        today = date.today()
+        period_r = await db.execute(
+            select(FinancialPeriod).where(
+                and_(
+                    FinancialPeriod.start_date <= today,
+                    FinancialPeriod.end_date >= today,
+                    FinancialPeriod.status == PeriodStatus.OPEN,
+                )
+            ).limit(1)
+        )
+        period = period_r.scalar_one_or_none()
+        if not period:
+            raise HTTPException(
+                status_code=400,
+                detail="No open financial period for today's date to post reversal"
+            )
+
+        # Generate reversal journal entry number
+        count_r = await db.execute(
+            select(func.count(JournalEntry.id)).where(
+                func.date(JournalEntry.created_at) == today
+            )
+        )
+        count = count_r.scalar() or 0
+        rev_entry_number = f"JV-{today.strftime('%Y%m%d')}-{str(count + 1).zfill(4)}"
+
+        # Create reversal journal entry
+        reversal_jv = JournalEntry(
+            id=uuid_module.uuid4(),
+            entry_number=rev_entry_number,
+            entry_type="ADJUSTMENT",
+            entry_date=today,
+            period_id=period.id,
+            narration=f"Reversal of duplicate auto-journal {bad_jv.entry_number} - ASUS Computer triple-booking fix",
+            source_type="reversal",
+            source_number=bad_jv.entry_number,
+            total_debit=bad_jv.total_debit,
+            total_credit=bad_jv.total_credit,
+            created_by=current_user.id,
+            is_reversed=False,
+            reversal_of_id=bad_jv.id,
+            status=JournalStatus.DRAFT.value,
+        )
+        db.add(reversal_jv)
+        await db.flush()
+
+        # Create reversal lines (swap debit/credit from the actual GL entries)
+        line_num = 0
+        reversal_gl_accounts = set()
+        for gl_entry in bad_gl_entries:
+            line_num += 1
+            rev_line = JournalEntryLine(
+                id=uuid_module.uuid4(),
+                journal_entry_id=reversal_jv.id,
+                line_number=line_num,
+                account_id=gl_entry.account_id,
+                debit_amount=gl_entry.credit_amount or Decimal("0"),
+                credit_amount=gl_entry.debit_amount or Decimal("0"),
+                description=f"Reversal: {gl_entry.narration or ''}",
+            )
+            db.add(rev_line)
+
+            # Create GL entry for the reversal
+            rev_gl = GeneralLedger(
+                id=uuid_module.uuid4(),
+                account_id=gl_entry.account_id,
+                period_id=period.id,
+                transaction_date=today,
+                journal_entry_id=reversal_jv.id,
+                journal_line_id=rev_line.id,
+                debit_amount=gl_entry.credit_amount or Decimal("0"),
+                credit_amount=gl_entry.debit_amount or Decimal("0"),
+                running_balance=Decimal("0"),  # Will be recalculated
+                narration=f"Reversal: {gl_entry.narration or ''}",
+            )
+            db.add(rev_gl)
+            reversal_gl_accounts.add(gl_entry.account_id)
+
+        await db.flush()
+
+        # Recalculate running balances for all affected accounts
+        for account_id in reversal_gl_accounts:
+            await recalculate_account_current_balance(db, account_id)
+
+            acct_r = await db.execute(
+                select(ChartOfAccount).where(ChartOfAccount.id == account_id)
+            )
+            account = acct_r.scalar_one()
+            opening_balance = account.opening_balance or Decimal("0")
+
+            gl_entries_r = await db.execute(
+                select(GeneralLedger)
+                .where(GeneralLedger.account_id == account_id)
+                .order_by(GeneralLedger.transaction_date, GeneralLedger.created_at)
+            )
+            all_gl = gl_entries_r.scalars().all()
+            running = opening_balance
+            for gl in all_gl:
+                running = running + (gl.debit_amount or Decimal("0")) - (gl.credit_amount or Decimal("0"))
+                gl.running_balance = running
+
+        # Mark reversal as POSTED
+        reversal_jv.status = JournalStatus.POSTED.value
+        reversal_jv.posted_by = current_user.id
+        reversal_jv.posted_at = datetime.now(timezone.utc)
+
+        # Mark original as REVERSED
+        bad_jv.status = JournalStatus.REVERSED.value
+        bad_jv.is_reversed = True
+        bad_jv.reversed_by_id = reversal_jv.id
+
+        await db.flush()
+
+        results["reversal_journal"] = {
+            "entry_number": rev_entry_number,
+            "reversed_jv": bad_jv.entry_number,
+            "amount": float(bad_jv.total_debit),
+            "accounts_affected": [
+                str(aid) for aid in reversal_gl_accounts
+            ],
+        }
+
+    elif bad_jv and bad_jv.status == JournalStatus.REVERSED.value:
+        results["reversal_journal"] = "Already reversed"
+    else:
+        results["reversal_journal"] = "JV-202602-0005 not found"
+
+    # ─── Step 1e: Create ASUS Computer asset record ───
+
+    # Check if already created (idempotent)
+    existing_asset_r = await db.execute(
+        select(Asset).where(Asset.name == "ASUS Computer")
+    )
+    existing_asset = existing_asset_r.scalar_one_or_none()
+
+    if not existing_asset:
+        # Get OFFICE_EQUIP category
+        cat_r = await db.execute(
+            select(AssetCategory).where(AssetCategory.code == "OFFICE_EQUIP")
+        )
+        office_cat = cat_r.scalar_one_or_none()
+        if not office_cat:
+            raise HTTPException(status_code=400, detail="OFFICE_EQUIP category not found")
+
+        # Get E-TRUE VALUE vendor
+        from app.models.vendor import Vendor
+        vendor_r = await db.execute(
+            select(Vendor).where(Vendor.name.ilike("%TRUE VALUE%"))
+        )
+        vendor = vendor_r.scalar_one_or_none()
+
+        # Generate asset code
+        asset_count_r = await db.execute(select(func.count(Asset.id)))
+        asset_count = asset_count_r.scalar() or 0
+        asset_code = f"FA-202512-{str(asset_count + 1).zfill(4)}"
+
+        new_asset = Asset(
+            id=uuid_module.uuid4(),
+            asset_code=asset_code,
+            name="ASUS Computer",
+            description="ASUS Computer purchased from E-TRUE VALUE",
+            category_id=office_cat.id,
+            manufacturer="ASUS",
+            purchase_date=date(2025, 12, 27),
+            purchase_price=Decimal("85593.22"),
+            purchase_invoice_no="RF/25-26/0576",
+            vendor_id=vendor.id if vendor else None,
+            capitalization_date=date(2025, 12, 27),
+            installation_cost=Decimal("0"),
+            other_costs=Decimal("0"),
+            capitalized_value=Decimal("85593.22"),
+            salvage_value=Decimal("0"),
+            accumulated_depreciation=Decimal("0"),
+            current_book_value=Decimal("85593.22"),
+            status=AssetStatus.ACTIVE.value,
+        )
+        db.add(new_asset)
+        await db.flush()
+
+        results["asset_created"] = {
+            "asset_code": asset_code,
+            "name": "ASUS Computer",
+            "purchase_price": 85593.22,
+            "category": "OFFICE_EQUIP",
+            "vendor": vendor.name if vendor else None,
+        }
+    else:
+        results["asset_created"] = f"Already exists: {existing_asset.asset_code}"
+
+    await db.commit()
+
+    return {
+        "status": "success",
+        "message": "Fixed assets data fix completed",
+        "details": results,
+    }
