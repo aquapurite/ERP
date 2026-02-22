@@ -67,7 +67,7 @@ class DealerPerformanceAgent:
         targets_result = await self.db.execute(
             select(DealerTarget.dealer_id,
                    DealerTarget.revenue_target,
-                   DealerTarget.order_target)
+                   DealerTarget.quantity_target)
             .where(and_(
                 DealerTarget.dealer_id.in_(dealer_ids),
                 DealerTarget.target_period == "MONTHLY",
@@ -76,7 +76,7 @@ class DealerPerformanceAgent:
             ))
         )
         targets = {r.dealer_id: {"revenue": float(r.revenue_target or 0),
-                                  "orders": int(r.order_target or 0)}
+                                  "orders": int(r.quantity_target or 0)}
                   for r in targets_result.fetchall()}
 
         # Get overdue ledger entries

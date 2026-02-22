@@ -5,7 +5,6 @@ Runs all 4 agents in parallel via asyncio.gather() and combines results
 into a unified command centre view with aggregated alerts.
 """
 
-import asyncio
 from datetime import datetime, timezone
 from typing import Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,18 +25,7 @@ class DMSCommandCenterAgent:
         self.db = db
 
     async def run(self) -> Dict[str, Any]:
-        # Run all agents in parallel
-        results = await asyncio.gather(
-            DealerPerformanceAgent(self.db).run(),
-            DemandSensingAgent(self.db).run(),
-            SchemeEffectivenessAgent(self.db).run(),
-            CollectionOptimizerAgent(self.db).run(),
-            return_exceptions=True,
-        )
-
-        dealer_perf, demand, schemes, collections = results
-
-        # Handle any agent failures gracefully
+        # Run agents sequentially — AsyncSession is not safe for concurrent use
         def _safe(r: Any, agent_name: str) -> Dict:
             if isinstance(r, Exception):
                 return {
@@ -49,10 +37,25 @@ class DMSCommandCenterAgent:
                 }
             return r
 
-        dealer_perf = _safe(dealer_perf, "dealer-performance")
-        demand = _safe(demand, "demand-sensing")
-        schemes = _safe(schemes, "scheme-effectiveness")
-        collections = _safe(collections, "collection-optimizer")
+        try:
+            dealer_perf = await DealerPerformanceAgent(self.db).run()
+        except Exception as e:
+            dealer_perf = _safe(e, "dealer-performance")
+
+        try:
+            demand = await DemandSensingAgent(self.db).run()
+        except Exception as e:
+            demand = _safe(e, "demand-sensing")
+
+        try:
+            schemes = await SchemeEffectivenessAgent(self.db).run()
+        except Exception as e:
+            schemes = _safe(e, "scheme-effectiveness")
+
+        try:
+            collections = await CollectionOptimizerAgent(self.db).run()
+        except Exception as e:
+            collections = _safe(e, "collection-optimizer")
 
         # Combine + deduplicate alerts (top 15), sorted by severity
         all_alerts = []
