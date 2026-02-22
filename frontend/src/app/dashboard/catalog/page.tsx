@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal, Plus, Pencil, Trash2, Package, Loader2, Barcode, Tag } from 'lucide-react';
@@ -25,10 +25,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
-import { productsApi } from '@/lib/api';
-import { Product } from '@/types';
+import { productsApi, categoriesApi } from '@/lib/api';
+import { Product, Category } from '@/types';
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('en-IN', {
@@ -45,9 +52,49 @@ export default function ProductsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
 
+  // Category filter state
+  const [categoryId, setCategoryId] = useState<string>('');
+  const [subcategoryId, setSubcategoryId] = useState<string>('');
+  const [subcategories, setSubcategories] = useState<Category[]>([]);
+  const [loadingSubcats, setLoadingSubcats] = useState(false);
+
+  // Root categories
+  const { data: rootCategories } = useQuery({
+    queryKey: ['categories-roots'],
+    queryFn: () => categoriesApi.getRoots(),
+  });
+
+  // Fetch subcategories on category change
+  const handleCategoryChange = useCallback(async (catId: string) => {
+    setCategoryId(catId);
+    setSubcategoryId('');
+    setSubcategories([]);
+    setPage(0);
+
+    if (catId) {
+      setLoadingSubcats(true);
+      try {
+        const result = await categoriesApi.getChildren(catId);
+        const items = result?.items ?? result ?? [];
+        setSubcategories(Array.isArray(items) ? items : []);
+      } catch {
+        setSubcategories([]);
+      }
+      setLoadingSubcats(false);
+    }
+  }, []);
+
+  const handleSubcategoryChange = useCallback((subId: string) => {
+    setSubcategoryId(subId);
+    setPage(0);
+  }, []);
+
+  // Use subcategory_id if selected, else category_id if selected, else no filter
+  const activeCategoryFilter = subcategoryId || categoryId || undefined;
+
   const { data, isLoading } = useQuery({
-    queryKey: ['products', page, pageSize],
-    queryFn: () => productsApi.list({ page: page + 1, size: pageSize }),
+    queryKey: ['products', page, pageSize, activeCategoryFilter],
+    queryFn: () => productsApi.list({ page: page + 1, size: pageSize, category_id: activeCategoryFilter }),
   });
 
   const deleteMutation = useMutation({
@@ -188,6 +235,57 @@ export default function ProductsPage() {
           </Button>
         }
       />
+
+      {/* Category / Subcategory Filters */}
+      <div className="flex items-center gap-3">
+        <Select
+          value={categoryId || 'all'}
+          onValueChange={(value) => handleCategoryChange(value === 'all' ? '' : value)}
+        >
+          <SelectTrigger className="w-[200px]">
+            <SelectValue placeholder="All Categories" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Categories</SelectItem>
+            {(Array.isArray(rootCategories) ? rootCategories : rootCategories?.items ?? [])
+              .filter((c: Category) => c.is_active !== false)
+              .map((c: Category) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={subcategoryId || 'all'}
+          onValueChange={(value) => handleSubcategoryChange(value === 'all' ? '' : value)}
+          disabled={!categoryId || loadingSubcats}
+        >
+          <SelectTrigger className="w-[220px]">
+            <SelectValue placeholder={loadingSubcats ? 'Loading...' : 'All Subcategories'} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Subcategories</SelectItem>
+            {subcategories
+              .filter((c: Category) => c.is_active !== false)
+              .map((c: Category) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            {categoryId && !loadingSubcats && subcategories.length === 0 && (
+              <SelectItem value="none" disabled>No subcategories</SelectItem>
+            )}
+          </SelectContent>
+        </Select>
+
+        {(categoryId || subcategoryId) && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => { setCategoryId(''); setSubcategoryId(''); setSubcategories([]); setPage(0); }}
+          >
+            Clear filters
+          </Button>
+        )}
+      </div>
 
       <DataTable
         columns={columns}
