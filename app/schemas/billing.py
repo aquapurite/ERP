@@ -131,6 +131,28 @@ class InvoiceCreate(InvoiceBase):
     generate_einvoice: bool = False
 
 
+class ManualInvoiceItemCreate(BaseModel):
+    """Simplified item schema for manual invoice creation (SUPER_ADMIN)."""
+    product_name: str = Field(..., min_length=1, max_length=300)
+    hsn_code: str = Field("84212110", min_length=4, max_length=8)
+    quantity: Decimal = Field(..., gt=0)
+    unit_price: Decimal = Field(..., gt=0)
+    tax_rate: Decimal = Field(Decimal("18"), ge=0, le=28)
+
+
+class ManualInvoiceCreate(BaseModel):
+    """Simplified schema for manual invoice creation (SUPER_ADMIN only).
+
+    Backend auto-populates customer/billing/seller details from dealer/customer + company records.
+    """
+    dealer_id: Optional[UUID] = None
+    customer_id: Optional[UUID] = None
+    invoice_date: date
+    due_date: date
+    items: List[ManualInvoiceItemCreate] = Field(..., min_length=1)
+    notes: Optional[str] = None
+
+
 class InvoiceUpdate(BaseModel):
     """Schema for updating Invoice (only draft)."""
     due_date: Optional[date] = None

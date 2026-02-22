@@ -44,7 +44,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -54,7 +56,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
-import { invoicesApi, customersApi } from '@/lib/api';
+import { invoicesApi, customersApi, dealersApi } from '@/lib/api';
 import { formatDate, formatCurrency } from '@/lib/utils';
 
 interface Invoice {
@@ -96,6 +98,14 @@ interface Customer {
   gstin?: string;
 }
 
+interface DealerItem {
+  id: string;
+  name: string;
+  legal_name?: string;
+  gstin?: string;
+  dealer_code?: string;
+}
+
 export default function InvoicesPage() {
   const { permissions } = useAuth();
   const isSuperAdmin = permissions?.is_super_admin ?? false;
@@ -108,7 +118,8 @@ export default function InvoicesPage() {
   const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [formData, setFormData] = useState({
-    customer_id: '',
+    entity_type: '' as '' | 'customer' | 'dealer',
+    entity_id: '',
     invoice_date: new Date().toISOString().split('T')[0],
     due_date: '',
     notes: '',
@@ -123,6 +134,12 @@ export default function InvoicesPage() {
   const { data: customersData } = useQuery({
     queryKey: ['customers-list'],
     queryFn: () => customersApi.list({ size: 100 }),
+  });
+
+  const { data: dealersData } = useQuery({
+    queryKey: ['dealers-dropdown-invoices'],
+    queryFn: () => dealersApi.list({ size: 100, status: 'ACTIVE' }),
+    enabled: isSuperAdmin,
   });
 
   const createMutation = useMutation({
@@ -166,7 +183,8 @@ export default function InvoicesPage() {
 
   const resetForm = () => {
     setFormData({
-      customer_id: '',
+      entity_type: '' as '' | 'customer' | 'dealer',
+      entity_id: '',
       invoice_date: new Date().toISOString().split('T')[0],
       due_date: '',
       notes: '',
@@ -220,17 +238,18 @@ export default function InvoicesPage() {
   };
 
   const handleSubmit = () => {
-    if (!formData.customer_id || !formData.invoice_date || !formData.due_date) {
-      toast.error('Customer, invoice date, and due date are required');
+    if (!formData.entity_id || !formData.invoice_date || !formData.due_date) {
+      toast.error('Customer/Dealer, invoice date, and due date are required');
       return;
     }
 
     createMutation.mutate({
-      customer_id: formData.customer_id,
+      customer_id: formData.entity_type === 'customer' ? formData.entity_id : undefined,
+      dealer_id: formData.entity_type === 'dealer' ? formData.entity_id : undefined,
       invoice_date: formData.invoice_date,
       due_date: formData.due_date,
       items: formData.items.map(item => ({
-        product_id: item.product_id || 'manual',
+        product_name: item.product_name || 'Manual Item',
         quantity: item.quantity,
         unit_price: item.unit_price,
         tax_rate: item.tax_rate,
@@ -406,6 +425,7 @@ export default function InvoicesPage() {
   ];
 
   const customers = customersData?.items ?? [];
+  const dealers = dealersData?.items ?? [];
 
   return (
     <div className="space-y-6">
@@ -427,21 +447,47 @@ export default function InvoicesPage() {
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="space-y-2">
-                  <Label>Customer *</Label>
+                  <Label>{isSuperAdmin ? 'Customer / Dealer' : 'Customer'} *</Label>
                   <Select
-                    value={formData.customer_id || 'select'}
-                    onValueChange={(value) => setFormData({ ...formData, customer_id: value === 'select' ? '' : value })}
+                    value={formData.entity_id ? `${formData.entity_type}::${formData.entity_id}` : 'select'}
+                    onValueChange={(value) => {
+                      if (value === 'select') {
+                        setFormData({ ...formData, entity_type: '', entity_id: '' });
+                      } else {
+                        const [type, id] = value.split('::');
+                        setFormData({ ...formData, entity_type: type as 'customer' | 'dealer', entity_id: id });
+                      }
+                    }}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select customer" />
+                      <SelectValue placeholder={isSuperAdmin ? 'Select customer or dealer' : 'Select customer'} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="select" disabled>Select customer</SelectItem>
-                      {customers
-                        .filter((c: Customer) => c.id && c.id.trim() !== '')
-                        .map((c: Customer) => (
-                          <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                        ))}
+                      <SelectItem value="select" disabled>{isSuperAdmin ? 'Select customer or dealer' : 'Select customer'}</SelectItem>
+                      {isSuperAdmin && dealers.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel className="text-xs font-semibold text-blue-600">Dealers</SelectLabel>
+                          {dealers
+                            .filter((d: DealerItem) => d.id && d.id.trim() !== '')
+                            .map((d: DealerItem) => (
+                              <SelectItem key={`dealer-${d.id}`} value={`dealer::${d.id}`}>
+                                {d.name} {d.gstin ? `(${d.gstin})` : ''}
+                              </SelectItem>
+                            ))}
+                        </SelectGroup>
+                      )}
+                      {customers.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel className="text-xs font-semibold text-green-600">Customers</SelectLabel>
+                          {customers
+                            .filter((c: Customer) => c.id && c.id.trim() !== '')
+                            .map((c: Customer) => (
+                              <SelectItem key={`customer-${c.id}`} value={`customer::${c.id}`}>
+                                {c.name}
+                              </SelectItem>
+                            ))}
+                        </SelectGroup>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>

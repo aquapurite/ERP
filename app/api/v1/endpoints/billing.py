@@ -23,7 +23,7 @@ from app.models.user import User
 from app.schemas.billing import (
     # TaxInvoice
     InvoiceCreate, InvoiceUpdate, InvoiceResponse, InvoiceBrief, InvoiceListResponse,
-    InvoiceItemCreate,
+    InvoiceItemCreate, ManualInvoiceCreate,
     # Credit/Debit Note
     CreditDebitNoteCreate, CreditDebitNoteResponse, CreditDebitNoteListResponse,
     # E-Way Bill
@@ -35,7 +35,7 @@ from app.schemas.billing import (
     # E-Invoice/E-Way Bill Operations
     IRNCancelRequest, PartBUpdateRequest, EWBCancelRequest, EWBExtendRequest,
 )
-from app.api.deps import DB, CurrentUser, get_current_user, require_permissions
+from app.api.deps import DB, CurrentUser, get_current_user, require_permissions, Permissions
 from app.services.audit_service import AuditService
 from app.services.gst_einvoice_service import GSTEInvoiceService, GSTEInvoiceError
 from app.services.gst_ewaybill_service import GSTEWayBillService, GSTEWayBillError
@@ -333,6 +333,317 @@ async def create_invoice(
         logging.warning(f"Failed to post accounting entry for invoice {invoice.invoice_number}: {e}")
 
     # Load full invoice
+    result = await db.execute(
+        select(TaxInvoice)
+        .options(selectinload(TaxInvoice.items))
+        .where(TaxInvoice.id == invoice.id)
+    )
+    invoice = result.scalar_one()
+
+    return invoice
+
+
+@router.post("/invoices/manual", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
+async def create_manual_invoice(
+    invoice_in: ManualInvoiceCreate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    permissions: Permissions = None,
+):
+    """Create a manual invoice (SUPER_ADMIN only).
+
+    Accepts simplified input (dealer_id/customer_id + items) and auto-populates
+    all GST-required fields from dealer/customer + company records.
+    Intended as a fallback when auto-trigger (Goods Issue) fails.
+    """
+    # SUPER_ADMIN gate
+    if not permissions or not permissions.is_super_admin():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only SUPER_ADMIN can create manual invoices. Regular invoices auto-generate via Goods Issue.",
+        )
+
+    if not invoice_in.dealer_id and not invoice_in.customer_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Either dealer_id or customer_id is required.",
+        )
+
+    # --- Look up company (seller) details ---
+    company_result = await db.execute(
+        select(Company).where(Company.is_primary == True).limit(1)
+    )
+    company = company_result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=400, detail="No primary company configured.")
+
+    seller_state_code = company.state_code or "09"
+
+    # --- Look up customer / dealer details ---
+    customer_name = ""
+    customer_gstin = None
+    billing_address_line1 = ""
+    billing_address_line2 = None
+    billing_city = ""
+    billing_state = ""
+    billing_state_code = "09"
+    billing_pincode = "000000"
+    dealer_id_for_ledger = None
+
+    if invoice_in.dealer_id:
+        dealer = await db.get(Dealer, invoice_in.dealer_id)
+        if not dealer:
+            raise HTTPException(status_code=404, detail="Dealer not found.")
+        customer_name = dealer.legal_name or dealer.name
+        customer_gstin = dealer.gstin
+        billing_address_line1 = dealer.registered_address_line1 or ""
+        billing_address_line2 = getattr(dealer, 'registered_address_line2', None)
+        billing_city = dealer.registered_city or ""
+        billing_state = dealer.registered_state or ""
+        billing_state_code = dealer.registered_state_code or "09"
+        billing_pincode = dealer.registered_pincode or "000000"
+        dealer_id_for_ledger = dealer.id
+    elif invoice_in.customer_id:
+        cust = await db.get(Customer, invoice_in.customer_id)
+        if not cust:
+            raise HTTPException(status_code=404, detail="Customer not found.")
+        customer_name = f"{cust.first_name or ''} {cust.last_name or ''}".strip() or "Customer"
+        customer_gstin = getattr(cust, 'gst_number', None)
+        # Try to get address from customer
+        billing_address_line1 = getattr(cust, 'address_line1', None) or getattr(cust, 'address', None) or ""
+        billing_city = getattr(cust, 'city', None) or ""
+        billing_state = getattr(cust, 'state', None) or ""
+        billing_state_code = getattr(cust, 'state_code', None) or seller_state_code
+        billing_pincode = getattr(cust, 'pincode', None) or "000000"
+
+    # Determine inter/intra state
+    is_inter_state = billing_state_code != seller_state_code
+    place_of_supply_code = billing_state_code
+
+    # GST state code to name mapping
+    GST_STATE_CODES = {
+        "01": "Jammu & Kashmir", "02": "Himachal Pradesh", "03": "Punjab",
+        "04": "Chandigarh", "05": "Uttarakhand", "06": "Haryana",
+        "07": "Delhi", "08": "Rajasthan", "09": "Uttar Pradesh",
+        "10": "Bihar", "11": "Sikkim", "12": "Arunachal Pradesh",
+        "13": "Nagaland", "14": "Manipur", "15": "Mizoram",
+        "16": "Tripura", "17": "Meghalaya", "18": "Assam",
+        "19": "West Bengal", "20": "Jharkhand", "21": "Odisha",
+        "22": "Chhattisgarh", "23": "Madhya Pradesh", "24": "Gujarat",
+        "26": "Dadra & Nagar Haveli", "27": "Maharashtra",
+        "29": "Karnataka", "30": "Goa", "32": "Kerala",
+        "33": "Tamil Nadu", "36": "Telangana", "37": "Andhra Pradesh",
+    }
+    place_of_supply = billing_state or GST_STATE_CODES.get(place_of_supply_code, "")
+
+    # --- Generate invoice number ---
+    series_code = "INV"
+    from datetime import datetime as dt
+    now = dt.now(timezone.utc)
+    if now.month >= 4:
+        financial_year = f"{now.year}-{str(now.year + 1)[2:]}"
+    else:
+        financial_year = f"{now.year - 1}-{str(now.year)[2:]}"
+
+    sequence_result = await db.execute(
+        select(InvoiceNumberSequence).where(
+            and_(
+                InvoiceNumberSequence.series_code == series_code,
+                InvoiceNumberSequence.financial_year == financial_year,
+                InvoiceNumberSequence.is_active == True,
+            )
+        )
+    )
+    sequence = sequence_result.scalar_one_or_none()
+
+    if not sequence:
+        sequence = InvoiceNumberSequence(
+            series_code=series_code,
+            series_name="TAX_INVOICE Series",
+            financial_year=financial_year,
+            prefix=f"{series_code}/{financial_year}/",
+            current_number=0,
+        )
+        db.add(sequence)
+        await db.flush()
+
+    sequence.current_number += 1
+    invoice_number = f"{sequence.prefix}{str(sequence.current_number).zfill(sequence.padding_length)}"
+
+    # --- Create invoice ---
+    invoice = TaxInvoice(
+        invoice_number=invoice_number,
+        invoice_type=InvoiceType.TAX_INVOICE,
+        status=InvoiceStatus.GENERATED.value if hasattr(InvoiceStatus, 'GENERATED') else "GENERATED",
+        invoice_date=invoice_in.invoice_date,
+        due_date=invoice_in.due_date,
+        generation_trigger="MANUAL_SUPER_ADMIN",
+        customer_id=invoice_in.customer_id,
+        customer_name=customer_name,
+        customer_gstin=customer_gstin,
+        billing_address_line1=billing_address_line1 or "N/A",
+        billing_address_line2=billing_address_line2,
+        billing_city=billing_city or "N/A",
+        billing_state=billing_state or place_of_supply,
+        billing_state_code=billing_state_code,
+        billing_pincode=billing_pincode,
+        shipping_address_line1=billing_address_line1 or "N/A",
+        shipping_address_line2=billing_address_line2,
+        shipping_city=billing_city or "N/A",
+        shipping_state=billing_state or place_of_supply,
+        shipping_state_code=billing_state_code,
+        shipping_pincode=billing_pincode,
+        seller_gstin=company.gstin,
+        seller_name=company.trade_name or company.legal_name,
+        seller_address=company.full_address,
+        seller_state_code=seller_state_code,
+        place_of_supply=place_of_supply,
+        place_of_supply_code=place_of_supply_code,
+        is_interstate=is_inter_state,
+        is_reverse_charge=False,
+        shipping_charges=Decimal("0"),
+        packaging_charges=Decimal("0"),
+        installation_charges=Decimal("0"),
+        other_charges=Decimal("0"),
+        payment_due_days=30,
+        internal_notes=f"Manual invoice created by SUPER_ADMIN. {invoice_in.notes or ''}".strip(),
+        customer_notes=invoice_in.notes,
+        created_by=current_user.id,
+        subtotal=Decimal("0"),
+        discount_amount=Decimal("0"),
+        taxable_amount=Decimal("0"),
+        cgst_amount=Decimal("0"),
+        sgst_amount=Decimal("0"),
+        igst_amount=Decimal("0"),
+        cess_amount=Decimal("0"),
+        total_tax=Decimal("0"),
+        grand_total=Decimal("0"),
+        amount_paid=Decimal("0"),
+        amount_due=Decimal("0"),
+    )
+    db.add(invoice)
+    await db.flush()
+
+    # --- Create items and calculate totals ---
+    subtotal = Decimal("0")
+    taxable_amount = Decimal("0")
+    cgst_total = Decimal("0")
+    sgst_total = Decimal("0")
+    igst_total = Decimal("0")
+
+    for item_data in invoice_in.items:
+        gross_amount = item_data.quantity * item_data.unit_price
+        item_taxable = gross_amount  # No discount for manual invoices
+
+        gst_rate = item_data.tax_rate
+        if is_inter_state:
+            igst_rate = gst_rate
+            cgst_rate = Decimal("0")
+            sgst_rate = Decimal("0")
+        else:
+            igst_rate = Decimal("0")
+            cgst_rate = gst_rate / 2
+            sgst_rate = gst_rate / 2
+
+        cgst_amount = item_taxable * (cgst_rate / 100)
+        sgst_amount = item_taxable * (sgst_rate / 100)
+        igst_amount = item_taxable * (igst_rate / 100)
+        item_total_tax = cgst_amount + sgst_amount + igst_amount
+        item_total = item_taxable + item_total_tax
+
+        item = InvoiceItem(
+            invoice_id=invoice.id,
+            sku="MANUAL",
+            item_name=item_data.product_name,
+            hsn_code=item_data.hsn_code,
+            is_service=False,
+            quantity=item_data.quantity,
+            uom="NOS",
+            unit_price=item_data.unit_price,
+            discount_percentage=Decimal("0"),
+            discount_amount=Decimal("0"),
+            taxable_value=item_taxable,
+            gst_rate=gst_rate,
+            cgst_rate=cgst_rate,
+            sgst_rate=sgst_rate,
+            igst_rate=igst_rate,
+            cgst_amount=cgst_amount,
+            sgst_amount=sgst_amount,
+            igst_amount=igst_amount,
+            cess_rate=Decimal("0"),
+            cess_amount=Decimal("0"),
+            total_tax=item_total_tax,
+            line_total=item_total,
+        )
+        db.add(item)
+
+        subtotal += gross_amount
+        taxable_amount += item_taxable
+        cgst_total += cgst_amount
+        sgst_total += sgst_amount
+        igst_total += igst_amount
+
+    total_tax = cgst_total + sgst_total + igst_total
+    grand_total = taxable_amount + total_tax
+    round_off = round(grand_total) - grand_total
+    grand_total = round(grand_total)
+
+    invoice.subtotal = subtotal
+    invoice.discount_amount = Decimal("0")
+    invoice.taxable_amount = taxable_amount
+    invoice.cgst_amount = cgst_total
+    invoice.sgst_amount = sgst_total
+    invoice.igst_amount = igst_total
+    invoice.cess_amount = Decimal("0")
+    invoice.total_tax = total_tax
+    invoice.round_off = round_off
+    invoice.grand_total = grand_total
+    invoice.amount_due = grand_total
+
+    # --- Dealer outstanding + credit ledger ---
+    if dealer_id_for_ledger:
+        from app.models.dealer import DealerCreditLedger
+        dealer = await db.get(Dealer, dealer_id_for_ledger)
+        if dealer:
+            dealer.outstanding_amount = (dealer.outstanding_amount or Decimal("0")) + grand_total
+
+            ledger_entry = DealerCreditLedger(
+                dealer_id=dealer_id_for_ledger,
+                transaction_type="INVOICE",
+                transaction_date=invoice_in.invoice_date,
+                reference_type="INVOICE",
+                reference_number=invoice_number,
+                reference_id=invoice.id,
+                debit_amount=grand_total,
+                credit_amount=Decimal("0"),
+                balance=dealer.outstanding_amount,
+                remarks=f"Manual invoice {invoice_number}",
+            )
+            db.add(ledger_entry)
+
+    await db.commit()
+
+    # Post accounting entry
+    try:
+        from app.services.accounting_service import AccountingService
+        accounting = AccountingService(db)
+        await accounting.post_sales_invoice(
+            invoice_id=invoice.id,
+            customer_name=customer_name,
+            subtotal=taxable_amount,
+            cgst=cgst_total,
+            sgst=sgst_total,
+            igst=igst_total,
+            total=grand_total,
+            is_interstate=is_inter_state,
+            product_type="purifier",
+        )
+        await db.commit()
+    except Exception as e:
+        import logging
+        logging.warning(f"Failed to post accounting for manual invoice {invoice_number}: {e}")
+
+    # Load full invoice with items
     result = await db.execute(
         select(TaxInvoice)
         .options(selectinload(TaxInvoice.items))
