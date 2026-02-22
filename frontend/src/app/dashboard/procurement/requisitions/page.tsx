@@ -367,25 +367,6 @@ export default function PurchaseRequisitionsPage() {
     return categories.filter((c: any) => c.parent_id === editSelectedProductLine);
   }, [categories, editSelectedProductLine]);
 
-  // Filtered products for edit dialog
-  const editFilteredProducts = useMemo(() => {
-    if (editSelectedProductLine === 'all') return allProducts;
-    const subcatIds = categories
-      .filter((c: any) => c.parent_id === editSelectedProductLine)
-      .map((c: any) => c.id);
-    const validIds = [editSelectedProductLine, ...subcatIds];
-    if (editSelectedSubcategoryId !== 'all') {
-      return allProducts.filter((p: any) => {
-        const pcId = p.category_id || p.category?.id;
-        return pcId === editSelectedSubcategoryId;
-      });
-    }
-    return allProducts.filter((p: any) => {
-      const pcId = p.category_id || p.category?.id;
-      return validIds.includes(pcId);
-    });
-  }, [allProducts, editSelectedProductLine, editSelectedSubcategoryId, categories]);
-
   const { data: vendorsData } = useQuery({
     queryKey: ['vendors-dropdown-active'],
     queryFn: () => vendorsApi.getDropdown(),
@@ -421,6 +402,25 @@ export default function PurchaseRequisitionsPage() {
       return validIds.includes(productCategoryId);
     });
   }, [allProducts, selectedProductLine, selectedSubcategoryId, categories]);
+
+  // Filtered products for edit dialog
+  const editFilteredProducts = useMemo(() => {
+    if (editSelectedProductLine === 'all') return allProducts;
+    const subcatIds = categories
+      .filter((c: any) => c.parent_id === editSelectedProductLine)
+      .map((c: any) => c.id);
+    const validIds = [editSelectedProductLine, ...subcatIds];
+    if (editSelectedSubcategoryId !== 'all') {
+      return allProducts.filter((p: any) => {
+        const pcId = p.category_id || p.category?.id;
+        return pcId === editSelectedSubcategoryId;
+      });
+    }
+    return allProducts.filter((p: any) => {
+      const pcId = p.category_id || p.category?.id;
+      return validIds.includes(pcId);
+    });
+  }, [allProducts, editSelectedProductLine, editSelectedSubcategoryId, categories]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['purchase-requisitions', page, pageSize, statusFilter],
@@ -543,7 +543,7 @@ export default function PurchaseRequisitionsPage() {
       setSelectedPR(null);
       setEditPRData({ required_by_date: '', priority: 5, reason: '', notes: '', delivery_type: 'WAREHOUSE', delivery_warehouse_id: '', delivery_address: undefined, items: [] });
       setEditNewItem({ product_id: '', quantity: 1, estimated_price: 0 });
-      setEditSelectedCategoryId('all');
+      setEditSelectedProductLine('all'); setEditSelectedSubcategoryId('all');
     },
     onError: (error: Error) => toast.error(error.message || 'Failed to update PR'),
   });
@@ -1881,7 +1881,7 @@ export default function PurchaseRequisitionsPage() {
           setSelectedPR(null);
           setEditPRData({ required_by_date: '', priority: 5, reason: '', notes: '', delivery_type: 'WAREHOUSE', delivery_warehouse_id: '', delivery_address: undefined, items: [] });
           setEditNewItem({ product_id: '', quantity: 1, estimated_price: 0 });
-          setEditSelectedCategoryId('all');
+          setEditSelectedProductLine('all'); setEditSelectedSubcategoryId('all');
         }
       }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -2233,7 +2233,7 @@ export default function PurchaseRequisitionsPage() {
                 setSelectedPR(null);
                 setEditPRData({ required_by_date: '', priority: 5, reason: '', notes: '', delivery_type: 'WAREHOUSE', delivery_warehouse_id: '', delivery_address: undefined, items: [] });
                 setEditNewItem({ product_id: '', quantity: 1, estimated_price: 0 });
-                setEditSelectedCategoryId('all');
+                setEditSelectedProductLine('all'); setEditSelectedSubcategoryId('all');
               }}
             >
               Cancel
