@@ -476,7 +476,7 @@ export default function ExpensesPage() {
                 </DropdownMenuItem>
               </>
             )}
-            {!['APPROVED', 'POSTED', 'PAID'].includes(row.original.status) && (
+            {row.original.status === 'DRAFT' && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
