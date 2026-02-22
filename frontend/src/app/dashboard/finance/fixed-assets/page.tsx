@@ -185,6 +185,10 @@ export default function FixedAssetsPage() {
   const [selectedCapex, setSelectedCapex] = useState<CapexRequest | null>(null);
   const [capexRejectionReason, setCapexRejectionReason] = useState('');
 
+  // Location type state for asset create dialog
+  const [locationType, setLocationType] = useState<string>('WAREHOUSE');
+  const [manualAddress, setManualAddress] = useState({ name: '', address_line1: '', address_line2: '', city: '', state: '', pincode: '' });
+
   const queryClient = useQueryClient();
 
   // Queries
@@ -268,6 +272,8 @@ export default function FixedAssetsPage() {
       queryClient.invalidateQueries({ queryKey: ['fixed-assets'] });
       queryClient.invalidateQueries({ queryKey: ['fixed-assets-dashboard'] });
       setAssetDialogOpen(false);
+      setLocationType('WAREHOUSE');
+      setManualAddress({ name: '', address_line1: '', address_line2: '', city: '', state: '', pincode: '' });
       toast.success('Asset created successfully');
     },
     onError: () => {
@@ -417,19 +423,26 @@ export default function FixedAssetsPage() {
   const handleCreateAsset = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    createAssetMutation.mutate({
+    const payload: Record<string, unknown> = {
       name: formData.get('name') as string,
       description: formData.get('description') as string || undefined,
       category_id: formData.get('category_id') as string,
       serial_number: formData.get('serial_number') as string || undefined,
       manufacturer: formData.get('manufacturer') as string || undefined,
-      warehouse_id: formData.get('warehouse_id') as string || undefined,
       department_id: formData.get('department_id') as string || undefined,
       purchase_date: formData.get('purchase_date') as string,
       purchase_price: parseFloat(formData.get('purchase_price') as string),
       capitalization_date: formData.get('capitalization_date') as string,
       salvage_value: parseFloat(formData.get('salvage_value') as string) || 0,
-    });
+      location_type: locationType,
+    };
+    if (locationType === 'WAREHOUSE') {
+      payload.warehouse_id = formData.get('warehouse_id') as string || undefined;
+    } else {
+      payload.warehouse_id = undefined;
+      payload.location_address = manualAddress;
+    }
+    createAssetMutation.mutate(payload as any);
   };
 
   const handleRunDepreciation = (e: React.FormEvent<HTMLFormElement>) => {
@@ -781,15 +794,16 @@ export default function FixedAssetsPage() {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="warehouse_id">Warehouse</Label>
-                        <Select name="warehouse_id">
+                        <Label>Location Type</Label>
+                        <Select value={locationType} onValueChange={(v) => setLocationType(v)}>
                           <SelectTrigger>
-                            <SelectValue placeholder="Select warehouse" />
+                            <SelectValue placeholder="Select location type" />
                           </SelectTrigger>
                           <SelectContent>
-                            {warehouses?.map((wh) => (
-                              <SelectItem key={wh.id} value={wh.id}>{wh.name}</SelectItem>
-                            ))}
+                            <SelectItem value="WAREHOUSE">Warehouse</SelectItem>
+                            <SelectItem value="OFFICE">Office</SelectItem>
+                            <SelectItem value="BRANCH">Branch</SelectItem>
+                            <SelectItem value="OTHER">Other</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -807,6 +821,39 @@ export default function FixedAssetsPage() {
                         </Select>
                       </div>
                     </div>
+                    {locationType === 'WAREHOUSE' ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="warehouse_id">Warehouse</Label>
+                        <Select name="warehouse_id">
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select warehouse" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {warehouses?.map((wh) => (
+                              <SelectItem key={wh.id} value={wh.id}>{wh.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : (
+                      <div className="border rounded-lg p-4 space-y-3">
+                        <Label className="text-sm font-medium">Location Address</Label>
+                        <div className="space-y-2">
+                          <Input placeholder="Location Name *" value={manualAddress.name} onChange={(e) => setManualAddress(prev => ({ ...prev, name: e.target.value }))} required />
+                        </div>
+                        <div className="space-y-2">
+                          <Input placeholder="Address Line 1" value={manualAddress.address_line1} onChange={(e) => setManualAddress(prev => ({ ...prev, address_line1: e.target.value }))} />
+                        </div>
+                        <div className="space-y-2">
+                          <Input placeholder="Address Line 2" value={manualAddress.address_line2} onChange={(e) => setManualAddress(prev => ({ ...prev, address_line2: e.target.value }))} />
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                          <Input placeholder="City" value={manualAddress.city} onChange={(e) => setManualAddress(prev => ({ ...prev, city: e.target.value }))} />
+                          <Input placeholder="State" value={manualAddress.state} onChange={(e) => setManualAddress(prev => ({ ...prev, state: e.target.value }))} />
+                          <Input placeholder="Pincode" value={manualAddress.pincode} onChange={(e) => setManualAddress(prev => ({ ...prev, pincode: e.target.value }))} />
+                        </div>
+                      </div>
+                    )}
                     <div className="grid grid-cols-3 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="purchase_date">Purchase Date *</Label>
@@ -877,7 +924,11 @@ export default function FixedAssetsPage() {
                         <TableCell className="font-mono">{asset.asset_code}</TableCell>
                         <TableCell className="font-medium">{asset.name}</TableCell>
                         <TableCell>{asset.category_name}</TableCell>
-                        <TableCell>{asset.warehouse_name || asset.department_name || '-'}</TableCell>
+                        <TableCell>
+                          {asset.location_type && asset.location_type !== 'WAREHOUSE'
+                            ? <span className="text-xs"><Badge variant="outline" className="mr-1">{asset.location_type}</Badge>{asset.warehouse_name || '-'}</span>
+                            : (asset.warehouse_name || asset.department_name || '-')}
+                        </TableCell>
                         <TableCell className="text-right">{formatCurrency(asset.purchase_price)}</TableCell>
                         <TableCell className="text-right">{formatCurrency(asset.current_book_value)}</TableCell>
                         <TableCell>{getStatusBadge(asset.status)}</TableCell>

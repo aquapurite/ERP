@@ -87,6 +87,8 @@ class AssetBase(BaseModel):
 
     # Location
     warehouse_id: Optional[UUID] = None
+    location_type: str = "WAREHOUSE"
+    location_address: Optional[dict] = None
     location_details: Optional[str] = Field(None, max_length=200)
     custodian_employee_id: Optional[UUID] = None
     department_id: Optional[UUID] = None
@@ -138,6 +140,8 @@ class AssetUpdate(BaseModel):
     manufacturer: Optional[str] = Field(None, max_length=100)
 
     warehouse_id: Optional[UUID] = None
+    location_type: Optional[str] = None
+    location_address: Optional[dict] = None
     location_details: Optional[str] = Field(None, max_length=200)
     custodian_employee_id: Optional[UUID] = None
     department_id: Optional[UUID] = None
@@ -171,6 +175,7 @@ class AssetResponse(BaseResponseSchema):
     serial_number: Optional[str] = None
     manufacturer: Optional[str] = None
 
+    location_type: str = "WAREHOUSE"
     warehouse_name: Optional[str] = None
     department_name: Optional[str] = None
     custodian_name: Optional[str] = None
@@ -190,6 +195,8 @@ class AssetDetailResponse(AssetResponse):
     """Detailed response schema for Asset."""
     model_number: Optional[str] = None
     warehouse_id: Optional[UUID] = None
+    location_type: str = "WAREHOUSE"
+    location_address: Optional[dict] = None
     location_details: Optional[str] = None
     custodian_employee_id: Optional[UUID] = None
     department_id: Optional[UUID] = None

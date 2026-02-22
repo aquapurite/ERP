@@ -336,6 +336,14 @@ async def list_assets(
 
     items = []
     for asset in assets:
+        # For non-warehouse types, show location_address name as warehouse_name
+        display_warehouse_name = None
+        if asset.location_type != "WAREHOUSE" and asset.location_address:
+            addr = asset.location_address
+            parts = [addr.get("name", "")]
+            if addr.get("city"):
+                parts.append(addr["city"])
+            display_warehouse_name = ", ".join(p for p in parts if p)
         items.append(AssetResponse(
             id=asset.id,
             asset_code=asset.asset_code,
@@ -345,7 +353,8 @@ async def list_assets(
             category_name=asset.category.name if asset.category else None,
             serial_number=asset.serial_number,
             manufacturer=asset.manufacturer,
-            warehouse_name=None,  # Would need join
+            location_type=asset.location_type or "WAREHOUSE",
+            warehouse_name=display_warehouse_name,  # Would need join for warehouse type
             department_name=None,  # Would need join
             custodian_name=None,  # Would need join
             purchase_date=asset.purchase_date,
@@ -386,6 +395,10 @@ async def create_asset(
     # Calculate capitalized value
     capitalized_value = asset_in.purchase_price + asset_in.installation_cost + asset_in.other_costs
 
+    # If location type is not WAREHOUSE, clear warehouse_id
+    effective_warehouse_id = asset_in.warehouse_id if asset_in.location_type == "WAREHOUSE" else None
+    effective_location_address = asset_in.location_address if asset_in.location_type != "WAREHOUSE" else None
+
     asset = Asset(
         asset_code=asset_code,
         name=asset_in.name,
@@ -394,7 +407,9 @@ async def create_asset(
         serial_number=asset_in.serial_number,
         model_number=asset_in.model_number,
         manufacturer=asset_in.manufacturer,
-        warehouse_id=asset_in.warehouse_id,
+        warehouse_id=effective_warehouse_id,
+        location_type=asset_in.location_type,
+        location_address=effective_location_address,
         location_details=asset_in.location_details,
         custodian_employee_id=asset_in.custodian_employee_id,
         department_id=asset_in.department_id,
@@ -439,6 +454,8 @@ async def create_asset(
         model_number=asset.model_number,
         manufacturer=asset.manufacturer,
         warehouse_id=asset.warehouse_id,
+        location_type=asset.location_type or "WAREHOUSE",
+        location_address=asset.location_address,
         location_details=asset.location_details,
         custodian_employee_id=asset.custodian_employee_id,
         department_id=asset.department_id,
@@ -503,6 +520,8 @@ async def get_asset(
         model_number=asset.model_number,
         manufacturer=asset.manufacturer,
         warehouse_id=asset.warehouse_id,
+        location_type=asset.location_type or "WAREHOUSE",
+        location_address=asset.location_address,
         location_details=asset.location_details,
         custodian_employee_id=asset.custodian_employee_id,
         department_id=asset.department_id,
@@ -564,6 +583,14 @@ async def update_asset(
         )
 
     update_data = asset_in.model_dump(exclude_unset=True)
+
+    # If location_type changed, enforce consistency
+    new_location_type = update_data.get("location_type", asset.location_type)
+    if new_location_type == "WAREHOUSE":
+        update_data.pop("location_address", None)
+    else:
+        update_data["warehouse_id"] = None
+
     for key, value in update_data.items():
         setattr(asset, key, value)
 
@@ -581,6 +608,8 @@ async def update_asset(
         model_number=asset.model_number,
         manufacturer=asset.manufacturer,
         warehouse_id=asset.warehouse_id,
+        location_type=asset.location_type or "WAREHOUSE",
+        location_address=asset.location_address,
         location_details=asset.location_details,
         custodian_employee_id=asset.custodian_employee_id,
         department_id=asset.department_id,
@@ -670,6 +699,8 @@ async def dispose_asset(
         model_number=asset.model_number,
         manufacturer=asset.manufacturer,
         warehouse_id=asset.warehouse_id,
+        location_type=asset.location_type or "WAREHOUSE",
+        location_address=asset.location_address,
         location_details=asset.location_details,
         custodian_employee_id=asset.custodian_employee_id,
         department_id=asset.department_id,

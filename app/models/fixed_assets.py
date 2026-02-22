@@ -189,6 +189,17 @@ class Asset(Base):
         nullable=True,
         comment="Current location warehouse"
     )
+    location_type: Mapped[str] = mapped_column(
+        String(20),
+        default="WAREHOUSE",
+        nullable=False,
+        comment="WAREHOUSE, OFFICE, BRANCH, OTHER"
+    )
+    location_address: Mapped[Optional[dict]] = mapped_column(
+        JSONB,
+        nullable=True,
+        comment="Address for non-warehouse locations: {name, address_line1, address_line2, city, state, pincode}"
+    )
     location_details: Mapped[Optional[str]] = mapped_column(
         String(200),
         nullable=True,

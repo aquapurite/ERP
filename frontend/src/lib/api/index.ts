@@ -3959,6 +3959,8 @@ export interface Asset {
   model_number: string | null;
   manufacturer: string | null;
   warehouse_id: string | null;
+  location_type: string;
+  location_address: Record<string, string> | null;
   warehouse_name: string | null;
   location_details: string | null;
   custodian_employee_id: string | null;
