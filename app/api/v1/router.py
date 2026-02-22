@@ -125,6 +125,8 @@ from app.api.v1.endpoints import (
     dashboard_charts,
     # Community Partners (Meesho-style)
     partners,
+    # DMS AI Intelligence
+    dms_ai,
 )
 
 
@@ -617,4 +619,11 @@ api_router.include_router(
 api_router.include_router(
     partners.router,
     tags=["Community Partners"]
+)
+
+# ==================== DMS AI Intelligence ====================
+api_router.include_router(
+    dms_ai.router,
+    prefix="/dms-ai",
+    tags=["DMS AI Intelligence"]
 )

@@ -157,6 +157,11 @@ export const navigation: NavItem[] = [
       { title: '── AI Agents & More ──', href: '#', permissions: [] },
       { title: 'Churn Risk Analysis', href: '/dashboard/insights/churn-risk', icon: AlertTriangle, permissions: [] },
       { title: 'Campaigns', href: '/dashboard/marketing/campaigns', icon: Megaphone, permissions: ['MARKETING_VIEW'] },
+
+      // -------- DMS INTELLIGENCE --------
+      { title: '── DMS Intelligence ──', href: '#', permissions: [] },
+      { title: 'DMS Command Centre', href: '/dashboard/distribution/ai/command-center', icon: Brain, permissions: [], badge: 'NEW' },
+      { title: 'DMS AI Chat', href: '/dashboard/distribution/ai/chat', icon: MessageSquare, permissions: [] },
     ],
   },
 

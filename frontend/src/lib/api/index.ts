@@ -6842,4 +6842,49 @@ export const partnersApi = {
   },
 };
 
+// ==================== DMS AI Intelligence ====================
+export const dmsAiApi = {
+  /** Run all 4 DMS AI agents in parallel — unified command centre view */
+  getCommandCenter: async () => {
+    const { data } = await apiClient.get('/dms-ai/command-center');
+    return data;
+  },
+
+  /** DMS Dealer Performance Agent — scoring & severity */
+  getDealerPerformance: async () => {
+    const { data } = await apiClient.get('/dms-ai/dealer-performance');
+    return data;
+  },
+
+  /** DMS Demand Sensing Agent — forecasting & anomaly detection */
+  getDemandSensing: async () => {
+    const { data } = await apiClient.get('/dms-ai/demand-sensing');
+    return data;
+  },
+
+  /** DMS Scheme Effectiveness Agent — ROI & recommendations */
+  getSchemeEffectiveness: async () => {
+    const { data } = await apiClient.get('/dms-ai/scheme-effectiveness');
+    return data;
+  },
+
+  /** DMS Collection Optimizer Agent — aging buckets & priority list */
+  getCollectionOptimizer: async () => {
+    const { data } = await apiClient.get('/dms-ai/collection-optimizer');
+    return data;
+  },
+
+  /** DMS AI Chatbot — natural language DMS queries */
+  chat: async (message: string) => {
+    const { data } = await apiClient.post('/dms-ai/chat', { message });
+    return data as {
+      query: string;
+      intent: string;
+      confidence: number;
+      response: { type: string; text: string; data: unknown[]; summary?: Record<string, number> };
+      timestamp: string;
+    };
+  },
+};
+
 export default apiClient;
