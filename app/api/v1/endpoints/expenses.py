@@ -32,6 +32,23 @@ from app.schemas.expense import (
 router = APIRouter(tags=["Expenses"])
 
 
+async def _load_voucher_for_response(db: DB, voucher_id: uuid.UUID) -> ExpenseVoucher:
+    """Re-fetch voucher with eagerly loaded relationships for serialization."""
+    result = await db.execute(
+        select(ExpenseVoucher)
+        .options(selectinload(ExpenseVoucher.category))
+        .where(ExpenseVoucher.id == voucher_id)
+    )
+    voucher = result.scalar_one()
+    # Populate journal_entry_number if linked
+    if voucher.journal_entry_id:
+        je_result = await db.execute(
+            select(JournalEntry.entry_number).where(JournalEntry.id == voucher.journal_entry_id)
+        )
+        voucher.journal_entry_number = je_result.scalar()  # type: ignore[attr-defined]
+    return voucher
+
+
 # ==================== EXPENSE CATEGORIES ====================
 
 @router.get("/categories")
@@ -282,8 +299,7 @@ async def create_expense_voucher(
     
     db.add(voucher)
     await db.commit()
-    await db.refresh(voucher)
-    return voucher
+    return await _load_voucher_for_response(db, voucher.id)
 
 
 @router.get("/{voucher_id}", response_model=ExpenseVoucherResponse)
@@ -379,10 +395,9 @@ async def submit_expense_voucher(
     voucher.status = "PENDING_APPROVAL"
     voucher.submitted_by = current_user.id
     voucher.submitted_at = datetime.now(timezone.utc)
-    
+
     await db.commit()
-    await db.refresh(voucher)
-    return voucher
+    return await _load_voucher_for_response(db, voucher.id)
 
 
 @router.post("/{voucher_id}/approve", response_model=ExpenseVoucherResponse,
@@ -417,10 +432,9 @@ async def approve_expense_voucher(
     voucher.approved_by = current_user.id
     voucher.approved_at = datetime.now(timezone.utc)
     voucher.approval_level = approval_level
-    
+
     await db.commit()
-    await db.refresh(voucher)
-    return voucher
+    return await _load_voucher_for_response(db, voucher.id)
 
 
 @router.post("/{voucher_id}/reject", response_model=ExpenseVoucherResponse,
@@ -443,10 +457,9 @@ async def reject_expense_voucher(
     voucher.rejected_by = current_user.id
     voucher.rejected_at = datetime.now(timezone.utc)
     voucher.rejection_reason = data.reason
-    
+
     await db.commit()
-    await db.refresh(voucher)
-    return voucher
+    return await _load_voucher_for_response(db, voucher.id)
 
 
 @router.post("/{voucher_id}/post", response_model=ExpenseVoucherResponse,
@@ -499,8 +512,7 @@ async def post_expense_voucher(
     voucher.posted_at = datetime.now(timezone.utc)
 
     await db.commit()
-    await db.refresh(voucher)
-    return voucher
+    return await _load_voucher_for_response(db, voucher.id)
 
 
 @router.post("/{voucher_id}/pay", response_model=ExpenseVoucherResponse,
@@ -522,10 +534,9 @@ async def mark_expense_paid(
     voucher.status = "PAID"
     voucher.paid_at = data.paid_at or datetime.now(timezone.utc)
     voucher.payment_reference = data.payment_reference
-    
+
     await db.commit()
-    await db.refresh(voucher)
-    return voucher
+    return await _load_voucher_for_response(db, voucher.id)
 
 
 # ==================== DASHBOARD ====================
