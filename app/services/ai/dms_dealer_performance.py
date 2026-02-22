@@ -11,7 +11,7 @@ Scores dealers on:
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Dict, List, Any, Optional
-from sqlalchemy import select, func, and_, text
+from sqlalchemy import select, func, and_, text, extract
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dealer import Dealer, DealerTarget, DealerCreditLedger
@@ -96,17 +96,29 @@ class DealerPerformanceAgent:
                                        "avg_days": float(r.avg_days or 0)}
                        for r in overdue_result.fetchall()}
 
-        # Get 6-month revenue trend
+        # Get 6-month revenue trend — use extract() to avoid date_trunc GROUP BY issues
         trend_result = await self.db.execute(
-            select(Order.dealer_id,
-                   func.date_trunc('month', Order.created_at).label("month"),
-                   func.sum(Order.total_amount).label("revenue"))
+            select(
+                Order.dealer_id,
+                extract('year', Order.created_at).label("year"),
+                extract('month', Order.created_at).label("month"),
+                func.sum(Order.total_amount).label("revenue"),
+            )
             .where(and_(
                 Order.dealer_id.in_(dealer_ids),
                 func.date(Order.created_at) >= six_months_ago,
                 Order.status.notin_(["CANCELLED"])
             ))
-            .group_by(Order.dealer_id, func.date_trunc('month', Order.created_at))
+            .group_by(
+                Order.dealer_id,
+                extract('year', Order.created_at),
+                extract('month', Order.created_at),
+            )
+            .order_by(
+                Order.dealer_id,
+                extract('year', Order.created_at),
+                extract('month', Order.created_at),
+            )
         )
         trend_rows = trend_result.fetchall()
         trend_by_dealer: Dict = {}
