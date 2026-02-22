@@ -468,6 +468,8 @@ class AutoJournalService:
             source_id=receipt_id,
             source_number=receipt.receipt_number,
             narration=f"Payment received via {receipt.payment_mode}",
+            total_debit=receipt.amount,
+            total_credit=receipt.amount,
             status=JournalEntryStatus.DRAFT.value,
             created_by=user_id,
         )
