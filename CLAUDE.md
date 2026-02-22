@@ -921,6 +921,33 @@ Finance > Invoices. They must auto-generate via the manifest Goods Issue flow.
 PROFORMA and DELIVERY_CHALLAN types can still be created manually.
 File: `app/api/v1/endpoints/billing.py` → `create_invoice()`
 
+### Dealer vs Customer: Invoice & Payment Support Matrix
+
+| Page / Feature | Customer Support | Dealer Support | How Dealers Work |
+|----------------|-----------------|----------------|------------------|
+| **Invoice Creation** (manual) | YES — customer dropdown | NO — intentional | Dealer invoices auto-generate via Goods Issue |
+| **Invoice List** (`GET /invoices`) | YES — `customer_id` filter | YES — `dealer_id` filter | Joins through `orders.dealer_id` (TaxInvoice has no `dealer_id` column) |
+| **Payment Receipts** (record) | YES — customer dropdown | YES — dealer dropdown | Combined grouped dropdown with `entity_type` (customer/dealer) |
+| **Payment Receipts** (list) | YES — `customer_name` shown | YES — `dealer_name` shown | Backend populates names from `customers`, `dealers`, or `tax_invoices.customer_name` |
+| **Dealer Credit Ledger** | N/A | YES — auto-populated | `DealerCreditLedger` entry created on payment receipt, `outstanding_amount` decreased |
+
+**Key Architecture Decisions:**
+- `TaxInvoice` table has NO `dealer_id` column. Dealer invoices are linked via `order_id → orders.dealer_id`.
+- `payment_receipts` table HAS `dealer_id` column (added Feb 2026). `invoice_id` is nullable (supports advance payments).
+- Invoice creation for dealers is blocked by P0 Guard (SAP auto-trigger). NEVER add dealer dropdown to invoice creation form.
+- Payment receipt creation supports both `dealer_id` and `customer_id`. The `customer_id` references `customers` table (NOT `users` table).
+
+**Relevant Files:**
+| Layer | File |
+|-------|------|
+| Invoice creation guard | `app/api/v1/endpoints/billing.py` → `create_invoice()` |
+| Invoice dealer filter | `app/api/v1/endpoints/billing.py` → `list_invoices()` (joins Order) |
+| Receipt dealer support | `app/api/v1/endpoints/billing.py` → `create_payment_receipt()` |
+| Receipt name population | `app/api/v1/endpoints/billing.py` → `list_payment_receipts()` |
+| Frontend receipts UI | `frontend/src/app/dashboard/billing/receipts/page.tsx` |
+| Frontend API client | `frontend/src/lib/api/index.ts` → `receiptsApi`, `invoicesApi` |
+| Dealer credit ledger model | `app/models/dealer.py` → `DealerCreditLedger` |
+
 ### Procurement Flow (P2P)
 
 ```
