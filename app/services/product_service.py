@@ -225,7 +225,17 @@ class ProductService:
         filters = []
 
         if category_id:
-            filters.append(Product.category_id == category_id)
+            # Check if this category is a parent — if so, include all child category products
+            child_ids_result = await self.db.execute(
+                select(Category.id).where(Category.parent_id == category_id)
+            )
+            child_ids = [row[0] for row in child_ids_result.fetchall()]
+            if child_ids:
+                # Parent category — match products in any child subcategory
+                filters.append(Product.category_id.in_([category_id] + child_ids))
+            else:
+                # Leaf category — direct match
+                filters.append(Product.category_id == category_id)
 
         if brand_id:
             filters.append(Product.brand_id == brand_id)
