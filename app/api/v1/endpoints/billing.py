@@ -1916,9 +1916,9 @@ async def list_payment_receipts(
     if invoice_id:
         filters.append(PaymentReceipt.invoice_id == invoice_id)
     if start_date:
-        filters.append(PaymentReceipt.receipt_date >= start_date)
+        filters.append(PaymentReceipt.payment_date >= start_date)
     if end_date:
-        filters.append(PaymentReceipt.receipt_date <= end_date)
+        filters.append(PaymentReceipt.payment_date <= end_date)
 
     if filters:
         query = query.where(and_(*filters))
@@ -1931,7 +1931,7 @@ async def list_payment_receipts(
     total_amount_result = await db.execute(amount_query)
     total_amount = total_amount_result.scalar() or Decimal("0")
 
-    query = query.order_by(PaymentReceipt.receipt_date.desc()).offset(skip).limit(limit)
+    query = query.order_by(PaymentReceipt.payment_date.desc()).offset(skip).limit(limit)
     result = await db.execute(query)
     receipts = result.scalars().all()
 

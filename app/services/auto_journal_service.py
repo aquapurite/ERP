@@ -462,7 +462,7 @@ class AutoJournalService:
         journal = JournalEntry(
             entry_type="RECEIPT",
             entry_number=f"JV-REC-{receipt.receipt_number}",
-            entry_date=receipt.receipt_date,
+            entry_date=receipt.payment_date,
             period_id=period.id,
             source_type="PaymentReceipt",
             source_id=receipt_id,

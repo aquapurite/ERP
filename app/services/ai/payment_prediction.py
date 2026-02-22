@@ -49,7 +49,7 @@ class PaymentPredictionService:
             Invoice.due_date,
             Invoice.total_amount,
             Invoice.status,
-            PaymentReceipt.receipt_date,
+            PaymentReceipt.payment_date,
             PaymentReceipt.amount
         ).outerjoin(
             Receipt, PaymentReceipt.invoice_id == Invoice.id
@@ -88,12 +88,12 @@ class PaymentPredictionService:
             total_invoices += 1
             total_value += first_payment.total_amount or Decimal('0')
 
-            if first_payment.receipt_date:
+            if first_payment.payment_date:
                 paid_invoices += 1
 
                 # Calculate days to payment
                 invoice_date = first_payment.invoice_date
-                payment_date = first_payment.receipt_date
+                payment_date = first_payment.payment_date
                 due_date = first_payment.due_date
 
                 if isinstance(invoice_date, datetime):
