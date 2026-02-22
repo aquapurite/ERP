@@ -251,13 +251,17 @@ export default function ChannelPricingPage() {
     setFormData(prev => ({ ...prev, product_id: '', mrp: 0, selling_price: 0 })); // Reset product
   };
 
-  // Fetch pricing for selected channel (filtered by product if selected)
+  // Use subcategory if selected, else parent category for filtering
+  const activeCategoryFilter = subcategoryId || parentCategoryId || undefined;
+
+  // Fetch pricing for selected channel (filtered by product/category if selected)
   const { data: pricingData, isLoading } = useQuery({
-    queryKey: ['channel-pricing', selectedChannelId, selectedProductId, page, pageSize],
+    queryKey: ['channel-pricing', selectedChannelId, selectedProductId, activeCategoryFilter, page, pageSize],
     queryFn: () => channelsApi.pricing.list(selectedChannelId, {
       skip: page * pageSize,
       limit: pageSize,
       product_id: selectedProductId || undefined,
+      category_id: activeCategoryFilter,
     }),
     enabled: !!selectedChannelId,
   });

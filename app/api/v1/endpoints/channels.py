@@ -17,6 +17,7 @@ from app.models.channel import (
     PricingRuleType,
 )
 from app.models.product import Product
+from app.models.category import Category
 from app.models.warehouse import Warehouse
 from app.models.user import User
 from app.schemas.channel import (
@@ -798,6 +799,7 @@ async def get_channel_pricing(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     product_id: Optional[UUID] = None,
+    category_id: Optional[UUID] = None,
     is_active: bool = True,
     current_user: User = Depends(get_current_user),
 ):
@@ -815,6 +817,20 @@ async def get_channel_pricing(
     if product_id:
         query = query.where(ChannelPricing.product_id == product_id)
         count_query = count_query.where(ChannelPricing.product_id == product_id)
+    if category_id:
+        # Include products in this category AND its child categories
+        child_ids_result = await db.execute(
+            select(Category.id).where(Category.parent_id == category_id)
+        )
+        child_ids = [row[0] for row in child_ids_result.fetchall()]
+        all_category_ids = [category_id] + child_ids
+        # Join with Product to filter by category
+        query = query.join(Product, ChannelPricing.product_id == Product.id).where(
+            Product.category_id.in_(all_category_ids)
+        )
+        count_query = count_query.join(Product, ChannelPricing.product_id == Product.id).where(
+            Product.category_id.in_(all_category_ids)
+        )
     if is_active is not None:
         query = query.where(ChannelPricing.is_active == is_active)
         count_query = count_query.where(ChannelPricing.is_active == is_active)

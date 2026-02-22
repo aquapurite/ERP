@@ -599,7 +599,7 @@ export const channelsApi = {
 
   // Channel Pricing
   pricing: {
-    list: async (channelId: string, params?: { skip?: number; limit?: number; product_id?: string; is_active?: boolean }) => {
+    list: async (channelId: string, params?: { skip?: number; limit?: number; product_id?: string; category_id?: string; is_active?: boolean }) => {
       const { data } = await apiClient.get(`/channels/${channelId}/pricing`, { params });
       return data;
     },
