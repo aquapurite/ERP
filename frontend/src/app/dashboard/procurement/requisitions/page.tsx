@@ -59,8 +59,10 @@ interface PurchaseRequisition {
   requested_by: string;  // UUID
   requested_by_name?: string;  // Computed name from backend
   requesting_department?: string;  // Backend field name
+  delivery_type?: string;
   delivery_warehouse_id: string;
   delivery_warehouse_name?: string;  // Computed name from backend
+  delivery_address?: DeliveryAddress;
   status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CONVERTED' | 'CANCELLED';
   priority: number;  // Backend uses 1-10 scale
   estimated_total: number;  // Backend field name
@@ -1014,10 +1016,20 @@ export default function PurchaseRequisitionsPage() {
     },
     {
       accessorKey: 'delivery_warehouse_name',
-      header: 'Warehouse',
-      cell: ({ row }) => (
-        <span className="text-sm">{row.original.delivery_warehouse_name || '-'}</span>
-      ),
+      header: 'Delivery To',
+      cell: ({ row }) => {
+        const pr = row.original;
+        if (pr.delivery_type === 'DIRECT' && pr.delivery_address) {
+          const addr = pr.delivery_address;
+          return (
+            <div className="text-sm">
+              <div className="font-medium">{addr.deliver_to || addr.contact_person || 'Direct Address'}</div>
+              <div className="text-muted-foreground">{[addr.city, addr.state].filter(Boolean).join(', ')}</div>
+            </div>
+          );
+        }
+        return <span className="text-sm">{pr.delivery_warehouse_name || '-'}</span>;
+      },
     },
     {
       accessorKey: 'priority',
