@@ -1321,11 +1321,11 @@ async def get_fixed_assets_dashboard(
 
     # Category-wise distribution
     category_result = await db.execute(
-        select(AssetCategory.name, func.count(Asset.id))
+        select(AssetCategory.name, func.count(Asset.id), func.coalesce(func.sum(Asset.current_book_value), 0))
         .outerjoin(Asset, and_(Asset.category_id == AssetCategory.id, Asset.status == AssetStatus.ACTIVE))
         .group_by(AssetCategory.id)
     )
-    category_wise = [{"category": name, "count": count or 0} for name, count in category_result.all()]
+    category_wise = [{"category_name": name, "count": count or 0, "book_value": float(book_val)} for name, count, book_val in category_result.all()]
 
     # Warranty expiring in 30 days
     thirty_days_later = date.today()
