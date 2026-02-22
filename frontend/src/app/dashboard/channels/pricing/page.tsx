@@ -440,7 +440,7 @@ export default function ChannelPricingPage() {
     setSelectedPricing(pricing);
     setFormData({
       product_id: pricing.product_id,
-      mrp: pricing.mrp,
+      mrp: pricing.master_mrp || pricing.mrp,
       selling_price: pricing.selling_price,
       transfer_price: pricing.transfer_price || 0,
       discount_percentage: pricing.discount_percentage || 0,
@@ -524,7 +524,7 @@ export default function ChannelPricingPage() {
       id: item.pricing_id,
       channel_id: selectedChannelId,
       product_id: item.product_id,
-      mrp: item.channel_mrp || item.master_mrp,
+      mrp: item.master_mrp,
       selling_price: item.selling_price || 0,
       transfer_price: item.transfer_price,
       discount_percentage: item.discount_percentage,
@@ -538,7 +538,7 @@ export default function ChannelPricingPage() {
     setDialogSubcategoryId(subcategoryId);
     setFormData({
       product_id: item.product_id,
-      mrp: item.channel_mrp || item.master_mrp,
+      mrp: item.master_mrp,
       selling_price: item.selling_price || 0,
       transfer_price: item.transfer_price || 0,
       discount_percentage: item.discount_percentage || 0,
