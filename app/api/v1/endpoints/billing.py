@@ -1810,21 +1810,27 @@ async def create_payment_receipt(
     count = count_result.scalar() or 0
     receipt_number = f"RCP-{today.strftime('%Y%m%d')}-{str(count + 1).zfill(4)}"
 
+    tds_amount = receipt_in.amount * (receipt_in.tds_rate / 100) if receipt_in.tds_applicable and receipt_in.tds_rate else None
+    net_amount = receipt_in.amount - (tds_amount or 0)
+
     receipt = PaymentReceipt(
         receipt_number=receipt_number,
-        receipt_date=receipt_in.receipt_date,
+        payment_date=receipt_in.payment_date,
         invoice_id=receipt_in.invoice_id,
         customer_id=invoice.customer_id,
-        dealer_id=invoice.dealer_id,
         amount=receipt_in.amount,
         payment_mode=receipt_in.payment_mode,
-        payment_reference=receipt_in.payment_reference,
+        transaction_reference=receipt_in.transaction_reference,
         bank_name=receipt_in.bank_name,
+        bank_branch=receipt_in.bank_branch,
         cheque_number=receipt_in.cheque_number,
         cheque_date=receipt_in.cheque_date,
-        transaction_id=receipt_in.transaction_id,
-        narration=receipt_in.narration,
-        received_by=current_user.id,
+        tds_applicable=receipt_in.tds_applicable,
+        tds_rate=receipt_in.tds_rate,
+        tds_amount=tds_amount,
+        tds_section=receipt_in.tds_section,
+        net_amount=net_amount,
+        remarks=receipt_in.remarks,
         created_by=current_user.id,
     )
 
