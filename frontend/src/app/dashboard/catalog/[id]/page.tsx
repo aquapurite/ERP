@@ -1197,7 +1197,7 @@ export default function ProductDetailPage() {
                     </div>
                   </div>
                   <Button variant="outline" className="w-full" asChild>
-                    <Link href={`/dashboard/catalog/${productId}/pricing`}>
+                    <Link href="/dashboard/channels/pricing">
                       <ExternalLink className="mr-2 h-4 w-4" />
                       Manage Channel Pricing
                     </Link>
