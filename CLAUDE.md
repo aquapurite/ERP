@@ -925,27 +925,32 @@ File: `app/api/v1/endpoints/billing.py` → `create_invoice()`
 
 | Page / Feature | Customer Support | Dealer Support | How Dealers Work |
 |----------------|-----------------|----------------|------------------|
-| **Invoice Creation** (manual) | YES — customer dropdown | NO — intentional | Dealer invoices auto-generate via Goods Issue |
+| **Invoice Creation** (manual) | YES — customer dropdown | YES — SUPER_ADMIN only | `POST /billing/invoices/manual` auto-populates GST fields from dealer record |
+| **Invoice Creation** (auto) | Via Goods Issue | Via Goods Issue (P0) | Auto-trigger from manifest confirmation remains primary flow |
 | **Invoice List** (`GET /invoices`) | YES — `customer_id` filter | YES — `dealer_id` filter | Joins through `orders.dealer_id` (TaxInvoice has no `dealer_id` column) |
 | **Payment Receipts** (record) | YES — customer dropdown | YES — dealer dropdown | Combined grouped dropdown with `entity_type` (customer/dealer) |
 | **Payment Receipts** (list) | YES — `customer_name` shown | YES — `dealer_name` shown | Backend populates names from `customers`, `dealers`, or `tax_invoices.customer_name` |
-| **Dealer Credit Ledger** | N/A | YES — auto-populated | `DealerCreditLedger` entry created on payment receipt, `outstanding_amount` decreased |
+| **Dealer Credit Ledger** | N/A | YES — auto-populated | Entries created on both invoice creation (DEBIT) and payment receipt (CREDIT) |
 
 **Key Architecture Decisions:**
 - `TaxInvoice` table has NO `dealer_id` column. Dealer invoices are linked via `order_id → orders.dealer_id`.
 - `payment_receipts` table HAS `dealer_id` column (added Feb 2026). `invoice_id` is nullable (supports advance payments).
-- Invoice creation for dealers is blocked by P0 Guard (SAP auto-trigger). NEVER add dealer dropdown to invoice creation form.
+- P0 Guard on `create_invoice()` blocks manual TAX_INVOICE when `order_id` is provided (SAP auto-trigger).
+- `create_manual_invoice()` is the SUPER_ADMIN fallback — uses `ManualInvoiceCreate` schema, auto-populates seller/billing details from company/dealer records, tagged with `generation_trigger=MANUAL_SUPER_ADMIN`.
 - Payment receipt creation supports both `dealer_id` and `customer_id`. The `customer_id` references `customers` table (NOT `users` table).
 
 **Relevant Files:**
 | Layer | File |
 |-------|------|
 | Invoice creation guard | `app/api/v1/endpoints/billing.py` → `create_invoice()` |
+| Manual invoice (SUPER_ADMIN) | `app/api/v1/endpoints/billing.py` → `create_manual_invoice()` |
 | Invoice dealer filter | `app/api/v1/endpoints/billing.py` → `list_invoices()` (joins Order) |
 | Receipt dealer support | `app/api/v1/endpoints/billing.py` → `create_payment_receipt()` |
 | Receipt name population | `app/api/v1/endpoints/billing.py` → `list_payment_receipts()` |
+| Frontend invoices UI | `frontend/src/app/dashboard/billing/invoices/page.tsx` |
 | Frontend receipts UI | `frontend/src/app/dashboard/billing/receipts/page.tsx` |
 | Frontend API client | `frontend/src/lib/api/index.ts` → `receiptsApi`, `invoicesApi` |
+| Schemas | `app/schemas/billing.py` → `ManualInvoiceCreate`, `ManualInvoiceItemCreate` |
 | Dealer credit ledger model | `app/models/dealer.py` → `DealerCreditLedger` |
 
 ### Procurement Flow (P2P)
