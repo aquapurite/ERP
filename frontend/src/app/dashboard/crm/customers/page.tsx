@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, User, Phone, Mail, MapPin, ShoppingBag, Wrench, Shield } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, User, Phone, Mail, MapPin, ShoppingBag, Wrench, Shield, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -57,6 +57,7 @@ export default function CustomersPage() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [deleteCustomer, setDeleteCustomer] = useState<Customer | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -94,6 +95,18 @@ export default function CustomersPage() {
     },
     onError: () => {
       toast.error('Failed to create customer');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => customersApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      setDeleteCustomer(null);
+      toast.success('Customer deleted successfully');
+    },
+    onError: () => {
+      toast.error('Failed to delete customer');
     },
   });
 
@@ -217,6 +230,14 @@ export default function CustomersPage() {
               <Shield className="mr-2 h-4 w-4" />
               AMC Contracts
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={() => setDeleteCustomer(row.original)}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -249,6 +270,30 @@ export default function CustomersPage() {
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deleteCustomer} onOpenChange={() => setDeleteCustomer(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Customer</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>{deleteCustomer?.name}</strong>? This will deactivate the customer record.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteCustomer(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteCustomer && deleteMutation.mutate(deleteCustomer.id)}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create Customer Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>

@@ -460,6 +460,9 @@ export const customersApi = {
     const { data } = await apiClient.get<PaginatedResponse<Customer>>('/customers', { params: { search: phone, size: 10 } });
     return data.items;
   },
+  delete: async (id: string) => {
+    await apiClient.delete(`/customers/${id}`);
+  },
   getByPhone: async (phone: string) => {
     try {
       const { data } = await apiClient.get<Customer>(`/customers/phone/${encodeURIComponent(phone)}`);
