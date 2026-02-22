@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, Download, FileText, Send, Loader2, Shield, XCircle, Printer, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, Download, FileText, Send, Loader2, Shield, XCircle, Printer, Trash2, Package, AlertTriangle, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/providers/auth-provider';
 import { Button } from '@/components/ui/button';
@@ -50,14 +50,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
-import { invoicesApi, customersApi, dealersApi } from '@/lib/api';
+import { invoicesApi, customersApi, dealersApi, warehousesApi, productsApi, inventoryApi } from '@/lib/api';
 import { formatDate, formatCurrency } from '@/lib/utils';
+import type { Product } from '@/types';
 
 interface Invoice {
   id: string;
@@ -106,6 +108,16 @@ interface DealerItem {
   dealer_code?: string;
 }
 
+interface FormItem {
+  product_id: string;
+  product_name: string;
+  hsn_code: string;
+  quantity: number;
+  unit_price: number;
+  tax_rate: number;
+  available_stock: number | null;
+}
+
 export default function InvoicesPage() {
   const { permissions } = useAuth();
   const isSuperAdmin = permissions?.is_super_admin ?? false;
@@ -117,13 +129,22 @@ export default function InvoicesPage() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+
+  // Product search state
+  const [productSearchTerms, setProductSearchTerms] = useState<Record<number, string>>({});
+  const [activeSearchIndex, setActiveSearchIndex] = useState<number | null>(null);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
   const [formData, setFormData] = useState({
     entity_type: '' as '' | 'customer' | 'dealer',
     entity_id: '',
+    warehouse_id: '',
     invoice_date: new Date().toISOString().split('T')[0],
     due_date: '',
     notes: '',
-    items: [{ product_id: '', product_name: '', quantity: 1, unit_price: 0, tax_rate: 18 }],
+    items: [{ product_id: '', product_name: '', hsn_code: '84212110', quantity: 1, unit_price: 0, tax_rate: 18, available_stock: null as number | null }] as FormItem[],
   });
 
   const { data, isLoading } = useQuery({
@@ -141,6 +162,101 @@ export default function InvoicesPage() {
     queryFn: () => dealersApi.list({ size: 100, status: 'ACTIVE' }),
     enabled: isSuperAdmin,
   });
+
+  const { data: warehousesDropdown } = useQuery({
+    queryKey: ['warehouses-dropdown'],
+    queryFn: () => warehousesApi.dropdown(),
+  });
+
+  const { data: productSearchResults } = useQuery({
+    queryKey: ['products-search', debouncedSearchTerm],
+    queryFn: () => productsApi.list({ search: debouncedSearchTerm, size: 10, is_active: true }),
+    enabled: debouncedSearchTerm.length >= 2,
+  });
+
+  // Debounce product search
+  const handleProductSearchChange = useCallback((index: number, value: string) => {
+    setProductSearchTerms(prev => ({ ...prev, [index]: value }));
+    setActiveSearchIndex(index);
+
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      setDebouncedSearchTerm(value);
+    }, 300);
+  }, []);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setActiveSearchIndex(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Fetch stock for a product in the selected warehouse
+  const fetchStockForProduct = useCallback(async (productId: string, index: number, warehouseId?: string) => {
+    const wId = warehouseId || formData.warehouse_id;
+    if (!wId || !productId) return;
+    try {
+      const result = await inventoryApi.getInventorySummaryList({ warehouse_id: wId, product_id: productId, size: 1 });
+      const items = result?.items ?? [];
+      const available = items.length > 0 ? ((items[0].available_quantity ?? 0) - (items[0].reserved_quantity ?? 0)) : 0;
+      setFormData(prev => {
+        const newItems = [...prev.items];
+        if (newItems[index]) {
+          newItems[index] = { ...newItems[index], available_stock: available };
+        }
+        return { ...prev, items: newItems };
+      });
+    } catch {
+      // Silently fail stock check
+    }
+  }, [formData.warehouse_id]);
+
+  // Handle product select from search dropdown
+  const handleProductSelect = useCallback((index: number, product: Product) => {
+    const isDealer = formData.entity_type === 'dealer';
+    const price = isDealer && product.dealer_price ? product.dealer_price : (product.selling_price || product.mrp || 0);
+
+    setFormData(prev => {
+      const newItems = [...prev.items];
+      newItems[index] = {
+        ...newItems[index],
+        product_id: product.id,
+        product_name: product.name,
+        hsn_code: product.hsn_code || '84212110',
+        unit_price: price,
+        tax_rate: product.gst_rate || 18,
+        available_stock: null,
+      };
+      return { ...prev, items: newItems };
+    });
+
+    setProductSearchTerms(prev => ({ ...prev, [index]: '' }));
+    setActiveSearchIndex(null);
+    setDebouncedSearchTerm('');
+
+    // Fetch stock
+    if (formData.warehouse_id) {
+      fetchStockForProduct(product.id, index);
+    }
+  }, [formData.entity_type, formData.warehouse_id, fetchStockForProduct]);
+
+  // Handle warehouse change — re-fetch stock for all items
+  const handleWarehouseChange = useCallback((warehouseId: string) => {
+    setFormData(prev => ({ ...prev, warehouse_id: warehouseId }));
+    // Re-fetch stock for all items that have a product_id
+    formData.items.forEach((item, index) => {
+      if (item.product_id) {
+        fetchStockForProduct(item.product_id, index, warehouseId);
+      }
+    });
+  }, [formData.items, fetchStockForProduct]);
 
   const createMutation = useMutation({
     mutationFn: invoicesApi.create,
@@ -185,11 +301,15 @@ export default function InvoicesPage() {
     setFormData({
       entity_type: '' as '' | 'customer' | 'dealer',
       entity_id: '',
+      warehouse_id: '',
       invoice_date: new Date().toISOString().split('T')[0],
       due_date: '',
       notes: '',
-      items: [{ product_id: '', product_name: '', quantity: 1, unit_price: 0, tax_rate: 18 }],
+      items: [{ product_id: '', product_name: '', hsn_code: '84212110', quantity: 1, unit_price: 0, tax_rate: 18, available_stock: null }],
     });
+    setProductSearchTerms({});
+    setActiveSearchIndex(null);
+    setDebouncedSearchTerm('');
     setIsDialogOpen(false);
   };
 
@@ -205,7 +325,6 @@ export default function InvoicesPage() {
 
   const handleDownload = async (invoice: Invoice) => {
     try {
-      // Fetch HTML with auth token, then open in new tab
       const htmlContent = await invoicesApi.download(invoice.id);
       const blob = new Blob([htmlContent], { type: 'text/html' });
       const url = window.URL.createObjectURL(blob);
@@ -221,7 +340,6 @@ export default function InvoicesPage() {
 
   const handlePrint = async (invoice: Invoice) => {
     try {
-      // Fetch HTML with auth token, then open in new tab for printing
       const htmlContent = await invoicesApi.download(invoice.id);
       const blob = new Blob([htmlContent], { type: 'text/html' });
       const url = window.URL.createObjectURL(blob);
@@ -242,14 +360,25 @@ export default function InvoicesPage() {
       toast.error('Customer/Dealer, invoice date, and due date are required');
       return;
     }
+    if (!formData.warehouse_id) {
+      toast.error('Warehouse is required');
+      return;
+    }
+    if (formData.items.some(item => !item.unit_price || item.unit_price <= 0)) {
+      toast.error('All items must have a price greater than 0');
+      return;
+    }
 
     createMutation.mutate({
       customer_id: formData.entity_type === 'customer' ? formData.entity_id : undefined,
       dealer_id: formData.entity_type === 'dealer' ? formData.entity_id : undefined,
+      warehouse_id: formData.warehouse_id,
       invoice_date: formData.invoice_date,
       due_date: formData.due_date,
       items: formData.items.map(item => ({
+        product_id: item.product_id || undefined,
         product_name: item.product_name || 'Manual Item',
+        hsn_code: item.hsn_code || '84212110',
         quantity: item.quantity,
         unit_price: item.unit_price,
         tax_rate: item.tax_rate,
@@ -261,7 +390,7 @@ export default function InvoicesPage() {
   const addItem = () => {
     setFormData({
       ...formData,
-      items: [...formData.items, { product_id: '', product_name: '', quantity: 1, unit_price: 0, tax_rate: 18 }],
+      items: [...formData.items, { product_id: '', product_name: '', hsn_code: '84212110', quantity: 1, unit_price: 0, tax_rate: 18, available_stock: null }],
     });
   };
 
@@ -277,8 +406,41 @@ export default function InvoicesPage() {
         ...formData,
         items: formData.items.filter((_, i) => i !== index),
       });
+      // Clean up search term for removed index
+      setProductSearchTerms(prev => {
+        const next = { ...prev };
+        delete next[index];
+        return next;
+      });
     }
   };
+
+  // GST preview calculations
+  const gstPreview = useMemo(() => {
+    let subtotal = 0;
+    let totalTax = 0;
+    const taxBreakdown: Record<number, { taxable: number; tax: number }> = {};
+
+    for (const item of formData.items) {
+      const lineSubtotal = item.quantity * item.unit_price;
+      const lineTax = lineSubtotal * (item.tax_rate / 100);
+      subtotal += lineSubtotal;
+      totalTax += lineTax;
+
+      if (!taxBreakdown[item.tax_rate]) {
+        taxBreakdown[item.tax_rate] = { taxable: 0, tax: 0 };
+      }
+      taxBreakdown[item.tax_rate].taxable += lineSubtotal;
+      taxBreakdown[item.tax_rate].tax += lineTax;
+    }
+
+    return {
+      subtotal,
+      totalTax,
+      grandTotal: subtotal + totalTax,
+      taxBreakdown,
+    };
+  }, [formData.items]);
 
   const columns: ColumnDef<Invoice>[] = [
     {
@@ -426,6 +588,7 @@ export default function InvoicesPage() {
 
   const customers = customersData?.items ?? [];
   const dealers = dealersData?.items ?? [];
+  const warehouses = warehousesDropdown ?? [];
 
   return (
     <div className="space-y-6">
@@ -440,57 +603,93 @@ export default function InvoicesPage() {
                 Create Invoice
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Create Invoice</DialogTitle>
-                <DialogDescription>Create a new sales invoice</DialogDescription>
+                <DialogDescription>Create a new sales invoice with product lookup and stock check</DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
-                <div className="space-y-2">
-                  <Label>{isSuperAdmin ? 'Customer / Dealer' : 'Customer'} *</Label>
-                  <Select
-                    value={formData.entity_id ? `${formData.entity_type}::${formData.entity_id}` : 'select'}
-                    onValueChange={(value) => {
-                      if (value === 'select') {
-                        setFormData({ ...formData, entity_type: '', entity_id: '' });
-                      } else {
-                        const [type, id] = value.split('::');
-                        setFormData({ ...formData, entity_type: type as 'customer' | 'dealer', entity_id: id });
-                      }
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={isSuperAdmin ? 'Select customer or dealer' : 'Select customer'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="select" disabled>{isSuperAdmin ? 'Select customer or dealer' : 'Select customer'}</SelectItem>
-                      {isSuperAdmin && dealers.length > 0 && (
-                        <SelectGroup>
-                          <SelectLabel className="text-xs font-semibold text-blue-600">Dealers</SelectLabel>
-                          {dealers
-                            .filter((d: DealerItem) => d.id && d.id.trim() !== '')
-                            .map((d: DealerItem) => (
-                              <SelectItem key={`dealer-${d.id}`} value={`dealer::${d.id}`}>
-                                {d.name} {d.gstin ? `(${d.gstin})` : ''}
-                              </SelectItem>
-                            ))}
-                        </SelectGroup>
-                      )}
-                      {customers.length > 0 && (
-                        <SelectGroup>
-                          <SelectLabel className="text-xs font-semibold text-green-600">Customers</SelectLabel>
-                          {customers
-                            .filter((c: Customer) => c.id && c.id.trim() !== '')
-                            .map((c: Customer) => (
-                              <SelectItem key={`customer-${c.id}`} value={`customer::${c.id}`}>
-                                {c.name}
-                              </SelectItem>
-                            ))}
-                        </SelectGroup>
-                      )}
-                    </SelectContent>
-                  </Select>
+                {/* Row 1: Customer/Dealer + Warehouse */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>{isSuperAdmin ? 'Customer / Dealer' : 'Customer'} *</Label>
+                    <Select
+                      value={formData.entity_id ? `${formData.entity_type}::${formData.entity_id}` : 'select'}
+                      onValueChange={(value) => {
+                        if (value === 'select') {
+                          setFormData(prev => ({ ...prev, entity_type: '', entity_id: '' }));
+                        } else {
+                          const [type, id] = value.split('::');
+                          setFormData(prev => {
+                            // Reset item prices when switching entity type
+                            const newItems = prev.items.map(item => ({
+                              ...item,
+                              // Prices will be recalculated on next product select
+                            }));
+                            return { ...prev, entity_type: type as 'customer' | 'dealer', entity_id: id, items: newItems };
+                          });
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={isSuperAdmin ? 'Select customer or dealer' : 'Select customer'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="select" disabled>{isSuperAdmin ? 'Select customer or dealer' : 'Select customer'}</SelectItem>
+                        {isSuperAdmin && dealers.length > 0 && (
+                          <SelectGroup>
+                            <SelectLabel className="text-xs font-semibold text-blue-600">Dealers</SelectLabel>
+                            {dealers
+                              .filter((d: DealerItem) => d.id && d.id.trim() !== '')
+                              .map((d: DealerItem) => (
+                                <SelectItem key={`dealer-${d.id}`} value={`dealer::${d.id}`}>
+                                  {d.name} {d.gstin ? `(${d.gstin})` : ''}
+                                </SelectItem>
+                              ))}
+                          </SelectGroup>
+                        )}
+                        {customers.length > 0 && (
+                          <SelectGroup>
+                            <SelectLabel className="text-xs font-semibold text-green-600">Customers</SelectLabel>
+                            {customers
+                              .filter((c: Customer) => c.id && c.id.trim() !== '')
+                              .map((c: Customer) => (
+                                <SelectItem key={`customer-${c.id}`} value={`customer::${c.id}`}>
+                                  {c.name}
+                                </SelectItem>
+                              ))}
+                          </SelectGroup>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Warehouse *</Label>
+                    <Select
+                      value={formData.warehouse_id || 'select'}
+                      onValueChange={(value) => {
+                        if (value === 'select') return;
+                        handleWarehouseChange(value);
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select warehouse" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="select" disabled>Select warehouse</SelectItem>
+                        {warehouses
+                          .filter((w: { id: string; is_active?: boolean }) => w.is_active !== false)
+                          .map((w: { id: string; name: string; code: string; city?: string; state?: string }) => (
+                            <SelectItem key={w.id} value={w.id}>
+                              {w.name} ({w.code}){w.city ? ` - ${w.city}` : ''}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
+
+                {/* Row 2: Dates */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Invoice Date *</Label>
@@ -509,64 +708,192 @@ export default function InvoicesPage() {
                     />
                   </div>
                 </div>
-                <div className="space-y-2">
+
+                {/* Items Section */}
+                <div className="space-y-3">
                   <div className="flex justify-between items-center">
-                    <Label>Items</Label>
+                    <Label className="text-base font-semibold">Items</Label>
                     <Button type="button" variant="outline" size="sm" onClick={addItem}>
                       <Plus className="h-3 w-3 mr-1" /> Add Item
                     </Button>
                   </div>
                   {formData.items.map((item, index) => (
-                    <div key={index} className="grid grid-cols-12 gap-2 items-end p-2 border rounded-md">
-                      <div className="col-span-4 space-y-1">
-                        <Label className="text-xs">Description</Label>
-                        <Input
-                          placeholder="Product/Service"
-                          value={item.product_name}
-                          onChange={(e) => updateItem(index, 'product_name', e.target.value)}
-                        />
+                    <div key={index} className="p-3 border rounded-lg space-y-2 bg-muted/30">
+                      {/* Product search row */}
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 relative" ref={activeSearchIndex === index ? dropdownRef : undefined}>
+                          <Label className="text-xs text-muted-foreground">Product</Label>
+                          {item.product_id ? (
+                            <div className="flex items-center gap-2 mt-1">
+                              <div className="flex-1 text-sm font-medium truncate">{item.product_name}</div>
+                              {/* Stock badge */}
+                              {item.available_stock !== null && formData.warehouse_id && (
+                                <Badge variant={item.available_stock >= item.quantity ? 'default' : 'destructive'} className="text-xs whitespace-nowrap">
+                                  <Package className="h-3 w-3 mr-1" />
+                                  {item.available_stock} in stock
+                                </Badge>
+                              )}
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0"
+                                onClick={() => {
+                                  const newItems = [...formData.items];
+                                  newItems[index] = { ...newItems[index], product_id: '', product_name: '', hsn_code: '84212110', unit_price: 0, tax_rate: 18, available_stock: null };
+                                  setFormData({ ...formData, items: newItems });
+                                }}
+                              >
+                                <XCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="relative mt-1">
+                                <Search className="absolute left-2 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                                <Input
+                                  placeholder="Search product name or SKU..."
+                                  className="pl-7 h-9"
+                                  value={productSearchTerms[index] || ''}
+                                  onChange={(e) => handleProductSearchChange(index, e.target.value)}
+                                  onFocus={() => setActiveSearchIndex(index)}
+                                />
+                              </div>
+                              {/* Search dropdown */}
+                              {activeSearchIndex === index && debouncedSearchTerm.length >= 2 && productSearchResults?.items && productSearchResults.items.length > 0 && (
+                                <div className="absolute z-50 mt-1 w-full bg-popover border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                                  {productSearchResults.items.map((product: Product) => (
+                                    <button
+                                      key={product.id}
+                                      type="button"
+                                      className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-0"
+                                      onClick={() => handleProductSelect(index, product)}
+                                    >
+                                      <div className="font-medium truncate">{product.name}</div>
+                                      <div className="text-xs text-muted-foreground flex flex-wrap gap-2">
+                                        <span>SKU: {product.sku}</span>
+                                        {product.hsn_code && <span>HSN: {product.hsn_code}</span>}
+                                        <span>MRP: {formatCurrency(product.mrp)}</span>
+                                        {product.dealer_price && <span>Dealer: {formatCurrency(product.dealer_price)}</span>}
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                              {/* Or type manually */}
+                              {activeSearchIndex !== index && !item.product_id && (
+                                <Input
+                                  placeholder="Or type product name"
+                                  className="mt-1 h-9"
+                                  value={item.product_name}
+                                  onChange={(e) => updateItem(index, 'product_name', e.target.value)}
+                                />
+                              )}
+                            </>
+                          )}
+                        </div>
+                        <div className="pt-5">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => removeItem(index)}
+                            disabled={formData.items.length === 1}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
                       </div>
-                      <div className="col-span-2 space-y-1">
-                        <Label className="text-xs">Qty</Label>
-                        <Input
-                          type="number"
-                          min="1"
-                          value={item.quantity}
-                          onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
-                        />
-                      </div>
-                      <div className="col-span-2 space-y-1">
-                        <Label className="text-xs">Price</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          value={item.unit_price}
-                          onChange={(e) => updateItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
-                        />
-                      </div>
-                      <div className="col-span-2 space-y-1">
-                        <Label className="text-xs">Tax %</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          value={item.tax_rate}
-                          onChange={(e) => updateItem(index, 'tax_rate', parseFloat(e.target.value) || 0)}
-                        />
-                      </div>
-                      <div className="col-span-2">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeItem(index)}
-                          disabled={formData.items.length === 1}
-                        >
-                          <XCircle className="h-4 w-4 text-destructive" />
-                        </Button>
+
+                      {/* Stock warning */}
+                      {item.available_stock !== null && item.available_stock < item.quantity && formData.warehouse_id && (
+                        <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
+                          <AlertTriangle className="h-3 w-3" />
+                          <span>Only {item.available_stock} available, requesting {item.quantity}</span>
+                        </div>
+                      )}
+
+                      {/* Fields row: HSN, Qty, Price, GST%, Line Total */}
+                      <div className="grid grid-cols-12 gap-2 items-end">
+                        <div className="col-span-2 space-y-1">
+                          <Label className="text-xs text-muted-foreground">HSN</Label>
+                          <Input
+                            placeholder="HSN Code"
+                            className="h-8 text-xs font-mono"
+                            value={item.hsn_code}
+                            onChange={(e) => updateItem(index, 'hsn_code', e.target.value)}
+                          />
+                        </div>
+                        <div className="col-span-2 space-y-1">
+                          <Label className="text-xs text-muted-foreground">Qty</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            className="h-8 text-xs"
+                            value={item.quantity}
+                            onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                          />
+                        </div>
+                        <div className="col-span-3 space-y-1">
+                          <Label className="text-xs text-muted-foreground">Unit Price</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="h-8 text-xs"
+                            value={item.unit_price}
+                            onChange={(e) => updateItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
+                          />
+                        </div>
+                        <div className="col-span-2 space-y-1">
+                          <Label className="text-xs text-muted-foreground">GST %</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            max="28"
+                            className="h-8 text-xs"
+                            value={item.tax_rate}
+                            onChange={(e) => updateItem(index, 'tax_rate', parseFloat(e.target.value) || 0)}
+                          />
+                        </div>
+                        <div className="col-span-3 space-y-1">
+                          <Label className="text-xs text-muted-foreground">Line Total</Label>
+                          <div className="h-8 flex items-center text-xs font-semibold text-right">
+                            {formatCurrency(item.quantity * item.unit_price * (1 + item.tax_rate / 100))}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   ))}
                 </div>
+
+                {/* GST Breakdown Preview */}
+                {formData.items.some(item => item.unit_price > 0) && (
+                  <Card className="bg-muted/50">
+                    <CardContent className="pt-4 space-y-1.5">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Subtotal</span>
+                        <span className="font-medium">{formatCurrency(gstPreview.subtotal)}</span>
+                      </div>
+                      {Object.entries(gstPreview.taxBreakdown).map(([rate, { tax }]) => (
+                        <div key={rate} className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">GST ({rate}%)</span>
+                          <span>{formatCurrency(tax)}</span>
+                        </div>
+                      ))}
+                      <div className="text-[10px] text-muted-foreground italic">
+                        * CGST/SGST/IGST split determined by backend based on warehouse &amp; customer state
+                      </div>
+                      <div className="flex justify-between text-base font-bold border-t pt-2">
+                        <span>Grand Total</span>
+                        <span>{formatCurrency(gstPreview.grandTotal)}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Notes */}
                 <div className="space-y-2">
                   <Label>Notes</Label>
                   <Textarea

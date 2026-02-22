@@ -41,8 +41,27 @@ from app.services.gst_einvoice_service import GSTEInvoiceService, GSTEInvoiceErr
 from app.services.gst_ewaybill_service import GSTEWayBillService, GSTEWayBillError
 from app.services.auto_journal_service import AutoJournalService, AutoJournalError
 from app.models.company import Company
+from app.models.warehouse import Warehouse
+from app.models.inventory import InventorySummary
+from app.models.product import Product as ProductModel
 
 router = APIRouter()
+
+# GST state code to name mapping (used across manual invoice creation)
+GST_STATE_CODES = {
+    "01": "Jammu & Kashmir", "02": "Himachal Pradesh", "03": "Punjab",
+    "04": "Chandigarh", "05": "Uttarakhand", "06": "Haryana",
+    "07": "Delhi", "08": "Rajasthan", "09": "Uttar Pradesh",
+    "10": "Bihar", "11": "Sikkim", "12": "Arunachal Pradesh",
+    "13": "Nagaland", "14": "Manipur", "15": "Mizoram",
+    "16": "Tripura", "17": "Meghalaya", "18": "Assam",
+    "19": "West Bengal", "20": "Jharkhand", "21": "Odisha",
+    "22": "Chhattisgarh", "23": "Madhya Pradesh", "24": "Gujarat",
+    "26": "Dadra & Nagar Haveli", "27": "Maharashtra",
+    "29": "Karnataka", "30": "Goa", "32": "Kerala",
+    "33": "Tamil Nadu", "36": "Telangana", "37": "Andhra Pradesh",
+}
+STATE_NAME_TO_CODE = {v.lower(): k for k, v in GST_STATE_CODES.items()}
 
 
 async def get_effective_company_id(
@@ -379,6 +398,20 @@ async def create_manual_invoice(
 
     seller_state_code = company.state_code or "09"
 
+    # --- Warehouse lookup (optional, overrides seller state) ---
+    warehouse = None
+    warehouse_id_for_invoice = None
+    if invoice_in.warehouse_id:
+        warehouse = await db.get(Warehouse, invoice_in.warehouse_id)
+        if not warehouse:
+            raise HTTPException(status_code=404, detail="Warehouse not found.")
+        warehouse_id_for_invoice = warehouse.id
+        # Override seller state code with warehouse state
+        if warehouse.state:
+            wh_state_code = STATE_NAME_TO_CODE.get(warehouse.state.lower())
+            if wh_state_code:
+                seller_state_code = wh_state_code
+
     # --- Look up customer / dealer details ---
     customer_name = ""
     customer_gstin = None
@@ -420,21 +453,31 @@ async def create_manual_invoice(
     is_inter_state = billing_state_code != seller_state_code
     place_of_supply_code = billing_state_code
 
-    # GST state code to name mapping
-    GST_STATE_CODES = {
-        "01": "Jammu & Kashmir", "02": "Himachal Pradesh", "03": "Punjab",
-        "04": "Chandigarh", "05": "Uttarakhand", "06": "Haryana",
-        "07": "Delhi", "08": "Rajasthan", "09": "Uttar Pradesh",
-        "10": "Bihar", "11": "Sikkim", "12": "Arunachal Pradesh",
-        "13": "Nagaland", "14": "Manipur", "15": "Mizoram",
-        "16": "Tripura", "17": "Meghalaya", "18": "Assam",
-        "19": "West Bengal", "20": "Jharkhand", "21": "Odisha",
-        "22": "Chhattisgarh", "23": "Madhya Pradesh", "24": "Gujarat",
-        "26": "Dadra & Nagar Haveli", "27": "Maharashtra",
-        "29": "Karnataka", "30": "Goa", "32": "Kerala",
-        "33": "Tamil Nadu", "36": "Telangana", "37": "Andhra Pradesh",
-    }
+    # GST state code to name mapping (uses module-level GST_STATE_CODES)
     place_of_supply = billing_state or GST_STATE_CODES.get(place_of_supply_code, "")
+
+    # --- Stock validation (when warehouse + product_id provided) ---
+    if warehouse_id_for_invoice:
+        for idx, item_data in enumerate(invoice_in.items):
+            if item_data.product_id:
+                inv_result = await db.execute(
+                    select(InventorySummary).where(
+                        and_(
+                            InventorySummary.warehouse_id == warehouse_id_for_invoice,
+                            InventorySummary.product_id == item_data.product_id,
+                        )
+                    )
+                )
+                inv_summary = inv_result.scalar_one_or_none()
+                available = 0
+                if inv_summary:
+                    available = (inv_summary.available_quantity or 0) - (inv_summary.reserved_quantity or 0)
+                if available < int(item_data.quantity):
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=f"Insufficient stock for item #{idx + 1} ({item_data.product_name}): "
+                               f"requested {int(item_data.quantity)}, available {available}.",
+                    )
 
     # --- Generate invoice number ---
     series_code = "INV"
@@ -478,6 +521,7 @@ async def create_manual_invoice(
         invoice_date=invoice_in.invoice_date,
         due_date=invoice_in.due_date,
         generation_trigger="MANUAL_SUPER_ADMIN",
+        warehouse_id=warehouse_id_for_invoice,
         customer_id=invoice_in.customer_id,
         customer_name=customer_name,
         customer_gstin=customer_gstin,
@@ -553,6 +597,7 @@ async def create_manual_invoice(
 
         item = InvoiceItem(
             invoice_id=invoice.id,
+            product_id=item_data.product_id,
             sku="MANUAL",
             item_name=item_data.product_name,
             hsn_code=item_data.hsn_code,

@@ -164,6 +164,7 @@ export interface Product {
   brand_id?: string;
   mrp: number;
   selling_price?: number;
+  dealer_price?: number;
   cost_price?: number;
   gst_rate?: number;
   hsn_code?: string;

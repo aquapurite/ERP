@@ -133,6 +133,7 @@ class InvoiceCreate(InvoiceBase):
 
 class ManualInvoiceItemCreate(BaseModel):
     """Simplified item schema for manual invoice creation (SUPER_ADMIN)."""
+    product_id: Optional[UUID] = None
     product_name: str = Field(..., min_length=1, max_length=300)
     hsn_code: str = Field("84212110", min_length=4, max_length=8)
     quantity: Decimal = Field(..., gt=0)
@@ -147,6 +148,7 @@ class ManualInvoiceCreate(BaseModel):
     """
     dealer_id: Optional[UUID] = None
     customer_id: Optional[UUID] = None
+    warehouse_id: Optional[UUID] = None
     invoice_date: date
     due_date: date
     items: List[ManualInvoiceItemCreate] = Field(..., min_length=1)

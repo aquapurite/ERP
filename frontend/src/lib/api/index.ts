@@ -544,7 +544,7 @@ export const warehousesApi = {
   },
   dropdown: async () => {
     // Use dedicated dropdown endpoint for better performance
-    const { data } = await apiClient.get<Array<{ id: string; name: string; code: string; warehouse_type: string }>>('/warehouses/dropdown');
+    const { data } = await apiClient.get<Array<{ id: string; name: string; code: string; warehouse_type: string; city?: string; state?: string; is_active?: boolean }>>('/warehouses/dropdown');
     return data;
   },
 };
@@ -866,7 +866,7 @@ export const inventoryApi = {
     const { data } = await apiClient.get('/inventory/dashboard-stats');
     return data;
   },
-  getInventorySummaryList: async (params?: { page?: number; size?: number; warehouse_id?: string }) => {
+  getInventorySummaryList: async (params?: { page?: number; size?: number; warehouse_id?: string; product_id?: string }) => {
     // Paginated list of inventory summary records
     const { data } = await apiClient.get('/inventory/summary', { params });
     return data;
@@ -2306,7 +2306,7 @@ export const invoicesApi = {
     const { data } = await apiClient.get(`/billing/invoices/${id}`);
     return data;
   },
-  create: async (invoice: { customer_id?: string; dealer_id?: string; invoice_date: string; due_date: string; items: { product_name?: string; product_id?: string; hsn_code?: string; quantity: number; unit_price: number; tax_rate: number }[]; notes?: string }) => {
+  create: async (invoice: { customer_id?: string; dealer_id?: string; warehouse_id?: string; invoice_date: string; due_date: string; items: { product_name?: string; product_id?: string; hsn_code?: string; quantity: number; unit_price: number; tax_rate: number }[]; notes?: string }) => {
     const { data } = await apiClient.post('/billing/invoices/manual', invoice);
     return data;
   },
