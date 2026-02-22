@@ -880,6 +880,47 @@ npx vercel link --project=erp --yes
 CREATE ORDER → PAY → ALLOCATE → PICK → PACK → SHIP → DELIVER → INVOICE → GL
 ```
 
+### SAP-Style Auto-Trigger Chain (IMPLEMENTED)
+
+The following triggers are **auto-executed** — no manual steps required:
+
+```
+TRIGGER 1: Order → CONFIRMED
+  ├── Auto-create Picklist (PicklistService.generate_picklist)
+  └── Order status → PICKLIST_CREATED
+      File: app/services/order_service.py → update_order_status()
+
+TRIGGER 2: Manifest Confirmed (Goods Issue = SAP VL09)
+  ├── Shipments marked MANIFESTED + goods_issue_at recorded
+  ├── Invoice auto-generated (InvoiceService.auto_generate_invoice_on_goods_issue)
+  ├── GL journal entry posted (AccountingService.post_sales_invoice)
+  ├── Dealer outstanding_amount INCREASED
+  └── Invoice email sent to dealer/customer
+      File: app/api/v1/endpoints/manifests.py → confirm_manifest()
+            app/services/invoice_service.py → auto_generate_invoice_on_goods_issue()
+
+TRIGGER 3: Invoice Generated → AR Open Item posted
+  ├── Debit: Accounts Receivable (full invoice amount)
+  └── Credit: Sales Revenue + GST Payable
+      File: app/services/auto_journal_service.py → generate_for_sales_invoice()
+
+TRIGGER 4: Payment Receipt Recorded
+  ├── Journal entry posted (Debit: Bank, Credit: AR)
+  └── Dealer outstanding_amount DECREASED (credit released)
+      File: app/api/v1/endpoints/billing.py → create_payment_receipt()
+
+TRIGGER 5: Order → DELIVERED
+  ├── Partner commission calculated
+  └── Invoice marked due (if unpaid)
+      File: app/services/order_service.py → update_order_status()
+```
+
+**P0 Rule: No Manual Sales Invoices**
+Tax invoices linked to sales orders (`order_id` provided) CANNOT be created manually from
+Finance > Invoices. They must auto-generate via the manifest Goods Issue flow.
+PROFORMA and DELIVERY_CHALLAN types can still be created manually.
+File: `app/api/v1/endpoints/billing.py` → `create_invoice()`
+
 ### Procurement Flow (P2P)
 
 ```

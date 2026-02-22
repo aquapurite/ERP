@@ -886,6 +886,11 @@ async def approve_request(
             dealer.status = DealerStatus.ACTIVE.value
             dealer.onboarded_at = datetime.now(timezone.utc)
 
+            # ORCHESTRATION: Send welcome email with brochure
+            from app.services.dealer_orchestration_service import DealerOrchestrationService
+            orchestration = DealerOrchestrationService(db)
+            await orchestration.on_dealer_approved(dealer, current_user.id)
+
     await db.commit()
     await db.refresh(approval)
 

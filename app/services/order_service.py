@@ -552,6 +552,48 @@ class OrderService:
 
         await self.db.commit()
 
+        # P1 TRIGGER 1: Order CONFIRMED → Auto-create warehouse picklist
+        if new_status == OrderStatus.CONFIRMED:
+            try:
+                from app.services.picklist_service import PicklistService
+                from app.schemas.picklist import PicklistGenerateRequest
+                from app.models.picklist import PicklistType
+                from app.models.warehouse import Warehouse
+
+                # Determine warehouse: use order's warehouse_id or fall back to default warehouse
+                warehouse_id = order.warehouse_id
+                if not warehouse_id:
+                    wh_result = await self.db.execute(
+                        select(Warehouse).where(Warehouse.is_default == True).limit(1)
+                    )
+                    default_wh = wh_result.scalar_one_or_none()
+                    if default_wh:
+                        warehouse_id = default_wh.id
+
+                if warehouse_id:
+                    picklist_service = PicklistService(self.db)
+                    picklist_req = PicklistGenerateRequest(
+                        order_ids=[order.id],
+                        warehouse_id=warehouse_id,
+                        picklist_type=PicklistType.SINGLE_ORDER,
+                    )
+                    picklist = await picklist_service.generate_picklist(
+                        picklist_req, created_by=changed_by
+                    )
+                    logger.info(
+                        f"Auto-created picklist {picklist.picklist_number} "
+                        f"for confirmed order {order.order_number}"
+                    )
+                else:
+                    logger.warning(
+                        f"No warehouse configured — picklist not auto-created "
+                        f"for order {order.order_number}"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to auto-create picklist for order {order.order_number}: {e}"
+                )
+
         # Send notifications for key status transitions
         try:
             from app.services.notification_service import (

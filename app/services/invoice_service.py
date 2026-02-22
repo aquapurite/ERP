@@ -524,6 +524,55 @@ class InvoiceService:
             f"on goods issue (manifest: {manifest_number})"
         )
 
+        # P3 TRIGGER 3: Increase dealer outstanding_amount when invoice is generated
+        if getattr(order, 'dealer_id', None):
+            try:
+                from app.models.dealer import Dealer
+                dealer_result = await self.db.execute(
+                    select(Dealer).where(Dealer.id == order.dealer_id)
+                )
+                dealer_obj = dealer_result.scalar_one_or_none()
+                if dealer_obj:
+                    dealer_obj.outstanding_amount += grand_total
+                    await self.db.commit()
+                    logger.info(
+                        f"Dealer {dealer_obj.id} outstanding increased by {grand_total} "
+                        f"for invoice {invoice.invoice_number}"
+                    )
+            except Exception as e:
+                logger.error(f"Failed to update dealer outstanding for invoice {invoice.invoice_number}: {e}")
+
+        # P2 TRIGGER 2 (email): Send invoice notification to dealer/customer
+        try:
+            from app.services.email_service import EmailService
+            email_service = EmailService()
+
+            # Determine recipient email
+            recipient_email = getattr(customer, 'email', None)
+            recipient_name = invoice.customer_name
+
+            if not recipient_email and getattr(order, 'dealer_id', None):
+                from app.models.dealer import Dealer
+                dealer_email_result = await self.db.execute(
+                    select(Dealer).where(Dealer.id == order.dealer_id)
+                )
+                dealer_email_obj = dealer_email_result.scalar_one_or_none()
+                if dealer_email_obj:
+                    recipient_email = getattr(dealer_email_obj, 'email', None)
+
+            if recipient_email:
+                email_service.send_invoice_generated_email(
+                    to_email=recipient_email,
+                    invoice_number=invoice.invoice_number,
+                    customer_name=recipient_name,
+                    grand_total=grand_total,
+                    order_number=order.order_number,
+                    invoice_date=str(invoice.invoice_date),
+                )
+                logger.info(f"Invoice email sent to {recipient_email} for {invoice.invoice_number}")
+        except Exception as e:
+            logger.warning(f"Failed to send invoice email for {invoice.invoice_number}: {e}")
+
         # Load full invoice with items
         result = await self.db.execute(
             select(TaxInvoice)

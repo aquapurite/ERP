@@ -91,6 +91,19 @@ async def create_invoice(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new tax invoice."""
+    # P0 GUARD: Block manual TAX_INVOICE creation for order-linked invoices.
+    # Sales tax invoices must auto-generate via the Goods Issue (manifest confirmation) flow.
+    # PROFORMA and DELIVERY_CHALLAN may still be created manually.
+    if invoice_in.invoice_type == InvoiceType.TAX_INVOICE and invoice_in.order_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Tax invoices for sales orders are auto-generated from the Goods Issue flow. "
+                "Confirm the manifest in Logistics > Manifests to trigger invoice generation. "
+                "For proforma invoices, use PROFORMA type. For delivery challans, use DELIVERY_CHALLAN type."
+            ),
+        )
+
     # Map invoice type to series code
     series_code_map = {
         InvoiceType.TAX_INVOICE: "INV",
@@ -1839,6 +1852,35 @@ async def create_payment_receipt(
         # Log the error but don't fail the receipt creation
         import logging
         logging.warning(f"Failed to auto-generate journal for receipt {receipt.receipt_number}: {e.message}")
+
+    # P3 TRIGGER 4: Release dealer credit — decrease outstanding_amount when payment received
+    # Find dealer via invoice → order → dealer
+    try:
+        if invoice.order_id:
+            from app.models.order import Order as OrderModel
+            from app.models.dealer import Dealer
+            order_result = await db.execute(
+                select(OrderModel).where(OrderModel.id == invoice.order_id)
+            )
+            order_obj = order_result.scalar_one_or_none()
+            if order_obj and getattr(order_obj, 'dealer_id', None):
+                dealer_result = await db.execute(
+                    select(Dealer).where(Dealer.id == order_obj.dealer_id)
+                )
+                dealer_obj = dealer_result.scalar_one_or_none()
+                if dealer_obj:
+                    dealer_obj.outstanding_amount = max(
+                        Decimal("0"),
+                        dealer_obj.outstanding_amount - receipt_in.amount
+                    )
+                    import logging as _log
+                    _log.getLogger(__name__).info(
+                        f"Dealer {dealer_obj.id} outstanding reduced by {receipt_in.amount} "
+                        f"on payment {receipt.receipt_number}"
+                    )
+    except Exception as e:
+        import logging
+        logging.warning(f"Failed to release dealer credit for receipt {receipt.receipt_number}: {e}")
 
     await db.commit()
     await db.refresh(receipt)

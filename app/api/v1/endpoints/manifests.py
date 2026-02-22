@@ -587,13 +587,87 @@ async def confirm_manifest(
     await db.commit()
     await db.refresh(manifest)
 
+    # P2 TRIGGER 2: Manifest Confirmed = Goods Issue (SAP VL09 equivalent)
+    # Record goods issue on all shipments and auto-generate invoices
+    import logging as _manifest_log
+    _logger = _manifest_log.getLogger(__name__)
+    goods_issue_time = datetime.now(timezone.utc)
+    generated_invoices = 0
+    invoice_errors = []
+
+    try:
+        from app.services.invoice_service import InvoiceService, InvoiceGenerationError
+
+        # Load manifest items
+        items_result = await db.execute(
+            select(ManifestItem).where(ManifestItem.manifest_id == manifest_id)
+        )
+        manifest_items = list(items_result.scalars().all())
+
+        # Step 1: Record Goods Issue on each shipment
+        for item in manifest_items:
+            shipment_result = await db.execute(
+                select(Shipment).where(Shipment.id == item.shipment_id)
+            )
+            shipment = shipment_result.scalar_one_or_none()
+            if shipment:
+                shipment.status = ShipmentStatus.MANIFESTED.value
+                shipment.goods_issue_at = goods_issue_time
+                shipment.goods_issue_by = current_user.id
+                shipment.goods_issue_reference = manifest.manifest_number
+
+        await db.commit()
+
+        # Step 2: Auto-generate invoice for each shipment
+        invoice_service = InvoiceService(db)
+        for item in manifest_items:
+            try:
+                invoice = await invoice_service.auto_generate_invoice_on_goods_issue(
+                    shipment_id=item.shipment_id,
+                    manifest_number=manifest.manifest_number,
+                    generated_by=current_user.id,
+                )
+                generated_invoices += 1
+                _logger.info(
+                    f"Auto-generated invoice {invoice.invoice_number} "
+                    f"for shipment {item.shipment_id} (manifest: {manifest.manifest_number})"
+                )
+            except InvoiceGenerationError as e:
+                err_msg = str(e)
+                invoice_errors.append(err_msg)
+                _logger.error(
+                    f"Invoice generation failed for shipment {item.shipment_id}: {err_msg}"
+                )
+            except Exception as e:
+                err_msg = str(e)
+                invoice_errors.append(err_msg)
+                _logger.error(
+                    f"Unexpected error generating invoice for shipment {item.shipment_id}: {err_msg}"
+                )
+
+        if generated_invoices:
+            _logger.info(
+                f"Manifest {manifest.manifest_number}: auto-generated {generated_invoices} invoice(s)"
+            )
+
+    except Exception as e:
+        _logger.error(
+            f"Goods Issue + invoice generation failed for manifest {manifest.manifest_number}: {e}"
+        )
+
+    message = "Manifest confirmed successfully"
+    if generated_invoices:
+        message += f". {generated_invoices} invoice(s) auto-generated."
+    if invoice_errors:
+        message += f" {len(invoice_errors)} invoice(s) failed — check logs."
+
     return ManifestConfirmResponse(
         success=True,
         manifest_id=manifest.id,
         manifest_number=manifest.manifest_number,
         status=manifest.status,
         total_shipments=manifest.total_shipments,
-        message="Manifest confirmed successfully",
+        message=message,
     )
 
 

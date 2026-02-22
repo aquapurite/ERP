@@ -2,7 +2,8 @@ import smtplib
 import httpx
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import Optional, Dict, List
+from email.mime.application import MIMEApplication
+from typing import Optional, Dict, List, Tuple
 from decimal import Decimal
 import logging
 
@@ -33,7 +34,8 @@ class EmailService:
         to_email: str,
         subject: str,
         html_content: str,
-        text_content: Optional[str] = None
+        text_content: Optional[str] = None,
+        attachments: Optional[List[Tuple[str, bytes, str]]] = None,
     ) -> bool:
         """
         Send an email using Gmail SMTP.
@@ -43,6 +45,7 @@ class EmailService:
             subject: Email subject
             html_content: HTML body of the email
             text_content: Plain text body (optional fallback)
+            attachments: List of (filename, data, mime_type) tuples
 
         Returns:
             True if email sent successfully, False otherwise
@@ -52,23 +55,37 @@ class EmailService:
             return False
 
         try:
-            # Create message
-            msg = MIMEMultipart('alternative')
-            msg['Subject'] = subject
-            msg['From'] = f"{self.from_name} <{self.from_email}>"
-            msg['To'] = to_email
+            # Use 'mixed' when there are attachments, 'alternative' otherwise
+            if attachments:
+                msg = MIMEMultipart('mixed')
+                msg['Subject'] = subject
+                msg['From'] = f"{self.from_name} <{self.from_email}>"
+                msg['To'] = to_email
 
-            # Add plain text version
-            if text_content:
-                part1 = MIMEText(text_content, 'plain')
-                msg.attach(part1)
+                # Wrap text/html in an 'alternative' sub-part
+                body_part = MIMEMultipart('alternative')
+                if text_content:
+                    body_part.attach(MIMEText(text_content, 'plain'))
+                body_part.attach(MIMEText(html_content, 'html'))
+                msg.attach(body_part)
 
-            # Add HTML version
-            part2 = MIMEText(html_content, 'html')
-            msg.attach(part2)
+                # Attach files
+                for filename, data, mime_type in attachments:
+                    attachment = MIMEApplication(data, Name=filename)
+                    attachment['Content-Disposition'] = f'attachment; filename="{filename}"'
+                    msg.attach(attachment)
+            else:
+                msg = MIMEMultipart('alternative')
+                msg['Subject'] = subject
+                msg['From'] = f"{self.from_name} <{self.from_email}>"
+                msg['To'] = to_email
+
+                if text_content:
+                    msg.attach(MIMEText(text_content, 'plain'))
+                msg.attach(MIMEText(html_content, 'html'))
 
             # Connect and send with timeout
-            with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10) as server:
+            with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=30) as server:
                 server.starttls()
                 server.login(self.smtp_user, self.smtp_password)
                 server.sendmail(self.from_email, to_email, msg.as_string())
@@ -431,6 +448,349 @@ Track your shipment: {tracking_url or f'{d2c_url}/track?order={order_number}'}
 
 Thank you for shopping with Aquapurite!
         """
+
+        return self.send_email(to_email, subject, html_content, text_content)
+
+
+    # ==================== DEALER WELCOME EMAIL ====================
+
+    def send_dealer_welcome_email(
+        self,
+        to_email: str,
+        dealer_name: str,
+        contact_person: str,
+        dealer_code: str,
+        dealer_type: str,
+        credit_limit: Decimal,
+        brochure_bytes: Optional[bytes] = None,
+    ) -> bool:
+        """
+        Send welcome email to newly approved dealer/distributor with brochure attached.
+
+        Args:
+            to_email: Dealer's email address
+            dealer_name: Business/firm name
+            contact_person: Contact person name
+            dealer_code: Assigned dealer code (e.g. DLR001)
+            dealer_type: Type (DEALER, DISTRIBUTOR, FRANCHISE, etc.)
+            credit_limit: Approved credit limit
+            brochure_bytes: PDF brochure file bytes (optional)
+
+        Returns:
+            True if sent successfully
+        """
+        subject = f"Welcome to the Aquapurite Family - {dealer_name} ({dealer_code})"
+
+        dealer_type_display = dealer_type.replace("_", " ").title()
+        credit_limit_str = f"{float(credit_limit):,.0f}"
+
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 650px; margin: 0 auto; padding: 0; background: #f5f5f5;">
+
+            <!-- Header -->
+            <div style="background: linear-gradient(135deg, #1a56db 0%, #0e3fa1 100%); padding: 35px 30px; text-align: center; border-radius: 10px 10px 0 0;">
+                <h1 style="color: white; margin: 0; font-size: 26px; font-weight: 700;">Welcome to Aquapurite!</h1>
+                <p style="color: #b3d4fc; margin: 8px 0 0 0; font-size: 15px;">India's Trusted Water Purification Brand</p>
+            </div>
+
+            <!-- Body -->
+            <div style="background: white; padding: 30px; border: 1px solid #e0e0e0;">
+
+                <p style="font-size: 16px; margin: 0 0 15px 0;">
+                    Dear <strong>{contact_person}</strong>,
+                </p>
+
+                <p style="margin: 0 0 20px 0;">
+                    Congratulations! We are delighted to welcome <strong>{dealer_name}</strong> as an approved
+                    <strong>{dealer_type_display}</strong> partner of Aquapurite Private Limited. Your application
+                    has been reviewed and approved, and we are excited to have you on board.
+                </p>
+
+                <!-- Dealer Info Box -->
+                <div style="background: #eef3ff; border-left: 4px solid #1a56db; padding: 18px 20px; border-radius: 0 8px 8px 0; margin: 20px 0;">
+                    <h3 style="margin: 0 0 12px 0; color: #1a56db; font-size: 16px;">Your Account Details</h3>
+                    <table style="width: 100%; font-size: 14px;">
+                        <tr><td style="padding: 4px 0; color: #666; width: 140px;">Dealer Code:</td><td style="padding: 4px 0;"><strong>{dealer_code}</strong></td></tr>
+                        <tr><td style="padding: 4px 0; color: #666;">Partner Type:</td><td style="padding: 4px 0;"><strong>{dealer_type_display}</strong></td></tr>
+                        <tr><td style="padding: 4px 0; color: #666;">Credit Limit:</td><td style="padding: 4px 0;"><strong>&#8377;{credit_limit_str}</strong></td></tr>
+                    </table>
+                </div>
+
+                <!-- About Aquapurite -->
+                <h3 style="color: #1a56db; margin: 25px 0 10px 0; font-size: 16px;">About Aquapurite</h3>
+                <p style="margin: 0 0 10px 0;">
+                    Aquapurite is one of India's fastest-growing water purification brands, serving over
+                    <strong>50,000+ families</strong> across <strong>500+ cities</strong> with a network of
+                    <strong>200+ certified technicians</strong>. We are committed to delivering safe, pure,
+                    and healthy drinking water to every household.
+                </p>
+
+                <!-- Product Range -->
+                <h3 style="color: #1a56db; margin: 25px 0 10px 0; font-size: 16px;">Our Product Range</h3>
+                <div style="background: #f9fafb; padding: 15px 20px; border-radius: 8px; margin: 0 0 15px 0;">
+                    <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
+                        <tr>
+                            <td style="padding: 8px 5px; vertical-align: top; width: 50%;">
+                                <strong style="color: #1a56db;">RO + UV Purifiers</strong><br>
+                                <span style="color: #666;">Optima, Neura, Blitz</span>
+                            </td>
+                            <td style="padding: 8px 5px; vertical-align: top; width: 50%;">
+                                <strong style="color: #1a56db;">UV Purifiers</strong><br>
+                                <span style="color: #666;">i Elitz, i Premiuo</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 5px; vertical-align: top;">
+                                <strong style="color: #1a56db;">Hot &amp; Cold Purifiers</strong><br>
+                                <span style="color: #666;">Premium Range</span>
+                            </td>
+                            <td style="padding: 8px 5px; vertical-align: top;">
+                                <strong style="color: #1a56db;">Commercial RO</strong><br>
+                                <span style="color: #666;">25/50/100 LPH Systems</span>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- USPs -->
+                <h3 style="color: #1a56db; margin: 25px 0 10px 0; font-size: 16px;">Why Aquapurite?</h3>
+                <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 6px 10px 6px 0; vertical-align: top; width: 20px;">&#10004;</td>
+                        <td style="padding: 6px 0;"><strong>7-Stage Advanced Purification</strong> (RO + UV + UF + TDS Controller)</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 10px 6px 0; vertical-align: top;">&#10004;</td>
+                        <td style="padding: 6px 0;"><strong>ISI Certified</strong> products meeting Bureau of Indian Standards</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 10px 6px 0; vertical-align: top;">&#10004;</td>
+                        <td style="padding: 6px 0;"><strong>1-Year Comprehensive Warranty</strong> with free service support</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 10px 6px 0; vertical-align: top;">&#10004;</td>
+                        <td style="padding: 6px 0;"><strong>Pan-India Service Network</strong> with 200+ trained technicians</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 10px 6px 0; vertical-align: top;">&#10004;</td>
+                        <td style="padding: 6px 0;"><strong>Attractive Dealer Margins</strong> and marketing support</td>
+                    </tr>
+                </table>
+
+                <!-- Next Steps -->
+                <h3 style="color: #1a56db; margin: 25px 0 10px 0; font-size: 16px;">Next Steps</h3>
+                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 15px 20px; border-radius: 8px;">
+                    <ol style="margin: 0; padding-left: 20px; font-size: 14px;">
+                        <li style="margin-bottom: 8px;">
+                            <strong>Login to the ERP Portal</strong> at
+                            <a href="https://www.aquapurite.org" style="color: #1a56db;">www.aquapurite.org</a>
+                            using your registered email
+                        </li>
+                        <li style="margin-bottom: 8px;">
+                            <strong>Browse the product catalog</strong> and check dealer pricing
+                        </li>
+                        <li style="margin-bottom: 8px;">
+                            <strong>Place your first order</strong> &mdash; our team will guide you through the process
+                        </li>
+                        <li style="margin-bottom: 0;">
+                            <strong>Review the attached brochure</strong> for complete product details and specifications
+                        </li>
+                    </ol>
+                </div>
+
+                <!-- Support -->
+                <div style="margin-top: 25px; padding: 15px 20px; background: #f8f9fa; border-radius: 8px;">
+                    <p style="margin: 0 0 5px 0; font-size: 14px;"><strong>Need Help?</strong></p>
+                    <p style="margin: 0; font-size: 14px; color: #555;">
+                        Phone: <a href="tel:9311939076" style="color: #1a56db;">9311939076</a> |
+                        Email: <a href="mailto:support@aquapurite.com" style="color: #1a56db;">support@aquapurite.com</a>
+                    </p>
+                </div>
+
+                <p style="margin: 25px 0 0 0; font-size: 14px;">
+                    We look forward to a successful and long-lasting partnership!
+                </p>
+                <p style="margin: 10px 0 0 0; font-size: 14px;">
+                    Warm regards,<br>
+                    <strong>Team Aquapurite</strong><br>
+                    <span style="color: #666;">Aquapurite Private Limited</span>
+                </p>
+            </div>
+
+            <!-- Footer -->
+            <div style="background: #1e293b; color: #fff; padding: 20px; text-align: center; border-radius: 0 0 10px 10px;">
+                <p style="margin: 0 0 8px 0; font-size: 14px;">
+                    <strong>Aquapurite</strong> &mdash; Pure Water, Pure Life
+                </p>
+                <p style="margin: 0; font-size: 12px; color: #94a3b8;">
+                    This is an automated email from Aquapurite ERP. Please do not reply directly.
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+
+        text_content = f"""
+Welcome to the Aquapurite Family!
+
+Dear {contact_person},
+
+Congratulations! We are delighted to welcome {dealer_name} as an approved {dealer_type_display} partner of Aquapurite Private Limited.
+
+YOUR ACCOUNT DETAILS
+- Dealer Code: {dealer_code}
+- Partner Type: {dealer_type_display}
+- Credit Limit: Rs. {credit_limit_str}
+
+ABOUT AQUAPURITE
+Aquapurite is one of India's fastest-growing water purification brands, serving 50,000+ families across 500+ cities with 200+ certified technicians.
+
+OUR PRODUCT RANGE
+- RO + UV Purifiers: Optima, Neura, Blitz
+- UV Purifiers: i Elitz, i Premiuo
+- Hot & Cold Purifiers
+- Commercial RO Systems (25/50/100 LPH)
+
+WHY AQUAPURITE?
+- 7-Stage Advanced Purification (RO + UV + UF + TDS Controller)
+- ISI Certified products
+- 1-Year Comprehensive Warranty
+- Pan-India Service Network (200+ technicians)
+- Attractive Dealer Margins
+
+NEXT STEPS
+1. Login to the ERP Portal at www.aquapurite.org
+2. Browse the product catalog and check dealer pricing
+3. Place your first order
+4. Review the attached brochure for product details
+
+NEED HELP?
+Phone: 9311939076
+Email: support@aquapurite.com
+
+We look forward to a successful partnership!
+
+Warm regards,
+Team Aquapurite
+Aquapurite Private Limited
+        """
+
+        attachments = None
+        if brochure_bytes:
+            attachments = [("Aquapurite_Brochure.pdf", brochure_bytes, "application/pdf")]
+
+        return self.send_email(to_email, subject, html_content, text_content, attachments=attachments)
+
+    # ==================== INVOICE GENERATED EMAIL ====================
+
+    def send_invoice_generated_email(
+        self,
+        to_email: str,
+        invoice_number: str,
+        customer_name: str,
+        grand_total: Decimal,
+        order_number: str,
+        invoice_date: str,
+    ) -> bool:
+        """
+        Send invoice generated notification email to dealer/customer.
+
+        Args:
+            to_email: Recipient email address
+            invoice_number: Invoice number (e.g., INV/25-26/0042)
+            customer_name: Customer or dealer name
+            grand_total: Invoice grand total
+            order_number: Linked order number
+            invoice_date: Invoice date string
+
+        Returns:
+            True if sent successfully
+        """
+        subject = f"Tax Invoice Generated - {invoice_number} | Aquapurite"
+
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333;
+                     max-width: 600px; margin: 0 auto; padding: 20px; background: #f5f5f5;">
+            <div style="background: linear-gradient(135deg, #0066cc 0%, #004d99 100%);
+                        padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+                <h1 style="color: white; margin: 0; font-size: 24px;">Tax Invoice Generated</h1>
+                <p style="color: #cce5ff; margin: 10px 0 0 0;">Your invoice is ready</p>
+            </div>
+
+            <div style="background: white; padding: 30px; border: 1px solid #e9ecef;
+                        border-radius: 0 0 10px 10px;">
+                <p style="margin: 0 0 20px 0;">Dear <strong>{customer_name}</strong>,</p>
+
+                <p style="margin: 0 0 20px 0;">
+                    Your tax invoice has been generated for order
+                    <strong style="color: #0066cc;">#{order_number}</strong>.
+                </p>
+
+                <div style="background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 20px 0;
+                            border-left: 4px solid #0066cc;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr>
+                            <td style="padding: 8px 0; color: #666;">Invoice Number</td>
+                            <td style="padding: 8px 0; font-weight: bold; text-align: right;">
+                                {invoice_number}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #666;">Invoice Date</td>
+                            <td style="padding: 8px 0; text-align: right;">{invoice_date}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #666;">Order Reference</td>
+                            <td style="padding: 8px 0; text-align: right;">{order_number}</td>
+                        </tr>
+                        <tr style="background: #0066cc; color: white;">
+                            <td style="padding: 12px 8px; font-weight: bold; border-radius: 4px 0 0 4px;">
+                                Amount Due
+                            </td>
+                            <td style="padding: 12px 8px; font-weight: bold; font-size: 18px;
+                                       text-align: right; border-radius: 0 4px 4px 0;">
+                                &#8377;{float(grand_total):,.2f}
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <p style="margin: 20px 0; color: #666; font-size: 14px;">
+                    Please log in to the ERP portal to view and download your invoice.
+                    For any queries, contact your Aquapurite account manager.
+                </p>
+
+                <div style="background: #e8f4fd; border-radius: 6px; padding: 15px; margin: 20px 0;">
+                    <p style="margin: 0; color: #0066cc; font-size: 13px;">
+                        <strong>Note:</strong> This is an auto-generated invoice.
+                        Goods have been dispatched from our warehouse.
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        text_content = (
+            f"Dear {customer_name},\n\n"
+            f"Tax Invoice {invoice_number} has been generated for order #{order_number}.\n"
+            f"Invoice Date: {invoice_date}\n"
+            f"Amount Due: Rs. {float(grand_total):,.2f}\n\n"
+            f"Please log in to the ERP portal to view and download your invoice.\n\n"
+            f"Regards,\nAquapurite Team"
+        )
 
         return self.send_email(to_email, subject, html_content, text_content)
 
