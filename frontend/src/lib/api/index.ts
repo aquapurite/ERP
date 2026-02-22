@@ -2265,7 +2265,7 @@ export const taxConfigApi = {
 
 // Invoices API
 export const invoicesApi = {
-  list: async (params?: { page?: number; size?: number; status?: string; customer_id?: string }) => {
+  list: async (params?: { page?: number; size?: number; status?: string; customer_id?: string; dealer_id?: string }) => {
     const { data } = await apiClient.get('/billing/invoices', { params });
     return data;
   },
@@ -2390,7 +2390,7 @@ export const receiptsApi = {
     const { data } = await apiClient.get(`/billing/receipts/${id}`);
     return data;
   },
-  create: async (receipt: { customer_id: string; invoice_id?: string; amount: number; payment_mode: string; reference_number?: string; payment_date: string; notes?: string }) => {
+  create: async (receipt: { customer_id?: string; dealer_id?: string; invoice_id?: string; amount: number; payment_mode: string; reference_number?: string; payment_date: string; notes?: string }) => {
     const { data } = await apiClient.post('/billing/receipts', receipt);
     return data;
   },

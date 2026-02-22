@@ -369,8 +369,6 @@ async def list_invoices(
         filters.append(TaxInvoice.status == status)
     if customer_id:
         filters.append(TaxInvoice.customer_id == customer_id)
-    if dealer_id:
-        filters.append(TaxInvoice.dealer_id == dealer_id)
     if start_date:
         filters.append(TaxInvoice.invoice_date >= start_date)
     if end_date:
@@ -378,13 +376,21 @@ async def list_invoices(
     if search:
         filters.append(or_(
             TaxInvoice.invoice_number.ilike(f"%{search}%"),
-            TaxInvoice.billing_name.ilike(f"%{search}%"),
+            TaxInvoice.customer_name.ilike(f"%{search}%"),
         ))
 
     if filters:
         query = query.where(and_(*filters))
         count_query = count_query.where(and_(*filters))
         value_query = value_query.where(and_(*filters))
+
+    # Filter by dealer_id via order join (TaxInvoice has no dealer_id column)
+    if dealer_id:
+        from app.models.order import Order as OrderModel
+        dealer_filter = and_(TaxInvoice.order_id == OrderModel.id, OrderModel.dealer_id == dealer_id)
+        query = query.join(OrderModel, dealer_filter)
+        count_query = count_query.join(OrderModel, dealer_filter)
+        value_query = value_query.join(OrderModel, dealer_filter)
 
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
@@ -1784,20 +1790,31 @@ async def create_payment_receipt(
     db: DB,
     current_user: User = Depends(get_current_user),
 ):
-    """Record a payment receipt against invoice."""
-    # Verify invoice
-    invoice_result = await db.execute(
-        select(TaxInvoice).where(TaxInvoice.id == receipt_in.invoice_id)
-    )
-    invoice = invoice_result.scalar_one_or_none()
+    """Record a payment receipt against an invoice or as advance payment for a dealer/customer."""
+    import logging
+    logger = logging.getLogger(__name__)
 
-    if not invoice:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+    invoice = None
 
-    if receipt_in.amount > invoice.amount_due:
+    # If invoice_id provided, verify and validate
+    if receipt_in.invoice_id:
+        invoice_result = await db.execute(
+            select(TaxInvoice).where(TaxInvoice.id == receipt_in.invoice_id)
+        )
+        invoice = invoice_result.scalar_one_or_none()
+
+        if not invoice:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+
+        if receipt_in.amount > invoice.amount_due:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Payment amount ({receipt_in.amount}) exceeds balance due ({invoice.amount_due})"
+            )
+    elif not receipt_in.dealer_id and not receipt_in.customer_id:
         raise HTTPException(
             status_code=400,
-            detail=f"Payment amount ({receipt_in.amount}) exceeds balance due ({invoice.amount_due})"
+            detail="Either invoice_id, dealer_id, or customer_id is required"
         )
 
     # Generate receipt number
@@ -1817,7 +1834,8 @@ async def create_payment_receipt(
         receipt_number=receipt_number,
         payment_date=receipt_in.payment_date,
         invoice_id=receipt_in.invoice_id,
-        customer_id=invoice.customer_id,
+        customer_id=invoice.customer_id if invoice else receipt_in.customer_id,
+        dealer_id=receipt_in.dealer_id,
         amount=receipt_in.amount,
         payment_mode=receipt_in.payment_mode,
         transaction_reference=receipt_in.transaction_reference,
@@ -1837,56 +1855,80 @@ async def create_payment_receipt(
     db.add(receipt)
     await db.flush()  # Get receipt ID for journal entry
 
-    # Update invoice
-    invoice.amount_paid += receipt_in.amount
-    invoice.amount_due -= receipt_in.amount
+    # Update invoice payment status if invoice provided
+    if invoice:
+        invoice.amount_paid += receipt_in.amount
+        invoice.amount_due -= receipt_in.amount
 
-    if invoice.amount_due <= 0:
-        invoice.status = InvoiceStatus.PAID.value
-    else:
-        invoice.status = InvoiceStatus.PARTIALLY_PAID.value
+        if invoice.amount_due <= 0:
+            invoice.status = InvoiceStatus.PAID.value
+        else:
+            invoice.status = InvoiceStatus.PARTIALLY_PAID.value
 
     # Auto-generate journal entry for payment receipt
-    try:
-        auto_journal_service = AutoJournalService(db)
-        await auto_journal_service.generate_for_payment_receipt(
-            receipt_id=receipt.id,
-            user_id=current_user.id,
-            auto_post=True  # Auto-post payment receipts
-        )
-    except AutoJournalError as e:
-        # Log the error but don't fail the receipt creation
-        import logging
-        logging.warning(f"Failed to auto-generate journal for receipt {receipt.receipt_number}: {e.message}")
+    if invoice:
+        try:
+            auto_journal_service = AutoJournalService(db)
+            await auto_journal_service.generate_for_payment_receipt(
+                receipt_id=receipt.id,
+                user_id=current_user.id,
+                auto_post=True
+            )
+        except AutoJournalError as e:
+            logger.warning(f"Failed to auto-generate journal for receipt {receipt.receipt_number}: {e.message}")
 
-    # P3 TRIGGER 4: Release dealer credit — decrease outstanding_amount when payment received
-    # Find dealer via invoice → order → dealer
+    # P3 TRIGGER 4: Release dealer credit + create DealerCreditLedger entry
+    # Determine dealer: from receipt_in.dealer_id OR via invoice → order → dealer
     try:
-        if invoice.order_id:
-            from app.models.order import Order as OrderModel
-            from app.models.dealer import Dealer
+        from app.models.order import Order as OrderModel
+        from app.models.dealer import Dealer, DealerCreditLedger
+
+        dealer_id_for_receipt = receipt_in.dealer_id
+
+        # If no explicit dealer_id, try to find via invoice → order → dealer
+        if not dealer_id_for_receipt and invoice and invoice.order_id:
             order_result = await db.execute(
                 select(OrderModel).where(OrderModel.id == invoice.order_id)
             )
             order_obj = order_result.scalar_one_or_none()
             if order_obj and getattr(order_obj, 'dealer_id', None):
-                dealer_result = await db.execute(
-                    select(Dealer).where(Dealer.id == order_obj.dealer_id)
+                dealer_id_for_receipt = order_obj.dealer_id
+
+        if dealer_id_for_receipt:
+            # Set dealer_id on receipt
+            receipt.dealer_id = dealer_id_for_receipt
+
+            dealer = await db.get(Dealer, dealer_id_for_receipt)
+            if dealer:
+                dealer.outstanding_amount = max(
+                    Decimal("0"),
+                    dealer.outstanding_amount - receipt_in.amount
                 )
-                dealer_obj = dealer_result.scalar_one_or_none()
-                if dealer_obj:
-                    dealer_obj.outstanding_amount = max(
-                        Decimal("0"),
-                        dealer_obj.outstanding_amount - receipt_in.amount
-                    )
-                    import logging as _log
-                    _log.getLogger(__name__).info(
-                        f"Dealer {dealer_obj.id} outstanding reduced by {receipt_in.amount} "
-                        f"on payment {receipt.receipt_number}"
-                    )
+
+                # Create credit ledger entry
+                invoice_number = invoice.invoice_number if invoice else "ADVANCE"
+                ledger_entry = DealerCreditLedger(
+                    dealer_id=dealer_id_for_receipt,
+                    transaction_type="PAYMENT",
+                    transaction_date=receipt_in.payment_date,
+                    reference_type="PAYMENT",
+                    reference_number=receipt.receipt_number,
+                    reference_id=receipt.id,
+                    debit_amount=Decimal("0"),
+                    credit_amount=receipt_in.amount,
+                    balance=dealer.outstanding_amount,
+                    payment_mode=receipt_in.payment_mode.value if hasattr(receipt_in.payment_mode, 'value') else str(receipt_in.payment_mode),
+                    transaction_reference=receipt_in.transaction_reference,
+                    remarks=f"Payment against invoice {invoice_number}",
+                )
+                db.add(ledger_entry)
+
+                logger.info(
+                    f"Dealer {dealer.id} outstanding reduced by {receipt_in.amount} "
+                    f"on payment {receipt.receipt_number}. Ledger entry created."
+                )
     except Exception as e:
-        import logging
-        logging.warning(f"Failed to release dealer credit for receipt {receipt.receipt_number}: {e}")
+        logger.warning(f"Failed to release dealer credit for receipt {receipt.receipt_number}: {e}")
 
     await db.commit()
     await db.refresh(receipt)

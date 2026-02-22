@@ -474,8 +474,9 @@ class EWayBillCancelRequest(BaseModel):
 
 class PaymentReceiptBase(BaseModel):
     """Base schema for PaymentReceipt."""
-    invoice_id: UUID
+    invoice_id: Optional[UUID] = None
     customer_id: Optional[UUID] = None
+    dealer_id: Optional[UUID] = None
     payment_date: date
     payment_mode: PaymentMode
     amount: Decimal = Field(..., gt=0)
@@ -502,6 +503,7 @@ class PaymentReceiptResponse(BaseResponseSchema):
     receipt_number: str
     invoice_id: Optional[UUID] = None
     customer_id: Optional[UUID] = None
+    dealer_id: Optional[UUID] = None
 
     # Payment details
     payment_date: Optional[date] = None

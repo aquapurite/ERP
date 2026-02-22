@@ -1093,11 +1093,11 @@ class PaymentReceipt(Base):
         comment="Payment receipt number"
     )
 
-    # Invoice Reference
-    invoice_id: Mapped[uuid.UUID] = mapped_column(
+    # Invoice Reference (optional for advance payments)
+    invoice_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tax_invoices.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True
     )
 
@@ -1105,6 +1105,13 @@ class PaymentReceipt(Base):
     customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # Dealer (for B2B dealer payments)
+    dealer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("dealers.id", ondelete="SET NULL"),
         nullable=True
     )
 
@@ -1177,7 +1184,7 @@ class PaymentReceipt(Base):
     )
 
     # Relationships
-    invoice: Mapped["TaxInvoice"] = relationship("TaxInvoice", back_populates="payments")
+    invoice: Mapped[Optional["TaxInvoice"]] = relationship("TaxInvoice", back_populates="payments")
 
     def __repr__(self) -> str:
         return f"<PaymentReceipt(number='{self.receipt_number}', amount={self.amount})>"

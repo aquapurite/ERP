@@ -33,7 +33,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -43,7 +45,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
-import { receiptsApi, customersApi, invoicesApi } from '@/lib/api';
+import { receiptsApi, customersApi, invoicesApi, dealersApi } from '@/lib/api';
 import { formatDate, formatCurrency } from '@/lib/utils';
 
 interface PaymentReceipt {
@@ -51,6 +53,7 @@ interface PaymentReceipt {
   receipt_number: string;
   receipt_date: string;
   customer_id: string;
+  dealer_id?: string;
   customer?: { name: string; email?: string; phone?: string };
   invoice_id?: string;
   invoice?: { invoice_number: string };
@@ -67,10 +70,18 @@ interface Customer {
   name: string;
 }
 
+interface DealerItem {
+  id: string;
+  name: string;
+}
+
 interface Invoice {
   id: string;
   invoice_number: string;
   customer_id: string;
+  grand_total: number;
+  amount_paid: number;
+  amount_due: number;
   total_amount: number;
   paid_amount: number;
 }
@@ -91,7 +102,8 @@ export default function PaymentReceiptsPage() {
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<PaymentReceipt | null>(null);
   const [formData, setFormData] = useState({
-    customer_id: '',
+    entity_type: '' as '' | 'customer' | 'dealer',
+    entity_id: '',
     invoice_id: '',
     amount: 0,
     payment_mode: 'CASH',
@@ -110,10 +122,20 @@ export default function PaymentReceiptsPage() {
     queryFn: () => customersApi.list({ size: 100 }),
   });
 
+  const { data: dealersData } = useQuery({
+    queryKey: ['dealers-dropdown'],
+    queryFn: () => dealersApi.list({ size: 100, status: 'ACTIVE' }),
+  });
+
   const { data: invoicesData } = useQuery({
-    queryKey: ['invoices-for-receipt', formData.customer_id],
-    queryFn: () => invoicesApi.list({ customer_id: formData.customer_id, size: 50 }),
-    enabled: !!formData.customer_id,
+    queryKey: ['invoices-for-receipt', formData.entity_type, formData.entity_id],
+    queryFn: () => {
+      if (formData.entity_type === 'dealer') {
+        return invoicesApi.list({ dealer_id: formData.entity_id, size: 50 });
+      }
+      return invoicesApi.list({ customer_id: formData.entity_id, size: 50 });
+    },
+    enabled: !!formData.entity_id,
   });
 
   const createMutation = useMutation({
@@ -129,7 +151,8 @@ export default function PaymentReceiptsPage() {
 
   const resetForm = () => {
     setFormData({
-      customer_id: '',
+      entity_type: '',
+      entity_id: '',
       invoice_id: '',
       amount: 0,
       payment_mode: 'CASH',
@@ -138,6 +161,22 @@ export default function PaymentReceiptsPage() {
       notes: '',
     });
     setIsDialogOpen(false);
+  };
+
+  const handleEntityChange = (value: string) => {
+    if (value === 'select' || !value) {
+      setFormData({ ...formData, entity_type: '', entity_id: '', invoice_id: '', amount: 0 });
+      return;
+    }
+    // Value format: "customer::<id>" or "dealer::<id>"
+    const [type, id] = value.split('::');
+    setFormData({
+      ...formData,
+      entity_type: type as 'customer' | 'dealer',
+      entity_id: id,
+      invoice_id: '',
+      amount: 0,
+    });
   };
 
   const handleViewReceipt = async (receipt: PaymentReceipt) => {
@@ -152,13 +191,14 @@ export default function PaymentReceiptsPage() {
   };
 
   const handleSubmit = () => {
-    if (!formData.customer_id || !formData.amount || !formData.payment_date) {
-      toast.error('Customer, amount, and date are required');
+    if (!formData.entity_id || !formData.amount || !formData.payment_date) {
+      toast.error('Customer/Dealer, amount, and date are required');
       return;
     }
 
     createMutation.mutate({
-      customer_id: formData.customer_id,
+      customer_id: formData.entity_type === 'customer' ? formData.entity_id : undefined,
+      dealer_id: formData.entity_type === 'dealer' ? formData.entity_id : undefined,
       invoice_id: formData.invoice_id || undefined,
       amount: formData.amount,
       payment_mode: formData.payment_mode,
@@ -252,13 +292,22 @@ export default function PaymentReceiptsPage() {
   ];
 
   const customers = customersData?.items ?? [];
-  const invoices = invoicesData?.items?.filter((inv: Invoice) => inv.total_amount > inv.paid_amount) ?? [];
+  const dealers = dealersData?.items ?? [];
+  const invoices = invoicesData?.items?.filter((inv: Invoice) => {
+    const due = inv.amount_due ?? (inv.grand_total ?? inv.total_amount ?? 0) - (inv.amount_paid ?? inv.paid_amount ?? 0);
+    return due > 0;
+  }) ?? [];
+
+  // Build entity selector value
+  const entityValue = formData.entity_id
+    ? `${formData.entity_type}::${formData.entity_id}`
+    : 'select';
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Payment Receipts"
-        description="Record and manage payment receipts from customers"
+        description="Record and manage payment receipts from customers and dealers"
         actions={
           <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) resetForm(); else setIsDialogOpen(true); }}>
             <DialogTrigger asChild>
@@ -274,36 +323,58 @@ export default function PaymentReceiptsPage() {
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="space-y-2">
-                  <Label>Customer *</Label>
+                  <Label>Customer / Dealer *</Label>
                   <Select
-                    value={formData.customer_id || 'select'}
-                    onValueChange={(value) => setFormData({ ...formData, customer_id: value === 'select' ? '' : value, invoice_id: '' })}
+                    value={entityValue}
+                    onValueChange={handleEntityChange}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select customer" />
+                      <SelectValue placeholder="Select customer or dealer" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="select" disabled>Select customer</SelectItem>
-                      {customers
-                        .filter((c: Customer) => c.id && c.id.trim() !== '')
-                        .map((c: Customer) => (
-                          <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                        ))}
+                      <SelectItem value="select" disabled>Select customer or dealer</SelectItem>
+                      {dealers.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel className="text-xs font-semibold text-blue-600">Dealers</SelectLabel>
+                          {dealers
+                            .filter((d: DealerItem) => d.id && d.id.trim() !== '')
+                            .map((d: DealerItem) => (
+                              <SelectItem key={`dealer-${d.id}`} value={`dealer::${d.id}`}>
+                                {d.name}
+                              </SelectItem>
+                            ))}
+                        </SelectGroup>
+                      )}
+                      {customers.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel className="text-xs font-semibold text-green-600">Customers</SelectLabel>
+                          {customers
+                            .filter((c: Customer) => c.id && c.id.trim() !== '')
+                            .map((c: Customer) => (
+                              <SelectItem key={`customer-${c.id}`} value={`customer::${c.id}`}>
+                                {c.name}
+                              </SelectItem>
+                            ))}
+                        </SelectGroup>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
 
-                {formData.customer_id && invoices.length > 0 && (
+                {formData.entity_id && invoices.length > 0 && (
                   <div className="space-y-2">
                     <Label>Against Invoice (Optional)</Label>
                     <Select
                       value={formData.invoice_id || 'none'}
                       onValueChange={(value) => {
                         const inv = invoices.find((i: Invoice) => i.id === value);
+                        const due = inv
+                          ? (inv.amount_due ?? (inv.grand_total ?? inv.total_amount ?? 0) - (inv.amount_paid ?? inv.paid_amount ?? 0))
+                          : formData.amount;
                         setFormData({
                           ...formData,
                           invoice_id: value === 'none' ? '' : value,
-                          amount: inv ? inv.total_amount - inv.paid_amount : formData.amount,
+                          amount: due,
                         });
                       }}
                     >
@@ -314,11 +385,14 @@ export default function PaymentReceiptsPage() {
                         <SelectItem value="none">No specific invoice</SelectItem>
                         {invoices
                           .filter((inv: Invoice) => inv.id && inv.id.trim() !== '')
-                          .map((inv: Invoice) => (
-                            <SelectItem key={inv.id} value={inv.id}>
-                              {inv.invoice_number} - Due: {formatCurrency(inv.total_amount - inv.paid_amount)}
-                            </SelectItem>
-                          ))}
+                          .map((inv: Invoice) => {
+                            const due = inv.amount_due ?? (inv.grand_total ?? inv.total_amount ?? 0) - (inv.amount_paid ?? inv.paid_amount ?? 0);
+                            return (
+                              <SelectItem key={inv.id} value={inv.id}>
+                                {inv.invoice_number} - Due: {formatCurrency(due)}
+                              </SelectItem>
+                            );
+                          })}
                       </SelectContent>
                     </Select>
                   </div>
