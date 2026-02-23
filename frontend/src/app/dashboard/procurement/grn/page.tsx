@@ -675,7 +675,7 @@ export default function GRNPage() {
                               <span className="text-muted-foreground">-</span>
                               <span>{po.vendor?.name || 'Unknown Vendor'}</span>
                               <Badge variant="outline" className="ml-2">
-                                {formatCurrency(po.total_amount)}
+                                {formatCurrency(po.grand_total ?? po.total_amount)}
                               </Badge>
                             </div>
                           </SelectItem>
