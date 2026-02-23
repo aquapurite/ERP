@@ -127,7 +127,7 @@ async def get_category_dropdown(
 
 
 @router.post("/categories", response_model=ExpenseCategoryResponse,
-             dependencies=[Depends(require_permissions("expenses:create"))])
+             dependencies=[Depends(require_permissions("EXPENSE_CATEGORY_MANAGE"))])
 async def create_expense_category(
     db: DB,
     current_user: CurrentUser,
@@ -152,7 +152,7 @@ async def create_expense_category(
 
 
 @router.put("/categories/{category_id}", response_model=ExpenseCategoryResponse,
-            dependencies=[Depends(require_permissions("expenses:update"))])
+            dependencies=[Depends(require_permissions("EXPENSE_CATEGORY_MANAGE"))])
 async def update_expense_category(
     db: DB,
     current_user: CurrentUser,
@@ -261,7 +261,7 @@ async def list_expense_vouchers(
 
 
 @router.post("", response_model=ExpenseVoucherResponse,
-             dependencies=[Depends(require_permissions("expenses:create"))])
+             dependencies=[Depends(require_permissions("EXPENSE_CREATE"))])
 async def create_expense_voucher(
     db: DB,
     current_user: CurrentUser,
@@ -331,7 +331,7 @@ async def get_expense_voucher(
 
 
 @router.put("/{voucher_id}", response_model=ExpenseVoucherResponse,
-            dependencies=[Depends(require_permissions("expenses:update"))])
+            dependencies=[Depends(require_permissions("EXPENSE_EDIT"))])
 async def update_expense_voucher(
     db: DB,
     current_user: CurrentUser,
@@ -357,7 +357,7 @@ async def update_expense_voucher(
     return voucher
 
 
-@router.delete("/{voucher_id}", dependencies=[Depends(require_permissions("expenses:delete"))])
+@router.delete("/{voucher_id}", dependencies=[Depends(require_permissions("EXPENSE_DELETE"))])
 async def delete_expense_voucher(
     db: DB,
     voucher_id: uuid.UUID,
@@ -378,7 +378,7 @@ async def delete_expense_voucher(
 # ==================== WORKFLOW ACTIONS ====================
 
 @router.post("/{voucher_id}/submit", response_model=ExpenseVoucherResponse,
-             dependencies=[Depends(require_permissions("expenses:submit"))])
+             dependencies=[Depends(require_permissions("EXPENSE_CREATE"))])
 async def submit_expense_voucher(
     db: DB,
     current_user: CurrentUser,
@@ -401,7 +401,7 @@ async def submit_expense_voucher(
 
 
 @router.post("/{voucher_id}/approve", response_model=ExpenseVoucherResponse,
-             dependencies=[Depends(require_permissions("expenses:approve"))])
+             dependencies=[Depends(require_permissions("EXPENSE_APPROVE"))])
 async def approve_expense_voucher(
     db: DB,
     current_user: CurrentUser,
@@ -438,7 +438,7 @@ async def approve_expense_voucher(
 
 
 @router.post("/{voucher_id}/reject", response_model=ExpenseVoucherResponse,
-             dependencies=[Depends(require_permissions("expenses:approve"))])
+             dependencies=[Depends(require_permissions("EXPENSE_APPROVE"))])
 async def reject_expense_voucher(
     db: DB,
     current_user: CurrentUser,
@@ -463,7 +463,7 @@ async def reject_expense_voucher(
 
 
 @router.post("/{voucher_id}/post", response_model=ExpenseVoucherResponse,
-             dependencies=[Depends(require_permissions("expenses:post"))])
+             dependencies=[Depends(require_permissions("EXPENSE_POST"))])
 async def post_expense_voucher(
     db: DB,
     current_user: CurrentUser,
@@ -516,7 +516,7 @@ async def post_expense_voucher(
 
 
 @router.post("/{voucher_id}/pay", response_model=ExpenseVoucherResponse,
-             dependencies=[Depends(require_permissions("expenses:pay"))])
+             dependencies=[Depends(require_permissions("EXPENSE_POST"))])
 async def mark_expense_paid(
     db: DB,
     current_user: CurrentUser,
@@ -542,7 +542,7 @@ async def mark_expense_paid(
 # ==================== DASHBOARD ====================
 
 @router.get("/dashboard/stats", response_model=ExpenseDashboard,
-            dependencies=[Depends(require_permissions("expenses:view"))])
+            dependencies=[Depends(require_permissions("EXPENSE_VIEW"))])
 async def get_expense_dashboard(
     db: DB,
 ):
