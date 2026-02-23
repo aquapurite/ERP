@@ -148,7 +148,7 @@ export default function StorefrontHeader() {
             </Button>
 
             {/* Logo */}
-            <Link href="/" className="flex items-center gap-2">
+            <Link href="/" className="flex flex-col items-center gap-0.5">
               {company?.logo_url ? (
                 <img
                   src={company.logo_url}
@@ -165,6 +165,7 @@ export default function StorefrontHeader() {
                   </span>
                 </>
               )}
+              <span className="text-[10px] font-medium text-muted-foreground tracking-wide">Home</span>
             </Link>
 
             {/* Search Bar - Desktop */}
