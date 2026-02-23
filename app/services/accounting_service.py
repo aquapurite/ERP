@@ -79,6 +79,9 @@ class AccountingService:
         "ACCUMULATED_DEPRECIATION": AccountCode.ACCUMULATED_DEPRECIATION.value,
         "DEPRECIATION_EXPENSE": AccountCode.DEPRECIATION_EXPENSE.value,
 
+        # Imprest
+        "IMPREST": AccountCode.IMPREST.value,
+
         # TDS
         "TDS_PAYABLE": AccountCode.TDS_PAYABLE.value,
     }
@@ -706,6 +709,8 @@ class AccountingService:
             payment_code = self.ACCOUNT_CODES["CASH"]
         elif payment_mode == "PETTY_CASH":
             payment_code = self.ACCOUNT_CODES["CASH"]  # Use cash account for petty cash
+        elif payment_mode == "IMPREST":
+            payment_code = self.ACCOUNT_CODES["IMPREST"]
         elif bank_account_id:
             # Get bank account code
             bank_result = await self.db.execute(

@@ -76,6 +76,9 @@ class AccountCode(str, Enum):
     # Accumulated Depreciation (contra account)
     ACCUMULATED_DEPRECIATION = "1600"
 
+    # Imprest Accounts (11XX)
+    IMPREST = "1109"          # Anupam Singh (Imprest)
+
     # TDS Receivable (17XX)
     TDS_RECEIVABLE = "1700"
 
@@ -246,6 +249,9 @@ COA_STRUCTURE = {
     # Current Assets
     "1101": AccountInfo("1101", "Cash in Hand", "ASSET", "CASH", parent_code="1000"),
     "1020": AccountInfo("1020", "Bank Account", "ASSET", "BANK", parent_code="1000"),
+
+    # Imprest
+    "1109": AccountInfo("1109", "Anupam Singh (Imprest)", "ASSET", "CURRENT_ASSET", parent_code="1000"),
 
     # Receivables
     "1110": AccountInfo("1110", "Trade Receivables - Customers", "ASSET", "ACCOUNTS_RECEIVABLE", parent_code="1000"),

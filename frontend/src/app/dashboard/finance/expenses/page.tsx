@@ -881,6 +881,7 @@ export default function ExpensesPage() {
                   <SelectItem value="BANK">Bank Transfer</SelectItem>
                   <SelectItem value="PETTY_CASH">Petty Cash</SelectItem>
                   <SelectItem value="CREDIT_CARD">Credit Card</SelectItem>
+                  <SelectItem value="IMPREST">Imprest Account</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -63,7 +63,7 @@ class ExpenseVoucherBase(BaseModel):
     cost_center_id: Optional[UUID] = None
     narration: Optional[str] = None
     purpose: Optional[str] = None
-    payment_mode: str = Field(default="CASH", pattern="^(CASH|BANK|PETTY_CASH)$")
+    payment_mode: str = Field(default="CASH", pattern="^(CASH|BANK|PETTY_CASH|CREDIT_CARD|IMPREST)$")
     bank_account_id: Optional[UUID] = None
 
 
