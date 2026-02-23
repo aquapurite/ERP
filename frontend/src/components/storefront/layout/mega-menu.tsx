@@ -131,6 +131,7 @@ export function MegaMenuItem({ category, onClose }: MegaMenuItemProps) {
                         src={child.image_url}
                         alt={child.name}
                         className="h-6 w-6 rounded object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                       />
                     )}
                     <span>{child.name}</span>
@@ -274,6 +275,7 @@ export function MegaMenuWide({ category, onClose }: MegaMenuItemProps) {
                       src={child.image_url}
                       alt={child.name}
                       className="h-12 w-12 rounded-lg object-cover flex-shrink-0"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                     />
                   ) : (
                     <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
@@ -470,6 +472,7 @@ function CMSMegaMenuItem({
                         src={sub.image_url}
                         alt={sub.name}
                         className="h-6 w-6 rounded object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                       />
                     )}
                     <span>{sub.name}</span>
@@ -626,6 +629,7 @@ function CMSMegaMenuItemWide({
                     src={item.image_url}
                     alt={item.title}
                     className="h-10 w-10 rounded-lg object-cover"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                   />
                 )}
                 <div>
@@ -673,6 +677,7 @@ function CMSMegaMenuItemWide({
                       src={sub.image_url}
                       alt={sub.name}
                       className="h-12 w-12 rounded-lg object-cover flex-shrink-0"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                     />
                   ) : (
                     <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
