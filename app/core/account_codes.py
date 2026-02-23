@@ -101,6 +101,7 @@ class AccountCode(str, Enum):
     # Advances & Provisions (24XX-26XX)
     TDS_PAYABLE_194C = "2400"
     ADVANCE_CUSTOMERS = "2500"
+    UNEARNED_AMC_REVENUE = "2550"  # Deferred revenue from AMC contracts
     PROVISION_WARRANTY = "2610"
 
     # ==================== EQUITY (3XXX) ====================
@@ -292,4 +293,7 @@ COA_STRUCTURE = {
 
     # TDS
     "2300": AccountInfo("2300", "TDS Payable", "LIABILITY", "TAX_PAYABLE", parent_code="2000"),
+
+    # Deferred Revenue
+    "2550": AccountInfo("2550", "Unearned AMC Revenue", "LIABILITY", "CURRENT_LIABILITY", parent_code="2000"),
 }

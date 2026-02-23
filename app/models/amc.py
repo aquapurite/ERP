@@ -17,10 +17,40 @@ class AMCType(str, Enum):
     PLATINUM = "PLATINUM"  # Premium service
 
 
+class ContractType(str, Enum):
+    """Contract type: what's covered."""
+    COMPREHENSIVE = "COMPREHENSIVE"  # Parts + Labor included (fixed annual fee)
+    NON_COMPREHENSIVE = "NON_COMPREHENSIVE"  # Labor only, parts billed separately
+
+
+class SalesChannel(str, Enum):
+    """How the AMC was sold."""
+    ONLINE = "ONLINE"  # D2C website/app
+    OFFLINE = "OFFLINE"  # Walk-in / call center
+    DEALER = "DEALER"  # Sold by dealer at point of sale
+    TECHNICIAN = "TECHNICIAN"  # Sold by service engineer during visit
+
+
+class SoldByType(str, Enum):
+    """Who sold the AMC."""
+    USER = "USER"  # Internal employee
+    DEALER = "DEALER"  # Dealer/distributor
+    TECHNICIAN = "TECHNICIAN"  # Service technician
+
+
+class InspectionStatus(str, Enum):
+    """Inspection status for lapsed contract re-enrollment."""
+    PENDING = "PENDING"
+    SCHEDULED = "SCHEDULED"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
 class AMCStatus(str, Enum):
     """AMC status enum."""
     DRAFT = "DRAFT"
     PENDING_PAYMENT = "PENDING_PAYMENT"
+    PENDING_INSPECTION = "PENDING_INSPECTION"  # Lapsed contract needs inspection
     ACTIVE = "ACTIVE"
     EXPIRED = "EXPIRED"
     CANCELLED = "CANCELLED"
@@ -97,6 +127,45 @@ class AMCContract(Base, TimestampMixin):
     notes = Column(Text)
     internal_notes = Column(Text)
 
+    # Plan reference
+    plan_id = Column(UUID(as_uuid=True), ForeignKey("amc_plans.id"))
+
+    # Contract type (Comprehensive vs Non-Comprehensive)
+    contract_type = Column(
+        String(50), default="COMPREHENSIVE",
+        comment="COMPREHENSIVE (parts+labor), NON_COMPREHENSIVE (labor only)"
+    )
+
+    # Sales channel tracking (online/offline)
+    sales_channel = Column(
+        String(50), default="OFFLINE",
+        comment="ONLINE, OFFLINE, DEALER, TECHNICIAN"
+    )
+    sold_by_id = Column(UUID(as_uuid=True))  # User/Dealer/Technician who sold
+    sold_by_type = Column(
+        String(50),
+        comment="USER, DEALER, TECHNICIAN"
+    )
+
+    # Grace period & lapsed contract inspection
+    grace_end_date = Column(Date)  # end_date + grace_period_days
+    requires_inspection = Column(Boolean, default=False)
+    inspection_status = Column(
+        String(50),
+        comment="PENDING, SCHEDULED, COMPLETED, FAILED"
+    )
+    inspection_date = Column(Date)
+    inspection_notes = Column(Text)
+
+    # Commission tracking
+    commission_rate = Column(Numeric(5, 2), default=0)  # Percentage
+    commission_amount = Column(Numeric(12, 2), default=0)
+    commission_paid = Column(Boolean, default=False)
+
+    # Deferred revenue tracking
+    revenue_recognized = Column(Numeric(12, 2), default=0)  # Revenue recognized to date
+    revenue_pending = Column(Numeric(12, 2), default=0)  # Revenue yet to be recognized
+
     # Audit
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
@@ -105,6 +174,7 @@ class AMCContract(Base, TimestampMixin):
     customer = relationship("Customer", back_populates="amc_contracts")
     customer_address = relationship("CustomerAddress")
     product = relationship("Product")
+    plan = relationship("AMCPlan")
     installation = relationship("Installation", back_populates="amc_contracts")
     service_requests = relationship("ServiceRequest", back_populates="amc")
     renewed_from = relationship("AMCContract", foreign_keys=[renewed_from_id], remote_side=[id])
@@ -163,6 +233,35 @@ class AMCPlan(Base, TimestampMixin):
     emergency_support = Column(Boolean, default=False)
     priority_service = Column(Boolean, default=False)
     discount_on_parts = Column(Numeric(5, 2), default=0)
+
+    # Contract type (Comprehensive vs Non-Comprehensive)
+    contract_type = Column(
+        String(50), default="COMPREHENSIVE",
+        comment="COMPREHENSIVE (parts+labor), NON_COMPREHENSIVE (labor only)"
+    )
+
+    # Feature matrix: what's included in this plan
+    features_included = Column(JSONB, default=list)
+    # Example: [{"name": "Sediment Filter", "quantity": 1, "frequency": "yearly"},
+    #           {"name": "RO Membrane", "quantity": 1, "frequency": "yearly"}]
+
+    # Parts covered in this plan
+    parts_included = Column(JSONB, default=list)
+    # Example: [{"part_name": "RO Membrane", "part_id": null, "covered": true},
+    #           {"part_name": "UV Lamp", "part_id": null, "covered": false}]
+
+    # Multi-year tenure options with pricing
+    tenure_options = Column(JSONB, default=list)
+    # Example: [{"months": 12, "price": 2999, "discount_pct": 0},
+    #           {"months": 24, "price": 5499, "discount_pct": 8},
+    #           {"months": 36, "price": 7999, "discount_pct": 11}]
+
+    # SLA rules per plan tier
+    response_sla_hours = Column(Integer, default=48)  # First response SLA
+    resolution_sla_hours = Column(Integer, default=72)  # Resolution SLA
+
+    # Grace period
+    grace_period_days = Column(Integer, default=15)  # Days after expiry for renewal without inspection
 
     # Terms
     terms_and_conditions = Column(Text)

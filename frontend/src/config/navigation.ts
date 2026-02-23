@@ -372,6 +372,8 @@ export const navigation: NavItem[] = [
       { title: 'Installations', href: '/dashboard/service/installations', icon: CalendarCheck, permissions: ['SERVICE_VIEW'] },
       { title: 'Warranty Claims', href: '/dashboard/service/warranty-claims', icon: ShieldCheck, permissions: ['SERVICE_VIEW'] },
       { title: 'AMC Contracts', href: '/dashboard/service/amc', icon: HeartHandshake, permissions: ['SERVICE_VIEW'] },
+      { title: 'AMC Field Sales', href: '/dashboard/service/field-sales', icon: Briefcase, permissions: ['SERVICE_VIEW'] },
+      { title: 'AMC Analytics', href: '/dashboard/service/amc-analytics', icon: BarChart3, permissions: ['SERVICE_VIEW'] },
       { title: 'Technicians', href: '/dashboard/service/technicians', icon: HardHat, permissions: ['SERVICE_VIEW'] },
       { title: 'Escalations', href: '/dashboard/crm/escalations', icon: AlertTriangle, permissions: ['SERVICE_VIEW'] },
     ],

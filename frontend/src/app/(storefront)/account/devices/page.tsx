@@ -311,6 +311,59 @@ export default function DevicesPage() {
                       </div>
                     </div>
 
+                    {/* Warranty Expiry Alert with AMC Upsell */}
+                    {device.warranty_status === 'expiring_soon' && device.amc_status === 'none' && (
+                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-orange-800">
+                            <AlertTriangle className="h-4 w-4" />
+                            <div>
+                              <span className="text-sm font-medium">
+                                Warranty expiring on{' '}
+                                {new Date(device.warranty_end_date).toLocaleDateString('en-IN', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric',
+                                })}
+                              </span>
+                              <p className="text-xs text-orange-600 mt-0.5">
+                                Protect your purifier with an AMC plan before warranty ends
+                              </p>
+                            </div>
+                          </div>
+                          <Link href="/account/amc">
+                            <Button size="sm" variant="default" className="bg-orange-600 hover:bg-orange-700">
+                              <Shield className="h-3.5 w-3.5 mr-1.5" />
+                              Get AMC
+                            </Button>
+                          </Link>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Warranty Expired - Strong AMC Upsell */}
+                    {device.warranty_status === 'expired' && device.amc_status === 'none' && (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-red-800">
+                            <AlertTriangle className="h-4 w-4" />
+                            <div>
+                              <span className="text-sm font-medium">Warranty Expired</span>
+                              <p className="text-xs text-red-600 mt-0.5">
+                                Stay covered with an Annual Maintenance Contract starting at Rs 999/year
+                              </p>
+                            </div>
+                          </div>
+                          <Link href="/account/amc">
+                            <Button size="sm">
+                              <Shield className="h-3.5 w-3.5 mr-1.5" />
+                              Buy AMC
+                            </Button>
+                          </Link>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Service Reminder */}
                     {device.next_service_due && (
                       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
@@ -327,6 +380,23 @@ export default function DevicesPage() {
                       </div>
                     )}
 
+                    {/* AMC Active info */}
+                    {device.amc_status === 'active' && device.amc_end_date && (
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+                        <div className="flex items-center gap-2 text-green-800">
+                          <CheckCircle className="h-4 w-4" />
+                          <span className="text-sm font-medium">
+                            AMC Active until{' '}
+                            {new Date(device.amc_end_date).toLocaleDateString('en-IN', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Actions */}
                     <div className="flex flex-wrap gap-2">
                       <Link href={`/account/services?device=${device.id}`}>
@@ -335,11 +405,19 @@ export default function DevicesPage() {
                           Book Service
                         </Button>
                       </Link>
-                      {device.amc_status === 'none' && (
+                      {(device.amc_status === 'none' || device.amc_status === 'expired') && (
                         <Link href="/account/amc">
                           <Button size="sm" variant="outline">
                             <Shield className="h-4 w-4 mr-2" />
-                            Buy AMC
+                            {device.amc_status === 'expired' ? 'Renew AMC' : 'Buy AMC'}
+                          </Button>
+                        </Link>
+                      )}
+                      {device.amc_status === 'active' && (
+                        <Link href="/account/amc">
+                          <Button size="sm" variant="ghost">
+                            <Shield className="h-4 w-4 mr-2" />
+                            View AMC
                           </Button>
                         </Link>
                       )}

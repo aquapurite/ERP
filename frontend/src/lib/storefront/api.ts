@@ -1830,11 +1830,30 @@ export const portalApi = {
 };
 
 // AMC (Annual Maintenance Contract) API
+export interface AMCPlanFeature {
+  name: string;
+  quantity: number;
+  frequency: string;
+}
+
+export interface AMCPlanPart {
+  part_name: string;
+  part_id?: string;
+  covered: boolean;
+}
+
+export interface AMCTenureOption {
+  months: number;
+  price: number;
+  discount_pct: number;
+}
+
 export interface AMCPlan {
   id: string;
   name: string;
   code: string;
   amc_type: string;
+  contract_type?: string; // COMPREHENSIVE or NON_COMPREHENSIVE
   duration_months: number;
   base_price: number;
   tax_rate: number;
@@ -1844,6 +1863,12 @@ export interface AMCPlan {
   emergency_support: boolean;
   priority_support: boolean;
   discount_on_parts: number;
+  features_included?: AMCPlanFeature[];
+  parts_included?: AMCPlanPart[];
+  tenure_options?: AMCTenureOption[];
+  response_sla_hours: number;
+  resolution_sla_hours: number;
+  grace_period_days: number;
   description?: string;
   is_active: boolean;
 }
@@ -1856,26 +1881,40 @@ export interface AMCContract {
   product_name: string;
   serial_number: string;
   status: string;
+  contract_type?: string;
   start_date: string;
   end_date: string;
+  duration_months: number;
   total_services: number;
   services_used: number;
+  services_remaining: number;
   next_service_due?: string;
   total_amount: number;
+  is_active: boolean;
+  days_remaining: number;
+  sales_channel?: string;
+  grace_end_date?: string;
+  requires_inspection: boolean;
+  inspection_status?: string;
 }
 
 export const amcApi = {
   // Get active AMC plans for storefront
-  getPlans: async (): Promise<AMCPlan[]> => {
+  getPlans: async (params?: { contract_type?: string }): Promise<AMCPlan[]> => {
     try {
-      const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/amc/plans`);
+      const searchParams = new URLSearchParams();
+      if (params?.contract_type) searchParams.append('contract_type', params.contract_type);
+      const query = searchParams.toString() ? `?${searchParams.toString()}` : '';
+      const { data } = await storefrontClient.get(`${STOREFRONT_PATH}/amc/plans${query}`);
       return data.items || data || [];
     } catch {
       // Fallback: try the admin API if storefront endpoint doesn't exist
       const token = useAuthStore.getState().accessToken;
       if (!token) return [];
+      const searchParams = new URLSearchParams({ is_active: 'true' });
+      if (params?.contract_type) searchParams.append('contract_type', params.contract_type);
       const { data } = await storefrontClient.get(
-        `${API_PATH}/amc/plans?is_active=true`,
+        `${API_PATH}/amc/plans?${searchParams.toString()}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       return data.items || [];
@@ -1899,8 +1938,15 @@ export const amcApi = {
     }
   },
 
-  // Purchase AMC plan
-  purchasePlan: async (planId: string, serialNumber: string): Promise<{
+  // Purchase AMC plan with tenure selection and Razorpay payment
+  purchasePlan: async (
+    planId: string,
+    serialNumber: string,
+    options?: {
+      duration_months?: number;
+      sales_channel?: string;
+    }
+  ): Promise<{
     contract_id: string;
     contract_number: string;
     message: string;
@@ -1916,6 +1962,39 @@ export const amcApi = {
         plan_id: planId,
         serial_number: serialNumber,
         start_date: new Date().toISOString().split('T')[0],
+        duration_months: options?.duration_months || 12,
+        sales_channel: options?.sales_channel || 'ONLINE',
+      },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return data;
+  },
+
+  // Create Razorpay payment order for AMC purchase
+  createPaymentOrder: async (params: {
+    plan_id: string;
+    serial_number: string;
+    duration_months: number;
+    amount: number;
+  }): Promise<PaymentOrderResponse> => {
+    const token = useAuthStore.getState().accessToken;
+    const customer = useAuthStore.getState().customer;
+    if (!token || !customer) throw new Error('Not authenticated');
+
+    const { data } = await storefrontClient.post(
+      `${API_PATH}/payments/create-order`,
+      {
+        order_id: `AMC-${Date.now()}`,
+        amount: params.amount,
+        customer_name: `${customer.first_name || ''} ${customer.last_name || ''}`.trim() || 'Customer',
+        customer_email: customer.email,
+        customer_phone: customer.phone,
+        notes: {
+          type: 'amc_purchase',
+          plan_id: params.plan_id,
+          serial_number: params.serial_number,
+          duration_months: params.duration_months.toString(),
+        },
       },
       { headers: { Authorization: `Bearer ${token}` } }
     );
@@ -1923,7 +2002,11 @@ export const amcApi = {
   },
 
   // Renew AMC contract
-  renewContract: async (contractId: string, planId?: string): Promise<{
+  renewContract: async (contractId: string, options?: {
+    new_plan_id?: string;
+    duration_months?: number;
+    sales_channel?: string;
+  }): Promise<{
     contract_id: string;
     message: string;
   }> => {
@@ -1932,7 +2015,26 @@ export const amcApi = {
 
     const { data } = await storefrontClient.post(
       `${API_PATH}/amc/contracts/${contractId}/renew`,
-      { new_plan_id: planId },
+      {
+        new_plan_id: options?.new_plan_id,
+        duration_months: options?.duration_months,
+        sales_channel: options?.sales_channel || 'ONLINE',
+      },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return data;
+  },
+
+  // Request inspection for lapsed contract
+  requestInspection: async (contractId: string, preferredDate?: string): Promise<{
+    message: string;
+  }> => {
+    const token = useAuthStore.getState().accessToken;
+    if (!token) throw new Error('Not authenticated');
+
+    const { data } = await storefrontClient.post(
+      `${API_PATH}/amc/contracts/${contractId}/request-inspection`,
+      { preferred_date: preferredDate },
       { headers: { Authorization: `Bearer ${token}` } }
     );
     return data;

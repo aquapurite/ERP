@@ -53,6 +53,7 @@ def start_scheduler():
         )
         from app.jobs.banking_jobs import auto_reconcile_bank_transactions
         from app.jobs.warranty_jobs import check_warranty_expiry
+        from app.jobs.sla_jobs import check_sla_compliance
 
         # Add scheduled jobs
 
@@ -134,6 +135,16 @@ def start_scheduler():
             minute=0,
             id='check_warranty_expiry',
             name='Check Warranty/AMC Expiry',
+            replace_existing=True,
+        )
+
+        # SLA compliance check every 30 minutes
+        scheduler.add_job(
+            check_sla_compliance,
+            'interval',
+            minutes=30,
+            id='check_sla_compliance',
+            name='Check SLA Compliance & Auto-Escalate',
             replace_existing=True,
         )
 

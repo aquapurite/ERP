@@ -1247,8 +1247,8 @@ export const serviceRequestsApi = {
 // ==================== AMC (ANNUAL MAINTENANCE CONTRACT) API ====================
 export const amcApi = {
   // Plans
-  listPlans: async () => {
-    const { data } = await apiClient.get('/amc/plans');
+  listPlans: async (params?: { is_active?: boolean; contract_type?: string; amc_type?: string }) => {
+    const { data } = await apiClient.get('/amc/plans', { params });
     return data;
   },
   getPlan: async (planId: string) => {
@@ -1257,16 +1257,26 @@ export const amcApi = {
   },
   createPlan: async (plan: {
     name: string;
-    code?: string;
-    duration_months: number;
-    visits_included: number;
-    price: number;
-    discount_percentage?: number;
+    code: string;
+    amc_type?: string;
+    contract_type?: string;
+    duration_months?: number;
+    base_price: number;
+    tax_rate?: number;
+    services_included?: number;
     parts_covered?: boolean;
     labor_covered?: boolean;
-    priority_support?: boolean;
+    emergency_support?: boolean;
+    priority_service?: boolean;
+    discount_on_parts?: number;
+    features_included?: { name: string; quantity: number; frequency: string }[];
+    parts_included?: { part_name: string; part_id?: string; covered: boolean }[];
+    tenure_options?: { months: number; price: number; discount_pct: number }[];
+    response_sla_hours?: number;
+    resolution_sla_hours?: number;
+    grace_period_days?: number;
     description?: string;
-    applicable_products?: string[];
+    terms_and_conditions?: string;
   }) => {
     const { data } = await apiClient.post('/amc/plans', plan);
     return data;
@@ -1282,8 +1292,10 @@ export const amcApi = {
     size?: number;
     status?: string;
     customer_id?: string;
-    plan_id?: string;
-    expiring_within_days?: number;
+    contract_type?: string;
+    sales_channel?: string;
+    expiring_in_days?: number;
+    search?: string;
   }) => {
     const { data } = await apiClient.get('/amc/contracts', { params });
     return data;
@@ -1296,14 +1308,31 @@ export const amcApi = {
     const { data } = await apiClient.get('/amc/contracts/stats');
     return data;
   },
+  getContractSla: async (contractId: string) => {
+    const { data } = await apiClient.get(`/amc/contracts/${contractId}/sla`);
+    return data;
+  },
   createContract: async (contract: {
     customer_id: string;
-    plan_id: string;
-    device_serial?: string;
+    product_id: string;
+    serial_number: string;
+    plan_id?: string;
+    amc_type?: string;
+    contract_type?: string;
     installation_id?: string;
-    start_date?: string;
-    payment_mode?: string;
+    start_date: string;
+    duration_months?: number;
+    total_services?: number;
+    base_price: number;
+    discount_amount?: number;
+    parts_covered?: boolean;
+    labor_covered?: boolean;
+    emergency_support?: boolean;
+    priority_service?: boolean;
     notes?: string;
+    sales_channel?: string;
+    sold_by_id?: string;
+    sold_by_type?: string;
   }) => {
     const { data } = await apiClient.post('/amc/contracts', contract);
     return data;
@@ -1314,14 +1343,70 @@ export const amcApi = {
     });
     return data;
   },
-  renewContract: async (contractId: string, renewalDetails?: { new_plan_id?: string; payment_reference?: string }) => {
+  renewContract: async (contractId: string, renewalDetails?: {
+    new_plan_id?: string;
+    duration_months?: number;
+    sales_channel?: string;
+    sold_by_id?: string;
+    sold_by_type?: string;
+  }) => {
     const { data } = await apiClient.post(`/amc/contracts/${contractId}/renew`, null, {
       params: renewalDetails
     });
     return data;
   },
-  useService: async (contractId: string, serviceData: { service_type: string; notes?: string }) => {
-    const { data } = await apiClient.post(`/amc/contracts/${contractId}/use-service`, serviceData);
+  useService: async (contractId: string, serviceData?: { service_request_id?: string }) => {
+    const { data } = await apiClient.post(`/amc/contracts/${contractId}/use-service`, null, {
+      params: serviceData
+    });
+    return data;
+  },
+  // Inspection endpoints for lapsed contracts
+  requestInspection: async (contractId: string, params?: { preferred_date?: string; notes?: string }) => {
+    const { data } = await apiClient.post(`/amc/contracts/${contractId}/request-inspection`, null, {
+      params
+    });
+    return data;
+  },
+  completeInspection: async (contractId: string, inspectionData: {
+    status: 'COMPLETED' | 'FAILED';
+    inspection_date?: string;
+    notes?: string;
+  }) => {
+    const { data } = await apiClient.post(`/amc/contracts/${contractId}/complete-inspection`, inspectionData);
+    return data;
+  },
+
+  // Field Sales - Get warranty expiring installations for AMC upsell
+  getWarrantyExpiring: async (params?: { days?: number; page?: number; size?: number }) => {
+    const { data } = await apiClient.get('/installations', {
+      params: {
+        ...params,
+        warranty_expiring_in_days: params?.days || 90,
+        page: params?.page || 1,
+        size: params?.size || 50,
+      },
+    });
+    return data;
+  },
+
+  // Get commission summary
+  getCommissionSummary: async (params?: { sales_channel?: string; period?: string }) => {
+    const { data } = await apiClient.get('/amc/contracts/stats', { params });
+    return data;
+  },
+
+  // Analytics
+  getConversionAnalytics: async () => {
+    const { data } = await apiClient.get('/amc/analytics/conversion');
+    return data;
+  },
+  getProfitabilityAnalytics: async () => {
+    const { data } = await apiClient.get('/amc/analytics/profitability');
+    return data;
+  },
+  getChurnRisk: async () => {
+    const { data } = await apiClient.get('/amc/analytics/churn-risk');
     return data;
   },
 };

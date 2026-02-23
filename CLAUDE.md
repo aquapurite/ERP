@@ -1374,4 +1374,64 @@ psql "postgresql://postgres:Aquapurite2026@db.aavjhutqzwusgdwrczds.supabase.co:6
 
 ---
 
-*Last Updated: 2026-01-28*
+*Last Updated: 2026-02-23*
+
+---
+
+## AMC & Service Sales Implementation Plan
+
+> **Objective**: Incorporate online and offline sale of AMC/services into the ERP, modeled after Eureka Forbes, Kent, Livpure, and V-Guard industry best practices.
+
+### Phase 1: Enhance Core AMC Engine (Backend)
+
+| # | Enhancement | New DB Columns | Status |
+|---|-------------|---------------|--------|
+| 1 | **Contract type: Comprehensive vs Non-Comprehensive** | `amc_plans.contract_type`, `amc_contracts.contract_type` | |
+| 2 | **Plan tier feature matrix** | `amc_plans.features_included` (JSONB), `amc_plans.parts_included` (JSONB) | |
+| 3 | **Multi-year tenure & pricing** | `amc_plans.tenure_options` (JSONB with 1/2/3/4 year pricing + discounts) | |
+| 4 | **SLA rules per plan tier** | `amc_plans.response_sla_hours`, `amc_plans.resolution_sla_hours`; auto-set ServiceRequest priority from AMC plan | |
+| 5 | **Grace period & lapsed contract inspection** | `amc_plans.grace_period_days`; `amc_contracts.grace_end_date`, `amc_contracts.requires_inspection`, `amc_contracts.inspection_status`, `amc_contracts.inspection_date` | |
+| 6 | **Sales channel tracking (online/offline)** | `amc_contracts.sales_channel` (ONLINE/OFFLINE/DEALER/TECHNICIAN), `amc_contracts.sold_by_id`, `amc_contracts.sold_by_type` (USER/DEALER/TECHNICIAN) | |
+| 7 | **AMC commission tracking** | `amc_contracts.commission_rate`, `amc_contracts.commission_amount`, `amc_contracts.commission_paid` | |
+| 8 | **Deferred revenue accounting** | `amc_contracts.revenue_recognized`, `amc_contracts.revenue_pending`; new account code `UNEARNED_AMC_REVENUE = "2550"` | |
+
+### Phase 2: Online AMC Sales (D2C Storefront)
+
+| # | Feature | Description |
+|---|---------|-------------|
+| 1 | Device registration page | Customer enters serial number + purchase date, system looks up product/warranty |
+| 2 | AMC plan comparison page | Feature matrix with pricing by tier and tenure |
+| 3 | Warranty auto-check | Auto-detect warranty status, show eligible plans |
+| 4 | AMC checkout flow | Razorpay integration for AMC purchase |
+| 5 | Customer AMC dashboard | View active contracts, service history, renewal status in `/account` |
+| 6 | Contract PDF generation | Auto-generated and emailed on purchase |
+
+### Phase 3: Offline AMC Sales (Field & Dealer)
+
+| # | Feature | Description |
+|---|---------|-------------|
+| 1 | Technician field sales module | Pitch AMC during service visits with warranty expiry info |
+| 2 | QR/UPI payment collection | Payment collection in field |
+| 3 | Dealer AMC sales | Dealers sell AMC at product purchase or post-sale |
+| 4 | Commission calculation | Auto-compute engineer/dealer commissions |
+| 5 | Warranty-to-AMC conversion prompts | Technician job screen shows warranty expiry + AMC pitch |
+
+### Phase 4: Automation & Intelligence
+
+| # | Feature | Description |
+|---|---------|-------------|
+| 1 | Warranty expiry funnel | Automated multi-channel notifications (90/60/30/15/7 days) |
+| 2 | Renewal reminder workflow | 60/30/15/7 day cadence before AMC expiry |
+| 3 | SLA enforcement | Auto-escalation on SLA breach risk |
+| 4 | Device profitability dashboard | Cost vs revenue per AMC contract |
+| 5 | Churn prediction | Flag customers likely to not renew |
+| 6 | AMC conversion analytics | Warranty-to-AMC conversion rates, channel-wise |
+
+### Industry Pricing Reference
+
+| Tier | Eureka Forbes | Kent | Livpure | Aquapurite Target |
+|------|--------------|------|---------|-------------------|
+| Basic | Rs 999-1,100 | Rs 1,200 | Rs 999 | Rs 999-1,499 |
+| Standard | Rs 2,999-3,200 | Rs 2,800 | Rs 3,899 | Rs 2,499-3,499 |
+| Premium | Rs 4,999-5,800 | Rs 4,500 | Rs 5,499 | Rs 4,499-5,499 |
+| Platinum | Rs 7,499-8,000 | Rs 6,500 | - | Rs 6,499-7,999 |
