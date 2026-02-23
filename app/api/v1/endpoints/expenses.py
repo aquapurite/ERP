@@ -406,7 +406,7 @@ async def approve_expense_voucher(
     db: DB,
     current_user: CurrentUser,
     voucher_id: uuid.UUID,
-    data: ApproveRequest,
+    data: ApproveRequest = ApproveRequest(),
 ):
     """Approve expense voucher (maker-checker enforced)."""
     voucher = await db.get(ExpenseVoucher, voucher_id)
