@@ -360,19 +360,40 @@ async def update_expense_voucher(
 @router.delete("/{voucher_id}", dependencies=[Depends(require_permissions("EXPENSE_DELETE"))])
 async def delete_expense_voucher(
     db: DB,
+    current_user: CurrentUser,
     voucher_id: uuid.UUID,
 ):
-    """Delete a DRAFT expense voucher."""
+    """Delete an expense voucher. POSTED vouchers require reversal of JV first."""
     voucher = await db.get(ExpenseVoucher, voucher_id)
     if not voucher:
         raise HTTPException(status_code=404, detail="Voucher not found")
-    
-    if voucher.status != "DRAFT":
-        raise HTTPException(status_code=400, detail="Only DRAFT vouchers can be deleted")
-    
+
+    if voucher.status == "PAID":
+        raise HTTPException(status_code=400, detail="PAID vouchers cannot be deleted")
+
+    # If voucher has a journal entry, reverse/delete it
+    if voucher.journal_entry_id:
+        from app.models.accounting import JournalEntry, JournalEntryLine, GeneralLedger
+        # Delete GL entries
+        gl_result = await db.execute(
+            select(GeneralLedger).where(GeneralLedger.journal_entry_id == voucher.journal_entry_id)
+        )
+        for gl in gl_result.scalars().all():
+            await db.delete(gl)
+        # Delete JE lines
+        jel_result = await db.execute(
+            select(JournalEntryLine).where(JournalEntryLine.journal_entry_id == voucher.journal_entry_id)
+        )
+        for jel in jel_result.scalars().all():
+            await db.delete(jel)
+        # Delete journal entry
+        je = await db.get(JournalEntry, voucher.journal_entry_id)
+        if je:
+            await db.delete(je)
+
     await db.delete(voucher)
     await db.commit()
-    return {"message": "Voucher deleted"}
+    return {"message": "Voucher and associated journal entry deleted"}
 
 
 # ==================== WORKFLOW ACTIONS ====================
