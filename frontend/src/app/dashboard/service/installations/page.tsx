@@ -41,7 +41,8 @@ import {
 } from '@/components/ui/select';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
-import { installationsApi, customersApi, productsApi, techniciansApi } from '@/lib/api';
+import { installationsApi, customersApi, productsApi, techniciansApi, categoriesApi } from '@/lib/api';
+import { Category } from '@/types';
 import { formatDate } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -81,6 +82,8 @@ export default function InstallationsPage() {
     address: '',
     notes: '',
   });
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
+  const [selectedSubcategoryId, setSelectedSubcategoryId] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['installations', page, pageSize],
@@ -92,10 +95,26 @@ export default function InstallationsPage() {
     queryFn: () => customersApi.list({ size: 100 }),
   });
 
-  const { data: products } = useQuery({
-    queryKey: ['products-list'],
-    queryFn: () => productsApi.list({ size: 100 }),
+  // Cascading: Root categories → Subcategories → Products
+  const { data: rootCategoriesData } = useQuery({
+    queryKey: ['categories-roots'],
+    queryFn: () => categoriesApi.getRoots(),
   });
+  const rootCategories: Category[] = rootCategoriesData?.items || [];
+
+  const { data: subcategoriesData, isLoading: subcategoriesLoading } = useQuery({
+    queryKey: ['categories-children', selectedCategoryId],
+    queryFn: () => categoriesApi.getChildren(selectedCategoryId),
+    enabled: !!selectedCategoryId,
+  });
+  const subcategories: Category[] = subcategoriesData?.items || [];
+
+  const { data: productsData, isLoading: productsLoading } = useQuery({
+    queryKey: ['products-by-subcategory', selectedSubcategoryId],
+    queryFn: () => productsApi.list({ category_id: selectedSubcategoryId, size: 100 }),
+    enabled: !!selectedSubcategoryId,
+  });
+  const products = productsData?.items || [];
 
   const { data: technicians } = useQuery({
     queryKey: ['technicians-list'],
@@ -116,6 +135,8 @@ export default function InstallationsPage() {
         address: '',
         notes: '',
       });
+      setSelectedCategoryId('');
+      setSelectedSubcategoryId('');
       toast.success('Installation created successfully');
     },
     onError: () => {
@@ -133,6 +154,17 @@ export default function InstallationsPage() {
       toast.error('Failed to update installation');
     },
   });
+
+  const handleCategoryChange = (value: string) => {
+    setSelectedCategoryId(value);
+    setSelectedSubcategoryId('');
+    setFormData(prev => ({ ...prev, product_id: '' }));
+  };
+
+  const handleSubcategoryChange = (value: string) => {
+    setSelectedSubcategoryId(value);
+    setFormData(prev => ({ ...prev, product_id: '' }));
+  };
 
   const handleViewDetails = (installation: Installation) => {
     setSelectedInstallation(installation);
@@ -273,40 +305,87 @@ export default function InstallationsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="customer">Customer *</Label>
+              <Select
+                value={formData.customer_id}
+                onValueChange={(value) => setFormData({ ...formData, customer_id: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select customer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {customers?.items?.map((customer: any) => (
+                    <SelectItem key={customer.id} value={customer.id}>
+                      {customer.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="customer">Customer *</Label>
-                <Select
-                  value={formData.customer_id}
-                  onValueChange={(value) => setFormData({ ...formData, customer_id: value })}
-                >
+                <Label>Category *</Label>
+                <Select value={selectedCategoryId} onValueChange={handleCategoryChange}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select customer" />
+                    <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
-                    {customers?.items?.map((customer: any) => (
-                      <SelectItem key={customer.id} value={customer.id}>
-                        {customer.name}
+                    {rootCategories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        {cat.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="product">Product *</Label>
+                <Label>Subcategory *</Label>
+                <Select
+                  value={selectedSubcategoryId}
+                  onValueChange={handleSubcategoryChange}
+                  disabled={!selectedCategoryId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={!selectedCategoryId ? 'Select category first' : 'Select subcategory'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {subcategoriesLoading ? (
+                      <SelectItem value="_loading" disabled>Loading...</SelectItem>
+                    ) : subcategories.length === 0 ? (
+                      <SelectItem value="_empty" disabled>No subcategories</SelectItem>
+                    ) : (
+                      subcategories.map((sub) => (
+                        <SelectItem key={sub.id} value={sub.id}>
+                          {sub.name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Product *</Label>
                 <Select
                   value={formData.product_id}
                   onValueChange={(value) => setFormData({ ...formData, product_id: value })}
+                  disabled={!selectedSubcategoryId}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select product" />
+                    <SelectValue placeholder={!selectedSubcategoryId ? 'Select subcategory first' : 'Select product'} />
                   </SelectTrigger>
                   <SelectContent>
-                    {products?.items?.map((product: any) => (
-                      <SelectItem key={product.id} value={product.id}>
-                        {product.name}
-                      </SelectItem>
-                    ))}
+                    {productsLoading ? (
+                      <SelectItem value="_loading" disabled>Loading...</SelectItem>
+                    ) : products.length === 0 ? (
+                      <SelectItem value="_empty" disabled>No products found</SelectItem>
+                    ) : (
+                      products.map((product: any) => (
+                        <SelectItem key={product.id} value={product.id}>
+                          {product.name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>

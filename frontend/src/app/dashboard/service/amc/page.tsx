@@ -70,6 +70,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import apiClient from '@/lib/api/client';
+import { categoriesApi, productsApi, customersApi } from '@/lib/api';
+import { Category } from '@/types';
+import { CustomerCombobox } from '@/components/customer-combobox';
 import { formatDate, formatCurrency } from '@/lib/utils';
 
 // ==================== Interfaces ====================
@@ -261,6 +264,8 @@ export default function AMCPage() {
     sold_by_type: '',
     notes: '',
   });
+  const [contractCategoryId, setContractCategoryId] = useState('');
+  const [contractSubcategoryId, setContractSubcategoryId] = useState('');
 
   const [planForm, setPlanForm] = useState({
     name: '',
@@ -307,6 +312,38 @@ export default function AMCPage() {
     }),
   });
 
+  // Cascading: Root categories → Subcategories → Products (for contract creation)
+  const { data: rootCategoriesData } = useQuery({
+    queryKey: ['categories-roots'],
+    queryFn: () => categoriesApi.getRoots(),
+  });
+  const rootCategories: Category[] = rootCategoriesData?.items || [];
+
+  const { data: contractSubcategoriesData, isLoading: contractSubcategoriesLoading } = useQuery({
+    queryKey: ['categories-children', contractCategoryId],
+    queryFn: () => categoriesApi.getChildren(contractCategoryId),
+    enabled: !!contractCategoryId,
+  });
+  const contractSubcategories: Category[] = contractSubcategoriesData?.items || [];
+
+  const { data: contractProductsData, isLoading: contractProductsLoading } = useQuery({
+    queryKey: ['products-by-subcategory', contractSubcategoryId],
+    queryFn: () => productsApi.list({ category_id: contractSubcategoryId, size: 100 }),
+    enabled: !!contractSubcategoryId,
+  });
+  const contractProducts = contractProductsData?.items || [];
+
+  const handleContractCategoryChange = (value: string) => {
+    setContractCategoryId(value);
+    setContractSubcategoryId('');
+    setContractForm(prev => ({ ...prev, product_id: '' }));
+  };
+
+  const handleContractSubcategoryChange = (value: string) => {
+    setContractSubcategoryId(value);
+    setContractForm(prev => ({ ...prev, product_id: '' }));
+  };
+
   // Mutations
   const createContractMutation = useMutation({
     mutationFn: async (data: typeof contractForm) => {
@@ -335,6 +372,8 @@ export default function AMCPage() {
         start_date: new Date().toISOString().split('T')[0], duration_months: '12',
         base_price: '', sales_channel: 'OFFLINE', sold_by_type: '', notes: '',
       });
+      setContractCategoryId('');
+      setContractSubcategoryId('');
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to create AMC contract');
@@ -904,28 +943,84 @@ export default function AMCPage() {
 
       {/* Create Contract Dialog */}
       <Dialog open={isCreateContractOpen} onOpenChange={setIsCreateContractOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Create AMC Contract</DialogTitle>
             <DialogDescription>Create a new Annual Maintenance Contract</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Customer *</Label>
+              <CustomerCombobox
+                value={contractForm.customer_id}
+                onSelect={(customer) => setContractForm({ ...contractForm, customer_id: customer.id })}
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label>Customer ID</Label>
-                <Input
-                  placeholder="Customer UUID"
-                  value={contractForm.customer_id}
-                  onChange={(e) => setContractForm({ ...contractForm, customer_id: e.target.value })}
-                />
+                <Label>Category</Label>
+                <Select value={contractCategoryId} onValueChange={handleContractCategoryChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {rootCategories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
-                <Label>Product ID</Label>
-                <Input
-                  placeholder="Product UUID"
+                <Label>Subcategory</Label>
+                <Select
+                  value={contractSubcategoryId}
+                  onValueChange={handleContractSubcategoryChange}
+                  disabled={!contractCategoryId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={!contractCategoryId ? 'Select category first' : 'Select subcategory'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {contractSubcategoriesLoading ? (
+                      <SelectItem value="_loading" disabled>Loading...</SelectItem>
+                    ) : contractSubcategories.length === 0 ? (
+                      <SelectItem value="_empty" disabled>No subcategories</SelectItem>
+                    ) : (
+                      contractSubcategories.map((sub) => (
+                        <SelectItem key={sub.id} value={sub.id}>
+                          {sub.name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Product</Label>
+                <Select
                   value={contractForm.product_id}
-                  onChange={(e) => setContractForm({ ...contractForm, product_id: e.target.value })}
-                />
+                  onValueChange={(value) => setContractForm({ ...contractForm, product_id: value })}
+                  disabled={!contractSubcategoryId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={!contractSubcategoryId ? 'Select subcategory first' : 'Select product'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {contractProductsLoading ? (
+                      <SelectItem value="_loading" disabled>Loading...</SelectItem>
+                    ) : contractProducts.length === 0 ? (
+                      <SelectItem value="_empty" disabled>No products found</SelectItem>
+                    ) : (
+                      contractProducts.map((product: any) => (
+                        <SelectItem key={product.id} value={product.id}>
+                          {product.name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="space-y-2">
