@@ -2440,6 +2440,330 @@ async def approve_purchase_order(
     return po
 
 
+def _amount_to_words(amount: float) -> str:
+    """Convert amount to words in Indian format."""
+    ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+            'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen',
+            'Seventeen', 'Eighteen', 'Nineteen']
+    tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety']
+
+    def two_digits(n):
+        if n < 20:
+            return ones[n]
+        return tens[n // 10] + (' ' + ones[n % 10] if n % 10 else '')
+
+    def three_digits(n):
+        if n < 100:
+            return two_digits(n)
+        return ones[n // 100] + ' Hundred' + (' ' + two_digits(n % 100) if n % 100 else '')
+
+    if amount == 0:
+        return 'Zero Rupees Only'
+
+    rupees = int(amount)
+    paise = int(round((amount - rupees) * 100))
+
+    if rupees == 0:
+        return f'{two_digits(paise)} Paise Only'
+
+    crore = rupees // 10000000
+    rupees %= 10000000
+    lakh = rupees // 100000
+    rupees %= 100000
+    thousand = rupees // 1000
+    rupees %= 1000
+
+    words = []
+    if crore:
+        words.append(f'{two_digits(crore)} Crore')
+    if lakh:
+        words.append(f'{two_digits(lakh)} Lakh')
+    if thousand:
+        words.append(f'{two_digits(thousand)} Thousand')
+    if rupees:
+        words.append(three_digits(rupees))
+
+    result = ' '.join(words) + ' Rupees'
+    if paise:
+        result += f' and {two_digits(paise)} Paise'
+    return result + ' Only'
+
+
+def _generate_po_html(po, vendor) -> bytes:
+    """Generate a well-formatted HTML PO document for email attachment."""
+    from datetime import datetime
+
+    items_html = ""
+    for idx, item in enumerate(po.items, 1):
+        items_html += f"""
+        <tr>
+            <td style="text-align: center;">{idx}</td>
+            <td>{item.product_name or ''}<br><small style="color: #666;">SKU: {item.sku or 'N/A'} | HSN: {item.hsn_code or 'N/A'}</small></td>
+            <td style="text-align: center;">{item.quantity_ordered}</td>
+            <td style="text-align: center;">{item.uom or 'NOS'}</td>
+            <td style="text-align: right;">&#8377;{float(item.unit_price):,.2f}</td>
+            <td style="text-align: right;">&#8377;{float(item.taxable_amount):,.2f}</td>
+        </tr>
+        """
+
+    vendor_addr = po.vendor_address or {}
+    vendor_address_str = f"""
+        {vendor_addr.get('address_line1', '')}<br>
+        {vendor_addr.get('city', '')}, {vendor_addr.get('state', '')} - {vendor_addr.get('pincode', '')}
+    """
+
+    vendor_gstin = po.vendor_gstin or (vendor.gstin if vendor else 'N/A') or 'N/A'
+    amount_words = _amount_to_words(float(po.grand_total))
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Purchase Order - {po.po_number}</title>
+    <style>
+        @media print {{
+            body {{ margin: 0; padding: 20px; }}
+        }}
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: 'Segoe UI', Arial, sans-serif;
+            font-size: 12px;
+            line-height: 1.4;
+            color: #333;
+            padding: 20px;
+        }}
+        .container {{
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+        }}
+        .header {{
+            text-align: center;
+            border-bottom: 3px solid #2563eb;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }}
+        .company-name {{
+            font-size: 24px;
+            font-weight: bold;
+            color: #1e40af;
+        }}
+        .document-title {{
+            font-size: 18px;
+            font-weight: bold;
+            color: #dc2626;
+            margin: 15px 0;
+            padding: 8px;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            text-align: center;
+        }}
+        .info-grid {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }}
+        .info-box {{
+            border: 1px solid #e5e7eb;
+            padding: 12px;
+            border-radius: 4px;
+        }}
+        .info-box h4 {{
+            color: #1e40af;
+            margin-bottom: 8px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }}
+        th {{
+            background: #1e40af;
+            color: white;
+            padding: 10px 8px;
+            text-align: left;
+            font-size: 11px;
+        }}
+        td {{
+            padding: 10px 8px;
+            border-bottom: 1px solid #e5e7eb;
+        }}
+        tr:nth-child(even) {{ background: #f9fafb; }}
+        .totals {{
+            margin-left: auto;
+            width: 300px;
+        }}
+        .totals table td {{
+            padding: 6px 10px;
+        }}
+        .totals .grand-total {{
+            font-size: 14px;
+            font-weight: bold;
+            background: #1e40af;
+            color: white;
+        }}
+        .amount-words {{
+            background: #fef3c7;
+            padding: 10px;
+            margin: 15px 0;
+            border-left: 4px solid #f59e0b;
+            font-style: italic;
+        }}
+        .terms {{
+            margin-top: 20px;
+            padding: 15px;
+            background: #f9fafb;
+            border-radius: 4px;
+        }}
+        .terms h4 {{
+            color: #1e40af;
+            margin-bottom: 10px;
+        }}
+        .terms ol {{
+            margin-left: 20px;
+        }}
+        .terms li {{
+            margin: 5px 0;
+        }}
+        .signatures {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            margin-top: 40px;
+            padding-top: 20px;
+        }}
+        .signature-box {{
+            text-align: center;
+        }}
+        .signature-line {{
+            border-top: 1px solid #333;
+            margin-top: 60px;
+            padding-top: 5px;
+        }}
+        .footer {{
+            margin-top: 30px;
+            padding-top: 15px;
+            border-top: 1px solid #e5e7eb;
+            text-align: center;
+            font-size: 10px;
+            color: #6b7280;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="company-name">AQUAPURITE INDIA PVT LTD</div>
+            <div style="font-size: 11px; color: #666; margin-top: 5px;">
+                123 Industrial Area, Sector 5, Noida, UP - 201301<br>
+                Phone: +91-120-4567890 | Email: accounts@aquapurite.com<br>
+                GSTIN: 09AABCU9603R1ZM | PAN: AABCU9603R
+            </div>
+        </div>
+
+        <div class="document-title">PURCHASE ORDER</div>
+
+        <div class="info-grid">
+            <div class="info-box">
+                <h4>Order Details</h4>
+                <table style="margin: 0;">
+                    <tr><td style="border: none; padding: 3px 0;"><strong>PO Number:</strong></td><td style="border: none; padding: 3px 0;">{po.po_number}</td></tr>
+                    <tr><td style="border: none; padding: 3px 0;"><strong>PO Date:</strong></td><td style="border: none; padding: 3px 0;">{po.po_date.strftime('%d-%b-%Y') if po.po_date else 'N/A'}</td></tr>
+                    <tr><td style="border: none; padding: 3px 0;"><strong>Reference:</strong></td><td style="border: none; padding: 3px 0;">{po.quotation_reference or 'N/A'}</td></tr>
+                    <tr><td style="border: none; padding: 3px 0;"><strong>Payment Terms:</strong></td><td style="border: none; padding: 3px 0;">{po.payment_terms or 'N/A'}</td></tr>
+                    <tr><td style="border: none; padding: 3px 0;"><strong>Expected Delivery:</strong></td><td style="border: none; padding: 3px 0;">{po.expected_delivery_date.strftime('%d-%b-%Y') if po.expected_delivery_date else 'N/A'}</td></tr>
+                </table>
+            </div>
+            <div class="info-box">
+                <h4>Vendor Details</h4>
+                <strong>{po.vendor_name}</strong><br>
+                {vendor_address_str}<br>
+                <strong>GSTIN:</strong> {vendor_gstin}
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 40px; text-align: center;">S.No</th>
+                    <th>Item Description</th>
+                    <th style="width: 60px; text-align: center;">Qty</th>
+                    <th style="width: 50px; text-align: center;">UOM</th>
+                    <th style="width: 100px; text-align: right;">Unit Price</th>
+                    <th style="width: 120px; text-align: right;">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                {items_html}
+            </tbody>
+        </table>
+
+        <div class="totals">
+            <table>
+                <tr>
+                    <td><strong>Subtotal:</strong></td>
+                    <td style="text-align: right;">&#8377;{float(po.subtotal):,.2f}</td>
+                </tr>
+                <tr>
+                    <td>CGST:</td>
+                    <td style="text-align: right;">&#8377;{float(po.cgst_amount):,.2f}</td>
+                </tr>
+                <tr>
+                    <td>SGST:</td>
+                    <td style="text-align: right;">&#8377;{float(po.sgst_amount):,.2f}</td>
+                </tr>
+                <tr class="grand-total">
+                    <td><strong>GRAND TOTAL:</strong></td>
+                    <td style="text-align: right;"><strong>&#8377;{float(po.grand_total):,.2f}</strong></td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="amount-words">
+            <strong>Amount in Words:</strong> {amount_words}
+        </div>
+
+        <div class="terms">
+            <h4>Terms &amp; Conditions</h4>
+            <ol>
+                <li>Delivery as per the schedule mentioned above.</li>
+                <li>Payment as per agreed terms.</li>
+                <li>All goods must conform to the specifications provided.</li>
+                <li>Please mention the PO number on all correspondence and invoices.</li>
+            </ol>
+        </div>
+
+        <div class="signatures">
+            <div class="signature-box">
+                <div class="signature-line">
+                    <strong>For {po.vendor_name}</strong><br>
+                    Authorized Signatory
+                </div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line">
+                    <strong>For Aquapurite India Pvt. Ltd.</strong><br>
+                    Authorized Signatory
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            This is a computer-generated document.<br>
+            Generated on: {datetime.now().strftime('%d-%b-%Y %H:%M:%S')}
+        </div>
+    </div>
+</body>
+</html>"""
+
+    return html.encode('utf-8')
+
+
 @router.post("/orders/{po_id}/send", response_model=PurchaseOrderResponse)
 async def send_po_to_vendor(
     po_id: UUID,
@@ -2580,6 +2904,62 @@ async def send_po_to_vendor(
         transition_po(po, POStat.SENT_TO_VENDOR, user_id=current_user.id)
 
     await db.commit()
+
+    # --- Send email to vendor (after commit so status is saved even if email fails) ---
+    email_warning = None
+    if request.send_email:
+        try:
+            from app.services.email_service import get_email_service
+            from datetime import datetime
+
+            # Determine recipient
+            recipients = request.email_recipients
+            if not recipients and vendor and vendor.email:
+                recipients = [vendor.email]
+
+            if not recipients:
+                email_warning = "Vendor has no email address configured. PO status updated but email not sent."
+                logging.warning(f"PO SEND EMAIL: No email for vendor of PO {po.po_number}")
+            else:
+                # Build items summary for email
+                items_summary = []
+                for item in po.items:
+                    items_summary.append({
+                        "product_name": item.product_name or item.sku or "N/A",
+                        "quantity": item.quantity_ordered,
+                        "unit_price": float(item.unit_price),
+                        "amount": float(item.taxable_amount),
+                    })
+
+                # Generate PO HTML document (adapted from scripts/generate_po_pdf.py)
+                po_html_bytes = _generate_po_html(po, vendor)
+
+                email_service = get_email_service()
+                po_date_str = po.po_date.strftime('%d-%b-%Y') if po.po_date else 'N/A'
+                delivery_date_str = po.expected_delivery_date.strftime('%d-%b-%Y') if po.expected_delivery_date else 'N/A'
+                contact = vendor.contact_person if vendor else None
+
+                for recipient in recipients:
+                    sent = email_service.send_purchase_order_email(
+                        to_email=recipient,
+                        po_number=po.po_number,
+                        po_date=po_date_str,
+                        vendor_name=po.vendor_name or (vendor.name if vendor else "Vendor"),
+                        expected_delivery_date=delivery_date_str,
+                        grand_total=float(po.grand_total),
+                        items_summary=items_summary,
+                        po_html_bytes=po_html_bytes,
+                        contact_person=contact,
+                    )
+                    if sent:
+                        logging.info(f"PO SEND EMAIL: Sent {po.po_number} to {recipient}")
+                    else:
+                        logging.warning(f"PO SEND EMAIL: Failed to send {po.po_number} to {recipient}")
+                        email_warning = f"Email sending failed for {recipient}. PO status updated."
+
+        except Exception as e:
+            logging.error(f"PO SEND EMAIL ERROR for {po.po_number}: {e}")
+            email_warning = f"Email failed: {str(e)}. PO status updated to SENT_TO_VENDOR."
 
     # Reload with all relationships for response
     result = await db.execute(

@@ -794,6 +794,159 @@ Aquapurite Private Limited
 
         return self.send_email(to_email, subject, html_content, text_content)
 
+    # ==================== PURCHASE ORDER EMAIL ====================
+
+    def send_purchase_order_email(
+        self,
+        to_email: str,
+        po_number: str,
+        po_date: str,
+        vendor_name: str,
+        expected_delivery_date: str,
+        grand_total: float,
+        items_summary: List[Dict],
+        po_html_bytes: bytes,
+        contact_person: Optional[str] = None,
+    ) -> bool:
+        """
+        Send Purchase Order email to vendor with PO document attached.
+
+        Args:
+            to_email: Vendor email address
+            po_number: PO number (e.g., PO-2026-00005)
+            po_date: PO date string
+            vendor_name: Vendor company name
+            expected_delivery_date: Expected delivery date string
+            grand_total: PO grand total amount
+            items_summary: List of dicts with product_name, quantity, unit_price, amount
+            po_html_bytes: HTML PO document as bytes for attachment
+            contact_person: Vendor contact person name (optional)
+
+        Returns:
+            True if sent successfully
+        """
+        subject = f"Purchase Order {po_number} from Aquapurite India Pvt. Ltd."
+
+        greeting_name = contact_person or vendor_name
+
+        # Build items table rows
+        items_rows = ""
+        for idx, item in enumerate(items_summary, 1):
+            items_rows += f"""
+                <tr>
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #e5e7eb; text-align: center; color: #374151;">{idx}</td>
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #e5e7eb; color: #374151;">{item['product_name']}</td>
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #e5e7eb; text-align: center; color: #374151;">{item['quantity']}</td>
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #e5e7eb; text-align: right; color: #374151;">&#8377;{item['unit_price']:,.2f}</td>
+                    <td style="padding: 10px 12px; border-bottom: 1px solid #e5e7eb; text-align: right; color: #374151; font-weight: 600;">&#8377;{item['amount']:,.2f}</td>
+                </tr>"""
+
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333;
+                     max-width: 600px; margin: 0 auto; padding: 20px; background: #f5f5f5;">
+            <div style="background: linear-gradient(135deg, #1e40af 0%, #1d4ed8 100%);
+                        padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+                <h1 style="color: white; margin: 0; font-size: 22px;">Purchase Order</h1>
+                <p style="color: #bfdbfe; margin: 8px 0 0 0; font-size: 16px;">{po_number}</p>
+            </div>
+
+            <div style="background: white; padding: 30px; border: 1px solid #e9ecef;
+                        border-radius: 0 0 10px 10px;">
+                <p style="margin: 0 0 20px 0;">Dear <strong>{greeting_name}</strong>,</p>
+
+                <p style="margin: 0 0 20px 0;">
+                    Please find attached Purchase Order <strong style="color: #1e40af;">{po_number}</strong>
+                    from Aquapurite India Pvt. Ltd.
+                </p>
+
+                <div style="background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 20px 0;
+                            border-left: 4px solid #1e40af;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr>
+                            <td style="padding: 6px 0; color: #666;">PO Number</td>
+                            <td style="padding: 6px 0; font-weight: bold; text-align: right;">{po_number}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 6px 0; color: #666;">PO Date</td>
+                            <td style="padding: 6px 0; text-align: right;">{po_date}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 6px 0; color: #666;">Expected Delivery</td>
+                            <td style="padding: 6px 0; text-align: right;">{expected_delivery_date}</td>
+                        </tr>
+                        <tr style="background: #1e40af; color: white;">
+                            <td style="padding: 10px 8px; font-weight: bold; border-radius: 4px 0 0 4px;">
+                                Total Amount
+                            </td>
+                            <td style="padding: 10px 8px; font-weight: bold; font-size: 18px;
+                                       text-align: right; border-radius: 0 4px 4px 0;">
+                                &#8377;{grand_total:,.2f}
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <h3 style="color: #1e40af; margin: 25px 0 10px 0; font-size: 14px;">Order Items</h3>
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                    <thead>
+                        <tr style="background: #f1f5f9;">
+                            <th style="padding: 10px 12px; text-align: center; color: #475569; font-weight: 600;">#</th>
+                            <th style="padding: 10px 12px; text-align: left; color: #475569; font-weight: 600;">Product</th>
+                            <th style="padding: 10px 12px; text-align: center; color: #475569; font-weight: 600;">Qty</th>
+                            <th style="padding: 10px 12px; text-align: right; color: #475569; font-weight: 600;">Unit Price</th>
+                            <th style="padding: 10px 12px; text-align: right; color: #475569; font-weight: 600;">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {items_rows}
+                    </tbody>
+                </table>
+
+                <div style="background: #eff6ff; border-radius: 8px; padding: 15px; margin: 25px 0;
+                            border: 1px solid #bfdbfe;">
+                    <p style="margin: 0; color: #1e40af; font-size: 14px;">
+                        <strong>Action Required:</strong> Kindly acknowledge receipt of this Purchase Order
+                        and confirm the delivery schedule at your earliest convenience.
+                    </p>
+                </div>
+
+                <p style="margin: 20px 0 0 0; color: #666; font-size: 13px;">
+                    The detailed Purchase Order document is attached to this email.
+                    For any queries, please contact our procurement team.
+                </p>
+
+                <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+                    <p style="margin: 0; color: #333; font-weight: 600;">Warm Regards,</p>
+                    <p style="margin: 5px 0 0 0; color: #1e40af; font-weight: bold;">Aquapurite India Pvt. Ltd.</p>
+                    <p style="margin: 3px 0 0 0; color: #666; font-size: 12px;">
+                        Email: accounts@aquapurite.com | Phone: +91-120-4567890
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        text_content = (
+            f"Dear {greeting_name},\n\n"
+            f"Please find attached Purchase Order {po_number} from Aquapurite India Pvt. Ltd.\n\n"
+            f"PO Date: {po_date}\n"
+            f"Expected Delivery: {expected_delivery_date}\n"
+            f"Total Amount: Rs. {grand_total:,.2f}\n\n"
+            f"Kindly acknowledge receipt and confirm the delivery schedule.\n\n"
+            f"Regards,\nAquapurite India Pvt. Ltd."
+        )
+
+        attachments = [(f"{po_number}.html", po_html_bytes, "text/html")]
+
+        return self.send_email(to_email, subject, html_content, text_content, attachments=attachments)
+
 
 # ==================== SMS SERVICE (MSG91) ====================
 

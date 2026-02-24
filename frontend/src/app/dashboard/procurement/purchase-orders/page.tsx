@@ -443,6 +443,15 @@ export default function PurchaseOrdersPage() {
     onError: (error: Error) => toast.error(error.message || 'Failed to update PO status'),
   });
 
+  const sendToVendorMutation = useMutation({
+    mutationFn: (id: string) => purchaseOrdersApi.sendToVendor(id, { send_email: true }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      toast.success('PO sent to vendor successfully. Email dispatched.');
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to send PO to vendor'),
+  });
+
   // Handle Edit PO - Fetch full details including items
   const handleEditPO = async (po: PurchaseOrder) => {
     setSelectedPO(po);
@@ -1142,8 +1151,15 @@ export default function PurchaseOrdersPage() {
               </DropdownMenuItem>
             )}
             {row.original.status === 'APPROVED' && (
-              <DropdownMenuItem>
-                <Send className="mr-2 h-4 w-4" />
+              <DropdownMenuItem
+                onClick={() => sendToVendorMutation.mutate(row.original.id)}
+                disabled={sendToVendorMutation.isPending}
+              >
+                {sendToVendorMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-2 h-4 w-4" />
+                )}
                 Send to Vendor
               </DropdownMenuItem>
             )}

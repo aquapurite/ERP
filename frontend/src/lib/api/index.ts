@@ -1207,6 +1207,10 @@ export const purchaseOrdersApi = {
     const { data } = await apiClient.get<string>(`/purchase/orders/${id}/download`);
     return data;
   },
+  sendToVendor: async (id: string, data?: { send_email?: boolean; email_recipients?: string[]; email_subject?: string; email_body?: string }) => {
+    const { data: responseData } = await apiClient.post<PurchaseOrder>(`/purchase/orders/${id}/send`, data || {});
+    return responseData;
+  },
   // Admin status update (Super Admin only)
   adminUpdateStatus: async (id: string, newStatus: string, reason?: string) => {
     const params = new URLSearchParams({ new_status: newStatus });
