@@ -7,6 +7,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, func, and_, or_, Integer
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
 from app.models.lead import (
@@ -15,6 +16,7 @@ from app.models.lead import (
 )
 from app.models.user import User
 from app.models.customer import Customer
+from app.core.customer_utils import generate_customer_code
 from app.schemas.lead import (
     LeadCreate, LeadUpdate, LeadResponse, LeadDetailResponse, LeadListResponse,
     LeadAssignRequest, LeadStatusUpdateRequest, LeadQualifyRequest,
@@ -696,12 +698,7 @@ async def convert_lead(
             lead.converted_customer_id = existing_customer.id
         else:
             # Generate customer code
-            today = datetime.now(timezone.utc).strftime("%Y%m%d")
-            cust_count_result = await db.execute(
-                select(func.count(Customer.id)).where(Customer.customer_code.like(f"CUST-{today}%"))
-            )
-            cust_count = cust_count_result.scalar() or 0
-            customer_code = f"CUST-{today}-{cust_count + 1:04d}"
+            customer_code = await generate_customer_code(db)
 
             customer = Customer(
                 customer_code=customer_code,
@@ -714,7 +711,17 @@ async def convert_lead(
                 source=lead.source
             )
             db.add(customer)
-            await db.flush()
+            try:
+                await db.flush()
+            except IntegrityError:
+                await db.rollback()
+                # Phone duplicate — re-fetch existing customer
+                dup_result = await db.execute(
+                    select(Customer).where(Customer.phone == lead.phone)
+                )
+                customer = dup_result.scalar_one_or_none()
+                if not customer:
+                    raise HTTPException(status_code=400, detail="Failed to create customer — duplicate detected")
             lead.converted_customer_id = customer.id
 
     # Update lead status

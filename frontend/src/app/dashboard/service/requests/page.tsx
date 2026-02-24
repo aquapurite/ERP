@@ -41,6 +41,7 @@ import {
 } from '@/components/ui/select';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
+import { CustomerCombobox } from '@/components/customer-combobox';
 import { serviceRequestsApi, customersApi, productsApi, techniciansApi } from '@/lib/api';
 import { ServiceRequest } from '@/types';
 import { formatDate } from '@/lib/utils';
@@ -301,21 +302,10 @@ export default function ServiceRequestsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="customer">Customer *</Label>
-                <Select
+                <CustomerCombobox
                   value={formData.customer_id}
-                  onValueChange={(value) => setFormData({ ...formData, customer_id: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select customer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customers?.items?.map((customer: any) => (
-                      <SelectItem key={customer.id} value={customer.id}>
-                        {customer.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onSelect={(customer) => setFormData({ ...formData, customer_id: customer.id })}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="product">Product</Label>

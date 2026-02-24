@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.models.customer import Customer, CustomerAddress
+from app.core.customer_utils import generate_customer_code
 from app.models.order import (
     Order, OrderItem, OrderStatus, OrderStatusHistory,
     Payment, PaymentStatus, PaymentMethod, OrderSource, Invoice
@@ -60,9 +61,7 @@ class OrderService:
 
     async def generate_customer_code(self) -> str:
         """Generate unique customer code: CUST-XXXXX"""
-        stmt = select(func.count(Customer.id))
-        count = (await self.db.execute(stmt)).scalar() or 0
-        return f"CUST-{(count + 1):05d}"
+        return await generate_customer_code(self.db)
 
     async def get_customers(
         self,

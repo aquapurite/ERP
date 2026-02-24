@@ -195,6 +195,13 @@ class TaxInvoice(Base):
         nullable=True,
         index=True
     )
+    crm_customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("customers.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="FK to CRM customers table for customer profile linkage"
+    )
     customer_name: Mapped[str] = mapped_column(String(200), nullable=False)
     customer_gstin: Mapped[Optional[str]] = mapped_column(
         String(15),
@@ -708,6 +715,13 @@ class CreditDebitNote(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
     )
+    crm_customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("customers.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="FK to CRM customers table for customer profile linkage"
+    )
     customer_name: Mapped[str] = mapped_column(String(200), nullable=False)
     customer_gstin: Mapped[Optional[str]] = mapped_column(String(15), nullable=True)
 
@@ -1106,6 +1120,13 @@ class PaymentReceipt(Base):
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True
+    )
+    crm_customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("customers.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="FK to CRM customers table for customer profile linkage"
     )
 
     # Dealer (for B2B dealer payments)

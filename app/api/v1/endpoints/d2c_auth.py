@@ -17,11 +17,13 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.exc import IntegrityError
 import jwt
 
 from app.database import get_db
 from app.config import settings
 from app.models.customer import Customer, CustomerAddress
+from app.core.customer_utils import generate_customer_code
 from app.models.customer_otp import CustomerOTP
 from app.models.order import Order
 from app.models.wishlist import WishlistItem
@@ -186,10 +188,9 @@ async def require_customer(
     return customer
 
 
-def generate_customer_code(phone: str) -> str:
-    """Generate unique customer code from phone."""
-    # Use last 6 digits of phone + random suffix
-    return f"C{phone[-6:]}{uuid.uuid4().hex[:4].upper()}"
+async def _generate_customer_code(db: AsyncSession) -> str:
+    """Generate unique customer code using centralized utility."""
+    return await generate_customer_code(db)
 
 
 @router.post("/send-otp", response_model=SendOTPResponse)
@@ -279,8 +280,8 @@ async def verify_otp(
 
     if not customer:
         # Create new customer
-        customer = Customer(
-            customer_code=generate_customer_code(request.phone),
+        new_customer = Customer(
+            customer_code=await _generate_customer_code(db),
             first_name="Customer",  # Will be updated by user
             phone=request.phone,
             source="WEBSITE",
@@ -288,11 +289,24 @@ async def verify_otp(
             is_verified=True,
             is_active=True,
         )
-        db.add(customer)
-        await db.commit()
-        await db.refresh(customer)
-        is_new_customer = True
-        logger.info(f"New D2C customer created: {customer.customer_code}")
+        db.add(new_customer)
+        try:
+            await db.commit()
+            await db.refresh(new_customer)
+            customer = new_customer
+            is_new_customer = True
+            logger.info(f"New D2C customer created: {customer.customer_code}")
+        except IntegrityError:
+            await db.rollback()
+            # Phone duplicate — race condition, re-fetch existing customer
+            result = await db.execute(
+                select(Customer)
+                .where(Customer.phone == request.phone)
+                .options(selectinload(Customer.addresses))
+            )
+            customer = result.scalar_one_or_none()
+            if not customer:
+                return VerifyOTPResponse(success=False, message="Account creation failed. Please try again.")
     else:
         # Update verification status if needed
         if not customer.is_verified:

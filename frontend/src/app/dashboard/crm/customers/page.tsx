@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, User, Phone, Mail, MapPin, ShoppingBag, Wrench, Shield, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, User, Phone, Mail, MapPin, ShoppingBag, Wrench, Shield, Trash2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -69,6 +69,25 @@ export default function CustomersPage() {
     state: '',
     pincode: '',
   });
+  const [phoneDuplicate, setPhoneDuplicate] = useState<string | null>(null);
+
+  // Debounced phone duplicate check
+  useEffect(() => {
+    if (formData.phone.length < 10) {
+      setPhoneDuplicate(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const results = await customersApi.searchByPhone(formData.phone);
+        const exact = results.find((c: Customer) => c.phone === formData.phone);
+        setPhoneDuplicate(exact ? `Customer "${exact.name}" already uses this phone` : null);
+      } catch {
+        setPhoneDuplicate(null);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [formData.phone]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['customers', page, pageSize],
@@ -122,11 +141,16 @@ export default function CustomersPage() {
       state: '',
       pincode: '',
     });
+    setPhoneDuplicate(null);
   };
 
   const handleCreateSubmit = () => {
     if (!formData.name || !formData.phone) {
       toast.error('Please enter name and phone');
+      return;
+    }
+    if (phoneDuplicate) {
+      toast.error('A customer with this phone number already exists');
       return;
     }
     createMutation.mutate(formData);
@@ -151,6 +175,15 @@ export default function CustomersPage() {
             </div>
           </div>
         </div>
+      ),
+    },
+    {
+      accessorKey: 'customer_code',
+      header: 'Code',
+      cell: ({ row }) => (
+        <span className="text-sm font-mono text-muted-foreground">
+          {row.original.customer_code || '-'}
+        </span>
       ),
     },
     {
@@ -323,6 +356,12 @@ export default function CustomersPage() {
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   placeholder="Enter phone number"
                 />
+                {phoneDuplicate && (
+                  <p className="text-sm text-destructive flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {phoneDuplicate}
+                  </p>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">

@@ -523,6 +523,7 @@ async def create_manual_invoice(
         generation_trigger="MANUAL_SUPER_ADMIN",
         warehouse_id=warehouse_id_for_invoice,
         customer_id=invoice_in.customer_id,
+        crm_customer_id=invoice_in.customer_id,
         customer_name=customer_name,
         customer_gstin=customer_gstin,
         billing_address_line1=billing_address_line1 or "N/A",
@@ -707,6 +708,7 @@ async def list_invoices(
     invoice_type: Optional[InvoiceType] = None,
     status: Optional[InvoiceStatus] = None,
     customer_id: Optional[UUID] = None,
+    crm_customer_id: Optional[UUID] = None,
     dealer_id: Optional[UUID] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
@@ -725,6 +727,8 @@ async def list_invoices(
         filters.append(TaxInvoice.status == status)
     if customer_id:
         filters.append(TaxInvoice.customer_id == customer_id)
+    if crm_customer_id:
+        filters.append(TaxInvoice.crm_customer_id == crm_customer_id)
     if start_date:
         filters.append(TaxInvoice.invoice_date >= start_date)
     if end_date:
@@ -2186,11 +2190,24 @@ async def create_payment_receipt(
     tds_amount = receipt_in.amount * (receipt_in.tds_rate / 100) if receipt_in.tds_applicable and receipt_in.tds_rate else None
     net_amount = receipt_in.amount - (tds_amount or 0)
 
+    # Resolve crm_customer_id: from invoice if available, else from input
+    crm_cust_id = None
+    if invoice and getattr(invoice, 'crm_customer_id', None):
+        crm_cust_id = invoice.crm_customer_id
+    elif invoice and invoice.order_id:
+        order_result = await db.execute(select(Order).where(Order.id == invoice.order_id))
+        order_obj = order_result.scalar_one_or_none()
+        if order_obj:
+            crm_cust_id = order_obj.customer_id
+    elif receipt_in.customer_id:
+        crm_cust_id = receipt_in.customer_id
+
     receipt = PaymentReceipt(
         receipt_number=receipt_number,
         payment_date=receipt_in.payment_date,
         invoice_id=receipt_in.invoice_id,
         customer_id=invoice.customer_id if invoice else receipt_in.customer_id,
+        crm_customer_id=crm_cust_id,
         dealer_id=receipt_in.dealer_id,
         amount=receipt_in.amount,
         payment_mode=receipt_in.payment_mode,
@@ -2298,6 +2315,7 @@ async def list_payment_receipts(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     customer_id: Optional[UUID] = None,
+    crm_customer_id: Optional[UUID] = None,
     invoice_id: Optional[UUID] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
@@ -2311,6 +2329,8 @@ async def list_payment_receipts(
     filters = []
     if customer_id:
         filters.append(PaymentReceipt.customer_id == customer_id)
+    if crm_customer_id:
+        filters.append(PaymentReceipt.crm_customer_id == crm_customer_id)
     if invoice_id:
         filters.append(PaymentReceipt.invoice_id == invoice_id)
     if start_date:

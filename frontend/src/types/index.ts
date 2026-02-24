@@ -293,6 +293,7 @@ export interface Customer {
   id: string;
   name: string;
   full_name?: string;
+  customer_code?: string;
   email?: string;
   phone: string;
   customer_type: 'INDIVIDUAL' | 'BUSINESS' | 'DEALER';

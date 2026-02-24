@@ -310,6 +310,7 @@ class InvoiceService:
 
             # Customer details
             customer_id=customer.id,
+            crm_customer_id=customer.id,
             customer_name=customer.full_name if hasattr(customer, 'full_name') else f"{customer.first_name or ''} {customer.last_name or ''}".strip(),
             customer_gstin=getattr(customer, 'gst_number', None),  # Customer model uses gst_number
             customer_pan=getattr(customer, 'pan', None),
