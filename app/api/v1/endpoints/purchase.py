@@ -2816,8 +2816,8 @@ async def send_po_to_vendor(
     if vendor:
         # Find supplier code for this vendor
         supplier_code_result = await db.execute(
-            text("SELECT code FROM supplier_codes WHERE vendor_id = :vendor_id LIMIT 1"),
-            {"vendor_id": vendor.id}
+            text("SELECT code FROM supplier_codes WHERE vendor_id = CAST(:vendor_id AS VARCHAR) LIMIT 1"),
+            {"vendor_id": str(vendor.id)}
         )
         supplier_code_row = supplier_code_result.first()
         if supplier_code_row:
