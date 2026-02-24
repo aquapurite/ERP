@@ -2773,6 +2773,7 @@ async def send_po_to_vendor(
 ):
     """Send PO to vendor (via email/portal). Auto-generates serial numbers."""
     import logging
+    from sqlalchemy import text
     from app.services.serialization import SerializationService
     from app.schemas.serialization import GenerateSerialsRequest, GenerateSerialItem, ItemType
     from app.models.serialization import POSerial, ModelCodeReference
