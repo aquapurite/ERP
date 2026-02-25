@@ -33,91 +33,12 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useCartStore, useCartSummary, getPartnerReferralCode, clearPartnerReferralCode } from '@/lib/storefront/cart-store';
-import { ordersApi, paymentsApi, stripePaymentsApi, inventoryApi, couponsApi, companyApi, addressApi, CouponValidationResponse, ActiveCoupon } from '@/lib/storefront/api';
+import { ordersApi, paymentsApi, inventoryApi, couponsApi, companyApi, addressApi, CouponValidationResponse, ActiveCoupon } from '@/lib/storefront/api';
 import { useAuthStore, useIsAuthenticated } from '@/lib/storefront/auth-store';
 import { formatCurrency } from '@/lib/utils';
 import { D2COrderRequest, ShippingAddress, CompanyInfo } from '@/types/storefront';
 import AddressSelector from '@/components/storefront/checkout/address-selector';
 import AddressAutocomplete from '@/components/storefront/checkout/address-autocomplete';
-import { loadStripe, Stripe } from '@stripe/stripe-js';
-import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
-
-// Initialize Stripe once at module level
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '');
-
-// Inner component that uses Stripe hooks (must be inside <Elements>)
-function StripePaymentForm({
-  onSuccess,
-  onError,
-  orderId,
-  orderNumber,
-  loading: parentLoading,
-  setLoading,
-}: {
-  onSuccess: () => void;
-  onError: (msg: string) => void;
-  orderId: string;
-  orderNumber: string;
-  loading: boolean;
-  setLoading: (v: boolean) => void;
-}) {
-  const stripe = useStripe();
-  const elements = useElements();
-  const [stripeReady, setStripeReady] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!stripe || !elements || parentLoading) return;
-
-    setLoading(true);
-    try {
-      const { error } = await stripe.confirmPayment({
-        elements,
-        confirmParams: {
-          return_url: `${window.location.origin}/order-success?order=${orderNumber}`,
-        },
-        redirect: 'if_required',
-      });
-
-      if (error) {
-        onError(error.message || 'Payment failed. Please try again.');
-        setLoading(false);
-      } else {
-        // Payment succeeded (webhook will confirm server-side)
-        onSuccess();
-      }
-    } catch (err: any) {
-      onError(err.message || 'An unexpected error occurred.');
-      setLoading(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <PaymentElement
-        onReady={() => setStripeReady(true)}
-        options={{
-          layout: 'tabs',
-        }}
-      />
-      <Button
-        type="submit"
-        disabled={!stripe || !stripeReady || parentLoading}
-        className="w-full"
-        size="lg"
-      >
-        {parentLoading ? (
-          <>
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            Processing Payment...
-          </>
-        ) : (
-          'Pay Now'
-        )}
-      </Button>
-    </form>
-  );
-}
 
 // Serviceability check result type
 interface ServiceabilityResult {
@@ -146,15 +67,10 @@ export default function CheckoutPage() {
   const { items, subtotal, tax, shipping, total } = useCartSummary();
   const isAuthenticated = useIsAuthenticated();
 
-  const [step, setStep] = useState<'shipping' | 'payment' | 'review' | 'stripe_payment'>('shipping');
+  const [step, setStep] = useState<'shipping' | 'payment' | 'review'>('shipping');
   const [loading, setLoading] = useState(false);
   const isProcessingRef = useRef(false); // Prevent double submission
-  const [paymentMethod, setPaymentMethod] = useState<'RAZORPAY' | 'COD' | 'STRIPE'>('STRIPE');
-
-  // Stripe payment state
-  const [stripeClientSecret, setStripeClientSecret] = useState<string | null>(null);
-  const [stripeOrderId, setStripeOrderId] = useState<string | null>(null);
-  const [stripeOrderNumber, setStripeOrderNumber] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'RAZORPAY' | 'COD'>('RAZORPAY');
   const [useNewAddress, setUseNewAddress] = useState(false);
   const [addressFromSelector, setAddressFromSelector] = useState<ShippingAddress | null>(null);
 
@@ -213,9 +129,9 @@ export default function CheckoutPage() {
       setServiceability(result);
       setLastCheckedPincode(pincode);
 
-      // If COD is not available, default to STRIPE
+      // If COD is not available, default to RAZORPAY
       if (result.serviceable && !result.cod_available && paymentMethod === 'COD') {
-        setPaymentMethod('STRIPE');
+        setPaymentMethod('RAZORPAY');
       }
     } catch (error) {
       setServiceability({
@@ -452,25 +368,7 @@ export default function CheckoutPage() {
         partner_code: partnerCode || undefined, // Partner referral attribution
       };
 
-      if (paymentMethod === 'STRIPE') {
-        // Stripe Payment Flow
-        // Step 1: Create D2C order
-        const order = await ordersApi.createD2C(orderData);
-
-        // Step 2: Create Stripe PaymentIntent
-        const intentResponse = await stripePaymentsApi.createIntent({
-          order_id: order.id,
-          payment_method: 'CARD',
-        });
-
-        // Step 3: Store Stripe details and transition to Stripe payment step
-        setStripeClientSecret(intentResponse.client_secret);
-        setStripeOrderId(order.id);
-        setStripeOrderNumber(order.order_number);
-        setStep('stripe_payment');
-        isProcessingRef.current = false;
-        setLoading(false);
-      } else if (paymentMethod === 'RAZORPAY') {
+      if (paymentMethod === 'RAZORPAY') {
         // Load Razorpay script if not already loaded
         if (!(window as any).Razorpay) {
           await loadRazorpayScript();
@@ -993,29 +891,13 @@ export default function CheckoutPage() {
                 <CardContent className="space-y-4">
                   <RadioGroup
                     value={paymentMethod}
-                    onValueChange={(value) => setPaymentMethod(value as 'STRIPE' | 'RAZORPAY' | 'COD')}
+                    onValueChange={(value) => setPaymentMethod(value as 'RAZORPAY' | 'COD')}
                   >
-                    {/* Stripe - Card Payment */}
-                    <div className="flex items-center space-x-3 p-4 border rounded-lg">
-                      <RadioGroupItem value="STRIPE" id="stripe" />
-                      <Label htmlFor="stripe" className="flex-1 cursor-pointer">
-                        <div className="flex items-center gap-2">
-                          <CreditCard className="h-4 w-4" />
-                          <span className="font-medium">Pay with Card</span>
-                          <Badge className="bg-blue-100 text-blue-800 text-xs">Secure</Badge>
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          Credit/Debit Card via Stripe
-                        </div>
-                      </Label>
-                    </div>
-
-                    {/* Razorpay - All Methods */}
                     <div className="flex items-center space-x-3 p-4 border rounded-lg">
                       <RadioGroupItem value="RAZORPAY" id="razorpay" />
                       <Label htmlFor="razorpay" className="flex-1 cursor-pointer">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium">Pay Online (UPI/NetBanking/Wallets)</span>
+                          <span className="font-medium">Pay Online</span>
                           {total >= 5000 && (
                             <Badge className="bg-green-100 text-green-800 text-xs">
                               EMI Available
@@ -1023,7 +905,7 @@ export default function CheckoutPage() {
                           )}
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          UPI, Net Banking, Wallets
+                          Credit/Debit Card, UPI, Net Banking, Wallets
                           {total >= 5000 && ' • No-cost EMI from ' + formatCurrency(Math.round(total / 6)) + '/mo'}
                         </div>
                       </Label>
@@ -1240,11 +1122,9 @@ export default function CheckoutPage() {
                       </Button>
                     </div>
                     <div className="bg-muted/50 p-4 rounded-lg text-sm">
-                      {paymentMethod === 'STRIPE'
-                        ? 'Pay with Card (Stripe)'
-                        : paymentMethod === 'RAZORPAY'
-                          ? 'Pay Online (Razorpay)'
-                          : 'Cash on Delivery'}
+                      {paymentMethod === 'RAZORPAY'
+                        ? 'Pay Online (Razorpay)'
+                        : 'Cash on Delivery'}
                     </div>
                   </div>
 
@@ -1328,62 +1208,6 @@ export default function CheckoutPage() {
                         `Place Order - ${formatCurrency(finalTotal)}`
                       )}
                     </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Stripe Payment Step */}
-            {step === 'stripe_payment' && stripeClientSecret && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <CreditCard className="h-5 w-5" />
-                    Complete Payment
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="bg-muted/50 p-4 rounded-lg text-sm space-y-1">
-                    <p>Order: <span className="font-medium">#{stripeOrderNumber}</span></p>
-                    <p>Amount: <span className="font-medium">{formatCurrency(finalTotal)}</span></p>
-                  </div>
-
-                  <Elements
-                    stripe={stripePromise}
-                    options={{
-                      clientSecret: stripeClientSecret,
-                      appearance: {
-                        theme: 'stripe',
-                        variables: {
-                          colorPrimary: '#0066FF',
-                        },
-                      },
-                    }}
-                  >
-                    <StripePaymentForm
-                      orderId={stripeOrderId!}
-                      orderNumber={stripeOrderNumber!}
-                      loading={loading}
-                      setLoading={setLoading}
-                      onSuccess={() => {
-                        markAsConverted(stripeOrderId!).catch(() => {});
-                        clearCart();
-                        clearPartnerReferralCode();
-                        window.location.href = `/order-success?order=${stripeOrderNumber}`;
-                      }}
-                      onError={(msg) => {
-                        toast.error(msg);
-                        isProcessingRef.current = false;
-                      }}
-                    />
-                  </Elements>
-
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground mt-4">
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                    </svg>
-                    <span>Payments are processed securely by Stripe. Your card details are never stored on our servers.</span>
                   </div>
                 </CardContent>
               </Card>

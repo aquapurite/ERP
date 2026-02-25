@@ -559,11 +559,10 @@ async def create_d2c_order(
                 "is_active": True,
             })
 
-        # Map payment method (frontend sends STRIPE, RAZORPAY, or COD)
+        # Map payment method (frontend sends RAZORPAY or COD)
         payment_method_map = {
             "cod": PaymentMethod.COD,
             "razorpay": PaymentMethod.UPI,  # Razorpay handles multiple methods
-            "stripe": PaymentMethod.CARD,   # Stripe handles card payments
             "upi": PaymentMethod.UPI,
             "card": PaymentMethod.CARD,
             "netbanking": PaymentMethod.NET_BANKING,
@@ -648,49 +647,6 @@ async def create_d2c_order(
         order_id = order.id
         order_number = order.order_number
         order_total = order.total_amount
-
-        # Create payment record for the order
-        try:
-            from sqlalchemy import text as _text
-            import uuid as _uuid
-
-            gateway = None
-            if payment_method != PaymentMethod.COD:
-                # For online payments, gateway will be set when create-intent is called
-                gateway = None  # Set to 'razorpay' or 'stripe' during payment flow
-
-            await db.execute(
-                _text("""
-                    INSERT INTO payments (id, order_id, amount, method, status, gateway, created_at)
-                    VALUES (:id, :order_id, :amount, :method, :status, :gateway, :created_at)
-                """),
-                {
-                    "id": _uuid.uuid4(),
-                    "order_id": order_id,
-                    "amount": float(order_total),
-                    "method": payment_method.value if hasattr(payment_method, 'value') else str(payment_method),
-                    "status": "PENDING",
-                    "gateway": gateway,
-                    "created_at": datetime.now(timezone.utc),
-                }
-            )
-
-            # Insert initial status history
-            await db.execute(
-                _text("""
-                    INSERT INTO order_status_history (id, order_id, from_status, to_status, notes, created_at)
-                    VALUES (gen_random_uuid(), :order_id, NULL, 'NEW', 'Order created via D2C storefront', :created_at)
-                """),
-                {
-                    "order_id": order_id,
-                    "created_at": datetime.now(timezone.utc),
-                }
-            )
-            await db.commit()
-        except Exception as pay_err:
-            import logging as _log
-            _log.warning(f"D2C order {order_id}: payment record creation error — {pay_err}")
-            # Don't fail order if payment record insert fails
 
         # Handle partner attribution if partner_code provided
         if data.partner_code:

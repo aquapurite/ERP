@@ -71,11 +71,6 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_SECRET: str = ""  # Razorpay Key Secret
     RAZORPAY_WEBHOOK_SECRET: Optional[str] = None  # For webhook verification
 
-    # Stripe Payment Gateway
-    STRIPE_SECRET_KEY: str = ""  # Stripe Secret Key (sk_test_... or sk_live_...)
-    STRIPE_PUBLISHABLE_KEY: str = ""  # Stripe Publishable Key (pk_test_... or pk_live_...)
-    STRIPE_WEBHOOK_SECRET: str = ""  # Stripe Webhook Signing Secret (whsec_...)
-
     # SMS Gateway (MSG91)
     MSG91_AUTH_KEY: str = ""  # MSG91 Auth Key
     MSG91_SENDER_ID: str = "AQUAPU"  # 6-char sender ID

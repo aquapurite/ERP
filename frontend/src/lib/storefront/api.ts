@@ -395,42 +395,6 @@ export const paymentsApi = {
   },
 };
 
-// Stripe Payments API
-export interface CreatePaymentIntentRequest {
-  order_id: string;
-  payment_method: string; // 'CARD' or 'UPI'
-}
-
-export interface PaymentIntentResponse {
-  client_secret: string;
-  payment_intent_id: string;
-  payment_id: string;
-}
-
-export interface StripePaymentStatusResponse {
-  id: string;
-  order_id: string;
-  amount: number;
-  method: string;
-  status: string;
-  gateway: string | null;
-  transaction_id: string | null;
-  created_at: string;
-  completed_at: string | null;
-}
-
-export const stripePaymentsApi = {
-  createIntent: async (request: CreatePaymentIntentRequest): Promise<PaymentIntentResponse> => {
-    const { data } = await storefrontClient.post(`${API_PATH}/payments/stripe/create-intent`, request);
-    return data;
-  },
-
-  getStatus: async (orderId: string): Promise<StripePaymentStatusResponse> => {
-    const { data } = await storefrontClient.get(`${API_PATH}/payments/stripe/${orderId}`);
-    return data;
-  },
-};
-
 // Search API - Uses public storefront endpoints
 export const searchApi = {
   products: async (query: string, limit = 10): Promise<StorefrontProduct[]> => {
@@ -2423,7 +2387,6 @@ export const storefrontApi = {
   inventory: inventoryApi,
   orders: ordersApi,
   payments: paymentsApi,
-  stripePayments: stripePaymentsApi,
   search: searchApi,
   company: companyApi,
   auth: authApi,

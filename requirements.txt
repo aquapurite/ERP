@@ -34,7 +34,6 @@ aioredis>=2.0.0
 
 # Payment Gateway
 razorpay>=1.4.0
-stripe>=8.0.0
 
 # GST E-Invoice / QR Code
 qrcode[pil]>=7.4.0
