@@ -129,7 +129,7 @@ export interface CheckoutData {
   shipping_address: ShippingAddress;
   billing_same_as_shipping: boolean;
   billing_address?: ShippingAddress;
-  payment_method: 'RAZORPAY' | 'COD';
+  payment_method: 'RAZORPAY' | 'COD' | 'STRIPE';
   notes?: string;
 }
 
@@ -149,7 +149,7 @@ export interface D2COrderRequest {
   customer_email?: string;
   shipping_address: ShippingAddress;
   items: D2COrderItem[];
-  payment_method: 'RAZORPAY' | 'COD';
+  payment_method: 'RAZORPAY' | 'COD' | 'STRIPE';
   subtotal: number;
   tax_amount: number;
   shipping_amount: number;

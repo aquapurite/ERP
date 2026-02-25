@@ -1,12 +1,11 @@
 """
-Payment API endpoints for Razorpay integration.
+Payment API endpoints for Razorpay and Stripe integration.
 
 Handles:
-- Payment order creation
-- Payment verification
+- Razorpay: Payment order creation, verification, webhooks
+- Stripe: PaymentIntent creation, confirmation webhooks
 - Payment status checks
 - Refund processing
-- Webhook handling for payment events
 """
 
 import uuid
@@ -21,6 +20,11 @@ from app.schemas.payment import (
     CreatePaymentOrderRequest,
     VerifyPaymentRequest,
     InitiateRefundRequest,
+    CreatePaymentIntentRequest,
+    PaymentIntentResponse,
+    PaymentStatusResponse,
+    StripeRefundRequest,
+    StripeRefundResponse,
 )
 from app.services.payment_service import (
     PaymentService,
@@ -662,3 +666,643 @@ async def _handle_refund_processed(db: DB, payload: dict):
         }
     )
     await db.commit()
+
+
+# ==================== STRIPE ENDPOINTS ====================
+
+@router.post(
+    "/stripe/create-intent",
+    response_model=PaymentIntentResponse,
+    summary="Create a Stripe PaymentIntent",
+    description="Create a PaymentIntent for card payment via Stripe Elements.",
+)
+async def stripe_create_intent(
+    data: CreatePaymentIntentRequest,
+    db: DB,
+):
+    """
+    Create a Stripe PaymentIntent for an order.
+
+    Flow:
+    1. Verify order exists and is not already paid
+    2. Find or create a pending payment record
+    3. If payment already has a Stripe PI, retrieve it (idempotent retry)
+    4. Otherwise create a new PaymentIntent
+    5. Update payment record with PI ID
+    6. Return client_secret for frontend Stripe Elements
+    """
+    from sqlalchemy import text
+    from app.services.stripe_service import StripePaymentService
+
+    # Reject cash payments
+    if data.payment_method.upper() in ("CASH", "COD"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Stripe payment is not applicable for cash/COD orders"
+        )
+
+    # Verify order exists
+    result = await db.execute(
+        text("""
+            SELECT id, order_number, total_amount, payment_status, payment_method
+            FROM orders
+            WHERE id = :order_id
+        """),
+        {"order_id": data.order_id}
+    )
+    order = result.fetchone()
+
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+
+    if order.payment_status == "PAID":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Order is already paid"
+        )
+
+    # Find existing pending payment record for this order
+    payment_result = await db.execute(
+        text("""
+            SELECT id, transaction_id, status
+            FROM payments
+            WHERE order_id = :order_id
+              AND gateway = 'stripe'
+            ORDER BY created_at DESC
+            LIMIT 1
+        """),
+        {"order_id": data.order_id}
+    )
+    payment = payment_result.fetchone()
+
+    stripe_service = StripePaymentService()
+
+    # Idempotent: if payment already has a Stripe PI, retrieve it
+    if payment and payment.transaction_id:
+        try:
+            existing_intent = stripe_service.retrieve_payment_intent(payment.transaction_id)
+            if existing_intent.status in ("requires_payment_method", "requires_confirmation", "requires_action"):
+                return PaymentIntentResponse(
+                    client_secret=existing_intent.client_secret,
+                    payment_intent_id=existing_intent.id,
+                    payment_id=payment.id,
+                )
+        except Exception:
+            logger.warning(f"Failed to retrieve existing PI {payment.transaction_id}, creating new one")
+
+    # Fetch customer info for receipt
+    customer_result = await db.execute(
+        text("""
+            SELECT c.email, c.name, c.first_name, c.last_name
+            FROM customers c
+            JOIN orders o ON o.customer_id = c.id
+            WHERE o.id = :order_id
+        """),
+        {"order_id": data.order_id}
+    )
+    customer = customer_result.fetchone()
+    customer_email = customer.email if customer else None
+    customer_name = None
+    if customer:
+        customer_name = customer.name if hasattr(customer, "name") and customer.name else f"{customer.first_name or ''} {customer.last_name or ''}".strip()
+
+    try:
+        # Create new PaymentIntent
+        intent = stripe_service.create_payment_intent(
+            amount_inr=float(order.total_amount),
+            order_id=str(order.id),
+            order_number=order.order_number,
+            customer_email=customer_email,
+            customer_name=customer_name,
+            payment_method_types=["card"],
+        )
+
+        if payment:
+            # Update existing payment record
+            await db.execute(
+                text("""
+                    UPDATE payments
+                    SET transaction_id = :pi_id,
+                        gateway = 'stripe',
+                        status = 'PENDING'
+                    WHERE id = :payment_id
+                """),
+                {
+                    "pi_id": intent.id,
+                    "payment_id": payment.id,
+                }
+            )
+            payment_id = payment.id
+        else:
+            # Create new payment record
+            new_payment_id = uuid.uuid4()
+            await db.execute(
+                text("""
+                    INSERT INTO payments (id, order_id, amount, method, status, transaction_id, gateway, created_at)
+                    VALUES (:id, :order_id, :amount, :method, 'PENDING', :transaction_id, 'stripe', :created_at)
+                """),
+                {
+                    "id": new_payment_id,
+                    "order_id": data.order_id,
+                    "amount": float(order.total_amount),
+                    "method": data.payment_method.upper(),
+                    "transaction_id": intent.id,
+                    "created_at": datetime.now(timezone.utc),
+                }
+            )
+            payment_id = new_payment_id
+
+        # Update order payment status to processing
+        await db.execute(
+            text("""
+                UPDATE orders
+                SET payment_status = 'PENDING',
+                    updated_at = :updated_at
+                WHERE id = :order_id
+            """),
+            {
+                "updated_at": datetime.now(timezone.utc),
+                "order_id": data.order_id,
+            }
+        )
+
+        await db.commit()
+
+        return PaymentIntentResponse(
+            client_secret=intent.client_secret,
+            payment_intent_id=intent.id,
+            payment_id=payment_id,
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to create Stripe PaymentIntent: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create payment intent: {str(e)}"
+        )
+
+
+@router.post(
+    "/stripe/webhook",
+    summary="Stripe webhook handler",
+    description="Handle payment events from Stripe. Called by Stripe servers.",
+    include_in_schema=False,
+)
+async def stripe_webhook(
+    request: Request,
+    db: DB,
+):
+    """
+    Handle Stripe webhook events.
+
+    Events handled:
+    - payment_intent.succeeded: Payment completed
+    - payment_intent.payment_failed: Payment failed
+
+    Security:
+    - Verifies webhook signature using STRIPE_WEBHOOK_SECRET
+    - Idempotent: safe to receive duplicate events
+    """
+    from sqlalchemy import text
+    from app.services.stripe_service import StripePaymentService
+    import stripe as stripe_module
+
+    # Read raw body for signature verification
+    body = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+
+    if not sig_header:
+        logger.warning("Stripe webhook received without signature header")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing Stripe-Signature header"
+        )
+
+    stripe_service = StripePaymentService()
+
+    try:
+        event = stripe_service.construct_webhook_event(body, sig_header)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid payload"
+        )
+    except stripe_module.error.SignatureVerificationError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid signature"
+        )
+
+    logger.info(f"Received Stripe webhook: {event.type}")
+
+    try:
+        if event.type == "payment_intent.succeeded":
+            await _handle_stripe_payment_succeeded(db, event.data.object)
+
+        elif event.type == "payment_intent.payment_failed":
+            await _handle_stripe_payment_failed(db, event.data.object)
+
+        else:
+            logger.info(f"Unhandled Stripe event: {event.type}")
+
+        return {"status": "ok", "event": event.type}
+
+    except Exception as e:
+        logger.error(f"Error processing Stripe webhook {event.type}: {e}")
+        # Return 200 to prevent Stripe from retrying
+        return {"status": "error", "message": str(e)}
+
+
+async def _handle_stripe_payment_succeeded(db, payment_intent):
+    """Handle payment_intent.succeeded - payment completed."""
+    from sqlalchemy import text
+    from app.services.email_service import send_order_notifications
+
+    pi_id = payment_intent.id
+    metadata = payment_intent.metadata or {}
+    order_id = metadata.get("order_id")
+    amount = payment_intent.amount / 100  # paise to INR
+
+    if not order_id:
+        logger.warning(f"Stripe PI {pi_id} succeeded without order_id in metadata")
+        return
+
+    logger.info(f"Stripe payment succeeded: {pi_id} for order {order_id}")
+
+    # Extract card details from charges
+    card_brand = None
+    card_last4 = None
+    charges = payment_intent.get("charges", {}).get("data", [])
+    if not charges and hasattr(payment_intent, "latest_charge"):
+        # latest_charge may be a string ID; skip card extraction in that case
+        pass
+    elif charges:
+        charge = charges[0]
+        payment_method_details = charge.get("payment_method_details", {})
+        card_details = payment_method_details.get("card", {})
+        card_brand = card_details.get("brand")
+        card_last4 = card_details.get("last4")
+
+    now = datetime.now(timezone.utc)
+
+    # Update payment record
+    import json
+    gateway_response = {
+        "payment_intent_id": pi_id,
+        "card_brand": card_brand,
+        "card_last4": card_last4,
+    }
+
+    await db.execute(
+        text("""
+            UPDATE payments
+            SET status = 'PAID',
+                completed_at = :completed_at,
+                gateway_response = :gateway_response::jsonb
+            WHERE transaction_id = :pi_id
+              AND gateway = 'stripe'
+        """),
+        {
+            "completed_at": now,
+            "gateway_response": json.dumps(gateway_response),
+            "pi_id": pi_id,
+        }
+    )
+
+    # Update order status
+    await db.execute(
+        text("""
+            UPDATE orders
+            SET payment_status = 'PAID',
+                status = CASE
+                    WHEN status IN ('NEW', 'PENDING_PAYMENT') THEN 'CONFIRMED'
+                    ELSE status
+                END,
+                amount_paid = :amount,
+                paid_at = :paid_at,
+                confirmed_at = CASE
+                    WHEN status IN ('NEW', 'PENDING_PAYMENT') THEN :paid_at
+                    ELSE confirmed_at
+                END,
+                updated_at = :updated_at
+            WHERE id = :order_id::uuid
+        """),
+        {
+            "amount": amount,
+            "paid_at": now,
+            "updated_at": now,
+            "order_id": order_id,
+        }
+    )
+
+    # Add status history entry
+    await db.execute(
+        text("""
+            INSERT INTO order_status_history (id, order_id, from_status, to_status, notes, created_at)
+            VALUES (gen_random_uuid(), :order_id::uuid, 'PENDING_PAYMENT', 'CONFIRMED',
+                    :notes, :created_at)
+        """),
+        {
+            "order_id": order_id,
+            "notes": f"Payment confirmed via Stripe. PI: {pi_id}",
+            "created_at": now,
+        }
+    )
+
+    await db.commit()
+
+    # Send notifications (non-blocking)
+    try:
+        order_result = await db.execute(
+            text("""
+                SELECT o.order_number, o.total_amount, o.payment_method, o.shipping_address,
+                       c.name as customer_name, c.email as customer_email, c.phone as customer_phone
+                FROM orders o
+                JOIN customers c ON o.customer_id = c.id
+                WHERE o.id = :order_id::uuid
+            """),
+            {"order_id": order_id}
+        )
+        order_data = order_result.fetchone()
+
+        items_result = await db.execute(
+            text("""
+                SELECT product_name, variant_name, quantity, total_amount
+                FROM order_items
+                WHERE order_id = :order_id::uuid
+            """),
+            {"order_id": order_id}
+        )
+        items = [dict(row._mapping) for row in items_result.fetchall()]
+
+        if order_data and order_data.customer_email:
+            import json
+            from decimal import Decimal
+
+            shipping_address = order_data.shipping_address
+            if isinstance(shipping_address, str):
+                shipping_address = json.loads(shipping_address)
+
+            await send_order_notifications(
+                order_number=order_data.order_number,
+                customer_email=order_data.customer_email,
+                customer_phone=order_data.customer_phone,
+                customer_name=order_data.customer_name,
+                total_amount=Decimal(str(order_data.total_amount)),
+                items=items,
+                shipping_address=shipping_address,
+                payment_method="Stripe (Card)"
+            )
+            logger.info(f"Notifications sent for Stripe payment on order {order_data.order_number}")
+    except Exception as e:
+        logger.error(f"Failed to send notifications for Stripe payment: {e}")
+
+    # Accounting integration
+    try:
+        from app.services.auto_journal_service import AutoJournalService, AutoJournalError
+        from decimal import Decimal
+
+        auto_journal = AutoJournalService(db)
+        await auto_journal.generate_for_order_payment(
+            order_id=uuid.UUID(order_id),
+            amount=Decimal(str(amount)),
+            payment_method="STRIPE",
+            reference_number=pi_id,
+            user_id=None,
+            auto_post=True,
+            is_cash=False,
+        )
+        await db.commit()
+        logger.info(f"Accounting entry created for Stripe payment {pi_id}")
+    except Exception as e:
+        logger.warning(f"Failed to create accounting entry for Stripe payment {pi_id}: {e}")
+
+    logger.info(f"Order {order_id} updated for Stripe payment {pi_id}")
+
+
+async def _handle_stripe_payment_failed(db, payment_intent):
+    """Handle payment_intent.payment_failed - payment failed."""
+    from sqlalchemy import text
+
+    pi_id = payment_intent.id
+    metadata = payment_intent.metadata or {}
+    order_id = metadata.get("order_id")
+    error_message = ""
+    if payment_intent.last_payment_error:
+        error_message = payment_intent.last_payment_error.get("message", "Unknown error")
+
+    if not order_id:
+        return
+
+    logger.info(f"Stripe payment failed: {pi_id} - {error_message}")
+
+    now = datetime.now(timezone.utc)
+
+    # Update payment record
+    await db.execute(
+        text("""
+            UPDATE payments
+            SET status = 'FAILED',
+                notes = :error_msg,
+                completed_at = :completed_at
+            WHERE transaction_id = :pi_id
+              AND gateway = 'stripe'
+        """),
+        {
+            "error_msg": f"Payment failed: {error_message}",
+            "completed_at": now,
+            "pi_id": pi_id,
+        }
+    )
+
+    # Update order
+    await db.execute(
+        text("""
+            UPDATE orders
+            SET payment_status = 'FAILED',
+                internal_notes = COALESCE(internal_notes, '') ||
+                    E'\n[Stripe Payment Failed] ' || :error_msg,
+                updated_at = :updated_at
+            WHERE id = :order_id::uuid
+        """),
+        {
+            "order_id": order_id,
+            "error_msg": error_message,
+            "updated_at": now,
+        }
+    )
+
+    await db.commit()
+
+
+@router.get(
+    "/stripe/{order_id}",
+    response_model=PaymentStatusResponse,
+    summary="Get Stripe payment status for an order",
+    description="Fetch the latest Stripe payment record for an order.",
+)
+async def stripe_get_payment_status(
+    order_id: uuid.UUID,
+    db: DB,
+):
+    """Get the latest Stripe payment status for an order."""
+    from sqlalchemy import text
+
+    result = await db.execute(
+        text("""
+            SELECT id, order_id, amount, method, status, gateway,
+                   transaction_id, gateway_response, reference_number, notes,
+                   created_at, completed_at
+            FROM payments
+            WHERE order_id = :order_id
+              AND gateway = 'stripe'
+            ORDER BY created_at DESC
+            LIMIT 1
+        """),
+        {"order_id": order_id}
+    )
+    payment = result.fetchone()
+
+    if not payment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No Stripe payment found for this order"
+        )
+
+    return PaymentStatusResponse(
+        id=payment.id,
+        order_id=payment.order_id,
+        amount=float(payment.amount),
+        method=payment.method,
+        status=payment.status,
+        gateway=payment.gateway,
+        transaction_id=payment.transaction_id,
+        gateway_response=payment.gateway_response,
+        reference_number=payment.reference_number,
+        notes=payment.notes,
+        created_at=payment.created_at.isoformat() if payment.created_at else None,
+        completed_at=payment.completed_at.isoformat() if payment.completed_at else None,
+    )
+
+
+@router.post(
+    "/stripe/{payment_id}/refund",
+    response_model=StripeRefundResponse,
+    dependencies=[Depends(require_permissions("finance:update"))],
+    summary="Initiate a Stripe refund",
+    description="Initiate a full or partial refund for a Stripe payment. Requires finance:update permission.",
+)
+async def stripe_initiate_refund(
+    payment_id: uuid.UUID,
+    data: StripeRefundRequest,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """
+    Initiate a Stripe refund for a payment.
+
+    Requires: finance:update permission
+    """
+    from sqlalchemy import text
+    from app.services.stripe_service import StripePaymentService
+
+    # Fetch payment record
+    result = await db.execute(
+        text("""
+            SELECT id, order_id, transaction_id, amount, status, gateway
+            FROM payments
+            WHERE id = :payment_id AND gateway = 'stripe'
+        """),
+        {"payment_id": payment_id}
+    )
+    payment = result.fetchone()
+
+    if not payment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stripe payment not found"
+        )
+
+    if not payment.transaction_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Payment has no Stripe PaymentIntent ID"
+        )
+
+    if payment.status not in ("PAID", "CAPTURED"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot refund payment with status: {payment.status}"
+        )
+
+    stripe_service = StripePaymentService()
+
+    try:
+        refund = stripe_service.create_refund(
+            payment_intent_id=payment.transaction_id,
+            amount_inr=data.amount,
+            reason=data.reason,
+        )
+
+        refund_amount = refund.amount / 100  # paise to INR
+        now = datetime.now(timezone.utc)
+
+        # Update payment status
+        new_status = "REFUNDED" if data.amount is None else "PARTIALLY_REFUNDED"
+        await db.execute(
+            text("""
+                UPDATE payments
+                SET status = :status,
+                    notes = COALESCE(notes, '') || E'\n[Refund] ' || :refund_note
+                WHERE id = :payment_id
+            """),
+            {
+                "status": new_status,
+                "refund_note": f"Refund {refund.id}: ₹{refund_amount} by {current_user.id}. Reason: {data.reason or 'N/A'}",
+                "payment_id": payment_id,
+            }
+        )
+
+        # Update order
+        await db.execute(
+            text("""
+                UPDATE orders
+                SET payment_status = :pay_status,
+                    amount_paid = GREATEST(0, amount_paid - :refund_amount),
+                    status = CASE
+                        WHEN :is_full_refund THEN 'REFUNDED'
+                        ELSE status
+                    END,
+                    internal_notes = COALESCE(internal_notes, '') ||
+                        E'\n[Stripe Refund] ID: ' || :refund_id || ', Amount: ₹' || :refund_amount::text,
+                    updated_at = :updated_at
+                WHERE id = :order_id
+            """),
+            {
+                "pay_status": "REFUNDED" if data.amount is None else "PARTIALLY_PAID",
+                "refund_amount": refund_amount,
+                "is_full_refund": data.amount is None,
+                "refund_id": refund.id,
+                "updated_at": now,
+                "order_id": payment.order_id,
+            }
+        )
+
+        await db.commit()
+
+        return StripeRefundResponse(
+            refund_id=refund.id,
+            payment_id=payment.id,
+            amount=refund_amount,
+            status=refund.status,
+        )
+
+    except Exception as e:
+        logger.error(f"Stripe refund failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process refund: {str(e)}"
+        )

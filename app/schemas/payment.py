@@ -28,3 +28,48 @@ class InitiateRefundRequest(BaseModel):
     order_id: uuid.UUID = Field(..., description="Internal order ID")
     amount: Optional[float] = Field(None, gt=0, description="Refund amount (for partial refund)")
     reason: Optional[str] = Field(None, description="Reason for refund")
+
+
+# ==================== Stripe Payment Schemas ====================
+
+class CreatePaymentIntentRequest(BaseModel):
+    """Request to create a Stripe PaymentIntent for an order."""
+    order_id: uuid.UUID = Field(..., description="Internal order ID")
+    payment_method: str = Field(..., description="Payment method: CARD or UPI")
+
+
+class PaymentIntentResponse(BaseModel):
+    """Response after creating a Stripe PaymentIntent."""
+    client_secret: str = Field(..., description="Stripe client secret for frontend confirmation")
+    payment_intent_id: str = Field(..., description="Stripe PaymentIntent ID (pi_...)")
+    payment_id: uuid.UUID = Field(..., description="Internal payment record ID")
+
+
+class PaymentStatusResponse(BaseModel):
+    """Full payment status for an order."""
+    id: uuid.UUID
+    order_id: uuid.UUID
+    amount: float
+    method: str
+    status: str
+    gateway: Optional[str] = None
+    transaction_id: Optional[str] = None
+    gateway_response: Optional[dict] = None
+    reference_number: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: str
+    completed_at: Optional[str] = None
+
+
+class StripeRefundRequest(BaseModel):
+    """Request to initiate a Stripe refund."""
+    reason: Optional[str] = Field(None, description="Reason for refund")
+    amount: Optional[float] = Field(None, gt=0, description="Partial refund amount in INR (omit for full refund)")
+
+
+class StripeRefundResponse(BaseModel):
+    """Response after Stripe refund initiation."""
+    refund_id: str = Field(..., description="Stripe refund ID (re_...)")
+    payment_id: uuid.UUID = Field(..., description="Internal payment record ID")
+    amount: float = Field(..., description="Refund amount in INR")
+    status: str = Field(..., description="Refund status")
