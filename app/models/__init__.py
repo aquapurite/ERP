@@ -498,6 +498,8 @@ from app.models.cms import (
     VideoGuide,
     VideoGuideCategory,
 )
+# CJDQuick OMS Sync Log
+from app.models.cjdquick_sync_log import CJDQuickSyncLog
 # Community Sales Channel (Meesho-style)
 from app.models.community_partner import (
     CommunityPartner,
@@ -913,6 +915,8 @@ __all__ = [
     "CMSSeo",
     "CMSPageStatus",
     "CMSAnnouncementType",
+    # CJDQuick OMS Sync Log
+    "CJDQuickSyncLog",
     # Community Sales Channel (Meesho-style)
     "CommunityPartner",
     "PartnerTier",

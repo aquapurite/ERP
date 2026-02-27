@@ -117,6 +117,8 @@ from app.api.v1.endpoints import (
     abandoned_cart,
     # Shipping (Shiprocket Integration)
     shipping,
+    # CJDQuick OMS Integration
+    cjdquick,
     # AMC/Warranty Management
     amc,
     # Audit Logs
@@ -522,6 +524,13 @@ api_router.include_router(
     shipping.router,
     prefix="/shipping",
     tags=["Shipping (Shiprocket)"]
+)
+
+# ==================== CJDQuick OMS Integration ====================
+api_router.include_router(
+    cjdquick.router,
+    prefix="/cjdquick",
+    tags=["CJDQuick OMS Integration"]
 )
 
 # ==================== File Uploads ====================

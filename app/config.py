@@ -89,6 +89,13 @@ class Settings(BaseSettings):
     SHIPROCKET_DEFAULT_PICKUP_LOCATION: str = ""  # Default pickup location name
     SHIPROCKET_AUTO_SHIP: bool = False  # Auto-assign courier on order creation
 
+    # CJDQuick OMS Integration
+    CJDQUICK_API_KEY: str = ""
+    CJDQUICK_BASE_URL: str = "https://lsp-oms-api.onrender.com/api/v1"
+    CJDQUICK_WEBHOOK_SECRET: Optional[str] = None
+    CJDQUICK_ENABLED: bool = False  # Feature flag
+    CJDQUICK_LOCATION_ID: str = ""  # OMS warehouse UUID (get from CJDQuick)
+
     # Supabase Storage Settings
     SUPABASE_URL: str = ""  # e.g., "https://xxxx.supabase.co"
     SUPABASE_SERVICE_KEY: str = ""  # Service role key (NOT anon key)
