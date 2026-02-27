@@ -7009,4 +7009,63 @@ export const dmsAiApi = {
   },
 };
 
+// ==================== CJDQuick OMS Integration ====================
+export const cjdquickApi = {
+  // Manual sync
+  syncProduct: async (productId: string) => {
+    const { data } = await apiClient.post(`/cjdquick/sync/product/${productId}`);
+    return data;
+  },
+  syncOrder: async (orderId: string) => {
+    const { data } = await apiClient.post(`/cjdquick/sync/order/${orderId}`);
+    return data;
+  },
+  syncCustomer: async (customerId: string) => {
+    const { data } = await apiClient.post(`/cjdquick/sync/customer/${customerId}`);
+    return data;
+  },
+
+  // Bulk sync
+  bulkSyncProducts: async () => {
+    const { data } = await apiClient.post('/cjdquick/sync/bulk/products');
+    return data;
+  },
+  bulkSyncOrders: async (statusFilter?: string) => {
+    const { data } = await apiClient.post('/cjdquick/sync/bulk/orders', null, {
+      params: statusFilter ? { status: statusFilter } : undefined,
+    });
+    return data;
+  },
+
+  // Retry
+  retrySyncLog: async (logId: string) => {
+    const { data } = await apiClient.post(`/cjdquick/sync/retry/${logId}`);
+    return data;
+  },
+  retryAllFailed: async () => {
+    const { data } = await apiClient.post('/cjdquick/sync/retry-all');
+    return data;
+  },
+
+  // Logs & Stats
+  listSyncLogs: async (params?: {
+    page?: number; page_size?: number;
+    entity_type?: string; status?: string;
+    date_from?: string; date_to?: string;
+  }) => {
+    const { data } = await apiClient.get('/cjdquick/sync/logs', { params });
+    return data;
+  },
+  getSyncStats: async () => {
+    const { data } = await apiClient.get('/cjdquick/sync/stats');
+    return data;
+  },
+
+  // Webhook
+  registerWebhook: async (url: string, events?: string[]) => {
+    const { data } = await apiClient.post('/cjdquick/webhook/register', { url, events });
+    return data;
+  },
+};
+
 export default apiClient;

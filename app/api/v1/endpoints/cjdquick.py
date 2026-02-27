@@ -81,6 +81,38 @@ class WebhookRegisterRequest(BaseModel):
     )
 
 
+class BulkSyncResponse(BaseModel):
+    """Response from a bulk sync operation."""
+    total: int
+    success: int
+    failed: int
+
+
+class RetryResponse(BaseModel):
+    """Response from a single retry operation."""
+    success: bool
+    log_id: str
+    new_status: str
+    message: str
+
+
+class RetryAllResponse(BaseModel):
+    """Response from retry-all operation."""
+    retried: int
+    success: int
+    failed: int
+
+
+class SyncStatsResponse(BaseModel):
+    """Sync health dashboard stats."""
+    total_syncs: int
+    success_count: int
+    failed_count: int
+    pending_count: int
+    by_entity: dict  # {"PRODUCT": {"SUCCESS": 10, "FAILED": 2}, ...}
+    last_sync_at: Optional[datetime] = None
+
+
 # ==================== ADMIN SYNC ENDPOINTS ====================
 
 @router.post(
@@ -253,6 +285,130 @@ async def list_sync_logs(
         ],
         total=total,
     )
+
+
+# ==================== RETRY & BULK SYNC ENDPOINTS ====================
+
+@router.post(
+    "/sync/retry/{log_id}",
+    response_model=RetryResponse,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_permissions("orders:update"))],
+)
+async def retry_sync_log(
+    log_id: uuid.UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Retry a single failed sync log entry."""
+    if not settings.CJDQUICK_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="CJDQuick OMS integration is disabled.",
+        )
+
+    sync_service = CJDQuickSyncService(db)
+    try:
+        new_log = await sync_service.retry_failed_sync(log_id)
+        await db.commit()
+        return RetryResponse(
+            success=True,
+            log_id=str(log_id),
+            new_status=new_log.status,
+            message="Retry successful",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except CJDQuickAPIError as e:
+        return RetryResponse(
+            success=False,
+            log_id=str(log_id),
+            new_status="FAILED",
+            message=f"Retry failed: {e.message}",
+        )
+
+
+@router.post(
+    "/sync/retry-all",
+    response_model=RetryAllResponse,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_permissions("orders:update"))],
+)
+async def retry_all_failed_syncs(
+    db: DB,
+    current_user: CurrentUser,
+    max_retries: int = Query(3, ge=1, le=10, description="Max retry attempts per log"),
+):
+    """Retry all failed sync logs (up to 100, limited by max_retries)."""
+    if not settings.CJDQUICK_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="CJDQuick OMS integration is disabled.",
+        )
+
+    sync_service = CJDQuickSyncService(db)
+    result = await sync_service.retry_all_failed(max_retries=max_retries)
+    return RetryAllResponse(**result)
+
+
+@router.post(
+    "/sync/bulk/products",
+    response_model=BulkSyncResponse,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_permissions("orders:update"))],
+)
+async def bulk_sync_products(
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Bulk sync all active products to CJDQuick OMS."""
+    if not settings.CJDQUICK_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="CJDQuick OMS integration is disabled.",
+        )
+
+    sync_service = CJDQuickSyncService(db)
+    result = await sync_service.bulk_sync_products()
+    return BulkSyncResponse(**result)
+
+
+@router.post(
+    "/sync/bulk/orders",
+    response_model=BulkSyncResponse,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_permissions("orders:update"))],
+)
+async def bulk_sync_orders(
+    db: DB,
+    current_user: CurrentUser,
+    order_status: str = Query("CONFIRMED", alias="status", description="Order status to sync"),
+):
+    """Bulk sync orders with given status to CJDQuick OMS."""
+    if not settings.CJDQUICK_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="CJDQuick OMS integration is disabled.",
+        )
+
+    sync_service = CJDQuickSyncService(db)
+    result = await sync_service.bulk_sync_orders(status_filter=order_status)
+    return BulkSyncResponse(**result)
+
+
+@router.get(
+    "/sync/stats",
+    response_model=SyncStatsResponse,
+    dependencies=[Depends(require_permissions("orders:view"))],
+)
+async def get_sync_stats(
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Get CJDQuick sync health statistics for the dashboard."""
+    sync_service = CJDQuickSyncService(db)
+    stats = await sync_service.get_sync_stats()
+    return SyncStatsResponse(**stats)
 
 
 # ==================== WEBHOOK REGISTRATION ====================

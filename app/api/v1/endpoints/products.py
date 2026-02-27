@@ -515,14 +515,21 @@ async def create_product(
         logger.warning(f"[CREATE_PRODUCT] Orchestration failed (non-critical): {type(e).__name__}: {str(e)}")
         # Don't fail the request - product was created successfully
 
-    # Step 3: Cache invalidation - Non-critical
+    # Step 3: CJDQuick OMS auto-sync - Non-critical
+    try:
+        from app.services.cjdquick_sync_service import CJDQuickSyncService
+        await CJDQuickSyncService.fire_and_forget_sync(db, "PRODUCT", product.id)
+    except Exception:
+        pass  # Never block product creation
+
+    # Step 4: Cache invalidation - Non-critical
     try:
         cache = get_cache()
         await cache.invalidate_products()
     except Exception as e:
         logger.warning(f"[CREATE_PRODUCT] Cache invalidation failed (non-critical): {str(e)}")
 
-    # Step 4: Re-fetch with all relationships
+    # Step 5: Re-fetch with all relationships
     try:
         final_product = await service.get_product_by_id(product.id, include_all=True)
         logger.info(f"[CREATE_PRODUCT] ========== SUCCESS ==========")
@@ -603,6 +610,13 @@ async def update_product(
 
     # Commit orchestration changes
     await db.commit()
+
+    # CJDQuick OMS auto-sync - Non-critical
+    try:
+        from app.services.cjdquick_sync_service import CJDQuickSyncService
+        await CJDQuickSyncService.fire_and_forget_sync(db, "PRODUCT", product_id)
+    except Exception:
+        pass
 
     # Invalidate product caches
     cache = get_cache()

@@ -143,6 +143,14 @@ async def create_customer(
         )
 
     customer = await service.create_customer(data.model_dump())
+
+    # CJDQuick OMS auto-sync - Non-critical
+    try:
+        from app.services.cjdquick_sync_service import CJDQuickSyncService
+        await CJDQuickSyncService.fire_and_forget_sync(db, "CUSTOMER", customer.id)
+    except Exception:
+        pass
+
     return CustomerResponse.model_validate(customer)
 
 
@@ -174,6 +182,14 @@ async def update_customer(
         customer_id,
         data.model_dump(exclude_unset=True)
     )
+
+    # CJDQuick OMS auto-sync - Non-critical
+    try:
+        from app.services.cjdquick_sync_service import CJDQuickSyncService
+        await CJDQuickSyncService.fire_and_forget_sync(db, "CUSTOMER", customer_id)
+    except Exception:
+        pass
+
     return CustomerResponse.model_validate(updated)
 
 

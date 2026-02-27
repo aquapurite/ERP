@@ -40,6 +40,33 @@ class CJDQuickSyncService:
         self.db = db
         self.client = CJDQuickService()
 
+    # ==================== Non-Blocking Auto-Sync ====================
+
+    @staticmethod
+    async def fire_and_forget_sync(db: AsyncSession, entity_type: str, entity_id: uuid.UUID):
+        """Non-blocking sync trigger. Logs failure but never raises."""
+        if not settings.CJDQUICK_ENABLED:
+            return
+        try:
+            svc = CJDQuickSyncService(db)
+            if entity_type == "PRODUCT":
+                await svc.sync_product(entity_id)
+            elif entity_type == "ORDER":
+                await svc.sync_order(entity_id)
+            elif entity_type == "CUSTOMER":
+                await svc.sync_customer(entity_id)
+            elif entity_type == "PO":
+                await svc.sync_purchase_order(entity_id)
+            elif entity_type == "RETURN":
+                await svc.sync_return(entity_id)
+            await db.commit()
+        except Exception as e:
+            logger.warning("CJDQuick auto-sync failed for %s %s: %s", entity_type, entity_id, e)
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+
     # ==================== Transformer Methods ====================
 
     def _build_sku_payload(self, product: Product) -> Dict[str, Any]:
@@ -428,3 +455,134 @@ class CJDQuickSyncService:
             )
             logger.error("Failed to sync return %s: %s", return_order.rma_number, e.message)
             raise
+
+    # ==================== Retry & Bulk Sync Methods ====================
+
+    async def retry_failed_sync(self, log_id: uuid.UUID) -> CJDQuickSyncLog:
+        """Retry a single failed sync log entry."""
+        result = await self.db.execute(
+            select(CJDQuickSyncLog).where(CJDQuickSyncLog.id == log_id)
+        )
+        log = result.scalar_one_or_none()
+        if not log:
+            raise ValueError(f"Sync log {log_id} not found")
+        if log.status != "FAILED":
+            raise ValueError(f"Sync log {log_id} is not in FAILED status")
+
+        # Re-dispatch based on entity_type
+        if log.entity_type == "PRODUCT":
+            return await self.sync_product(log.entity_id)
+        elif log.entity_type == "ORDER":
+            return await self.sync_order(log.entity_id)
+        elif log.entity_type == "CUSTOMER":
+            return await self.sync_customer(log.entity_id)
+        elif log.entity_type == "PO":
+            return await self.sync_purchase_order(log.entity_id)
+        elif log.entity_type == "RETURN":
+            return await self.sync_return(log.entity_id)
+        else:
+            raise ValueError(f"Unknown entity type: {log.entity_type}")
+
+    async def retry_all_failed(self, max_retries: int = 3) -> dict:
+        """Retry all failed sync logs (up to max_retries attempts each)."""
+        result = await self.db.execute(
+            select(CJDQuickSyncLog)
+            .where(CJDQuickSyncLog.status == "FAILED")
+            .where(CJDQuickSyncLog.retry_count < max_retries)
+            .order_by(CJDQuickSyncLog.created_at)
+            .limit(100)
+        )
+        failed_logs = result.scalars().all()
+
+        success_count, fail_count = 0, 0
+        for log in failed_logs:
+            try:
+                await self.retry_failed_sync(log.id)
+                log.retry_count += 1
+                log.status = "SUCCESS"
+                success_count += 1
+            except Exception:
+                log.retry_count += 1
+                fail_count += 1
+
+        await self.db.commit()
+        return {"retried": len(failed_logs), "success": success_count, "failed": fail_count}
+
+    async def bulk_sync_products(self) -> dict:
+        """Sync all active products to OMS."""
+        result = await self.db.execute(
+            select(Product).where(Product.status == "ACTIVE")
+        )
+        products = result.scalars().all()
+        success, failed = 0, 0
+        for product in products:
+            try:
+                await self.sync_product(product.id)
+                success += 1
+            except Exception:
+                failed += 1
+        await self.db.commit()
+        return {"total": len(products), "success": success, "failed": failed}
+
+    async def bulk_sync_orders(self, status_filter: str = "CONFIRMED") -> dict:
+        """Sync orders with given status to OMS."""
+        result = await self.db.execute(
+            select(Order).where(Order.status == status_filter).limit(200)
+        )
+        orders = result.scalars().all()
+        success, failed = 0, 0
+        for order in orders:
+            try:
+                await self.sync_order(order.id)
+                success += 1
+            except Exception:
+                failed += 1
+        await self.db.commit()
+        return {"total": len(orders), "success": success, "failed": failed}
+
+    async def get_sync_stats(self) -> dict:
+        """Get sync health statistics."""
+        from sqlalchemy import func
+
+        result = await self.db.execute(
+            select(
+                CJDQuickSyncLog.entity_type,
+                CJDQuickSyncLog.status,
+                func.count().label("count"),
+            )
+            .group_by(CJDQuickSyncLog.entity_type, CJDQuickSyncLog.status)
+        )
+        rows = result.all()
+
+        by_entity: Dict[str, Dict[str, int]] = {}
+        total_syncs, success_count, failed_count, pending_count = 0, 0, 0, 0
+
+        for entity_type, sync_status, count in rows:
+            if entity_type not in by_entity:
+                by_entity[entity_type] = {}
+            by_entity[entity_type][sync_status] = count
+            total_syncs += count
+            if sync_status == "SUCCESS":
+                success_count += count
+            elif sync_status == "FAILED":
+                failed_count += count
+            elif sync_status == "PENDING":
+                pending_count += count
+
+        # Get last sync timestamp
+        last_sync_result = await self.db.execute(
+            select(CJDQuickSyncLog.synced_at)
+            .where(CJDQuickSyncLog.synced_at.isnot(None))
+            .order_by(CJDQuickSyncLog.synced_at.desc())
+            .limit(1)
+        )
+        last_sync_row = last_sync_result.scalar_one_or_none()
+
+        return {
+            "total_syncs": total_syncs,
+            "success_count": success_count,
+            "failed_count": failed_count,
+            "pending_count": pending_count,
+            "by_entity": by_entity,
+            "last_sync_at": last_sync_row,
+        }

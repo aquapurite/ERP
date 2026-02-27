@@ -266,6 +266,14 @@ async def create_order(
 
     try:
         order = await service.create_order(data, created_by=current_user.id)
+
+        # CJDQuick OMS auto-sync - Non-critical
+        try:
+            from app.services.cjdquick_sync_service import CJDQuickSyncService
+            await CJDQuickSyncService.fire_and_forget_sync(db, "ORDER", order.id)
+        except Exception:
+            pass
+
         return _build_order_detail_response(order)
     except ValueError as e:
         raise HTTPException(
@@ -825,6 +833,13 @@ async def create_d2c_order(
                 import logging as _log
                 _log.warning(f"D2C order {order_number}: email notification error — {email_err}")
         # ───────────────────────────────────────────────────────────────────
+
+        # CJDQuick OMS auto-sync - Non-critical
+        try:
+            from app.services.cjdquick_sync_service import CJDQuickSyncService
+            await CJDQuickSyncService.fire_and_forget_sync(db, "ORDER", order.id)
+        except Exception:
+            pass
 
         return D2COrderResponse(
             id=order.id,

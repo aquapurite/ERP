@@ -80,6 +80,7 @@ import {
   Trophy,
   HelpCircle,
   Video,
+  Zap,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -279,6 +280,7 @@ export const navigation: NavItem[] = [
       { title: 'Rate Cards - FTL', href: '/dashboard/logistics/rate-cards/ftl', permissions: ['LOGISTICS_VIEW'] },
       { title: 'Serviceability', href: '/dashboard/logistics/serviceability', icon: MapPin, permissions: ['LOGISTICS_VIEW'] },
       { title: 'SLA Dashboard', href: '/dashboard/logistics/sla-dashboard', icon: Gauge, permissions: ['LOGISTICS_VIEW'] },
+      { title: 'OMS Sync', href: '/dashboard/logistics/oms-sync', icon: Zap, permissions: ['LOGISTICS_VIEW'] },
     ],
   },
 
