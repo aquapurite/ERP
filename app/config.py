@@ -90,11 +90,13 @@ class Settings(BaseSettings):
     SHIPROCKET_AUTO_SHIP: bool = False  # Auto-assign courier on order creation
 
     # CJDQuick OMS Integration
-    CJDQUICK_API_KEY: str = ""
+    CJDQUICK_API_KEY: str = ""  # Deprecated: use email/password JWT auth instead
     CJDQUICK_BASE_URL: str = "https://lsp-oms-api.onrender.com/api/v1"
-    CJDQUICK_WEBHOOK_SECRET: Optional[str] = None
+    CJDQUICK_WEBHOOK_SECRET: Optional[str] = "9647c412edfd7abaf47c5669d6e7843a61867860f2106b192746221e7e3637d5"
     CJDQUICK_ENABLED: bool = True  # Feature flag
-    CJDQUICK_LOCATION_ID: str = ""  # OMS warehouse UUID (get from CJDQuick)
+    CJDQUICK_LOCATION_ID: str = "0789ef34-dbd0-4957-9511-cf48d72809e1"  # Aquapurite Main Warehouse
+    CJDQUICK_EMAIL: str = "themanagingdirector@aquapurite.com"  # OMS login email
+    CJDQUICK_PASSWORD: str = "brand123"  # OMS login password
 
     # Supabase Storage Settings
     SUPABASE_URL: str = ""  # e.g., "https://xxxx.supabase.co"

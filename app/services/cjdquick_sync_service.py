@@ -71,9 +71,10 @@ class CJDQuickSyncService:
 
     def _build_sku_payload(self, product: Product) -> Dict[str, Any]:
         """Map Aquapurite Product fields to CJDQuick OMS SKU format."""
-        return {
+        payload: Dict[str, Any] = {
             "code": product.sku,
             "name": product.name,
+            "brand": "Aquapurite",
             "hsn": product.hsn_code or "",
             "mrp": _decimal_to_float(product.mrp),
             "costPrice": _decimal_to_float(product.cost_price),
@@ -83,106 +84,209 @@ class CJDQuickSyncService:
             "length": _decimal_to_float(product.length_cm),
             "width": _decimal_to_float(product.width_cm),
             "height": _decimal_to_float(product.height_cm),
-            "status": "ACTIVE" if product.status == "ACTIVE" else "INACTIVE",
+            "isSerialized": True,
         }
+        # Add category info if available
+        if hasattr(product, "category") and product.category:
+            cat = product.category
+            payload["category"] = cat.name if hasattr(cat, "name") else str(cat)
+        if hasattr(product, "description") and product.description:
+            payload["description"] = product.description
+        return payload
 
     def _build_order_payload(self, order: Order, customer: Customer) -> Dict[str, Any]:
-        """Map Aquapurite Order + Customer to CJDQuick OMS order format."""
-        # Build line items
+        """Map Aquapurite Order + Customer to CJDQuick OMS order format.
+
+        API spec requires flat customer fields (not nested), items with skuId (UUID),
+        and specific amount field names (shippingCharges, discount).
+        """
+        # Build line items — API requires skuId (UUID), quantity, unitPrice, taxAmount, totalPrice
         items = []
         if hasattr(order, "items") and order.items:
             for item in order.items:
-                items.append({
-                    "sku": item.sku if hasattr(item, "sku") else "",
-                    "name": item.product_name if hasattr(item, "product_name") else "",
-                    "quantity": item.quantity,
-                    "unitPrice": _decimal_to_float(item.unit_price) if hasattr(item, "unit_price") else 0,
-                    "totalPrice": _decimal_to_float(item.total_price) if hasattr(item, "total_price") else 0,
-                })
+                unit_price = _decimal_to_float(item.unit_price) if hasattr(item, "unit_price") else 0
+                quantity = item.quantity or 1
+                tax_amount = _decimal_to_float(item.tax_amount) if hasattr(item, "tax_amount") else 0
+                total_price = _decimal_to_float(item.total_price) if hasattr(item, "total_price") else (unit_price * quantity)
+                discount = _decimal_to_float(item.discount_amount) if hasattr(item, "discount_amount") else 0
+
+                item_data: Dict[str, Any] = {
+                    "quantity": quantity,
+                    "unitPrice": unit_price,
+                    "taxAmount": tax_amount or 0,
+                    "totalPrice": total_price,
+                }
+                # Use product_id as externalItemId since we may not have OMS skuId yet
+                if hasattr(item, "product_id") and item.product_id:
+                    item_data["externalItemId"] = str(item.product_id)
+                if hasattr(item, "sku") and item.sku:
+                    item_data["externalItemId"] = item.sku
+                if discount:
+                    item_data["discount"] = discount
+                items.append(item_data)
 
         # Map payment method to OMS payment mode
         payment_mode = self._map_payment_method(order.payment_method)
 
         # Map order source to OMS channel
-        channel = "D2C" if order.source == "WEBSITE" else order.source
+        channel = "D2C" if order.source == "WEBSITE" else (order.source or "D2C")
 
         # Build shipping address from JSONB
         shipping = order.shipping_address or {}
+        customer_name = f"{customer.first_name} {customer.last_name or ''}".strip()
 
         return {
             "externalOrderNo": order.order_number,
             "channel": channel,
             "paymentMode": payment_mode,
             "orderDate": order.created_at.isoformat() if order.created_at else None,
-            "customer": {
-                "code": customer.customer_code,
-                "name": f"{customer.first_name} {customer.last_name or ''}".strip(),
-                "phone": customer.phone,
-                "email": customer.email or "",
-            },
+            "locationId": settings.CJDQUICK_LOCATION_ID,
+            # Flat customer fields (API spec — NOT nested)
+            "customerName": customer_name,
+            "customerPhone": customer.phone or "",
+            "customerEmail": customer.email or "",
+            # Shipping address
             "shippingAddress": {
-                "name": shipping.get("name", ""),
-                "phone": shipping.get("phone", customer.phone),
+                "name": shipping.get("name", customer_name),
+                "phone": shipping.get("phone", customer.phone or ""),
                 "address1": shipping.get("address", shipping.get("address_line_1", "")),
                 "address2": shipping.get("address_2", shipping.get("address_line_2", "")),
                 "city": shipping.get("city", ""),
                 "state": shipping.get("state", ""),
-                "pincode": shipping.get("pincode", shipping.get("zip_code", "")),
+                "pincode": str(shipping.get("pincode", shipping.get("zip_code", ""))),
                 "country": shipping.get("country", "India"),
             },
             "items": items,
-            "subtotal": _decimal_to_float(order.subtotal),
-            "taxAmount": _decimal_to_float(order.tax_amount),
-            "shippingAmount": _decimal_to_float(order.shipping_amount),
-            "discountAmount": _decimal_to_float(order.discount_amount),
-            "totalAmount": _decimal_to_float(order.total_amount),
-            "locationId": settings.CJDQUICK_LOCATION_ID or None,
+            # Amount fields — API uses shippingCharges and discount (not shippingAmount/discountAmount)
+            "subtotal": _decimal_to_float(order.subtotal) or 0,
+            "taxAmount": _decimal_to_float(order.tax_amount) or 0,
+            "shippingCharges": _decimal_to_float(order.shipping_amount) if hasattr(order, "shipping_amount") else 0,
+            "discount": _decimal_to_float(order.discount_amount) if hasattr(order, "discount_amount") else 0,
+            "totalAmount": _decimal_to_float(order.total_amount) or 0,
         }
 
     def _build_customer_payload(self, customer: Customer) -> Dict[str, Any]:
-        """Map Aquapurite Customer to CJDQuick OMS customer format."""
+        """Map Aquapurite Customer to CJDQuick OMS customer format.
+
+        API spec requires billingAddress (object) as mandatory field.
+        """
+        customer_name = f"{customer.first_name} {customer.last_name or ''}".strip()
+
+        # Build billing address from customer's address data
+        billing_address = {
+            "name": customer_name,
+            "phone": customer.phone or "",
+            "address1": "",
+            "city": "",
+            "state": "",
+            "pincode": "",
+            "country": "India",
+        }
+        # Try to get address from customer model
+        if hasattr(customer, "address") and customer.address:
+            addr = customer.address if isinstance(customer.address, dict) else {}
+            billing_address.update({
+                "address1": addr.get("address", addr.get("address_line_1", "")),
+                "address2": addr.get("address_2", addr.get("address_line_2", "")),
+                "city": addr.get("city", ""),
+                "state": addr.get("state", ""),
+                "pincode": str(addr.get("pincode", addr.get("zip_code", ""))),
+            })
+        elif hasattr(customer, "city") and customer.city:
+            billing_address.update({
+                "address1": getattr(customer, "address_line_1", "") or "",
+                "city": customer.city or "",
+                "state": getattr(customer, "state", "") or "",
+                "pincode": str(getattr(customer, "pincode", "") or ""),
+            })
+
         return {
             "code": customer.customer_code,
-            "name": f"{customer.first_name} {customer.last_name or ''}".strip(),
-            "phone": customer.phone,
+            "name": customer_name,
+            "phone": customer.phone or "",
             "email": customer.email or "",
-            "type": customer.customer_type,
-            "gst": customer.gst_number or "",
+            "type": customer.customer_type or "RETAIL",
+            "gst": customer.gst_number or "NA",
+            "billingAddress": billing_address,
         }
 
     def _build_po_payload(self, po: PurchaseOrder) -> Dict[str, Any]:
-        """Map Aquapurite PurchaseOrder to CJDQuick OMS external-PO format."""
+        """Map Aquapurite PurchaseOrder to CJDQuick OMS external-PO format.
+
+        API endpoint: POST /external-pos
+        Required fields: externalPoNumber, locationId, items[].externalSkuCode, items[].orderedQty
+        """
         items = []
         if hasattr(po, "items") and po.items:
             for item in po.items:
-                items.append({
-                    "sku": item.product.sku if hasattr(item, "product") and item.product else "",
-                    "quantity": item.quantity if hasattr(item, "quantity") else 0,
-                    "unitPrice": _decimal_to_float(item.unit_price) if hasattr(item, "unit_price") else 0,
-                })
+                sku_code = ""
+                sku_name = ""
+                if hasattr(item, "product") and item.product:
+                    sku_code = item.product.sku or ""
+                    sku_name = item.product.name or ""
 
-        return {
-            "externalPoNo": po.po_number if hasattr(po, "po_number") else str(po.id),
+                item_data: Dict[str, Any] = {
+                    "externalSkuCode": sku_code,
+                    "externalSkuName": sku_name,
+                    "orderedQty": item.quantity if hasattr(item, "quantity") else 0,
+                }
+                if hasattr(item, "unit_price") and item.unit_price:
+                    item_data["unitPrice"] = _decimal_to_float(item.unit_price)
+                items.append(item_data)
+
+        payload: Dict[str, Any] = {
+            "externalPoNumber": po.po_number if hasattr(po, "po_number") else str(po.id),
+            "locationId": settings.CJDQUICK_LOCATION_ID,
             "items": items,
-            "locationId": settings.CJDQUICK_LOCATION_ID or None,
         }
+        # Add vendor info if available
+        if hasattr(po, "vendor") and po.vendor:
+            payload["externalVendorCode"] = getattr(po.vendor, "vendor_code", "") or ""
+            payload["externalVendorName"] = getattr(po.vendor, "company_name", "") or ""
+        # Add dates
+        if hasattr(po, "created_at") and po.created_at:
+            payload["poDate"] = po.created_at.strftime("%Y-%m-%d")
+        if hasattr(po, "expected_delivery_date") and po.expected_delivery_date:
+            payload["expectedDeliveryDate"] = po.expected_delivery_date.strftime("%Y-%m-%d")
+
+        return payload
 
     def _build_return_payload(self, return_order: ReturnOrder) -> Dict[str, Any]:
-        """Map Aquapurite ReturnOrder to CJDQuick OMS return format."""
+        """Map Aquapurite ReturnOrder to CJDQuick OMS return format.
+
+        API spec requires: type (RTO/REPLACEMENT/REFUND/DAMAGE), orderId, reason, items[].skuId
+        """
         items = []
         if hasattr(return_order, "items") and return_order.items:
             for item in return_order.items:
-                items.append({
-                    "sku": item.sku if hasattr(item, "sku") else "",
+                item_data: Dict[str, Any] = {
                     "quantity": item.quantity if hasattr(item, "quantity") else 0,
-                    "reason": item.reason if hasattr(item, "reason") else "",
-                })
+                }
+                # Use product_id as reference since we may not have OMS skuId
+                if hasattr(item, "product_id") and item.product_id:
+                    item_data["externalItemId"] = str(item.product_id)
+                if hasattr(item, "reason") and item.reason:
+                    item_data["reason"] = item.reason
+                items.append(item_data)
+
+        # Map return type
+        return_type = "RTO"  # Default
+        if hasattr(return_order, "return_type") and return_order.return_type:
+            type_mapping = {
+                "RTO": "RTO",
+                "REPLACEMENT": "REPLACEMENT",
+                "REFUND": "REFUND",
+                "DAMAGE": "DAMAGE",
+                "CUSTOMER_RETURN": "REFUND",
+            }
+            return_type = type_mapping.get(return_order.return_type, "RTO")
 
         return {
-            "rmaNumber": return_order.rma_number,
+            "type": return_type,
             "orderId": str(return_order.order_id),
+            "reason": getattr(return_order, "reason", "") or "Customer return",
+            "remarks": getattr(return_order, "rma_number", "") or "",
             "items": items,
-            "locationId": settings.CJDQUICK_LOCATION_ID or None,
         }
 
     # ==================== Status Mapping ====================

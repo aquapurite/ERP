@@ -13,12 +13,13 @@ Handles all CJDQuick OMS/WMS API interactions:
 - Webhook registration
 
 API Base: https://lsp-oms-api.onrender.com/api/v1
-Auth: Bearer token in Authorization header
+Auth: JWT Bearer token (auto-refreshed via email/password login)
 Rate limit: 100 req/min (standard), 10 req/min (bulk)
 """
 
 import httpx
 import logging
+import time
 from typing import Optional, Dict, Any
 
 from app.config import settings
@@ -37,11 +38,88 @@ class CJDQuickAPIError(Exception):
 
 
 class CJDQuickService:
-    """HTTP client for CJDQuick OMS API."""
+    """HTTP client for CJDQuick OMS API with JWT auto-refresh."""
+
+    # Class-level token cache (shared across all instances)
+    _cached_token: Optional[str] = None
+    _token_expires_at: float = 0
 
     def __init__(self):
-        self.api_key = settings.CJDQUICK_API_KEY
         self.base_url = settings.CJDQUICK_BASE_URL.rstrip("/")
+        self.email = settings.CJDQUICK_EMAIL
+        self.password = settings.CJDQUICK_PASSWORD
+
+    async def _get_token(self) -> str:
+        """Get a valid JWT token, logging in or refreshing as needed."""
+        now = time.time()
+
+        # Return cached token if still valid (with 60s buffer)
+        if CJDQuickService._cached_token and now < (CJDQuickService._token_expires_at - 60):
+            return CJDQuickService._cached_token
+
+        # Try refresh if we have an existing token
+        if CJDQuickService._cached_token:
+            try:
+                token_data = await self._refresh_token()
+                CJDQuickService._cached_token = token_data["token"]
+                CJDQuickService._token_expires_at = now + token_data.get("expiresIn", 3600)
+                logger.info("CJDQuick JWT token refreshed successfully")
+                return CJDQuickService._cached_token
+            except Exception:
+                logger.warning("CJDQuick token refresh failed, re-logging in")
+
+        # Login with email/password
+        token_data = await self._login()
+        CJDQuickService._cached_token = token_data["token"]
+        CJDQuickService._token_expires_at = now + token_data.get("expiresIn", 3600)
+        logger.info("CJDQuick JWT login successful")
+        return CJDQuickService._cached_token
+
+    async def _login(self) -> Dict[str, Any]:
+        """Login to CJDQuick OMS and get JWT token."""
+        if not self.email or not self.password:
+            raise CJDQuickAPIError(
+                status_code=401,
+                message="CJDQUICK_EMAIL and CJDQUICK_PASSWORD not configured.",
+            )
+
+        url = f"{self.base_url}/auth/login"
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(
+                    url,
+                    json={"email": self.email, "password": self.password},
+                    headers={"Content-Type": "application/json"},
+                )
+            if response.status_code >= 400:
+                raise CJDQuickAPIError(
+                    status_code=response.status_code,
+                    message=f"CJDQuick login failed: {response.text}",
+                )
+            return response.json()
+        except httpx.RequestError as exc:
+            raise CJDQuickAPIError(
+                status_code=502,
+                message=f"CJDQuick login connection error: {exc}",
+            )
+
+    async def _refresh_token(self) -> Dict[str, Any]:
+        """Refresh the JWT token."""
+        url = f"{self.base_url}/auth/refresh"
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {CJDQuickService._cached_token}",
+                    "Content-Type": "application/json",
+                },
+            )
+        if response.status_code >= 400:
+            raise CJDQuickAPIError(
+                status_code=response.status_code,
+                message="Token refresh failed",
+            )
+        return response.json()
 
     async def _request(
         self,
@@ -51,15 +129,11 @@ class CJDQuickService:
         params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Make an authenticated request to CJDQuick OMS API."""
-        if not self.api_key:
-            raise CJDQuickAPIError(
-                status_code=401,
-                message="CJDQUICK_API_KEY not configured. Set it in .env file.",
-            )
+        token = await self._get_token()
 
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
@@ -75,6 +149,22 @@ class CJDQuickService:
                     params=params,
                     headers=headers,
                 )
+
+            # If 401, clear cached token and retry once
+            if response.status_code == 401:
+                logger.warning("CJDQuick API 401 - clearing token cache and retrying")
+                CJDQuickService._cached_token = None
+                CJDQuickService._token_expires_at = 0
+                token = await self._get_token()
+                headers["Authorization"] = f"Bearer {token}"
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.request(
+                        method=method.upper(),
+                        url=url,
+                        json=data,
+                        params=params,
+                        headers=headers,
+                    )
 
             if response.status_code >= 400:
                 try:
@@ -119,11 +209,15 @@ class CJDQuickService:
 
     async def update_sku(self, sku_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Update an existing SKU."""
-        return await self._request("PUT", f"/skus/{sku_id}", data=payload)
+        return await self._request("PATCH", f"/skus/{sku_id}", data=payload)
 
     async def get_sku(self, sku_id: str) -> Dict[str, Any]:
         """Get SKU details by ID."""
         return await self._request("GET", f"/skus/{sku_id}")
+
+    async def get_sku_by_code(self, code: str) -> Dict[str, Any]:
+        """Get SKU by code."""
+        return await self._request("GET", f"/skus/code/{code}")
 
     async def list_skus(self, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """List SKUs with optional filters."""
@@ -137,7 +231,7 @@ class CJDQuickService:
 
     async def create_b2b_order(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Create a B2B order in CJDQuick OMS."""
-        return await self._request("POST", "/orders/b2b", data=payload)
+        return await self._request("POST", "/b2b/orders", data=payload)
 
     async def get_order(self, order_id: str) -> Dict[str, Any]:
         """Get order details by ID."""
@@ -159,21 +253,21 @@ class CJDQuickService:
 
     async def create_po(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Create a Purchase Order in CJDQuick OMS."""
-        return await self._request("POST", "/purchase-orders", data=payload)
+        return await self._request("POST", "/external-pos", data=payload)
 
     async def get_po(self, po_id: str) -> Dict[str, Any]:
         """Get PO details by ID."""
-        return await self._request("GET", f"/purchase-orders/{po_id}")
+        return await self._request("GET", f"/external-pos/{po_id}")
 
     async def list_pos(self, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """List Purchase Orders with optional filters."""
-        return await self._request("GET", "/purchase-orders", params=params)
+        return await self._request("GET", "/external-pos", params=params)
 
     # ==================== ASN Methods ====================
 
     async def create_asn(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Create an Advanced Shipping Notice."""
-        return await self._request("POST", "/asn", data=payload)
+        return await self._request("POST", "/asns", data=payload)
 
     # ==================== Inventory Methods ====================
 
@@ -225,12 +319,12 @@ class CJDQuickService:
 
     async def register_webhook(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Register a webhook endpoint with CJDQuick OMS."""
-        return await self._request("POST", "/webhooks", data=payload)
+        return await self._request("POST", "/brand-webhooks", data=payload)
 
     async def list_webhooks(self) -> Dict[str, Any]:
         """List registered webhooks."""
-        return await self._request("GET", "/webhooks")
+        return await self._request("GET", "/brand-webhooks")
 
     async def test_webhook(self, webhook_id: str) -> Dict[str, Any]:
         """Send a test event to a registered webhook."""
-        return await self._request("POST", f"/webhooks/{webhook_id}/test")
+        return await self._request("POST", f"/brand-webhooks/{webhook_id}/test")
