@@ -94,7 +94,7 @@ class Settings(BaseSettings):
     CJDQUICK_BASE_URL: str = "https://lsp-oms-api.onrender.com/api/v1"
     CJDQUICK_WEBHOOK_SECRET: Optional[str] = "9647c412edfd7abaf47c5669d6e7843a61867860f2106b192746221e7e3637d5"
     CJDQUICK_ENABLED: bool = True  # Feature flag
-    CJDQUICK_LOCATION_ID: str = "0789ef34-dbd0-4957-9511-cf48d72809e1"  # Aquapurite Main Warehouse
+    CJDQUICK_LOCATION_ID: str = "d0000000-0000-0000-0000-000000000002"  # Aquapurite Main Warehouse (WH-AQUA-01)
     CJDQUICK_EMAIL: str = "themanagingdirector@aquapurite.com"  # OMS login email
     CJDQUICK_PASSWORD: str = "brand123"  # OMS login password
 
