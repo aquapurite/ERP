@@ -93,7 +93,7 @@ class Settings(BaseSettings):
     CJDQUICK_API_KEY: str = ""
     CJDQUICK_BASE_URL: str = "https://lsp-oms-api.onrender.com/api/v1"
     CJDQUICK_WEBHOOK_SECRET: Optional[str] = None
-    CJDQUICK_ENABLED: bool = False  # Feature flag
+    CJDQUICK_ENABLED: bool = True  # Feature flag
     CJDQUICK_LOCATION_ID: str = ""  # OMS warehouse UUID (get from CJDQuick)
 
     # Supabase Storage Settings
