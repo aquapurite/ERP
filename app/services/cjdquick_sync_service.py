@@ -86,10 +86,7 @@ class CJDQuickSyncService:
             "height": _decimal_to_float(product.height_cm),
             "isSerialized": True,
         }
-        # Add category info if available
-        if hasattr(product, "category") and product.category:
-            cat = product.category
-            payload["category"] = cat.name if hasattr(cat, "name") else str(cat)
+        # Add description if available (avoid lazy-loaded relationships)
         if hasattr(product, "description") and product.description:
             payload["description"] = product.description
         return payload
