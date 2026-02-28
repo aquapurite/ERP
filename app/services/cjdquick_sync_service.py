@@ -72,6 +72,7 @@ class CJDQuickSyncService:
     def _build_sku_payload(self, product: Product) -> Dict[str, Any]:
         """Map Aquapurite Product fields to CJDQuick OMS SKU format."""
         payload: Dict[str, Any] = {
+            "companyId": settings.CJDQUICK_COMPANY_ID,
             "code": product.sku,
             "name": product.name,
             "brand": "Aquapurite",
@@ -133,6 +134,7 @@ class CJDQuickSyncService:
         customer_name = f"{customer.first_name} {customer.last_name or ''}".strip()
 
         return {
+            "companyId": settings.CJDQUICK_COMPANY_ID,
             "externalOrderNo": order.order_number,
             "channel": channel,
             "paymentMode": payment_mode,
@@ -198,6 +200,7 @@ class CJDQuickSyncService:
             })
 
         return {
+            "companyId": settings.CJDQUICK_COMPANY_ID,
             "code": customer.customer_code,
             "name": customer_name,
             "phone": customer.phone or "",
@@ -232,6 +235,7 @@ class CJDQuickSyncService:
                 items.append(item_data)
 
         payload: Dict[str, Any] = {
+            "companyId": settings.CJDQUICK_COMPANY_ID,
             "externalPoNumber": po.po_number if hasattr(po, "po_number") else str(po.id),
             "locationId": settings.CJDQUICK_LOCATION_ID,
             "items": items,
@@ -279,6 +283,7 @@ class CJDQuickSyncService:
             return_type = type_mapping.get(return_order.return_type, "RTO")
 
         return {
+            "companyId": settings.CJDQUICK_COMPANY_ID,
             "type": return_type,
             "orderId": str(return_order.order_id),
             "reason": getattr(return_order, "reason", "") or "Customer return",

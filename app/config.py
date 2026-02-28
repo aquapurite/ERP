@@ -95,6 +95,7 @@ class Settings(BaseSettings):
     CJDQUICK_WEBHOOK_SECRET: Optional[str] = "9647c412edfd7abaf47c5669d6e7843a61867860f2106b192746221e7e3637d5"
     CJDQUICK_ENABLED: bool = True  # Feature flag
     CJDQUICK_LOCATION_ID: str = "d0000000-0000-0000-0000-000000000002"  # Aquapurite Main Warehouse (WH-AQUA-01)
+    CJDQUICK_COMPANY_ID: str = "c1a2b3c4-d5e6-f7a8-b9c0-d1e2f3a4b5c6"  # OMS company UUID
     CJDQUICK_EMAIL: str = "themanagingdirector@aquapurite.com"  # OMS login email
     CJDQUICK_PASSWORD: str = "brand123"  # OMS login password
 
