@@ -24,6 +24,7 @@ from app.schemas.notifications import (
     SendNotificationRequest, BulkNotificationResult, NotificationTypeInfo
 )
 from app.api.deps import DB, CurrentUser, get_current_user, require_permissions
+from app.database import get_db
 
 router = APIRouter()
 
@@ -88,7 +89,7 @@ async def get_my_notifications(
     size: int = Query(50, ge=1, le=100),
     is_read: Optional[bool] = None,
     notification_type: Optional[NotificationType] = None,
-    db: AsyncSession = Depends(DB),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Get current user's notifications."""
@@ -137,7 +138,7 @@ async def get_my_notifications(
 
 @router.get("/my/unread-count")
 async def get_unread_count(
-    db: AsyncSession = Depends(DB),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Get count of unread notifications for current user."""
@@ -153,7 +154,7 @@ async def get_unread_count(
 @router.put("/my/read")
 async def mark_notifications_read(
     data: NotificationMarkRead,
-    db: AsyncSession = Depends(DB),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Mark specific notifications as read."""
@@ -178,7 +179,7 @@ async def mark_notifications_read(
 
 @router.put("/my/read-all")
 async def mark_all_read(
-    db: AsyncSession = Depends(DB),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Mark all notifications as read for current user."""
@@ -203,7 +204,7 @@ async def mark_all_read(
 @router.delete("/my/{notification_id}")
 async def delete_notification(
     notification_id: UUID,
-    db: AsyncSession = Depends(DB),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Delete a notification."""
@@ -225,7 +226,7 @@ async def delete_notification(
 
 @router.get("/my/stats", response_model=NotificationStats)
 async def get_notification_stats(
-    db: AsyncSession = Depends(DB),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Get notification statistics for current user."""
@@ -272,7 +273,7 @@ async def get_notification_stats(
 
 @router.get("/preferences", response_model=NotificationPreferenceResponse)
 async def get_my_preferences(
-    db: AsyncSession = Depends(DB),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Get current user's notification preferences."""
@@ -295,7 +296,7 @@ async def get_my_preferences(
 @router.put("/preferences", response_model=NotificationPreferenceResponse)
 async def update_my_preferences(
     data: NotificationPreferenceUpdate,
-    db: AsyncSession = Depends(DB),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Update current user's notification preferences."""
@@ -326,7 +327,7 @@ async def list_announcements(
     page: int = Query(1, ge=1),
     size: int = Query(50, ge=1, le=100),
     active_only: bool = True,
-    db: AsyncSession = Depends(DB),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """List announcements for current user."""
@@ -380,7 +381,7 @@ async def list_announcements(
 
 @router.get("/announcements/active")
 async def get_active_announcements(
-    db: AsyncSession = Depends(DB),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Get active, non-dismissed announcements for current user (for dashboard)."""
@@ -417,7 +418,7 @@ async def get_active_announcements(
 @router.post("/announcements/{announcement_id}/dismiss")
 async def dismiss_announcement(
     announcement_id: UUID,
-    db: AsyncSession = Depends(DB),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Dismiss an announcement for current user."""
@@ -458,7 +459,7 @@ async def dismiss_announcement(
 @router.post("/announcements", response_model=AnnouncementResponse)
 async def create_announcement(
     data: AnnouncementCreate,
-    db: AsyncSession = Depends(DB),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permissions(["NOTIFICATIONS_MANAGE"])),
 ):
     """Create a new announcement (admin only)."""
@@ -480,7 +481,7 @@ async def create_announcement(
 async def update_announcement(
     announcement_id: UUID,
     data: AnnouncementUpdate,
-    db: AsyncSession = Depends(DB),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permissions(["NOTIFICATIONS_MANAGE"])),
 ):
     """Update an announcement (admin only)."""
@@ -505,7 +506,7 @@ async def update_announcement(
 @router.delete("/announcements/{announcement_id}")
 async def delete_announcement(
     announcement_id: UUID,
-    db: AsyncSession = Depends(DB),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permissions(["NOTIFICATIONS_MANAGE"])),
 ):
     """Delete an announcement (admin only)."""
@@ -528,7 +529,7 @@ async def delete_announcement(
 
 @router.get("/templates", response_model=NotificationTemplateListResponse)
 async def list_templates(
-    db: AsyncSession = Depends(DB),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permissions(["NOTIFICATIONS_MANAGE"])),
 ):
     """List all notification templates (admin only)."""
@@ -547,7 +548,7 @@ async def list_templates(
 @router.post("/templates", response_model=NotificationTemplateResponse)
 async def create_template(
     data: NotificationTemplateCreate,
-    db: AsyncSession = Depends(DB),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permissions(["NOTIFICATIONS_MANAGE"])),
 ):
     """Create a notification template (admin only)."""
@@ -576,7 +577,7 @@ async def create_template(
 async def update_template(
     template_id: UUID,
     data: NotificationTemplateUpdate,
-    db: AsyncSession = Depends(DB),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permissions(["NOTIFICATIONS_MANAGE"])),
 ):
     """Update a notification template (admin only)."""
@@ -603,7 +604,7 @@ async def update_template(
 @router.post("/send", response_model=BulkNotificationResult)
 async def send_notification(
     data: SendNotificationRequest,
-    db: AsyncSession = Depends(DB),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permissions(["NOTIFICATIONS_MANAGE"])),
 ):
     """Send notifications to users using a template (admin only)."""
