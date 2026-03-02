@@ -352,6 +352,10 @@ export default function ExpensesPage() {
       toast.error('Please fill in code and name');
       return;
     }
+    if (categoryForm.code.length > 20) {
+      toast.error('Code must be 20 characters or less');
+      return;
+    }
     if (selectedCategory) {
       updateCategoryMutation.mutate({
         id: selectedCategory.id,
@@ -1187,7 +1191,11 @@ export default function ExpensesPage() {
                 value={categoryForm.code}
                 onChange={(e) => setCategoryForm({ ...categoryForm, code: e.target.value.toUpperCase() })}
                 disabled={!!selectedCategory}
+                maxLength={20}
               />
+              <p className="text-xs text-muted-foreground">
+                Short unique code, max 20 characters ({categoryForm.code.length}/20)
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Name *</Label>
