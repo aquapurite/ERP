@@ -58,7 +58,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
-import { expensesApi } from '@/lib/api';
+import { expensesApi, accountsApi } from '@/lib/api';
 import { formatDate, formatCurrency } from '@/lib/utils';
 
 interface ExpenseCategory {
@@ -194,6 +194,11 @@ export default function ExpensesPage() {
   const { data: categoryDropdown } = useQuery({
     queryKey: ['expense-categories-dropdown'],
     queryFn: () => expensesApi.getCategoryDropdown(),
+  });
+
+  const { data: glAccountsDropdown } = useQuery({
+    queryKey: ['gl-accounts-dropdown-expense'],
+    queryFn: () => accountsApi.getDropdown(),
   });
 
   // Mutations
@@ -362,6 +367,7 @@ export default function ExpensesPage() {
         data: {
           name: categoryForm.name,
           description: categoryForm.description,
+          gl_account_id: categoryForm.gl_account_id || undefined,
           requires_receipt: categoryForm.requires_receipt,
           max_amount_without_approval: parseFloat(categoryForm.max_amount_without_approval || '0'),
         },
@@ -371,6 +377,7 @@ export default function ExpensesPage() {
         code: categoryForm.code,
         name: categoryForm.name,
         description: categoryForm.description,
+        gl_account_id: categoryForm.gl_account_id || undefined,
         requires_receipt: categoryForm.requires_receipt,
         max_amount_without_approval: parseFloat(categoryForm.max_amount_without_approval || '0'),
       });
@@ -553,7 +560,9 @@ export default function ExpensesPage() {
     {
       accessorKey: 'gl_account_name',
       header: 'GL Account',
-      cell: ({ row }) => row.original.gl_account_name || '-',
+      cell: ({ row }) => row.original.gl_account_code
+        ? `${row.original.gl_account_code} - ${row.original.gl_account_name}`
+        : '-',
     },
     {
       accessorKey: 'requires_receipt',
@@ -1212,6 +1221,30 @@ export default function ExpensesPage() {
                 value={categoryForm.description}
                 onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>GL Account</Label>
+              <Select
+                value={categoryForm.gl_account_id || 'none'}
+                onValueChange={(value) => setCategoryForm({ ...categoryForm, gl_account_id: value === 'none' ? '' : value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select GL Account" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No GL Account</SelectItem>
+                  {(glAccountsDropdown as Array<{ id: string; code: string; name: string; full_name: string; type: string }> || [])
+                    .filter((a: { type: string }) => a.type === 'EXPENSE')
+                    .map((account: { id: string; full_name: string }) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.full_name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Maps this category to a GL expense account
+              </p>
             </div>
             <div className="flex items-center space-x-2">
               <input

@@ -19,7 +19,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, CurrentUser, require_permissions
 from app.models.expense import ExpenseCategory, ExpenseVoucher
-from app.models.accounting import JournalEntry
+from app.models.accounting import JournalEntry, ChartOfAccount
 from app.services.accounting_service import AccountingService
 from app.schemas.expense import (
     ExpenseCategoryCreate, ExpenseCategoryUpdate, ExpenseCategoryResponse,
@@ -84,7 +84,7 @@ async def list_expense_categories(
     result = await db.execute(query)
     categories = result.scalars().all()
 
-    # Get voucher counts for each category
+    # Get voucher counts and GL account details for each category
     items = []
     for cat in categories:
         count_result = await db.execute(
@@ -92,9 +92,25 @@ async def list_expense_categories(
             .where(ExpenseVoucher.expense_category_id == cat.id)
         )
         voucher_count = count_result.scalar() or 0
+
+        # Fetch GL account name/code if linked
+        gl_account_name = None
+        gl_account_code = None
+        if cat.gl_account_id:
+            gl_result = await db.execute(
+                select(ChartOfAccount.account_name, ChartOfAccount.account_code)
+                .where(ChartOfAccount.id == cat.gl_account_id)
+            )
+            gl_row = gl_result.first()
+            if gl_row:
+                gl_account_name = gl_row.account_name
+                gl_account_code = gl_row.account_code
+
         items.append({
             **ExpenseCategoryResponse.model_validate(cat).model_dump(),
             "voucher_count": voucher_count,
+            "gl_account_name": gl_account_name,
+            "gl_account_code": gl_account_code,
         })
 
     return {
