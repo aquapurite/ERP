@@ -7011,7 +7011,7 @@ export const dmsAiApi = {
 
 // ==================== CJDQuick OMS Integration ====================
 export const cjdquickApi = {
-  // Manual sync
+  // Manual sync (push to CJDQuick via integration endpoint)
   syncProduct: async (productId: string) => {
     const { data } = await apiClient.post(`/cjdquick/sync/product/${productId}`);
     return data;
@@ -7064,6 +7064,18 @@ export const cjdquickApi = {
   // Webhook
   registerWebhook: async (url: string, events?: string[]) => {
     const { data } = await apiClient.post('/cjdquick/webhook/register', { url, events });
+    return data;
+  },
+
+  // Integration order push (via backend which uses X-API-Key auth)
+  pushOrder: async (orderId: string) => {
+    const { data } = await apiClient.post(`/cjdquick/sync/order/${orderId}`);
+    return data;
+  },
+  pushBulkOrders: async (statusFilter?: string) => {
+    const { data } = await apiClient.post('/cjdquick/sync/bulk/orders', null, {
+      params: statusFilter ? { status: statusFilter } : undefined,
+    });
     return data;
   },
 };

@@ -201,6 +201,101 @@ class CJDQuickService:
                 message=f"Connection error to CJDQuick OMS: {exc}",
             )
 
+    # ==================== Integration Endpoints (X-API-Key Auth) ====================
+
+    async def _integration_request(
+        self,
+        method: str,
+        endpoint: str,
+        data: Optional[Dict[str, Any]] = None,
+        params: Optional[Dict[str, Any]] = None,
+        timeout: float = 30.0,
+    ) -> Dict[str, Any]:
+        """Make an API-key-authenticated request to CJDQuick integration endpoints.
+
+        Uses X-API-Key header (not JWT Bearer).
+        Per updated integration guide: POST /api/v1/integration/orders
+        """
+        if not settings.CJDQUICK_API_KEY:
+            raise CJDQuickAPIError(
+                status_code=401,
+                message="CJDQUICK_API_KEY not configured. Get it from CJDQuick admin.",
+            )
+
+        url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        headers = {
+            "X-API-Key": settings.CJDQUICK_API_KEY,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+        logger.info("CJDQuick Integration API %s %s", method.upper(), url)
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.request(
+                    method=method.upper(),
+                    url=url,
+                    json=data,
+                    params=params,
+                    headers=headers,
+                )
+
+            # 207 Multi-Status is valid for bulk (partial success)
+            if response.status_code >= 400:
+                try:
+                    error_body = response.json()
+                except Exception:
+                    error_body = {"detail": response.text}
+
+                error_msg = error_body.get("detail") or error_body.get("message") or response.text
+                logger.error(
+                    "CJDQuick Integration error: %s %s -> %d: %s",
+                    method.upper(), endpoint, response.status_code, error_msg,
+                )
+                raise CJDQuickAPIError(
+                    status_code=response.status_code,
+                    message=str(error_msg),
+                    errors=error_body.get("errors"),
+                )
+
+            return response.json()
+
+        except httpx.TimeoutException:
+            logger.error("CJDQuick Integration timeout: %s %s", method.upper(), endpoint)
+            raise CJDQuickAPIError(
+                status_code=504,
+                message=f"Integration request timed out: {method.upper()} {endpoint}",
+            )
+        except httpx.RequestError as exc:
+            logger.error("CJDQuick Integration connection error: %s", exc)
+            raise CJDQuickAPIError(
+                status_code=502,
+                message=f"Connection error to CJDQuick: {exc}",
+            )
+
+    async def push_integration_order(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Push a single order via the integration endpoint.
+
+        POST /api/v1/integration/orders
+        Sends ERP's native JSON format — CJDQuick does field mapping server-side.
+        """
+        return await self._integration_request("POST", "/integration/orders", data=payload)
+
+    async def push_integration_orders_bulk(self, orders: list) -> Dict[str, Any]:
+        """Push up to 100 orders via the bulk integration endpoint.
+
+        POST /api/v1/integration/orders/bulk
+        Each order processed independently — one failure doesn't roll back others.
+        """
+        if len(orders) > 100:
+            raise ValueError("Maximum 100 orders per bulk request")
+        return await self._integration_request(
+            "POST", "/integration/orders/bulk",
+            data={"orders": orders},
+            timeout=60.0,
+        )
+
     # ==================== SKU Methods ====================
 
     async def create_sku(self, payload: Dict[str, Any]) -> Dict[str, Any]:

@@ -92,76 +92,66 @@ class CJDQuickSyncService:
             payload["description"] = product.description
         return payload
 
-    def _build_order_payload(self, order: Order, customer: Customer) -> Dict[str, Any]:
-        """Map Aquapurite Order + Customer to CJDQuick OMS order format.
+    def _build_integration_order_payload(self, order: Order, customer: Customer) -> Dict[str, Any]:
+        """Build ERP-native order payload for the integration endpoint.
 
-        API spec requires flat customer fields (not nested), items with skuId (UUID),
-        and specific amount field names (shippingCharges, discount).
+        POST /api/v1/integration/orders — sends ERP's native JSON format.
+        CJDQuick applies field mapping server-side (configured in their integration profile).
+        This follows the updated Aquapurite Integration Guide (March 2026).
         """
-        # Build line items — API requires skuId (UUID), quantity, unitPrice, taxAmount, totalPrice
-        items = []
+        customer_name = f"{customer.first_name} {customer.last_name or ''}".strip()
+        shipping = order.shipping_address or {}
+
+        # Build line items in ERP's native format
+        line_items = []
         if hasattr(order, "items") and order.items:
             for item in order.items:
-                unit_price = _decimal_to_float(item.unit_price) if hasattr(item, "unit_price") else 0
-                quantity = item.quantity or 1
-                tax_amount = _decimal_to_float(item.tax_amount) if hasattr(item, "tax_amount") else 0
-                total_price = _decimal_to_float(item.total_price) if hasattr(item, "total_price") else (unit_price * quantity)
-                discount = _decimal_to_float(item.discount_amount) if hasattr(item, "discount_amount") else 0
+                line_items.append({
+                    "sku_code": item.product_sku,
+                    "product_name": item.product_name,
+                    "qty": item.quantity or 1,
+                    "unit_price": _decimal_to_float(item.unit_price) or 0,
+                    "discount": _decimal_to_float(item.discount_amount) or 0,
+                    "tax_percent": _decimal_to_float(item.tax_rate) or 18.0,
+                })
 
-                item_data: Dict[str, Any] = {
-                    "quantity": quantity,
-                    "unitPrice": unit_price,
-                    "taxAmount": tax_amount or 0,
-                    "totalPrice": total_price,
-                }
-                # Use product_id as externalItemId since we may not have OMS skuId yet
-                if hasattr(item, "product_id") and item.product_id:
-                    item_data["externalItemId"] = str(item.product_id)
-                if hasattr(item, "sku") and item.sku:
-                    item_data["externalItemId"] = item.sku
-                if discount:
-                    item_data["discount"] = discount
-                items.append(item_data)
-
-        # Map payment method to OMS payment mode
-        payment_mode = self._map_payment_method(order.payment_method)
-
-        # Map order source to OMS channel
-        channel = "D2C" if order.source == "WEBSITE" else (order.source or "D2C")
-
-        # Build shipping address from JSONB
-        shipping = order.shipping_address or {}
-        customer_name = f"{customer.first_name} {customer.last_name or ''}".strip()
+        # Map payment method
+        prepaid_methods = {"CARD", "UPI", "NET_BANKING", "WALLET", "EMI"}
+        payment_method = "PREPAID" if order.payment_method in prepaid_methods else order.payment_method
 
         return {
-            "companyId": settings.CJDQUICK_COMPANY_ID,
-            "externalOrderNo": order.order_number,
-            "channel": channel,
-            "paymentMode": payment_mode,
-            "orderDate": order.created_at.isoformat() if order.created_at else None,
-            "locationId": settings.CJDQUICK_LOCATION_ID,
-            # Flat customer fields (API spec — NOT nested)
-            "customerName": customer_name,
-            "customerPhone": customer.phone or "",
-            "customerEmail": customer.email or "",
-            # Shipping address
-            "shippingAddress": {
-                "name": shipping.get("name", customer_name),
-                "phone": shipping.get("phone", customer.phone or ""),
-                "address1": shipping.get("address", shipping.get("address_line_1", "")),
-                "address2": shipping.get("address_2", shipping.get("address_line_2", "")),
+            "order_number": order.order_number,
+            "order_date": order.created_at.isoformat() if order.created_at else None,
+            "payment_method": payment_method,
+
+            "customer": {
+                "full_name": customer_name,
+                "mobile": customer.phone or "",
+                "email": customer.email or "",
+            },
+
+            "delivery_address": {
+                "recipient": shipping.get("name", customer_name),
+                "address_line_1": shipping.get("address", shipping.get("address_line_1", "")),
+                "address_line_2": shipping.get("address_2", shipping.get("address_line_2", "")),
                 "city": shipping.get("city", ""),
                 "state": shipping.get("state", ""),
-                "pincode": str(shipping.get("pincode", shipping.get("zip_code", ""))),
+                "pin_code": str(shipping.get("pincode", shipping.get("zip_code", ""))),
                 "country": shipping.get("country", "India"),
+                "phone": shipping.get("phone", customer.phone or ""),
             },
-            "items": items,
-            # Amount fields — API uses shippingCharges and discount (not shippingAmount/discountAmount)
-            "subtotal": _decimal_to_float(order.subtotal) or 0,
-            "taxAmount": _decimal_to_float(order.tax_amount) or 0,
-            "shippingCharges": _decimal_to_float(order.shipping_amount) if hasattr(order, "shipping_amount") else 0,
-            "discount": _decimal_to_float(order.discount_amount) if hasattr(order, "discount_amount") else 0,
-            "totalAmount": _decimal_to_float(order.total_amount) or 0,
+
+            "line_items": line_items,
+
+            "order_total": {
+                "subtotal": _decimal_to_float(order.subtotal) or 0,
+                "total_discount": _decimal_to_float(order.discount_amount) or 0,
+                "shipping_fee": _decimal_to_float(order.shipping_amount) if hasattr(order, "shipping_amount") else 0,
+                "tax": _decimal_to_float(order.tax_amount) or 0,
+                "grand_total": _decimal_to_float(order.total_amount) or 0,
+            },
+
+            "notes": getattr(order, "notes", "") or "",
         }
 
     def _build_customer_payload(self, customer: Customer) -> Dict[str, Any]:
@@ -395,7 +385,11 @@ class CJDQuickSyncService:
             raise
 
     async def sync_order(self, order_id: uuid.UUID) -> CJDQuickSyncLog:
-        """Push an order to CJDQuick OMS."""
+        """Push an order to CJDQuick OMS via the integration endpoint.
+
+        Uses POST /api/v1/integration/orders with X-API-Key auth.
+        Sends ERP's native JSON format — CJDQuick does field mapping server-side.
+        """
         from sqlalchemy.orm import selectinload
 
         result = await self.db.execute(
@@ -415,32 +409,35 @@ class CJDQuickSyncService:
         if not customer:
             raise ValueError(f"Customer {order.customer_id} not found for order {order_id}")
 
-        payload = self._build_order_payload(order, customer)
+        payload = self._build_integration_order_payload(order, customer)
 
         try:
-            response = await self.client.create_order(payload)
-            oms_id = response.get("id") or response.get("_id") or response.get("orderNo")
+            response = await self.client.push_integration_order(payload)
+            oms_id = response.get("orderId") or response.get("orderNo")
             log = await self._write_sync_log(
                 entity_type="ORDER",
                 entity_id=order_id,
-                operation="CREATE",
+                operation="INTEGRATION_PUSH",
                 status="SUCCESS",
                 request_payload=payload,
                 response_payload=response,
                 oms_id=str(oms_id) if oms_id else None,
             )
-            logger.info("Order %s synced to CJDQuick OMS: %s", order.order_number, oms_id)
+            logger.info(
+                "Order %s pushed to CJDQuick integration: %s (OMS: %s)",
+                order.order_number, response.get("orderNo"), oms_id,
+            )
             return log
         except CJDQuickAPIError as e:
             log = await self._write_sync_log(
                 entity_type="ORDER",
                 entity_id=order_id,
-                operation="CREATE",
+                operation="INTEGRATION_PUSH",
                 status="FAILED",
                 request_payload=payload,
                 error_message=e.message,
             )
-            logger.error("Failed to sync order %s: %s", order.order_number, e.message)
+            logger.error("Failed to push order %s: %s", order.order_number, e.message)
             raise
 
     async def sync_customer(self, customer_id: uuid.UUID) -> CJDQuickSyncLog:
@@ -631,18 +628,79 @@ class CJDQuickSyncService:
         return {"total": len(products), "success": success, "failed": failed}
 
     async def bulk_sync_orders(self, status_filter: str = "CONFIRMED") -> dict:
-        """Sync orders with given status to OMS."""
+        """Push orders to CJDQuick OMS via the bulk integration endpoint.
+
+        Uses POST /api/v1/integration/orders/bulk (max 100 per request).
+        Falls back to individual pushes if bulk endpoint fails.
+        """
+        from sqlalchemy.orm import selectinload
+
         result = await self.db.execute(
-            select(Order).where(Order.status == status_filter).limit(200)
+            select(Order)
+            .options(selectinload(Order.items))
+            .where(Order.status == status_filter)
+            .limit(100)
         )
         orders = result.scalars().all()
+        if not orders:
+            return {"total": 0, "success": 0, "failed": 0}
+
+        # Build payloads for all orders
+        payloads = []
+        order_map = {}  # index -> order
+        for i, order in enumerate(orders):
+            cust_result = await self.db.execute(
+                select(Customer).where(Customer.id == order.customer_id)
+            )
+            customer = cust_result.scalar_one_or_none()
+            if not customer:
+                logger.warning("Skipping order %s — customer not found", order.order_number)
+                continue
+            payload = self._build_integration_order_payload(order, customer)
+            payloads.append(payload)
+            order_map[len(payloads) - 1] = order
+
+        if not payloads:
+            return {"total": len(orders), "success": 0, "failed": len(orders)}
+
+        # Try bulk push
         success, failed = 0, 0
-        for order in orders:
-            try:
-                await self.sync_order(order.id)
-                success += 1
-            except Exception:
-                failed += 1
+        try:
+            response = await self.client.push_integration_orders_bulk(payloads)
+            total_created = response.get("totalCreated", 0)
+            total_failed = response.get("totalFailed", 0)
+
+            # Log individual results
+            for order_result in response.get("orders", []):
+                if order_result.get("success"):
+                    ext_id = order_result.get("externalOrderId", "")
+                    oms_id = order_result.get("orderId", "")
+                    # Find matching order
+                    for idx, o in order_map.items():
+                        if o.order_number == ext_id:
+                            await self._write_sync_log(
+                                entity_type="ORDER",
+                                entity_id=o.id,
+                                operation="BULK_INTEGRATION_PUSH",
+                                status="SUCCESS",
+                                request_payload=payloads[idx],
+                                response_payload=order_result,
+                                oms_id=str(oms_id),
+                            )
+                            break
+
+            success = total_created
+            failed = total_failed
+        except CJDQuickAPIError:
+            # Bulk failed — fall back to individual pushes
+            logger.warning("Bulk push failed, falling back to individual pushes")
+            for order in orders:
+                try:
+                    await self.sync_order(order.id)
+                    success += 1
+                except Exception:
+                    failed += 1
+
         await self.db.commit()
         return {"total": len(orders), "success": success, "failed": failed}
 

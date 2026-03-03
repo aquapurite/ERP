@@ -448,13 +448,25 @@ async def register_webhook(
 # ==================== WEBHOOK RECEIVER ====================
 
 def _verify_webhook_signature(payload_body: bytes, signature: str, secret: str) -> bool:
-    """Verify HMAC-SHA256 webhook signature."""
-    expected = hmac.new(
+    """Verify HMAC-SHA256 webhook signature.
+
+    Handles both formats:
+      - New format: "sha256=<hex_digest>" (per updated integration guide)
+      - Legacy format: raw hex digest
+    """
+    computed = hmac.new(
         secret.encode("utf-8"),
         payload_body,
         hashlib.sha256,
     ).hexdigest()
-    return hmac.compare_digest(expected, signature)
+
+    # New format: "sha256=<hex_digest>"
+    if signature.startswith("sha256="):
+        expected = f"sha256={computed}"
+        return hmac.compare_digest(expected, signature)
+
+    # Legacy format: raw hex digest
+    return hmac.compare_digest(computed, signature)
 
 
 @router.post("/webhook", status_code=status.HTTP_200_OK)
@@ -462,11 +474,16 @@ async def cjdquick_webhook(
     request: Request,
     db: DB,
     x_webhook_signature: Optional[str] = Header(None),
+    x_oms_event: Optional[str] = Header(None),
 ):
     """
     Receive webhook events from CJDQuick OMS.
 
-    No auth required — verified via HMAC signature in X-Webhook-Signature header.
+    No auth required — verified via HMAC-SHA256 signature.
+
+    Headers:
+      - X-Webhook-Signature: sha256=<hmac_hex_digest>
+      - X-OMS-Event: event type (e.g., order.shipped)
     """
     # Read raw body for signature verification
     body = await request.body()
@@ -498,7 +515,8 @@ async def cjdquick_webhook(
             detail="Invalid JSON payload",
         )
 
-    event_type = event.get("event") or event.get("type") or ""
+    # Event type: prefer X-OMS-Event header, then payload field
+    event_type = x_oms_event or event.get("event") or event.get("type") or ""
     event_data = event.get("data") or event.get("payload") or {}
 
     logger.info("CJDQuick webhook received: %s", event_type)
@@ -507,7 +525,7 @@ async def cjdquick_webhook(
     try:
         log = CJDQuickSyncLog(
             entity_type="WEBHOOK",
-            entity_id=uuid.uuid4(),  # No specific entity for inbound webhooks
+            entity_id=uuid.uuid4(),
             operation="WEBHOOK_RECEIVED",
             status="SUCCESS",
             request_payload=event,
@@ -519,86 +537,181 @@ async def cjdquick_webhook(
 
     # Process event by type
     try:
-        if event_type in ("order.status_changed", "order.shipped"):
-            await _handle_order_status_event(db, event_data)
+        if event_type in ("order.confirmed", "order.status_changed", "order.shipped"):
+            await _handle_order_status_event(db, event_data, event_type)
         elif event_type == "shipment.tracking_updated":
             await _handle_tracking_event(db, event_data)
         elif event_type == "shipment.delivered":
             await _handle_delivery_event(db, event_data)
-        elif event_type in ("return.received", "return.processed"):
+        elif event_type == "order.cancelled":
+            await _handle_order_cancelled_event(db, event_data)
+        elif event_type in ("return.received", "return.processed", "return.qc_completed"):
             await _handle_return_event(db, event_type, event_data)
+        elif event_type in ("ndr.raised", "ndr.resolved"):
+            await _handle_ndr_event(db, event_type, event_data)
         elif event_type == "invoice.created":
             logger.info("Invoice created event received: %s", event_data.get("invoiceNo"))
-        elif event_type == "ndr.raised":
-            logger.info("NDR raised for order: %s", event_data.get("orderNo"))
+        elif event_type == "webhook.test":
+            logger.info("Webhook test ping received successfully")
         else:
             logger.info("Unhandled CJDQuick event type: %s", event_type)
     except Exception as e:
         logger.error("Error processing CJDQuick webhook event %s: %s", event_type, e)
 
-    return {"status": "ok", "event": event_type}
+    return {"received": True, "event": event_type}
 
 
 # ==================== WEBHOOK EVENT HANDLERS ====================
 
-async def _handle_order_status_event(db: DB, data: dict) -> None:
-    """Handle order.status_changed and order.shipped events."""
-    external_order_no = data.get("externalOrderNo") or data.get("orderNo")
+def _find_order_number(data: dict) -> Optional[str]:
+    """Extract order number from webhook data.
+
+    Integration guide uses 'externalOrderId'; legacy uses 'externalOrderNo'/'orderNo'.
+    """
+    return (
+        data.get("externalOrderId")
+        or data.get("externalOrderNo")
+        or data.get("orderNo")
+    )
+
+
+async def _handle_order_status_event(db: DB, data: dict, event_type: str = "") -> None:
+    """Handle order.confirmed, order.status_changed, and order.shipped events."""
+    order_number = _find_order_number(data)
     new_status = data.get("status") or data.get("newStatus")
 
-    if not external_order_no or not new_status:
+    if not order_number or not new_status:
         logger.warning("Order status event missing required fields: %s", data)
         return
 
     result = await db.execute(
-        select(Order).where(Order.order_number == external_order_no)
+        select(Order).where(Order.order_number == order_number)
     )
     order = result.scalar_one_or_none()
     if not order:
-        logger.warning("Order not found for webhook: %s", external_order_no)
+        logger.warning("Order not found for webhook: %s", order_number)
         return
 
     erp_status = CJDQuickSyncService._map_oms_status_to_erp(new_status)
     order.status = erp_status
-    logger.info("Order %s status updated to %s (OMS: %s)", external_order_no, erp_status, new_status)
+
+    # Store AWB/tracking info if shipped
+    if event_type == "order.shipped":
+        awb = data.get("awbNumber") or data.get("awbCode")
+        if awb and hasattr(order, "awb_code"):
+            order.awb_code = awb
+        courier = data.get("courierName")
+        if courier and hasattr(order, "courier_name"):
+            order.courier_name = courier
+        shipped_at = data.get("shippedAt")
+        if shipped_at and hasattr(order, "shipped_at"):
+            try:
+                order.shipped_at = datetime.fromisoformat(shipped_at.replace("+05:30", "+0530"))
+            except (ValueError, AttributeError):
+                order.shipped_at = datetime.now(timezone.utc)
+
+    logger.info("Order %s status updated to %s (OMS: %s)", order_number, erp_status, new_status)
 
 
 async def _handle_tracking_event(db: DB, data: dict) -> None:
     """Handle shipment.tracking_updated events."""
-    awb_code = data.get("awbCode") or data.get("trackingNo")
-    tracking_status = data.get("status")
-    tracking_location = data.get("location", "")
-    tracking_description = data.get("description", "")
-
-    if not awb_code:
-        logger.warning("Tracking event missing AWB code: %s", data)
-        return
+    order_number = _find_order_number(data)
+    awb_code = data.get("awbNumber") or data.get("awbCode") or data.get("trackingNo")
+    tracking = data.get("tracking", {})
+    tracking_status = tracking.get("status") or data.get("status", "")
+    tracking_location = tracking.get("location") or data.get("location", "")
 
     logger.info(
-        "Tracking update for AWB %s: %s at %s",
-        awb_code, tracking_status, tracking_location,
+        "Tracking update for order %s / AWB %s: %s at %s",
+        order_number, awb_code, tracking_status, tracking_location,
     )
+
+    # Update order's last tracking info if we can find it
+    if order_number:
+        result = await db.execute(
+            select(Order).where(Order.order_number == order_number)
+        )
+        order = result.scalar_one_or_none()
+        if order:
+            if hasattr(order, "tracking_status") and tracking_status:
+                order.tracking_status = tracking_status
+            if hasattr(order, "last_tracking_location") and tracking_location:
+                order.last_tracking_location = tracking_location
+            if hasattr(order, "last_tracking_update"):
+                order.last_tracking_update = datetime.now(timezone.utc)
 
 
 async def _handle_delivery_event(db: DB, data: dict) -> None:
     """Handle shipment.delivered events."""
-    external_order_no = data.get("externalOrderNo") or data.get("orderNo")
-    if not external_order_no:
+    order_number = _find_order_number(data)
+    if not order_number:
         return
 
     result = await db.execute(
-        select(Order).where(Order.order_number == external_order_no)
+        select(Order).where(Order.order_number == order_number)
     )
     order = result.scalar_one_or_none()
     if order:
         order.status = "DELIVERED"
-        order.delivered_at = datetime.now(timezone.utc)
-        logger.info("Order %s marked as DELIVERED via webhook", external_order_no)
+        delivered_at = data.get("deliveredAt")
+        if delivered_at:
+            try:
+                order.delivered_at = datetime.fromisoformat(delivered_at.replace("+05:30", "+0530"))
+            except (ValueError, AttributeError):
+                order.delivered_at = datetime.now(timezone.utc)
+        else:
+            order.delivered_at = datetime.now(timezone.utc)
+        logger.info("Order %s marked as DELIVERED via webhook", order_number)
+
+
+async def _handle_order_cancelled_event(db: DB, data: dict) -> None:
+    """Handle order.cancelled events."""
+    order_number = _find_order_number(data)
+    if not order_number:
+        return
+
+    result = await db.execute(
+        select(Order).where(Order.order_number == order_number)
+    )
+    order = result.scalar_one_or_none()
+    if order:
+        order.status = "CANCELLED"
+        reason = data.get("reason", "")
+        if hasattr(order, "cancellation_reason") and reason:
+            order.cancellation_reason = reason
+        order.cancelled_at = datetime.now(timezone.utc)
+        logger.info("Order %s CANCELLED via webhook: %s", order_number, reason)
+
+
+async def _handle_ndr_event(db: DB, event_type: str, data: dict) -> None:
+    """Handle ndr.raised and ndr.resolved events."""
+    order_number = _find_order_number(data)
+    if not order_number:
+        return
+
+    result = await db.execute(
+        select(Order).where(Order.order_number == order_number)
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        logger.warning("Order not found for NDR event: %s", order_number)
+        return
+
+    if event_type == "ndr.raised":
+        order.status = "NDR"
+        logger.info("NDR raised for order %s: %s", order_number, data.get("reason", ""))
+    elif event_type == "ndr.resolved":
+        resolution = data.get("resolution", "")
+        if resolution == "RTO":
+            order.status = "RTO_INITIATED"
+        else:
+            order.status = "OUT_FOR_DELIVERY"
+        logger.info("NDR resolved for order %s: %s", order_number, resolution)
 
 
 async def _handle_return_event(db: DB, event_type: str, data: dict) -> None:
-    """Handle return.received and return.processed events."""
-    rma_number = data.get("rmaNumber") or data.get("returnNo")
+    """Handle return.received, return.qc_completed, and return.processed events."""
+    rma_number = data.get("rmaNumber") or data.get("returnNo") or data.get("returnId")
     if not rma_number:
         return
 
@@ -613,6 +726,9 @@ async def _handle_return_event(db: DB, event_type: str, data: dict) -> None:
     if event_type == "return.received":
         return_order.status = "RECEIVED"
         logger.info("Return %s marked as RECEIVED via webhook", rma_number)
+    elif event_type == "return.qc_completed":
+        qc_status = data.get("qcStatus", "")
+        logger.info("Return %s QC completed: %s", rma_number, qc_status)
     elif event_type == "return.processed":
         return_order.status = "PROCESSED"
         logger.info("Return %s marked as PROCESSED via webhook", rma_number)
