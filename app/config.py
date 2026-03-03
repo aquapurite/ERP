@@ -90,9 +90,9 @@ class Settings(BaseSettings):
     SHIPROCKET_AUTO_SHIP: bool = False  # Auto-assign courier on order creation
 
     # CJDQuick OMS Integration
-    CJDQUICK_API_KEY: str = ""  # Deprecated: use email/password JWT auth instead
+    CJDQUICK_API_KEY: str = "21fb78de75e14d4b9a013a646f6b40e78262b7a35c1202b52095fb6acdd8ffa8"  # X-API-Key for integration endpoints
     CJDQUICK_BASE_URL: str = "https://lsp-oms-api.onrender.com/api/v1"
-    CJDQUICK_WEBHOOK_SECRET: Optional[str] = "9647c412edfd7abaf47c5669d6e7843a61867860f2106b192746221e7e3637d5"
+    CJDQUICK_WEBHOOK_SECRET: Optional[str] = "a5d29f95d2a44f4f75da9ccf584a796101ffc7d3ccf88a31c4691d8a802266fa"
     CJDQUICK_ENABLED: bool = True  # Feature flag
     CJDQUICK_LOCATION_ID: str = "d0000000-0000-0000-0000-000000000002"  # Aquapurite Main Warehouse (WH-AQUA-01)
     CJDQUICK_COMPANY_ID: str = "c1a2b3c4-d5e6-f7a8-b9c0-d1e2f3a4b5c6"  # OMS company UUID
