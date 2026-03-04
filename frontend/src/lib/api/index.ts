@@ -7092,6 +7092,21 @@ export const cjdquickApi = {
     });
     return data;
   },
+
+  // Reconciliation — find shipped orders without invoices
+  getUninvoicedOrders: async (daysBack?: number) => {
+    const { data } = await apiClient.get('/cjdquick/reconciliation/uninvoiced-orders', {
+      params: { days_back: daysBack || 30 },
+    });
+    return data;
+  },
+  generateMissingInvoices: async (orderIds: string[]) => {
+    const { data } = await apiClient.post('/cjdquick/reconciliation/generate-missing-invoices', null, {
+      params: { order_ids: orderIds },
+      paramsSerializer: { indexes: null },
+    });
+    return data;
+  },
 };
 
 export default apiClient;

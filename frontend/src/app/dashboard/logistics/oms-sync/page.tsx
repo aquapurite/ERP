@@ -14,6 +14,8 @@ import {
   Users,
   RotateCcw,
   Loader2,
+  AlertTriangle,
+  FileText,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -28,6 +30,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { DataTable } from '@/components/data-table/data-table';
+import { Checkbox } from '@/components/ui/checkbox';
 import { PageHeader } from '@/components/common';
 import { cjdquickApi } from '@/lib/api';
 
@@ -51,6 +54,18 @@ interface SyncStats {
   pending_count: number;
   by_entity: Record<string, Record<string, number>>;
   last_sync_at: string | null;
+}
+
+interface UninvoicedOrder {
+  id: string;
+  order_number: string;
+  customer_name: string;
+  status: string;
+  total_amount: number;
+  shipped_at: string | null;
+  created_at: string;
+  item_count: number;
+  has_serials: boolean;
 }
 
 const entityTypes = [
@@ -99,6 +114,8 @@ export default function OMSSyncPage() {
   const [pageSize] = useState(20);
   const [entityFilter, setEntityFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedUninvoiced, setSelectedUninvoiced] = useState<string[]>([]);
+  const [showReconciliation, setShowReconciliation] = useState(false);
 
   // Fetch sync stats
   const { data: stats, isLoading: statsLoading } = useQuery<SyncStats>({
@@ -162,6 +179,29 @@ export default function OMSSyncPage() {
       queryClient.invalidateQueries({ queryKey: ['sync-logs'] });
     },
     onError: () => toast.error('Retry failed'),
+  });
+
+  // Reconciliation: uninvoiced orders
+  const { data: uninvoicedData, isLoading: uninvoicedLoading, refetch: refetchUninvoiced } = useQuery<{
+    orders: UninvoicedOrder[];
+    total: number;
+  }>({
+    queryKey: ['uninvoiced-orders'],
+    queryFn: () => cjdquickApi.getUninvoicedOrders(30),
+    enabled: showReconciliation,
+  });
+
+  const generateMissingInvoices = useMutation({
+    mutationFn: (orderIds: string[]) => cjdquickApi.generateMissingInvoices(orderIds),
+    onSuccess: (data: { total: number; success: number; failed: number; errors: string[] }) => {
+      toast.success(`Invoices generated: ${data.success} success, ${data.failed} failed`);
+      if (data.errors.length > 0) {
+        data.errors.forEach((err: string) => toast.error(err));
+      }
+      setSelectedUninvoiced([]);
+      refetchUninvoiced();
+    },
+    onError: () => toast.error('Failed to generate missing invoices'),
   });
 
   const columns: ColumnDef<SyncLog>[] = [
@@ -368,6 +408,134 @@ export default function OMSSyncPage() {
           Refresh
         </Button>
       </div>
+
+      {/* Invoice Reconciliation Section */}
+      <Card className="border-yellow-200 bg-yellow-50/50">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-yellow-600" />
+            <CardTitle className="text-sm font-medium">Invoice Reconciliation</CardTitle>
+            {uninvoicedData && uninvoicedData.total > 0 && (
+              <Badge variant="destructive">{uninvoicedData.total} uninvoiced</Badge>
+            )}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setShowReconciliation(!showReconciliation);
+              if (!showReconciliation) refetchUninvoiced();
+            }}
+          >
+            {showReconciliation ? 'Hide' : 'Check for Missed Invoices'}
+          </Button>
+        </CardHeader>
+        {showReconciliation && (
+          <CardContent>
+            <p className="text-xs text-muted-foreground mb-4">
+              Orders that were shipped/delivered but have no active TAX_INVOICE. These may have been missed
+              during CJDQuick webhook processing or manifest confirmation.
+            </p>
+            {uninvoicedLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : uninvoicedData && uninvoicedData.orders.length > 0 ? (
+              <>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm text-muted-foreground">
+                    {selectedUninvoiced.length} of {uninvoicedData.orders.length} selected
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (selectedUninvoiced.length === uninvoicedData.orders.length) {
+                          setSelectedUninvoiced([]);
+                        } else {
+                          setSelectedUninvoiced(uninvoicedData.orders.map((o) => o.id));
+                        }
+                      }}
+                    >
+                      {selectedUninvoiced.length === uninvoicedData.orders.length ? 'Deselect All' : 'Select All'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={selectedUninvoiced.length === 0 || generateMissingInvoices.isPending}
+                      onClick={() => generateMissingInvoices.mutate(selectedUninvoiced)}
+                    >
+                      {generateMissingInvoices.isPending ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <FileText className="h-4 w-4 mr-2" />
+                      )}
+                      Generate {selectedUninvoiced.length} Invoice(s)
+                    </Button>
+                  </div>
+                </div>
+                <div className="border rounded-md">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/50">
+                        <th className="p-2 w-10"></th>
+                        <th className="p-2 text-left">Order</th>
+                        <th className="p-2 text-left">Customer</th>
+                        <th className="p-2 text-left">Status</th>
+                        <th className="p-2 text-right">Amount</th>
+                        <th className="p-2 text-center">Serials</th>
+                        <th className="p-2 text-left">Shipped</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {uninvoicedData.orders.map((order) => (
+                        <tr key={order.id} className="border-b hover:bg-muted/30">
+                          <td className="p-2">
+                            <Checkbox
+                              checked={selectedUninvoiced.includes(order.id)}
+                              onCheckedChange={(checked) => {
+                                setSelectedUninvoiced((prev) =>
+                                  checked
+                                    ? [...prev, order.id]
+                                    : prev.filter((id) => id !== order.id)
+                                );
+                              }}
+                            />
+                          </td>
+                          <td className="p-2 font-mono text-xs font-medium">{order.order_number}</td>
+                          <td className="p-2">{order.customer_name || '-'}</td>
+                          <td className="p-2">
+                            <Badge variant="secondary" className="text-xs">{order.status}</Badge>
+                          </td>
+                          <td className="p-2 text-right font-mono">
+                            {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(order.total_amount)}
+                          </td>
+                          <td className="p-2 text-center">
+                            {order.has_serials ? (
+                              <CheckCircle className="h-4 w-4 text-green-500 inline" />
+                            ) : (
+                              <XCircle className="h-4 w-4 text-gray-300 inline" />
+                            )}
+                          </td>
+                          <td className="p-2 text-xs text-muted-foreground">
+                            {order.shipped_at ? new Date(order.shipped_at).toLocaleDateString() : '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <CheckCircle className="h-8 w-8 mx-auto mb-2 text-green-500" />
+                <p className="text-sm font-medium">All clear! No uninvoiced orders found.</p>
+                <p className="text-xs">All shipped orders have active invoices.</p>
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
 
       {/* Entity Breakdown */}
       {stats?.by_entity && Object.keys(stats.by_entity).length > 0 && (

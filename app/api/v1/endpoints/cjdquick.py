@@ -15,16 +15,19 @@ from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, status, Query, Depends, Request, Header
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, and_
 
 from app.api.deps import DB, CurrentUser, require_permissions
 from app.config import settings
 from app.models.cjdquick_sync_log import CJDQuickSyncLog
-from app.models.order import Order
+from app.models.order import Order, OrderItem
 from app.models.shipment import Shipment, ShipmentTracking
 from app.models.return_order import ReturnOrder
+from app.models.picklist import PicklistItem
+from app.models.billing import TaxInvoice, InvoiceStatus, InvoiceType
 from app.services.cjdquick_service import CJDQuickAPIError
 from app.services.cjdquick_sync_service import CJDQuickSyncService
+from app.services.invoice_service import InvoiceService, InvoiceGenerationError
 
 logger = logging.getLogger(__name__)
 
@@ -411,6 +414,169 @@ async def get_sync_stats(
     return SyncStatsResponse(**stats)
 
 
+# ==================== RECONCILIATION ENDPOINTS ====================
+
+class UninvoicedOrderResponse(BaseModel):
+    """Order that was shipped but has no active TAX_INVOICE."""
+    id: str
+    order_number: str
+    customer_name: str
+    status: str
+    total_amount: float
+    shipped_at: Optional[datetime] = None
+    created_at: datetime
+    item_count: int = 0
+    has_serials: bool = False
+
+
+class ReconciliationListResponse(BaseModel):
+    """List of uninvoiced orders."""
+    orders: List[UninvoicedOrderResponse]
+    total: int
+
+
+class ReconciliationActionResponse(BaseModel):
+    """Result of bulk invoice generation."""
+    total: int
+    success: int
+    failed: int
+    errors: List[str] = []
+
+
+@router.get(
+    "/reconciliation/uninvoiced-orders",
+    response_model=ReconciliationListResponse,
+    dependencies=[Depends(require_permissions("orders:view"))],
+)
+async def get_uninvoiced_orders(
+    db: DB,
+    current_user: CurrentUser,
+    days_back: int = Query(30, ge=1, le=365, description="Look back N days"),
+):
+    """
+    Find orders that were shipped/manifested/delivered but have NO active TAX_INVOICE.
+
+    This is the safety net — catches any orders where the CJDQuick webhook
+    failed to trigger auto-invoice or the manifest confirm flow was missed.
+    """
+    from sqlalchemy import func
+
+    cutoff = datetime.now(timezone.utc) - __import__('datetime').timedelta(days=days_back)
+
+    # Subquery: orders that DO have an active TAX_INVOICE
+    invoiced_subq = (
+        select(TaxInvoice.order_id)
+        .where(
+            and_(
+                TaxInvoice.invoice_type == InvoiceType.TAX_INVOICE.value,
+                TaxInvoice.status != InvoiceStatus.CANCELLED.value,
+                TaxInvoice.status != InvoiceStatus.VOID.value,
+            )
+        )
+        .correlate(None)
+    )
+
+    # Orders shipped but not invoiced
+    query = (
+        select(Order)
+        .where(
+            and_(
+                Order.status.in_(["MANIFESTED", "SHIPPED", "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED"]),
+                Order.created_at >= cutoff,
+                ~Order.id.in_(invoiced_subq),
+            )
+        )
+        .order_by(desc(Order.created_at))
+        .limit(200)
+    )
+    result = await db.execute(query)
+    orders = result.scalars().all()
+
+    # Check if each order has serial numbers in picklist
+    response_orders = []
+    for o in orders:
+        serial_result = await db.execute(
+            select(func.count()).select_from(PicklistItem).where(
+                and_(
+                    PicklistItem.order_id == o.id,
+                    PicklistItem.picked_serials.isnot(None),
+                )
+            )
+        )
+        has_serials = (serial_result.scalar() or 0) > 0
+
+        response_orders.append(UninvoicedOrderResponse(
+            id=str(o.id),
+            order_number=o.order_number,
+            customer_name=o.customer_name or "",
+            status=o.status,
+            total_amount=float(o.total_amount or 0),
+            shipped_at=getattr(o, 'shipped_at', None),
+            created_at=o.created_at,
+            item_count=o.item_count if hasattr(o, 'item_count') else 0,
+            has_serials=has_serials,
+        ))
+
+    return ReconciliationListResponse(orders=response_orders, total=len(response_orders))
+
+
+@router.post(
+    "/reconciliation/generate-missing-invoices",
+    response_model=ReconciliationActionResponse,
+    dependencies=[Depends(require_permissions("orders:update"))],
+)
+async def generate_missing_invoices(
+    db: DB,
+    current_user: CurrentUser,
+    order_ids: List[str] = Query(..., description="Order IDs to generate invoices for"),
+):
+    """
+    Bulk-generate TAX_INVOICEs for shipped orders that were missed.
+
+    This is the manual reconciliation action — select uninvoiced orders
+    from the list above and generate invoices for them.
+    """
+    success = 0
+    failed = 0
+    errors = []
+
+    invoice_service = InvoiceService(db)
+
+    for order_id_str in order_ids:
+        try:
+            order_id = uuid.UUID(order_id_str)
+            invoice = await invoice_service.generate_invoice_from_order(
+                order_id=order_id,
+                invoice_type=InvoiceType.TAX_INVOICE,
+                generated_by=current_user.id,
+                generation_trigger="RECONCILIATION",
+                internal_notes="Generated via reconciliation — missed auto-invoice",
+            )
+            success += 1
+            logger.info(
+                "Reconciliation: Generated %s for order %s",
+                invoice.invoice_number, order_id_str
+            )
+        except InvoiceGenerationError as e:
+            failed += 1
+            errors.append(f"Order {order_id_str}: {str(e)}")
+            logger.warning("Reconciliation failed for order %s: %s", order_id_str, str(e))
+        except Exception as e:
+            failed += 1
+            errors.append(f"Order {order_id_str}: Unexpected error — {str(e)}")
+            logger.error("Reconciliation unexpected error for order %s: %s", order_id_str, str(e))
+
+    if success > 0:
+        await db.commit()
+
+    return ReconciliationActionResponse(
+        total=len(order_ids),
+        success=success,
+        failed=failed,
+        errors=errors,
+    )
+
+
 # ==================== WEBHOOK REGISTRATION ====================
 
 @router.post(
@@ -576,7 +742,12 @@ def _find_order_number(data: dict) -> Optional[str]:
 
 
 async def _handle_order_status_event(db: DB, data: dict, event_type: str = "") -> None:
-    """Handle order.confirmed, order.status_changed, and order.shipped events."""
+    """Handle order.confirmed, order.status_changed, and order.shipped events.
+
+    On order.shipped:
+    1. Capture serial numbers from CJDQuick payload → store in PicklistItem.picked_serials
+    2. Auto-generate TAX_INVOICE via InvoiceService (zero sale loss guarantee)
+    """
     order_number = _find_order_number(data)
     new_status = data.get("status") or data.get("newStatus")
 
@@ -610,7 +781,182 @@ async def _handle_order_status_event(db: DB, data: dict, event_type: str = "") -
             except (ValueError, AttributeError):
                 order.shipped_at = datetime.now(timezone.utc)
 
+        # --- CJDQuick Serial Number Capture ---
+        # CJDQuick sends serial numbers in the shipped webhook payload
+        # Format: data.items[].serialNumbers[] or data.items[].serials[]
+        # or data.serialNumbers[] (flat list for single-item orders)
+        await _capture_serials_from_cjdquick(db, order, data)
+
+        # --- Auto-generate TAX_INVOICE on shipment ---
+        # This ensures zero sale loss: every shipped order gets an invoice
+        await _auto_generate_invoice_on_shipped(db, order, data)
+
     logger.info("Order %s status updated to %s (OMS: %s)", order_number, erp_status, new_status)
+
+
+async def _capture_serials_from_cjdquick(db, order: Order, data: dict) -> None:
+    """Extract serial numbers from CJDQuick webhook and store in PicklistItem.
+
+    CJDQuick may send serials in different formats:
+    - data.items[].serialNumbers: ["SN001", "SN002"]
+    - data.items[].serials: ["SN001", "SN002"]
+    - data.serialNumbers: ["SN001"] (flat, for single-item orders)
+    - data.items[].sku + serialNumbers: matched by SKU to order items
+    """
+    items_data = data.get("items") or data.get("lineItems") or []
+    flat_serials = data.get("serialNumbers") or data.get("serials") or []
+
+    if not items_data and not flat_serials:
+        logger.info("No serial numbers in CJDQuick shipped event for order %s", order.order_number)
+        return
+
+    # Get order items for SKU matching
+    order_items_result = await db.execute(
+        select(OrderItem).where(OrderItem.order_id == order.id)
+    )
+    order_items = order_items_result.scalars().all()
+    sku_to_order_item = {oi.product_sku: oi for oi in order_items if oi.product_sku}
+
+    serials_captured = 0
+
+    if items_data:
+        # Match by SKU from CJDQuick items
+        for item_data in items_data:
+            sku = item_data.get("sku") or item_data.get("skuCode") or ""
+            serials = item_data.get("serialNumbers") or item_data.get("serials") or []
+
+            if not serials:
+                continue
+
+            serial_str = ",".join(str(s).strip() for s in serials if s)
+            order_item = sku_to_order_item.get(sku)
+
+            if order_item:
+                # Update picklist item with CJDQuick serials
+                picklist_result = await db.execute(
+                    select(PicklistItem).where(
+                        and_(
+                            PicklistItem.order_item_id == order_item.id,
+                            PicklistItem.order_id == order.id,
+                        )
+                    )
+                )
+                picklist_item = picklist_result.scalar_one_or_none()
+                if picklist_item:
+                    picklist_item.picked_serials = serial_str
+                    picklist_item.is_picked = True
+                    picklist_item.quantity_picked = picklist_item.quantity_required
+                    picklist_item.picked_at = datetime.now(timezone.utc)
+                    serials_captured += len(serials)
+                    logger.info(
+                        "Captured %d serials from CJDQuick for SKU %s, order %s",
+                        len(serials), sku, order.order_number
+                    )
+                else:
+                    logger.warning(
+                        "No picklist item found for SKU %s, order %s — serials: %s",
+                        sku, order.order_number, serial_str
+                    )
+            else:
+                logger.warning(
+                    "SKU %s from CJDQuick not matched to order %s items",
+                    sku, order.order_number
+                )
+
+    elif flat_serials and len(order_items) == 1:
+        # Single-item order with flat serial list
+        serial_str = ",".join(str(s).strip() for s in flat_serials if s)
+        order_item = order_items[0]
+        picklist_result = await db.execute(
+            select(PicklistItem).where(
+                and_(
+                    PicklistItem.order_item_id == order_item.id,
+                    PicklistItem.order_id == order.id,
+                )
+            )
+        )
+        picklist_item = picklist_result.scalar_one_or_none()
+        if picklist_item:
+            picklist_item.picked_serials = serial_str
+            picklist_item.is_picked = True
+            picklist_item.quantity_picked = picklist_item.quantity_required
+            picklist_item.picked_at = datetime.now(timezone.utc)
+            serials_captured += len(flat_serials)
+            logger.info(
+                "Captured %d flat serials from CJDQuick for order %s",
+                len(flat_serials), order.order_number
+            )
+
+    if serials_captured > 0:
+        logger.info(
+            "Total %d serial numbers captured from CJDQuick for order %s",
+            serials_captured, order.order_number
+        )
+    else:
+        logger.warning(
+            "CJDQuick sent serial data but none could be matched for order %s",
+            order.order_number
+        )
+
+
+async def _auto_generate_invoice_on_shipped(db, order: Order, data: dict) -> None:
+    """Auto-generate TAX_INVOICE when CJDQuick confirms shipment.
+
+    This is the zero-sale-loss guarantee: every order that CJDQuick ships
+    automatically gets a TAX_INVOICE in the ERP.
+
+    Skips if:
+    - Order already has an active TAX_INVOICE
+    - Order status is not eligible (cancelled, etc.)
+    """
+    # Check if active TAX_INVOICE already exists
+    existing_result = await db.execute(
+        select(TaxInvoice.id).where(
+            and_(
+                TaxInvoice.order_id == order.id,
+                TaxInvoice.invoice_type == InvoiceType.TAX_INVOICE.value,
+                TaxInvoice.status != InvoiceStatus.CANCELLED.value,
+                TaxInvoice.status != InvoiceStatus.VOID.value,
+            )
+        )
+    )
+    if existing_result.scalar_one_or_none() is not None:
+        logger.info(
+            "TAX_INVOICE already exists for order %s — skipping auto-generation on shipped",
+            order.order_number
+        )
+        return
+
+    # Skip if order is cancelled/returned
+    if order.status in ("CANCELLED", "RTO_INITIATED", "RTO_DELIVERED", "RETURNED"):
+        logger.info("Order %s status is %s — skipping invoice generation", order.order_number, order.status)
+        return
+
+    try:
+        invoice_service = InvoiceService(db)
+        invoice = await invoice_service.generate_invoice_from_order(
+            order_id=order.id,
+            invoice_type=InvoiceType.TAX_INVOICE,
+            generated_by=order.created_by or uuid.uuid4(),  # System user fallback
+            generation_trigger="CJDQUICK_SHIPPED",
+            internal_notes=f"Auto-generated on CJDQuick shipment. AWB: {data.get('awbNumber', 'N/A')}",
+        )
+        logger.info(
+            "AUTO-INVOICE SUCCESS: Generated %s for order %s via CJDQuick shipped webhook",
+            invoice.invoice_number, order.order_number
+        )
+    except InvoiceGenerationError as e:
+        logger.error(
+            "AUTO-INVOICE FAILED for order %s on CJDQuick shipped: %s. "
+            "ACTION REQUIRED: Manual invoice needed via reconciliation.",
+            order.order_number, str(e)
+        )
+    except Exception as e:
+        logger.error(
+            "AUTO-INVOICE UNEXPECTED ERROR for order %s: %s. "
+            "ACTION REQUIRED: Check logs and generate invoice manually.",
+            order.order_number, str(e)
+        )
 
 
 async def _handle_tracking_event(db: DB, data: dict) -> None:
