@@ -92,17 +92,80 @@ class CJDQuickSyncService:
             payload["description"] = product.description
         return payload
 
+    def _build_order_payload(self, order: Order, customer: Customer) -> Dict[str, Any]:
+        """Map Aquapurite Order + Customer to CJDQuick OMS order format.
+
+        Uses the direct /orders endpoint (JWT auth) since the integration endpoint's
+        field mapping engine is not yet operational on CJDQuick's side.
+        """
+        # Build line items
+        items = []
+        if hasattr(order, "items") and order.items:
+            for item in order.items:
+                unit_price = _decimal_to_float(item.unit_price) or 0
+                quantity = item.quantity or 1
+                tax_amount = _decimal_to_float(item.tax_amount) or 0
+                total_price = _decimal_to_float(item.total_amount) or (unit_price * quantity)
+                discount = _decimal_to_float(item.discount_amount) or 0
+
+                item_data: Dict[str, Any] = {
+                    "externalItemId": item.product_sku,
+                    "quantity": quantity,
+                    "unitPrice": unit_price,
+                    "taxAmount": tax_amount,
+                    "totalPrice": total_price,
+                }
+                if discount:
+                    item_data["discount"] = discount
+                items.append(item_data)
+
+        # Map payment method to OMS payment mode
+        payment_mode = self._map_payment_method(order.payment_method)
+
+        # Map order source to OMS channel
+        channel = "D2C" if order.source == "WEBSITE" else (order.source or "D2C")
+
+        # Build shipping address from JSONB
+        shipping = order.shipping_address or {}
+        customer_name = f"{customer.first_name} {customer.last_name or ''}".strip()
+
+        return {
+            "companyId": settings.CJDQUICK_COMPANY_ID,
+            "externalOrderNo": order.order_number,
+            "channel": channel,
+            "paymentMode": payment_mode,
+            "orderDate": order.created_at.isoformat() if order.created_at else None,
+            "locationId": settings.CJDQUICK_LOCATION_ID,
+            "customerName": customer_name,
+            "customerPhone": customer.phone or "",
+            "customerEmail": customer.email or "",
+            "shippingAddress": {
+                "name": shipping.get("name", shipping.get("contact_name", customer_name)),
+                "phone": shipping.get("phone", shipping.get("contact_phone", customer.phone or "")),
+                "address1": shipping.get("address", shipping.get("address_line1", shipping.get("address_line_1", ""))),
+                "address2": shipping.get("address_2", shipping.get("address_line2", shipping.get("address_line_2", ""))),
+                "city": shipping.get("city", ""),
+                "state": shipping.get("state", ""),
+                "pincode": str(shipping.get("pincode", shipping.get("zip_code", ""))),
+                "country": shipping.get("country", "India"),
+            },
+            "items": items,
+            "subtotal": _decimal_to_float(order.subtotal) or 0,
+            "taxAmount": _decimal_to_float(order.tax_amount) or 0,
+            "shippingCharges": _decimal_to_float(order.shipping_amount) if hasattr(order, "shipping_amount") else 0,
+            "discount": _decimal_to_float(order.discount_amount) or 0,
+            "totalAmount": _decimal_to_float(order.total_amount) or 0,
+        }
+
     def _build_integration_order_payload(self, order: Order, customer: Customer) -> Dict[str, Any]:
         """Build ERP-native order payload for the integration endpoint.
 
         POST /api/v1/integration/orders — sends ERP's native JSON format.
-        CJDQuick applies field mapping server-side (configured in their integration profile).
-        This follows the updated Aquapurite Integration Guide (March 2026).
+        CJDQuick does field mapping server-side via the integration profile.
         """
         customer_name = f"{customer.first_name} {customer.last_name or ''}".strip()
         shipping = order.shipping_address or {}
 
-        # Build line items in ERP's native format
         line_items = []
         if hasattr(order, "items") and order.items:
             for item in order.items:
@@ -115,7 +178,6 @@ class CJDQuickSyncService:
                     "tax_percent": _decimal_to_float(item.tax_rate) or 18.0,
                 })
 
-        # Map payment method
         prepaid_methods = {"CARD", "UPI", "NET_BANKING", "WALLET", "EMI"}
         payment_method = "PREPAID" if order.payment_method in prepaid_methods else order.payment_method
 
@@ -123,13 +185,11 @@ class CJDQuickSyncService:
             "order_number": order.order_number,
             "order_date": order.created_at.isoformat() if order.created_at else None,
             "payment_method": payment_method,
-
             "customer": {
                 "full_name": customer_name,
                 "mobile": customer.phone or "",
                 "email": customer.email or "",
             },
-
             "delivery_address": {
                 "recipient": shipping.get("name", customer_name),
                 "address_line_1": shipping.get("address", shipping.get("address_line_1", "")),
@@ -140,9 +200,7 @@ class CJDQuickSyncService:
                 "country": shipping.get("country", "India"),
                 "phone": shipping.get("phone", customer.phone or ""),
             },
-
             "line_items": line_items,
-
             "order_total": {
                 "subtotal": _decimal_to_float(order.subtotal) or 0,
                 "total_discount": _decimal_to_float(order.discount_amount) or 0,
@@ -150,8 +208,9 @@ class CJDQuickSyncService:
                 "tax": _decimal_to_float(order.tax_amount) or 0,
                 "grand_total": _decimal_to_float(order.total_amount) or 0,
             },
-
+            "priority": False,
             "notes": getattr(order, "notes", "") or "",
+            "tags": [],
         }
 
     def _build_customer_payload(self, customer: Customer) -> Dict[str, Any]:
