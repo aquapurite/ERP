@@ -191,14 +191,14 @@ class CJDQuickSyncService:
                 "email": customer.email or "",
             },
             "delivery_address": {
-                "recipient": shipping.get("name", customer_name),
-                "address_line_1": shipping.get("address", shipping.get("address_line_1", "")),
-                "address_line_2": shipping.get("address_2", shipping.get("address_line_2", "")),
+                "recipient": shipping.get("contact_name", shipping.get("name", customer_name)),
+                "address_line_1": shipping.get("address_line1", shipping.get("address_line_1", shipping.get("address", ""))),
+                "address_line_2": shipping.get("address_line2", shipping.get("address_line_2", shipping.get("address_2", ""))),
                 "city": shipping.get("city", ""),
                 "state": shipping.get("state", ""),
                 "pin_code": str(shipping.get("pincode", shipping.get("zip_code", ""))),
                 "country": shipping.get("country", "India"),
-                "phone": shipping.get("phone", customer.phone or ""),
+                "phone": shipping.get("contact_phone", shipping.get("phone", customer.phone or "")),
             },
             "line_items": line_items,
             "order_total": {
