@@ -396,10 +396,15 @@ class Order(Base):
         back_populates="order",
         cascade="all, delete-orphan"
     )
-    invoice: Mapped[Optional["Invoice"]] = relationship(
+    invoice: Mapped[Optional["Invoice"]] = relationship(  # DEPRECATED - use tax_invoices
         "Invoice",
         back_populates="order",
         uselist=False
+    )
+    tax_invoices: Mapped[List["TaxInvoice"]] = relationship(
+        "TaxInvoice",
+        back_populates="order",
+        cascade="all, delete-orphan"
     )
     shipments: Mapped[List["Shipment"]] = relationship(
         "Shipment",

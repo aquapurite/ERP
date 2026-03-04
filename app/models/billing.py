@@ -473,7 +473,7 @@ class TaxInvoice(Base):
         back_populates="invoice",
         uselist=False
     )
-    order: Mapped[Optional["Order"]] = relationship("Order")
+    order: Mapped[Optional["Order"]] = relationship("Order", back_populates="tax_invoices")
     shipment: Mapped[Optional["Shipment"]] = relationship("Shipment")
     customer: Mapped[Optional["User"]] = relationship("User", foreign_keys=[customer_id])
 

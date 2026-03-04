@@ -57,7 +57,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
-import { invoicesApi, customersApi, dealersApi, warehousesApi, productsApi, inventoryApi, categoriesApi } from '@/lib/api';
+import { invoicesApi, customersApi, dealersApi, warehousesApi, productsApi, inventoryApi, categoriesApi, ordersApi } from '@/lib/api';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import type { Product, Category } from '@/types';
 
@@ -120,6 +120,16 @@ interface FormItem {
   subcategory_id: string;
 }
 
+interface EligibleOrder {
+  id: string;
+  order_number: string;
+  customer_name: string;
+  total_amount: number;
+  status: string;
+  item_count: number;
+  created_at: string;
+}
+
 const EMPTY_ITEM: FormItem = {
   product_id: '', product_name: '', hsn_code: '84212110',
   quantity: 1, unit_price: 0, tax_rate: 18, available_stock: null,
@@ -137,6 +147,14 @@ export default function InvoicesPage() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+
+  // Order-based invoice creation state
+  const [creationMode, setCreationMode] = useState<'order' | 'manual'>('order');
+  const [invoiceType, setInvoiceType] = useState<string>('');
+  const [selectedOrderId, setSelectedOrderId] = useState<string>('');
+  const [eligibleOrders, setEligibleOrders] = useState<EligibleOrder[]>([]);
+  const [loadingEligible, setLoadingEligible] = useState(false);
+  const [orderSearch, setOrderSearch] = useState('');
 
   // Per-item cascading dropdown data
   const [subcategoriesMap, setSubcategoriesMap] = useState<Record<number, Category[]>>({});
@@ -292,6 +310,53 @@ export default function InvoicesPage() {
     });
   }, [formData.items, fetchStockForProduct]);
 
+  // ---- Fetch eligible orders when invoice type changes ----
+  const fetchEligibleOrders = useCallback(async (type: string, search?: string) => {
+    if (!type) {
+      setEligibleOrders([]);
+      return;
+    }
+    setLoadingEligible(true);
+    try {
+      const orders = await invoicesApi.getEligibleOrders(type, search);
+      setEligibleOrders(orders ?? []);
+    } catch {
+      setEligibleOrders([]);
+    }
+    setLoadingEligible(false);
+  }, []);
+
+  const handleInvoiceTypeChange = useCallback((type: string) => {
+    setInvoiceType(type);
+    setSelectedOrderId('');
+    if (type) {
+      fetchEligibleOrders(type);
+    } else {
+      setEligibleOrders([]);
+    }
+  }, [fetchEligibleOrders]);
+
+  // ---- Order-based invoice submission ----
+  const orderInvoiceMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedOrderId || !invoiceType) throw new Error('Select invoice type and order');
+      if (invoiceType === 'TAX_INVOICE') {
+        return ordersApi.generateTaxInvoice(selectedOrderId);
+      } else if (invoiceType === 'PROFORMA') {
+        return ordersApi.generateProforma(selectedOrderId);
+      } else {
+        // DELIVERY_CHALLAN - use proforma endpoint for now or a dedicated one
+        return ordersApi.generateProforma(selectedOrderId);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      toast.success('Invoice created from order');
+      resetForm();
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to create invoice'),
+  });
+
   // ---- Mutations ----
   const createMutation = useMutation({
     mutationFn: invoicesApi.create,
@@ -345,6 +410,11 @@ export default function InvoicesPage() {
     });
     setSubcategoriesMap({});
     setProductsMap({});
+    setCreationMode('order');
+    setInvoiceType('');
+    setSelectedOrderId('');
+    setEligibleOrders([]);
+    setOrderSearch('');
     setIsDialogOpen(false);
   };
 
@@ -494,6 +564,24 @@ export default function InvoicesPage() {
       ),
     },
     {
+      accessorKey: 'invoice_type',
+      header: 'Type',
+      cell: ({ row }) => {
+        const type = (row.original as Invoice & { invoice_type?: string }).invoice_type;
+        if (!type) return <span className="text-xs text-muted-foreground">-</span>;
+        const typeColors: Record<string, string> = {
+          TAX_INVOICE: 'bg-blue-100 text-blue-800',
+          PROFORMA: 'bg-purple-100 text-purple-800',
+          DELIVERY_CHALLAN: 'bg-orange-100 text-orange-800',
+        };
+        return (
+          <Badge variant="outline" className={`text-xs ${typeColors[type] || ''}`}>
+            {type.replace(/_/g, ' ')}
+          </Badge>
+        );
+      },
+    },
+    {
       accessorKey: 'customer',
       header: 'Customer',
       cell: ({ row }) => (
@@ -624,9 +712,130 @@ export default function InvoicesPage() {
             <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Create Invoice</DialogTitle>
-                <DialogDescription>Create a new sales invoice with product lookup and stock check</DialogDescription>
+                <DialogDescription>
+                  {creationMode === 'order'
+                    ? 'Generate an invoice from a Sales Order'
+                    : 'Manual invoice creation (SUPER_ADMIN override)'}
+                </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
+                {/* Invoice Type Selector */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Invoice Type *</Label>
+                    <Select
+                      value={invoiceType || 'select'}
+                      onValueChange={(value) => {
+                        if (value === 'select') return;
+                        handleInvoiceTypeChange(value);
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select invoice type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="select" disabled>Select invoice type</SelectItem>
+                        <SelectItem value="TAX_INVOICE">Tax Invoice</SelectItem>
+                        <SelectItem value="PROFORMA">Proforma Invoice</SelectItem>
+                        <SelectItem value="DELIVERY_CHALLAN">Delivery Challan</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-end">
+                    {isSuperAdmin && creationMode === 'order' && (
+                      <button
+                        type="button"
+                        className="text-xs text-muted-foreground underline hover:text-foreground"
+                        onClick={() => setCreationMode('manual')}
+                      >
+                        Manual Override (Admin)
+                      </button>
+                    )}
+                    {creationMode === 'manual' && (
+                      <button
+                        type="button"
+                        className="text-xs text-blue-600 underline hover:text-blue-800"
+                        onClick={() => setCreationMode('order')}
+                      >
+                        Back to Order-based
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* ===== ORDER-BASED FLOW ===== */}
+                {creationMode === 'order' && invoiceType && (
+                  <>
+                    {/* Order Selection */}
+                    <div className="space-y-2">
+                      <Label>Select Order *</Label>
+                      <div className="space-y-2">
+                        <Input
+                          placeholder="Search by order number or customer name..."
+                          value={orderSearch}
+                          onChange={(e) => {
+                            setOrderSearch(e.target.value);
+                            fetchEligibleOrders(invoiceType, e.target.value || undefined);
+                          }}
+                        />
+                        <Select
+                          value={selectedOrderId || 'select'}
+                          onValueChange={(value) => {
+                            if (value === 'select') return;
+                            setSelectedOrderId(value);
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder={loadingEligible ? 'Loading orders...' : 'Select an eligible order'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="select" disabled>
+                              {loadingEligible ? 'Loading...' : eligibleOrders.length === 0 ? 'No eligible orders found' : 'Select an order'}
+                            </SelectItem>
+                            {eligibleOrders.map((o) => (
+                              <SelectItem key={o.id} value={o.id}>
+                                {o.order_number} — {o.customer_name} — {formatCurrency(o.total_amount)} ({o.status})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {/* Selected Order Preview */}
+                    {selectedOrderId && (() => {
+                      const selectedOrder = eligibleOrders.find(o => o.id === selectedOrderId);
+                      if (!selectedOrder) return null;
+                      return (
+                        <Card className="bg-muted/50">
+                          <CardContent className="pt-4">
+                            <div className="grid grid-cols-3 gap-4 text-sm">
+                              <div>
+                                <div className="text-muted-foreground">Order</div>
+                                <div className="font-medium">{selectedOrder.order_number}</div>
+                              </div>
+                              <div>
+                                <div className="text-muted-foreground">Customer</div>
+                                <div className="font-medium">{selectedOrder.customer_name}</div>
+                              </div>
+                              <div>
+                                <div className="text-muted-foreground">Amount</div>
+                                <div className="font-medium">{formatCurrency(selectedOrder.total_amount)}</div>
+                              </div>
+                            </div>
+                            <div className="mt-2 text-xs text-muted-foreground">
+                              Items, addresses, and GST details will be auto-populated from the order.
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })()}
+                  </>
+                )}
+
+                {/* ===== MANUAL FLOW (SUPER_ADMIN) ===== */}
+                {creationMode === 'manual' && (
+                  <>
                 {/* Row 1: Customer/Dealer + Warehouse */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -904,13 +1113,25 @@ export default function InvoicesPage() {
                   <Label>Notes</Label>
                   <Textarea placeholder="Additional notes (optional)" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} />
                 </div>
+                  </>
+                )}
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={resetForm}>Cancel</Button>
-                <Button onClick={handleSubmit} disabled={createMutation.isPending}>
-                  {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Create Invoice
-                </Button>
+                {creationMode === 'order' ? (
+                  <Button
+                    onClick={() => orderInvoiceMutation.mutate()}
+                    disabled={!invoiceType || !selectedOrderId || orderInvoiceMutation.isPending}
+                  >
+                    {orderInvoiceMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Create from Order
+                  </Button>
+                ) : (
+                  <Button onClick={handleSubmit} disabled={createMutation.isPending}>
+                    {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Create Invoice (Manual)
+                  </Button>
+                )}
               </DialogFooter>
             </DialogContent>
           </Dialog>

@@ -185,6 +185,353 @@ class InvoiceService:
         )
         return result.scalar_one_or_none() is not None
 
+    async def generate_invoice_from_order(
+        self,
+        order_id: uuid.UUID,
+        invoice_type: InvoiceType,
+        generated_by: uuid.UUID,
+        generation_trigger: str = "MANUAL",
+        shipment_id: uuid.UUID = None,
+        internal_notes: str = None,
+    ) -> TaxInvoice:
+        """
+        Generate a TaxInvoice from an order without requiring a shipment.
+
+        Used for manual tax invoice generation, proforma invoices, and delivery challans.
+        Also called internally by auto_generate_invoice_on_goods_issue().
+
+        Args:
+            order_id: UUID of the order
+            invoice_type: Type of invoice (TAX_INVOICE, PROFORMA, DELIVERY_CHALLAN)
+            generated_by: User ID who triggered generation
+            generation_trigger: How it was triggered (MANUAL, GOODS_ISSUE, etc.)
+            shipment_id: Optional shipment ID (for goods issue flow)
+            internal_notes: Optional notes to attach
+
+        Returns:
+            TaxInvoice: The newly created invoice
+        """
+        from sqlalchemy.orm import selectinload
+
+        # 1. Get order with items and customer
+        order_result = await self.db.execute(
+            select(Order)
+            .options(
+                selectinload(Order.items),
+                selectinload(Order.customer),
+            )
+            .where(Order.id == order_id)
+        )
+        order = order_result.scalar_one_or_none()
+
+        if not order:
+            raise InvoiceGenerationError(f"Order {order_id} not found")
+
+        customer = order.customer
+        if not customer:
+            raise InvoiceGenerationError(f"No customer found for order {order.order_number}")
+
+        # B2B GSTIN enforcement for TAX_INVOICE only
+        customer_gstin = getattr(customer, 'gst_number', None)
+        if invoice_type == InvoiceType.TAX_INVOICE:
+            is_b2b_order = bool(order.dealer_id) or getattr(order, 'source', None) in (
+                'DEALER', 'DISTRIBUTOR', 'B2B', 'CORPORATE', 'B2B_PORTAL'
+            )
+            if is_b2b_order and not customer_gstin:
+                raise InvoiceGenerationError(
+                    f"GSTIN is required for B2B tax invoice. Order {order.order_number} is from B2B channel "
+                    f"but customer has no GSTIN. Please update the customer/dealer GSTIN first."
+                )
+
+        # 2. Check if active invoice of this type already exists
+        existing_result = await self.db.execute(
+            select(TaxInvoice.id).where(
+                and_(
+                    TaxInvoice.order_id == order.id,
+                    TaxInvoice.invoice_type == invoice_type.value,
+                    TaxInvoice.status != InvoiceStatus.CANCELLED.value,
+                    TaxInvoice.status != InvoiceStatus.VOID.value,
+                )
+            )
+        )
+        if existing_result.scalar_one_or_none() is not None:
+            raise InvoiceGenerationError(
+                f"An active {invoice_type.value} already exists for order {order.order_number}"
+            )
+
+        # 3. Get company details for seller info
+        company = await self.get_company()
+        if not company:
+            raise InvoiceGenerationError("No active company found for seller details")
+
+        # 4. Get serial numbers from picklist
+        serials_by_item = await self.get_picked_serial_numbers(order.id)
+
+        # 5. Prepare address details
+        shipping_address = order.shipping_address or {}
+        billing_address = order.billing_address or shipping_address
+
+        shipping_state = shipping_address.get("state", "")
+        billing_state = billing_address.get("state", shipping_state)
+        seller_state = company.state
+
+        shipping_state_code = await self.get_state_code_from_name(shipping_state)
+        billing_state_code = await self.get_state_code_from_name(billing_state)
+        seller_state_code = company.state_code
+
+        is_interstate = seller_state_code != shipping_state_code
+
+        # 6. Map invoice type to series code
+        series_map = {
+            InvoiceType.TAX_INVOICE: "INV",
+            InvoiceType.PROFORMA: "PI",
+            InvoiceType.DELIVERY_CHALLAN: "DC",
+        }
+        series_code = series_map.get(invoice_type, "INV")
+        invoice_number = await self.generate_invoice_number(series_code=series_code, invoice_type=invoice_type)
+
+        # 7. Determine initial status
+        initial_status = InvoiceStatus.GENERATED.value
+        if invoice_type == InvoiceType.PROFORMA:
+            initial_status = InvoiceStatus.DRAFT.value
+
+        # 8. Create TaxInvoice
+        invoice = TaxInvoice(
+            invoice_number=invoice_number,
+            invoice_type=invoice_type.value,
+            status=initial_status,
+            invoice_date=date.today(),
+            supply_date=date.today(),
+            order_id=order.id,
+            shipment_id=shipment_id,
+            generation_trigger=generation_trigger,
+
+            # Customer details
+            customer_id=customer.id,
+            crm_customer_id=customer.id,
+            customer_name=customer.full_name if hasattr(customer, 'full_name') else f"{customer.first_name or ''} {customer.last_name or ''}".strip(),
+            customer_gstin=customer_gstin,
+            customer_pan=getattr(customer, 'pan', None),
+
+            # Billing address
+            billing_address_line1=billing_address.get("address_line1", billing_address.get("address", "")),
+            billing_address_line2=billing_address.get("address_line2", billing_address.get("landmark", "")),
+            billing_city=billing_address.get("city", ""),
+            billing_state=billing_state,
+            billing_state_code=billing_state_code,
+            billing_pincode=billing_address.get("pincode", billing_address.get("zip", "")),
+            billing_country=billing_address.get("country", "India"),
+
+            # Shipping address
+            shipping_address_line1=shipping_address.get("address_line1", shipping_address.get("address", "")),
+            shipping_address_line2=shipping_address.get("address_line2", shipping_address.get("landmark", "")),
+            shipping_city=shipping_address.get("city", ""),
+            shipping_state=shipping_state,
+            shipping_state_code=shipping_state_code,
+            shipping_pincode=shipping_address.get("pincode", ""),
+            shipping_country=shipping_address.get("country", "India"),
+
+            # Seller details
+            seller_gstin=company.gstin,
+            seller_name=company.trade_name or company.legal_name,
+            seller_address=company.full_address,
+            seller_state_code=seller_state_code,
+
+            # Place of supply
+            place_of_supply=shipping_state or GST_STATE_CODES.get(shipping_state_code, ""),
+            place_of_supply_code=shipping_state_code,
+            is_interstate=is_interstate,
+            is_reverse_charge=False,
+
+            # Charges from order
+            shipping_charges=order.shipping_amount or Decimal("0"),
+            packaging_charges=Decimal("0"),
+            installation_charges=Decimal("0"),
+            other_charges=Decimal("0"),
+
+            # Payment terms
+            payment_due_days=0,
+
+            # Notes
+            internal_notes=internal_notes or f"Generated via {generation_trigger}",
+
+            # Audit
+            created_by=generated_by,
+
+            # Initialize totals to zero
+            subtotal=Decimal("0"),
+            discount_amount=Decimal("0"),
+            taxable_amount=Decimal("0"),
+            cgst_amount=Decimal("0"),
+            sgst_amount=Decimal("0"),
+            igst_amount=Decimal("0"),
+            cess_amount=Decimal("0"),
+            total_tax=Decimal("0"),
+            grand_total=Decimal("0"),
+            amount_paid=order.amount_paid or Decimal("0"),
+            amount_due=Decimal("0"),
+        )
+
+        self.db.add(invoice)
+        await self.db.flush()
+
+        # 9. Create invoice items
+        subtotal = Decimal("0")
+        total_discount = Decimal("0")
+        taxable_amount = Decimal("0")
+        cgst_total = Decimal("0")
+        sgst_total = Decimal("0")
+        igst_total = Decimal("0")
+        cess_total = Decimal("0")
+
+        for order_item in order.items:
+            item_serials = serials_by_item.get(order_item.id, [])
+            gross_amount = Decimal(str(order_item.quantity)) * order_item.unit_price
+            discount_amount = order_item.discount_amount or Decimal("0")
+            item_taxable = gross_amount - discount_amount
+
+            gst_rate = order_item.tax_rate or Decimal("18.00")
+            if is_interstate:
+                igst_rate = gst_rate
+                cgst_rate = Decimal("0")
+                sgst_rate = Decimal("0")
+            else:
+                igst_rate = Decimal("0")
+                cgst_rate = gst_rate / 2
+                sgst_rate = gst_rate / 2
+
+            cgst_amount = item_taxable * (cgst_rate / 100)
+            sgst_amount = item_taxable * (sgst_rate / 100)
+            igst_amount = item_taxable * (igst_rate / 100)
+            cess_amount = Decimal("0")
+
+            item_total_tax = cgst_amount + sgst_amount + igst_amount + cess_amount
+            item_total = item_taxable + item_total_tax
+
+            invoice_item = InvoiceItem(
+                invoice_id=invoice.id,
+                product_id=order_item.product_id,
+                variant_id=order_item.variant_id,
+                sku=order_item.product_sku,
+                item_name=order_item.product_name,
+                item_description=order_item.variant_name,
+                hsn_code=order_item.hsn_code or "84212100",
+                is_service=False,
+                serial_numbers={"serials": item_serials} if item_serials else None,
+                quantity=Decimal(str(order_item.quantity)),
+                uom="NOS",
+                unit_price=order_item.unit_price,
+                mrp=order_item.unit_mrp,
+                discount_percentage=Decimal("0") if not gross_amount else (discount_amount / gross_amount * 100).quantize(Decimal("0.01")),
+                discount_amount=discount_amount,
+                taxable_value=item_taxable,
+                gst_rate=gst_rate,
+                cgst_rate=cgst_rate,
+                sgst_rate=sgst_rate,
+                igst_rate=igst_rate,
+                cgst_amount=cgst_amount,
+                sgst_amount=sgst_amount,
+                igst_amount=igst_amount,
+                cess_rate=Decimal("0"),
+                cess_amount=cess_amount,
+                total_tax=item_total_tax,
+                line_total=item_total,
+                warranty_months=order_item.warranty_months or 12,
+                order_item_id=order_item.id,
+            )
+            self.db.add(invoice_item)
+
+            subtotal += gross_amount
+            total_discount += discount_amount
+            taxable_amount += item_taxable
+            cgst_total += cgst_amount
+            sgst_total += sgst_amount
+            igst_total += igst_amount
+            cess_total += cess_amount
+
+        # 10. Update invoice totals
+        total_tax = cgst_total + sgst_total + igst_total + cess_total
+        grand_total = taxable_amount + total_tax
+        round_off = Decimal(str(round(float(grand_total)))) - grand_total
+        grand_total = Decimal(str(round(float(grand_total))))
+        amount_due = grand_total - (order.amount_paid or Decimal("0"))
+        if amount_due < 0:
+            amount_due = Decimal("0")
+
+        invoice.subtotal = subtotal
+        invoice.discount_amount = total_discount
+        invoice.taxable_amount = taxable_amount
+        invoice.cgst_amount = cgst_total
+        invoice.sgst_amount = sgst_total
+        invoice.igst_amount = igst_total
+        invoice.cess_amount = cess_total
+        invoice.total_tax = total_tax
+        invoice.round_off = round_off
+        invoice.grand_total = grand_total
+        invoice.amount_due = amount_due
+        invoice.amount_in_words = self._amount_to_words(grand_total)
+
+        await self.db.flush()
+
+        # 11. Post accounting entry (only for TAX_INVOICE)
+        if invoice_type == InvoiceType.TAX_INVOICE:
+            try:
+                from app.services.accounting_service import AccountingService
+                accounting = AccountingService(self.db)
+                await accounting.post_sales_invoice(
+                    invoice_id=invoice.id,
+                    customer_name=invoice.customer_name,
+                    subtotal=taxable_amount,
+                    cgst=cgst_total,
+                    sgst=sgst_total,
+                    igst=igst_total,
+                    total=grand_total,
+                    is_interstate=is_interstate,
+                    product_type="purifier",
+                )
+                logger.info(f"Accounting entry posted for invoice {invoice.invoice_number}")
+            except Exception as e:
+                logger.error(
+                    f"ACCOUNTING FAILURE: Failed to post GL entry for invoice {invoice.invoice_number}. "
+                    f"Amount: {grand_total}, Customer: {invoice.customer_name}. "
+                    f"Error: {str(e)}. "
+                    f"ACTION REQUIRED: Manual journal entry needed for reconciliation."
+                )
+                if invoice.internal_notes:
+                    invoice.internal_notes += f"\n[ACCOUNTING ERROR] GL posting failed: {str(e)}"
+                else:
+                    invoice.internal_notes = f"[ACCOUNTING ERROR] GL posting failed: {str(e)}"
+
+            # Update dealer outstanding_amount
+            if getattr(order, 'dealer_id', None):
+                try:
+                    from app.models.dealer import Dealer
+                    dealer_result = await self.db.execute(
+                        select(Dealer).where(Dealer.id == order.dealer_id)
+                    )
+                    dealer_obj = dealer_result.scalar_one_or_none()
+                    if dealer_obj:
+                        dealer_obj.outstanding_amount += grand_total
+                        logger.info(
+                            f"Dealer {dealer_obj.id} outstanding increased by {grand_total} "
+                            f"for invoice {invoice.invoice_number}"
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to update dealer outstanding for invoice {invoice.invoice_number}: {e}")
+
+        logger.info(
+            f"Generated {invoice_type.value} {invoice.invoice_number} for order {order.order_number} "
+            f"(trigger: {generation_trigger})"
+        )
+
+        # Load full invoice with items
+        result = await self.db.execute(
+            select(TaxInvoice)
+            .options(selectinload(TaxInvoice.items))
+            .where(TaxInvoice.id == invoice.id)
+        )
+        return result.scalar_one()
+
     async def auto_generate_invoice_on_goods_issue(
         self,
         shipment_id: uuid.UUID,

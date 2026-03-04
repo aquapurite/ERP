@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, computed_field
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
 import uuid
 
@@ -109,6 +109,21 @@ class InvoiceResponse(BaseResponseSchema):
     due_date: Optional[datetime] = None
     is_cancelled: bool
     created_at: datetime
+# ==================== TAX INVOICE BRIEF (for order detail) ====================
+
+class TaxInvoiceBrief(BaseResponseSchema):
+    """Brief tax invoice info for order detail response."""
+    id: uuid.UUID
+    invoice_number: str
+    invoice_type: str
+    invoice_date: date
+    grand_total: Decimal
+    status: str
+    generation_trigger: Optional[str] = None
+    irn: Optional[str] = None
+    pdf_url: Optional[str] = None
+
+
 # ==================== ORDER SCHEMAS ====================
 
 class AddressInput(BaseModel):
@@ -191,7 +206,8 @@ class OrderDetailResponse(OrderResponse):
     items: List[OrderItemResponse] = []
     status_history: List[StatusHistoryResponse] = []
     payments: List[PaymentResponse] = []
-    invoice: Optional[InvoiceResponse] = None
+    invoice: Optional[InvoiceResponse] = None  # DEPRECATED - use tax_invoices
+    tax_invoices: List[TaxInvoiceBrief] = []
     internal_notes: Optional[str] = None
 
 

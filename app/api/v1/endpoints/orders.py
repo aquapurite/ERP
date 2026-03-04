@@ -21,6 +21,7 @@ from app.schemas.order import (
     PaymentResponse,
     StatusHistoryResponse,
     InvoiceResponse,
+    TaxInvoiceBrief,
     OrderSummary,
     D2CAddressInfo,
     D2COrderItem,
@@ -30,7 +31,9 @@ from app.schemas.order import (
 from app.schemas.customer import CustomerBrief
 from app.services.order_service import OrderService
 from app.services.allocation_service import AllocationService
+from app.services.invoice_service import InvoiceService
 from app.schemas.serviceability import OrderAllocationRequest
+from app.models.billing import TaxInvoice, InvoiceStatus
 
 
 router = APIRouter(tags=["Orders"])
@@ -77,7 +80,7 @@ def _build_order_response(order) -> OrderResponse:
     )
 
 
-def _build_order_detail_response(order) -> OrderDetailResponse:
+def _build_order_detail_response(order, tax_invoices=None) -> OrderDetailResponse:
     """Build OrderDetailResponse from Order model."""
     # Handle orders without customer
     customer_brief = None
@@ -89,6 +92,22 @@ def _build_order_detail_response(order) -> OrderDetailResponse:
             phone=order.customer.phone,
             email=order.customer.email,
         )
+
+    # Build tax invoice briefs
+    tax_invoice_briefs = []
+    if tax_invoices:
+        for inv in tax_invoices:
+            tax_invoice_briefs.append(TaxInvoiceBrief(
+                id=inv.id,
+                invoice_number=inv.invoice_number,
+                invoice_type=inv.invoice_type,
+                invoice_date=inv.invoice_date,
+                grand_total=inv.grand_total,
+                status=inv.status,
+                generation_trigger=inv.generation_trigger,
+                irn=inv.irn,
+                pdf_url=inv.pdf_url,
+            ))
 
     return OrderDetailResponse(
         id=order.id,
@@ -120,6 +139,7 @@ def _build_order_detail_response(order) -> OrderDetailResponse:
         status_history=[StatusHistoryResponse.model_validate(h) for h in order.status_history],
         payments=[PaymentResponse.model_validate(p) for p in order.payments],
         invoice=InvoiceResponse.model_validate(order.invoice) if order.invoice else None,
+        tax_invoices=tax_invoice_briefs,
     )
 
 
@@ -222,7 +242,20 @@ async def get_order(
             detail="Order not found"
         )
 
-    return _build_order_detail_response(order)
+    # Fetch active tax invoices for this order
+    from sqlalchemy import select, and_
+    tax_inv_result = await db.execute(
+        select(TaxInvoice).where(
+            and_(
+                TaxInvoice.order_id == order.id,
+                TaxInvoice.status != InvoiceStatus.CANCELLED.value,
+                TaxInvoice.status != InvoiceStatus.VOID.value,
+            )
+        ).order_by(TaxInvoice.created_at.desc())
+    )
+    tax_invoices = tax_inv_result.scalars().all()
+
+    return _build_order_detail_response(order, tax_invoices=tax_invoices)
 
 
 @router.get(
@@ -244,7 +277,20 @@ async def get_order_by_number(
             detail="Order not found"
         )
 
-    return _build_order_detail_response(order)
+    # Fetch active tax invoices for this order
+    from sqlalchemy import select, and_
+    tax_inv_result = await db.execute(
+        select(TaxInvoice).where(
+            and_(
+                TaxInvoice.order_id == order.id,
+                TaxInvoice.status != InvoiceStatus.CANCELLED.value,
+                TaxInvoice.status != InvoiceStatus.VOID.value,
+            )
+        ).order_by(TaxInvoice.created_at.desc())
+    )
+    tax_invoices = tax_inv_result.scalars().all()
+
+    return _build_order_detail_response(order, tax_invoices=tax_invoices)
 
 
 @router.post(
@@ -508,7 +554,8 @@ async def add_payment(
     "/{order_id}/invoice",
     response_model=InvoiceResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permissions("orders:update"))]
+    dependencies=[Depends(require_permissions("orders:update"))],
+    deprecated=True,
 )
 async def generate_invoice(
     order_id: uuid.UUID,
@@ -516,6 +563,7 @@ async def generate_invoice(
     current_user: CurrentUser,
 ):
     """
+    DEPRECATED: Use POST /{order_id}/generate-tax-invoice or /{order_id}/proforma-invoice instead.
     Generate invoice for an order.
     Requires: orders:update permission
     """
@@ -529,6 +577,113 @@ async def generate_invoice(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
+
+
+@router.post(
+    "/{order_id}/generate-tax-invoice",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permissions("orders:update"))]
+)
+async def generate_tax_invoice(
+    order_id: uuid.UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """
+    Generate a Tax Invoice from a Sales Order.
+    Order must be in status >= MANIFESTED and have no active TAX_INVOICE.
+    """
+    from app.models.billing import InvoiceType as BillingInvoiceType
+    from app.services.invoice_service import InvoiceService, InvoiceGenerationError
+
+    # Validate order exists and status
+    from sqlalchemy import select as sa_select
+    order_result = await db.execute(sa_select(Order).where(Order.id == order_id))
+    order = order_result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    valid_statuses = [
+        "MANIFESTED", "READY_TO_SHIP", "SHIPPED", "IN_TRANSIT",
+        "OUT_FOR_DELIVERY", "DELIVERED"
+    ]
+    if order.status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Order must be in status MANIFESTED or later to generate a Tax Invoice. Current: {order.status}"
+        )
+
+    try:
+        invoice_service = InvoiceService(db)
+        invoice = await invoice_service.generate_invoice_from_order(
+            order_id=order_id,
+            invoice_type=BillingInvoiceType.TAX_INVOICE,
+            generated_by=current_user.id,
+            generation_trigger="MANUAL",
+        )
+        await db.commit()
+        return {
+            "id": str(invoice.id),
+            "invoice_number": invoice.invoice_number,
+            "invoice_type": invoice.invoice_type,
+            "invoice_date": str(invoice.invoice_date),
+            "grand_total": float(invoice.grand_total),
+            "status": invoice.status,
+        }
+    except InvoiceGenerationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post(
+    "/{order_id}/proforma-invoice",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permissions("orders:update"))]
+)
+async def generate_proforma_invoice(
+    order_id: uuid.UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """
+    Generate a Proforma Invoice from a Sales Order.
+    Order must be in status >= CONFIRMED and have no active PROFORMA.
+    """
+    from app.models.billing import InvoiceType as BillingInvoiceType
+    from app.services.invoice_service import InvoiceService, InvoiceGenerationError
+
+    # Validate order exists and status
+    from sqlalchemy import select as sa_select
+    order_result = await db.execute(sa_select(Order).where(Order.id == order_id))
+    order = order_result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    non_eligible = ["NEW", "PENDING_PAYMENT", "CANCELLED", "REFUNDED"]
+    if order.status in non_eligible:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Order must be CONFIRMED or later to generate a Proforma Invoice. Current: {order.status}"
+        )
+
+    try:
+        invoice_service = InvoiceService(db)
+        invoice = await invoice_service.generate_invoice_from_order(
+            order_id=order_id,
+            invoice_type=BillingInvoiceType.PROFORMA,
+            generated_by=current_user.id,
+            generation_trigger="MANUAL",
+        )
+        await db.commit()
+        return {
+            "id": str(invoice.id),
+            "invoice_number": invoice.invoice_number,
+            "invoice_type": invoice.invoice_type,
+            "invoice_date": str(invoice.invoice_date),
+            "grand_total": float(invoice.grand_total),
+            "status": invoice.status,
+        }
+    except InvoiceGenerationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # ==================== D2C PUBLIC ENDPOINTS ====================

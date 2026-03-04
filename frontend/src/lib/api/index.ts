@@ -400,6 +400,14 @@ export const ordersApi = {
     const { data } = await apiClient.post<Order>(`/orders/${id}/cancel`, { reason });
     return data;
   },
+  generateTaxInvoice: async (orderId: string) => {
+    const { data } = await apiClient.post(`/orders/${orderId}/generate-tax-invoice`);
+    return data;
+  },
+  generateProforma: async (orderId: string) => {
+    const { data } = await apiClient.post(`/orders/${orderId}/proforma-invoice`);
+    return data;
+  },
 };
 
 // Customers API
@@ -2417,6 +2425,12 @@ export const invoicesApi = {
   },
   delete: async (id: string) => {
     await apiClient.delete(`/billing/invoices/${id}`);
+  },
+  getEligibleOrders: async (invoiceType: string, search?: string) => {
+    const { data } = await apiClient.get('/billing/invoices/eligible-orders', {
+      params: { invoice_type: invoiceType, search },
+    });
+    return data;
   },
 };
 

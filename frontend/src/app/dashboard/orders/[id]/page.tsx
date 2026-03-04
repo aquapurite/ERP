@@ -83,6 +83,18 @@ interface Invoice {
   status: string;
 }
 
+interface TaxInvoiceBrief {
+  id: string;
+  invoice_number: string;
+  invoice_type: string;
+  invoice_date: string;
+  grand_total: number;
+  status: string;
+  generation_trigger?: string;
+  irn?: string;
+  pdf_url?: string;
+}
+
 interface Order {
   id: string;
   order_number: string;
@@ -114,6 +126,7 @@ interface Order {
   payments: Payment[];
   status_history: StatusHistory[];
   invoices: Invoice[];
+  tax_invoices: TaxInvoiceBrief[];
   subtotal: number;
   discount_amount: number;
   tax_amount: number;
@@ -157,8 +170,16 @@ const orderApi = {
     const { data } = await apiClient.post(`/orders/${id}/invoice`);
     return data;
   },
+  generateTaxInvoice: async (id: string) => {
+    const { data } = await apiClient.post(`/orders/${id}/generate-tax-invoice`);
+    return data;
+  },
+  generateProforma: async (id: string) => {
+    const { data } = await apiClient.post(`/orders/${id}/proforma-invoice`);
+    return data;
+  },
   downloadInvoice: async (invoiceId: string) => {
-    const { data } = await apiClient.get<string>(`/invoices/${invoiceId}/download`);
+    const { data } = await apiClient.get<string>(`/billing/invoices/${invoiceId}/download`);
     return data;
   },
 };
@@ -286,6 +307,24 @@ export default function OrderDetailPage() {
     onError: () => toast.error('Failed to generate invoice'),
   });
 
+  const generateTaxInvoiceMutation = useMutation({
+    mutationFn: () => orderApi.generateTaxInvoice(orderId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['order', orderId] });
+      toast.success('Tax Invoice generated');
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to generate tax invoice'),
+  });
+
+  const generateProformaMutation = useMutation({
+    mutationFn: () => orderApi.generateProforma(orderId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['order', orderId] });
+      toast.success('Proforma Invoice generated');
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to generate proforma'),
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -310,6 +349,16 @@ export default function OrderDetailPage() {
   const canCancel = !['DELIVERED', 'CANCELLED', 'REFUNDED', 'RTO_DELIVERED'].includes(order.status);
   const canAddPayment = order.balance_due > 0;
   const canGenerateInvoice = order.status === 'CONFIRMED' && order.invoices.length === 0;
+
+  // Tax Invoice eligibility: status >= MANIFESTED AND no active TAX_INVOICE
+  const taxInvoiceStatuses = ['MANIFESTED', 'READY_TO_SHIP', 'SHIPPED', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'DELIVERED'];
+  const hasActiveTaxInvoice = (order.tax_invoices || []).some(inv => inv.invoice_type === 'TAX_INVOICE');
+  const canGenerateTaxInvoice = taxInvoiceStatuses.includes(order.status) && !hasActiveTaxInvoice;
+
+  // Proforma eligibility: status >= CONFIRMED AND no active PROFORMA
+  const proformaIneligible = ['NEW', 'PENDING_PAYMENT', 'CANCELLED', 'REFUNDED'];
+  const hasActiveProforma = (order.tax_invoices || []).some(inv => inv.invoice_type === 'PROFORMA');
+  const canGenerateProforma = !proformaIneligible.includes(order.status) && !hasActiveProforma;
 
   return (
     <div className="space-y-6">
@@ -345,9 +394,14 @@ export default function OrderDetailPage() {
               <CreditCard className="mr-2 h-4 w-4" /> Record Payment
             </Button>
           )}
-          {canGenerateInvoice && (
-            <Button variant="outline" onClick={() => generateInvoiceMutation.mutate()}>
-              <FileText className="mr-2 h-4 w-4" /> Generate Invoice
+          {canGenerateProforma && (
+            <Button variant="outline" onClick={() => generateProformaMutation.mutate()} disabled={generateProformaMutation.isPending}>
+              <FileText className="mr-2 h-4 w-4" /> Generate Proforma
+            </Button>
+          )}
+          {canGenerateTaxInvoice && (
+            <Button variant="outline" onClick={() => generateTaxInvoiceMutation.mutate()} disabled={generateTaxInvoiceMutation.isPending}>
+              <FileText className="mr-2 h-4 w-4" /> Generate Tax Invoice
             </Button>
           )}
           {availableActions.map((action) => (
@@ -413,7 +467,7 @@ export default function OrderDetailPage() {
         <TabsList>
           <TabsTrigger value="items">Items ({order.items.length})</TabsTrigger>
           <TabsTrigger value="payments">Payments ({order.payments.length})</TabsTrigger>
-          <TabsTrigger value="invoices">Invoices ({order.invoices.length})</TabsTrigger>
+          <TabsTrigger value="invoices">Invoices ({(order.tax_invoices || []).length})</TabsTrigger>
           <TabsTrigger value="history">Status History</TabsTrigger>
           <TabsTrigger value="details">Details</TabsTrigger>
         </TabsList>
@@ -552,16 +606,23 @@ export default function OrderDetailPage() {
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
                 <CardTitle>Invoices</CardTitle>
-                <CardDescription>Tax invoices generated for this order</CardDescription>
+                <CardDescription>Tax invoices, proformas, and delivery challans for this order</CardDescription>
               </div>
-              {canGenerateInvoice && (
-                <Button size="sm" onClick={() => generateInvoiceMutation.mutate()}>
-                  <FileText className="mr-2 h-4 w-4" /> Generate Invoice
-                </Button>
-              )}
+              <div className="flex gap-2">
+                {canGenerateProforma && (
+                  <Button size="sm" variant="outline" onClick={() => generateProformaMutation.mutate()} disabled={generateProformaMutation.isPending}>
+                    <FileText className="mr-2 h-4 w-4" /> Proforma
+                  </Button>
+                )}
+                {canGenerateTaxInvoice && (
+                  <Button size="sm" onClick={() => generateTaxInvoiceMutation.mutate()} disabled={generateTaxInvoiceMutation.isPending}>
+                    <FileText className="mr-2 h-4 w-4" /> Tax Invoice
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
-              {order.invoices.length === 0 ? (
+              {(order.tax_invoices || []).length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>No invoices generated</p>
@@ -571,7 +632,9 @@ export default function OrderDetailPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Invoice Number</TableHead>
+                      <TableHead>Type</TableHead>
                       <TableHead>Date</TableHead>
+                      <TableHead>Trigger</TableHead>
                       <TableHead>IRN</TableHead>
                       <TableHead className="text-right">Amount</TableHead>
                       <TableHead>Status</TableHead>
@@ -579,27 +642,50 @@ export default function OrderDetailPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {order.invoices.map((invoice) => (
-                      <TableRow key={invoice.id}>
-                        <TableCell className="font-mono font-medium">{invoice.invoice_number}</TableCell>
-                        <TableCell>{formatDate(invoice.invoice_date)}</TableCell>
-                        <TableCell className="font-mono text-xs">{invoice.irn || '-'}</TableCell>
-                        <TableCell className="text-right font-medium">{formatCurrency(invoice.total_amount)}</TableCell>
-                        <TableCell>
-                          <span className="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
-                            {invoice.status}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="sm">
-                            <Download className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm">
-                            <Printer className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {(order.tax_invoices || []).map((invoice) => {
+                      const typeColors: Record<string, string> = {
+                        TAX_INVOICE: 'bg-blue-100 text-blue-800',
+                        PROFORMA: 'bg-purple-100 text-purple-800',
+                        DELIVERY_CHALLAN: 'bg-orange-100 text-orange-800',
+                      };
+                      const triggerColors: Record<string, string> = {
+                        GOODS_ISSUE: 'bg-cyan-100 text-cyan-800',
+                        MANUAL: 'bg-gray-100 text-gray-800',
+                      };
+                      return (
+                        <TableRow key={invoice.id}>
+                          <TableCell className="font-mono font-medium">{invoice.invoice_number}</TableCell>
+                          <TableCell>
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${typeColors[invoice.invoice_type] || 'bg-gray-100 text-gray-800'}`}>
+                              {invoice.invoice_type.replace(/_/g, ' ')}
+                            </span>
+                          </TableCell>
+                          <TableCell>{formatDate(invoice.invoice_date)}</TableCell>
+                          <TableCell>
+                            {invoice.generation_trigger && (
+                              <span className={`px-2 py-0.5 rounded text-xs ${triggerColors[invoice.generation_trigger] || 'bg-gray-100 text-gray-800'}`}>
+                                {invoice.generation_trigger.replace(/_/g, ' ')}
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="font-mono text-xs">{invoice.irn || '-'}</TableCell>
+                          <TableCell className="text-right font-medium">{formatCurrency(invoice.grand_total)}</TableCell>
+                          <TableCell>
+                            <span className="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
+                              {invoice.status}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <Button variant="ghost" size="sm" onClick={() => orderApi.downloadInvoice(invoice.id)}>
+                              <Download className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="sm">
+                              <Printer className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               )}

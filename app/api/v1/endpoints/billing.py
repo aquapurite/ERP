@@ -103,6 +103,114 @@ async def get_effective_company_id(
 
 # ==================== TaxInvoice ====================
 
+
+@router.get("/invoices/eligible-orders")
+async def get_eligible_orders(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    invoice_type: str = Query(..., description="TAX_INVOICE, PROFORMA, or DELIVERY_CHALLAN"),
+    search: Optional[str] = Query(None, description="Search by order number or customer name"),
+):
+    """
+    Get orders eligible for invoice creation based on invoice type.
+
+    - TAX_INVOICE: status in [MANIFESTED..DELIVERED], no active tax invoice
+    - PROFORMA: status >= CONFIRMED, no active proforma
+    - DELIVERY_CHALLAN: status >= ALLOCATED, no active delivery challan
+    """
+    from app.models.order import OrderStatus
+    from app.models.customer import Customer as CustomerModel
+
+    # Define eligible statuses per invoice type
+    if invoice_type == "TAX_INVOICE":
+        eligible_statuses = [
+            "MANIFESTED", "READY_TO_SHIP", "SHIPPED", "IN_TRANSIT",
+            "OUT_FOR_DELIVERY", "DELIVERED"
+        ]
+    elif invoice_type == "PROFORMA":
+        eligible_statuses = [
+            "CONFIRMED", "ALLOCATED", "PICKLIST_CREATED", "PICKING", "PICKED",
+            "PACKING", "PACKED", "MANIFESTED", "READY_TO_SHIP", "SHIPPED",
+            "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED"
+        ]
+    elif invoice_type == "DELIVERY_CHALLAN":
+        eligible_statuses = [
+            "ALLOCATED", "PICKLIST_CREATED", "PICKING", "PICKED",
+            "PACKING", "PACKED", "MANIFESTED", "READY_TO_SHIP", "SHIPPED",
+            "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED"
+        ]
+    else:
+        raise HTTPException(status_code=400, detail=f"Invalid invoice_type: {invoice_type}")
+
+    # Subquery: orders that already have an active invoice of this type
+    from sqlalchemy import exists
+    has_active_invoice = (
+        select(TaxInvoice.id)
+        .where(
+            and_(
+                TaxInvoice.order_id == Order.id,
+                TaxInvoice.invoice_type == invoice_type,
+                TaxInvoice.status != "CANCELLED",
+                TaxInvoice.status != "VOID",
+            )
+        )
+        .correlate(Order)
+        .exists()
+    )
+
+    # Build query
+    query = (
+        select(Order)
+        .where(
+            and_(
+                Order.status.in_(eligible_statuses),
+                ~has_active_invoice,
+            )
+        )
+        .order_by(Order.created_at.desc())
+        .limit(50)
+    )
+
+    # Apply search filter
+    if search:
+        from app.models.customer import Customer as CustModel
+        query = query.outerjoin(CustModel, Order.customer_id == CustModel.id).where(
+            or_(
+                Order.order_number.ilike(f"%{search}%"),
+                CustModel.first_name.ilike(f"%{search}%"),
+                CustModel.last_name.ilike(f"%{search}%"),
+            )
+        )
+
+    result = await db.execute(query)
+    orders = result.scalars().all()
+
+    # Build response
+    eligible = []
+    for o in orders:
+        # Get customer name
+        customer_name = "N/A"
+        if o.customer_id:
+            cust_result = await db.execute(
+                select(CustomerModel).where(CustomerModel.id == o.customer_id)
+            )
+            cust = cust_result.scalar_one_or_none()
+            if cust:
+                customer_name = cust.full_name if hasattr(cust, 'full_name') else f"{cust.first_name or ''} {cust.last_name or ''}".strip()
+
+        eligible.append({
+            "id": str(o.id),
+            "order_number": o.order_number,
+            "customer_name": customer_name,
+            "total_amount": float(o.total_amount),
+            "status": o.status,
+            "item_count": len(o.items) if hasattr(o, 'items') and o.items else 0,
+            "created_at": o.created_at.isoformat() if o.created_at else None,
+        })
+
+    return eligible
+
+
 @router.post("/invoices", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
 async def create_invoice(
     invoice_in: InvoiceCreate,
