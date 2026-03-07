@@ -28,6 +28,10 @@ class Warehouse(Base, TimestampMixin):
     name = Column(String(200), nullable=False)
     warehouse_type = Column(String(50), default="REGIONAL")
 
+    # GST / Legal
+    gstin = Column(String(15), nullable=True, comment="GSTIN of this location (for invoice seller details)")
+    state_code = Column(String(2), nullable=True, comment="GST state code (e.g. 07 for Delhi)")
+
     # Address
     address_line1 = Column(String(255), nullable=False)
     address_line2 = Column(String(255))

@@ -3222,8 +3222,9 @@ async def download_tax_invoice(
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
-    # Build items table
+    # Build items table and collect serial numbers for footer
     items_html = ""
+    serial_rows = []  # Collect (item_name, sku, serials) for footer section
     for idx, item in enumerate(invoice.items, 1):
         unit_price = float(item.unit_price) if item.unit_price else 0.0
         taxable = float(item.taxable_value) if item.taxable_value else 0.0
@@ -3231,6 +3232,16 @@ async def download_tax_invoice(
         sgst = float(item.sgst_amount) if item.sgst_amount else 0.0
         igst = float(item.igst_amount) if item.igst_amount else 0.0
         total = float(item.line_total) if item.line_total else 0.0
+
+        # Collect serial numbers for footer
+        if item.serial_numbers:
+            sn = item.serial_numbers
+            if isinstance(sn, str):
+                import json as _json
+                sn = _json.loads(sn)
+            serials = sn.get("serials", []) if isinstance(sn, dict) else []
+            if serials:
+                serial_rows.append((idx, item.item_name or '-', item.sku or '-', serials))
 
         items_html += f"""
         <tr>
@@ -3247,6 +3258,35 @@ async def download_tax_invoice(
             <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹{total:,.2f}</td>
         </tr>
         """
+
+    # Build serial number footer section
+    serial_section = ""
+    if serial_rows:
+        serial_table_rows = ""
+        for idx, name, sku, serials in serial_rows:
+            serial_table_rows += f"""
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 6px 10px; font-size: 11px;">{idx}</td>
+                <td style="border: 1px solid #ddd; padding: 6px 10px; font-size: 11px;">{name}</td>
+                <td style="border: 1px solid #ddd; padding: 6px 10px; font-size: 11px;">{sku}</td>
+                <td style="border: 1px solid #ddd; padding: 6px 10px; font-size: 11px;">{', '.join(serials)}</td>
+            </tr>"""
+        serial_section = f"""
+        <div style="margin: 15px 0; padding: 12px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 5px;">
+            <h4 style="margin: 0 0 8px 0; color: #1a73e8; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid #ddd; padding-bottom: 5px;">Serial Numbers</h4>
+            <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+                <thead>
+                    <tr>
+                        <th style="background: #e9ecef; padding: 6px 10px; text-align: left; border: 1px solid #ddd; width: 30px;">#</th>
+                        <th style="background: #e9ecef; padding: 6px 10px; text-align: left; border: 1px solid #ddd;">Item</th>
+                        <th style="background: #e9ecef; padding: 6px 10px; text-align: left; border: 1px solid #ddd;">SKU</th>
+                        <th style="background: #e9ecef; padding: 6px 10px; text-align: left; border: 1px solid #ddd;">Serial Number(s)</th>
+                    </tr>
+                </thead>
+                <tbody>{serial_table_rows}
+                </tbody>
+            </table>
+        </div>"""
 
     # Determine tax type display
     tax_type = "IGST" if invoice.is_interstate else "CGST + SGST"
@@ -3565,6 +3605,8 @@ async def download_tax_invoice(
         <div class="amount-words">
             <strong>Amount in Words:</strong> {total_in_words}
         </div>
+
+        {serial_section}
 
         <div class="footer-grid">
             <div class="terms">

@@ -264,6 +264,36 @@ class InvoiceService:
         if not company:
             raise InvoiceGenerationError("No active company found for seller details")
 
+        # 3a. Get dispatching warehouse — use its GSTIN/address if available
+        from app.models.warehouse import Warehouse
+        from app.models.picklist import Picklist
+        warehouse = None
+        # Try order.warehouse_id first, then fall back to picklist's warehouse
+        wh_id = order.warehouse_id
+        if not wh_id:
+            pl_result = await self.db.execute(
+                select(Picklist.warehouse_id).where(Picklist.id.in_(
+                    select(PicklistItem.picklist_id).where(PicklistItem.order_id == order.id)
+                )).limit(1)
+            )
+            wh_id = pl_result.scalar_one_or_none()
+        if wh_id:
+            wh_result = await self.db.execute(
+                select(Warehouse).where(Warehouse.id == wh_id)
+            )
+            warehouse = wh_result.scalar_one_or_none()
+
+        # Seller details: warehouse overrides company when warehouse has GSTIN
+        seller_name = company.legal_name or company.trade_name
+        if warehouse and warehouse.gstin:
+            seller_gstin = warehouse.gstin
+            seller_address = warehouse.full_address
+            seller_state_code_val = warehouse.state_code or company.state_code
+        else:
+            seller_gstin = company.gstin
+            seller_address = company.full_address
+            seller_state_code_val = company.state_code
+
         # 4. Get serial numbers from picklist
         serials_by_item = await self.get_picked_serial_numbers(order.id)
 
@@ -273,11 +303,10 @@ class InvoiceService:
 
         shipping_state = shipping_address.get("state", "")
         billing_state = billing_address.get("state", shipping_state)
-        seller_state = company.state
 
         shipping_state_code = await self.get_state_code_from_name(shipping_state)
         billing_state_code = await self.get_state_code_from_name(billing_state)
-        seller_state_code = company.state_code
+        seller_state_code = seller_state_code_val
 
         is_interstate = seller_state_code != shipping_state_code
 
@@ -332,9 +361,9 @@ class InvoiceService:
             shipping_country=shipping_address.get("country", "India"),
 
             # Seller details
-            seller_gstin=company.gstin,
-            seller_name=company.trade_name or company.legal_name,
-            seller_address=company.full_address,
+            seller_gstin=seller_gstin,
+            seller_name=seller_name,
+            seller_address=seller_address,
             seller_state_code=seller_state_code,
 
             # Place of supply
@@ -621,6 +650,26 @@ class InvoiceService:
         if not company:
             raise InvoiceGenerationError("No active company found for seller details")
 
+        # 3a. Get dispatching warehouse — use its GSTIN/address if available
+        warehouse = shipment.warehouse if hasattr(shipment, 'warehouse') else None
+        if not warehouse and order.warehouse_id:
+            from app.models.warehouse import Warehouse as WH
+            wh_result = await self.db.execute(
+                select(WH).where(WH.id == order.warehouse_id)
+            )
+            warehouse = wh_result.scalar_one_or_none()
+
+        # Seller details: warehouse overrides company when warehouse has GSTIN
+        seller_name = company.legal_name or company.trade_name
+        if warehouse and warehouse.gstin:
+            seller_gstin = warehouse.gstin
+            seller_address = warehouse.full_address
+            seller_state_code_val = warehouse.state_code or company.state_code
+        else:
+            seller_gstin = company.gstin
+            seller_address = company.full_address
+            seller_state_code_val = company.state_code
+
         # 4. Get serial numbers from picklist
         serials_by_item = await self.get_picked_serial_numbers(order.id)
 
@@ -631,11 +680,10 @@ class InvoiceService:
         # Get state codes
         shipping_state = shipping_address.get("state", shipment.ship_to_state or "")
         billing_state = billing_address.get("state", shipping_state)
-        seller_state = company.state
 
         shipping_state_code = await self.get_state_code_from_name(shipping_state)
         billing_state_code = await self.get_state_code_from_name(billing_state)
-        seller_state_code = company.state_code
+        seller_state_code = seller_state_code_val
 
         # Determine if inter-state
         is_interstate = seller_state_code != shipping_state_code
@@ -681,9 +729,9 @@ class InvoiceService:
             shipping_country=shipping_address.get("country", "India"),
 
             # Seller details
-            seller_gstin=company.gstin,
-            seller_name=company.trade_name or company.legal_name,
-            seller_address=company.full_address,
+            seller_gstin=seller_gstin,
+            seller_name=seller_name,
+            seller_address=seller_address,
             seller_state_code=seller_state_code,
 
             # Place of supply

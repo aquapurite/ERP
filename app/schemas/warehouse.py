@@ -13,6 +13,8 @@ class WarehouseBase(BaseModel):
     """Base warehouse schema."""
     name: str = Field(..., max_length=200)
     warehouse_type: WarehouseType = WarehouseType.REGIONAL
+    gstin: Optional[str] = Field(None, max_length=15)
+    state_code: Optional[str] = Field(None, max_length=2)
     address_line1: str = Field(..., max_length=255)
     address_line2: Optional[str] = Field(None, max_length=255)
     city: str = Field(..., max_length=100)
@@ -41,6 +43,8 @@ class WarehouseUpdate(BaseModel):
     """Warehouse update schema."""
     name: Optional[str] = Field(None, max_length=200)
     warehouse_type: Optional[WarehouseType] = None
+    gstin: Optional[str] = Field(None, max_length=15)
+    state_code: Optional[str] = Field(None, max_length=2)
     address_line1: Optional[str] = None
     address_line2: Optional[str] = None
     city: Optional[str] = None
@@ -68,6 +72,8 @@ class WarehouseResponse(BaseResponseSchema):
     code: str
     name: str
     warehouse_type: str  # VARCHAR in DB
+    gstin: Optional[str] = None
+    state_code: Optional[str] = None
     address_line1: str
     address_line2: Optional[str] = None
     city: str

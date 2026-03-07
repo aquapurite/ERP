@@ -787,6 +787,11 @@ async def _handle_order_status_event(db: DB, data: dict, event_type: str = "") -
         # or data.serialNumbers[] (flat list for single-item orders)
         await _capture_serials_from_cjdquick(db, order, data)
 
+        # Flush so picked_serials are visible to the invoice generation query
+        # (autoflush=False means the SELECT in get_picked_serial_numbers would
+        # otherwise read stale NULL values from the database)
+        await db.flush()
+
         # --- Auto-generate TAX_INVOICE on shipment ---
         # This ensures zero sale loss: every shipped order gets an invoice
         await _auto_generate_invoice_on_shipped(db, order, data)

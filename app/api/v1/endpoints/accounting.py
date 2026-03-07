@@ -1735,8 +1735,8 @@ async def bulk_create_journal_entries(
 )
 async def list_journal_entries(
     db: DB,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=100),
     entry_type: Optional[str] = None,
     status: Optional[JournalStatus] = None,
     start_date: Optional[date] = None,
@@ -1745,6 +1745,7 @@ async def list_journal_entries(
     current_user: User = Depends(get_current_user),
 ):
     """List journal entries."""
+    import math
     query = select(JournalEntry).options(selectinload(JournalEntry.lines))
     count_query = select(func.count(JournalEntry.id))
 
@@ -1770,8 +1771,9 @@ async def list_journal_entries(
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
+    skip = (page - 1) * size
     query = query.order_by(JournalEntry.entry_date.desc(), JournalEntry.created_at.desc())
-    query = query.offset(skip).limit(limit)
+    query = query.offset(skip).limit(size)
 
     result = await db.execute(query)
     journals = result.scalars().all()
@@ -1779,8 +1781,9 @@ async def list_journal_entries(
     return JournalListResponse(
         items=[JournalEntryResponse.model_validate(j) for j in journals],
         total=total,
-        skip=skip,
-        limit=limit
+        page=page,
+        size=size,
+        pages=math.ceil(total / size) if total > 0 else 0
     )
 
 

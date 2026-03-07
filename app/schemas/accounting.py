@@ -359,8 +359,9 @@ class JournalEntryListResponse(BaseModel):
     """Response for listing journal entries."""
     items: List[JournalEntryResponse]
     total: int
-    skip: int = 0
-    limit: int = 50
+    page: int = 1
+    size: int = 50
+    pages: int = 0
 
 
 # Alias for backward compatibility
