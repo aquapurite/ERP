@@ -3313,7 +3313,7 @@ async def create_grn(
     # Skip QC if not required
     if not grn_in.qc_required:
         grn.status = GRNStatus.PUT_AWAY_PENDING.value
-        grn.qc_status = QualityCheckResult.ACCEPTED.value
+        grn.qc_status = QualityCheckResult.PASSED.value
 
     await db.commit()
 
@@ -3554,9 +3554,9 @@ async def process_grn_quality_check(
             if rejection_reason:
                 item.rejection_reason = rejection_reason
 
-            if item.qc_result == QualityCheckResult.ACCEPTED:
+            if item.qc_result == QualityCheckResult.PASSED:
                 all_rejected = False
-            elif item.qc_result == QualityCheckResult.REJECTED:
+            elif item.qc_result == QualityCheckResult.FAILED:
                 all_accepted = False
                 # Update accepted quantity to 0 if rejected
                 item.quantity_accepted = 0
@@ -3567,11 +3567,11 @@ async def process_grn_quality_check(
 
     # Set overall QC status
     if all_accepted:
-        grn.qc_status = QualityCheckResult.ACCEPTED.value
+        grn.qc_status = QualityCheckResult.PASSED.value
     elif all_rejected:
-        grn.qc_status = QualityCheckResult.REJECTED.value
+        grn.qc_status = QualityCheckResult.FAILED.value
     else:
-        grn.qc_status = QualityCheckResult.PARTIAL.value
+        grn.qc_status = QualityCheckResult.CONDITIONAL.value
 
     grn.qc_done_by = current_user.id
     grn.qc_done_at = datetime.now(timezone.utc)
@@ -3686,7 +3686,7 @@ async def process_grn_putaway(
             db.add(movement)
 
     # Update GRN status
-    grn.status = GRNStatus.COMPLETED.value
+    grn.status = GRNStatus.PUT_AWAY_COMPLETE.value
     grn.put_away_complete = True
     grn.put_away_at = datetime.now(timezone.utc)
 
@@ -7852,7 +7852,7 @@ async def receive_srn(
         # If no QC required, accept all quantities
         for item in srn.items:
             item.quantity_accepted = item.quantity_returned
-            item.qc_result = QualityCheckResult.ACCEPTED.value
+            item.qc_result = QualityCheckResult.PASSED.value
         srn.total_quantity_accepted = srn.total_quantity_returned
 
     await db.commit()
@@ -7923,9 +7923,9 @@ async def process_srn_quality_check(
             total_accepted += item.quantity_accepted
             total_rejected += item.quantity_rejected
 
-            if item.qc_result == QualityCheckResult.ACCEPTED:
+            if item.qc_result == QualityCheckResult.PASSED:
                 all_rejected = False
-            elif item.qc_result == QualityCheckResult.REJECTED:
+            elif item.qc_result == QualityCheckResult.FAILED:
                 all_accepted = False
             else:
                 all_accepted = False
@@ -7933,11 +7933,11 @@ async def process_srn_quality_check(
 
     # Set overall QC status
     if all_accepted:
-        srn.qc_status = QualityCheckResult.ACCEPTED.value
+        srn.qc_status = QualityCheckResult.PASSED.value
     elif all_rejected:
-        srn.qc_status = QualityCheckResult.REJECTED.value
+        srn.qc_status = QualityCheckResult.FAILED.value
     else:
-        srn.qc_status = QualityCheckResult.PARTIAL.value
+        srn.qc_status = QualityCheckResult.CONDITIONAL.value
 
     # Update SRN totals
     srn.total_quantity_accepted = total_accepted
