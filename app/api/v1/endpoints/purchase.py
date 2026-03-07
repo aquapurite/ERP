@@ -3220,7 +3220,6 @@ async def create_grn(
         qc_required=grn_in.qc_required,
         receiving_remarks=grn_in.receiving_remarks,
         received_by=current_user.id,
-        created_by=current_user.id,
     )
 
     db.add(grn)
