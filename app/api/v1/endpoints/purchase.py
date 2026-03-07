@@ -3313,7 +3313,7 @@ async def create_grn(
 
     # Skip QC if not required
     if not grn_in.qc_required:
-        grn.status = GRNStatus.PENDING_PUTAWAY.value
+        grn.status = GRNStatus.PUT_AWAY_PENDING.value
         grn.qc_status = QualityCheckResult.ACCEPTED.value
 
     await db.commit()
@@ -3567,7 +3567,7 @@ async def process_grn_quality_check(
     grn.qc_done_by = current_user.id
     grn.qc_done_at = datetime.now(timezone.utc)
     grn.qc_remarks = qc_request.overall_remarks
-    grn.status = GRNStatus.PENDING_PUTAWAY.value
+    grn.status = GRNStatus.PUT_AWAY_PENDING.value
 
     await db.commit()
     await db.refresh(grn)
@@ -3593,7 +3593,7 @@ async def process_grn_putaway(
     if not grn:
         raise HTTPException(status_code=404, detail="GRN not found")
 
-    if grn.status != GRNStatus.PENDING_PUTAWAY:
+    if grn.status != GRNStatus.PUT_AWAY_PENDING:
         raise HTTPException(status_code=400, detail="GRN is not pending put-away")
 
     # Process each item location
