@@ -68,20 +68,21 @@ CURRENT_ASSET_SUBTYPES = {"CASH", "BANK", "ACCOUNTS_RECEIVABLE", "INVENTORY", "P
 CURRENT_LIABILITY_SUBTYPES = {"ACCOUNTS_PAYABLE", "TAX_PAYABLE", "ACCRUED_EXPENSE", "SHORT_TERM_DEBT", "CURRENT_LIABILITY"}
 
 
-def build_section_items(accounts: list, previous_balances: dict, negate: bool = False) -> List[dict]:
+def build_section_items(accounts: list, gl_balances: dict, previous_balances: dict, negate: bool = False) -> List[dict]:
     """Build line items for a balance sheet section.
 
     Args:
         accounts: List of account records
+        gl_balances: Dict of account_id -> GL-computed balance (opening + debits - credits)
         previous_balances: Dict of account_id -> previous balance
         negate: If True, negate balances (for LIABILITY/EQUITY which store negative balances)
     """
     items = []
     for acc in accounts:
-        current = float(acc.current_balance or 0)
+        current = gl_balances.get(str(acc.id), 0.0)
         previous = previous_balances.get(str(acc.id), 0.0)
 
-        # For liability/equity accounts, current_balance is stored as negative
+        # For liability/equity accounts, balance is negative (credits > debits)
         # Negate to show positive values on Balance Sheet
         if negate:
             current = -current
@@ -103,6 +104,36 @@ def build_section_items(accounts: list, previous_balances: dict, negate: bool = 
     return items
 
 
+async def _compute_gl_balances(db, accounts: list, as_of_date: date) -> dict:
+    """Compute account balances dynamically from GL entries.
+
+    Returns dict of account_id (str) -> balance (float).
+    Balance = opening_balance + sum(debits) - sum(credits) from GL up to as_of_date.
+    """
+    from app.models.accounting import GeneralLedger
+
+    balances = {}
+    for acc in accounts:
+        opening = float(acc.opening_balance or 0)
+
+        gl_query = select(
+            func.coalesce(func.sum(GeneralLedger.debit_amount), 0).label("total_debit"),
+            func.coalesce(func.sum(GeneralLedger.credit_amount), 0).label("total_credit"),
+        ).where(
+            and_(
+                GeneralLedger.account_id == acc.id,
+                GeneralLedger.transaction_date <= as_of_date,
+            )
+        )
+        result = await db.execute(gl_query)
+        row = result.one()
+
+        balance = opening + float(row.total_debit) - float(row.total_credit)
+        balances[str(acc.id)] = balance
+
+    return balances
+
+
 @router.get("/balance-sheet")
 async def get_balance_sheet(
     db: DB,
@@ -113,100 +144,61 @@ async def get_balance_sheet(
     """
     Get Balance Sheet report with line items and comparison.
 
-    Returns assets, liabilities, equity with individual account breakdowns.
+    Calculates balances DYNAMICALLY from GL entries (not stored current_balance)
+    to ensure accuracy.
     """
+    from app.models.accounting import GeneralLedger
+
     today = date.today()
 
-    # For now, we use current balances from chart_of_accounts
-    # In a full implementation, we'd query GL entries up to as_of_date
+    # Get all non-group, active accounts by type
+    async def get_accounts(account_type: str):
+        q = select(ChartOfAccount).where(
+            and_(
+                ChartOfAccount.account_type == account_type,
+                ChartOfAccount.is_group == False,
+                ChartOfAccount.is_active == True,
+            )
+        ).order_by(ChartOfAccount.account_code)
+        result = await db.execute(q)
+        return result.scalars().all()
 
-    # Get all non-group asset accounts
-    asset_query = select(ChartOfAccount).where(
-        and_(
-            ChartOfAccount.account_type == "ASSET",
-            ChartOfAccount.is_group == False,
-            ChartOfAccount.is_active == True,
-        )
-    ).order_by(ChartOfAccount.account_code)
-
-    asset_result = await db.execute(asset_query)
-    all_assets = asset_result.scalars().all()
+    all_assets = await get_accounts("ASSET")
+    all_liabilities = await get_accounts("LIABILITY")
+    equity_accounts = await get_accounts("EQUITY")
+    revenue_accounts = await get_accounts("REVENUE")
+    expense_accounts = await get_accounts("EXPENSE")
 
     # Split into current and non-current
     current_assets = [a for a in all_assets if a.account_sub_type in CURRENT_ASSET_SUBTYPES or a.account_sub_type is None]
     non_current_assets = [a for a in all_assets if a.account_sub_type and a.account_sub_type not in CURRENT_ASSET_SUBTYPES]
-
-    # Get all non-group liability accounts
-    liability_query = select(ChartOfAccount).where(
-        and_(
-            ChartOfAccount.account_type == "LIABILITY",
-            ChartOfAccount.is_group == False,
-            ChartOfAccount.is_active == True,
-        )
-    ).order_by(ChartOfAccount.account_code)
-
-    liability_result = await db.execute(liability_query)
-    all_liabilities = liability_result.scalars().all()
-
-    # Split into current and non-current
     current_liabilities = [l for l in all_liabilities if l.account_sub_type in CURRENT_LIABILITY_SUBTYPES or l.account_sub_type is None]
     non_current_liabilities = [l for l in all_liabilities if l.account_sub_type and l.account_sub_type not in CURRENT_LIABILITY_SUBTYPES]
 
-    # Get all equity accounts
-    equity_query = select(ChartOfAccount).where(
-        and_(
-            ChartOfAccount.account_type == "EQUITY",
-            ChartOfAccount.is_group == False,
-            ChartOfAccount.is_active == True,
-        )
-    ).order_by(ChartOfAccount.account_code)
+    # Compute GL-based balances for all accounts
+    all_bs_accounts = all_assets + all_liabilities + equity_accounts
+    all_pnl_accounts = revenue_accounts + expense_accounts
+    gl_balances = await _compute_gl_balances(db, all_bs_accounts + all_pnl_accounts, today)
 
-    equity_result = await db.execute(equity_query)
-    equity_accounts = equity_result.scalars().all()
-
-    # Calculate Current Period P&L (Revenue - Expenses)
-    # This needs to be added to Equity to balance the Balance Sheet
-    revenue_query = select(ChartOfAccount).where(
-        and_(
-            ChartOfAccount.account_type == "REVENUE",
-            ChartOfAccount.is_group == False,
-            ChartOfAccount.is_active == True,
-        )
-    )
-    revenue_result = await db.execute(revenue_query)
-    revenue_accounts = revenue_result.scalars().all()
-    # Revenue is stored as negative (credit), negate to get positive
-    total_revenue = -sum(float(r.current_balance or 0) for r in revenue_accounts)
-
-    expense_query = select(ChartOfAccount).where(
-        and_(
-            ChartOfAccount.account_type == "EXPENSE",
-            ChartOfAccount.is_group == False,
-            ChartOfAccount.is_active == True,
-        )
-    )
-    expense_result = await db.execute(expense_query)
-    expense_accounts = expense_result.scalars().all()
-    total_expenses = sum(float(e.current_balance or 0) for e in expense_accounts)
-
-    # Net Income (Profit/Loss) for current period
+    # Calculate Current Period P&L from GL
+    # Revenue: balance = debits - credits (normally negative for credit balance)
+    total_revenue = -sum(gl_balances.get(str(r.id), 0) for r in revenue_accounts)
+    total_expenses = sum(gl_balances.get(str(e.id), 0) for e in expense_accounts)
     current_period_pnl = total_revenue - total_expenses
 
     # For comparison, use opening_balance as "previous" (simplified)
-    # In a full implementation, we'd query GL at a previous date
     previous_balances = {}
-    for acc in all_assets + all_liabilities + equity_accounts:
+    for acc in all_bs_accounts:
         previous_balances[str(acc.id)] = float(acc.opening_balance or 0)
 
-    # Build sections - negate=True for liability/equity to show positive values
-    current_assets_items = build_section_items(current_assets, previous_balances, negate=False)
-    non_current_assets_items = build_section_items(non_current_assets, previous_balances, negate=False)
-    current_liabilities_items = build_section_items(current_liabilities, previous_balances, negate=True)
-    non_current_liabilities_items = build_section_items(non_current_liabilities, previous_balances, negate=True)
-    equity_items = build_section_items(equity_accounts, previous_balances, negate=True)
+    # Build sections using GL-computed balances
+    current_assets_items = build_section_items(current_assets, gl_balances, previous_balances, negate=False)
+    non_current_assets_items = build_section_items(non_current_assets, gl_balances, previous_balances, negate=False)
+    current_liabilities_items = build_section_items(current_liabilities, gl_balances, previous_balances, negate=True)
+    non_current_liabilities_items = build_section_items(non_current_liabilities, gl_balances, previous_balances, negate=True)
+    equity_items = build_section_items(equity_accounts, gl_balances, previous_balances, negate=True)
 
     # Add Current Period P&L to equity items
-    # This represents undistributed profit/loss for the current period
     if current_period_pnl != 0:
         equity_items.append({
             "account_code": "",
@@ -219,20 +211,20 @@ async def get_balance_sheet(
             "indent_level": 0
         })
 
-    # Calculate totals - negate liability/equity since they store negative balances
-    total_current_assets = sum(float(a.current_balance or 0) for a in current_assets)
-    total_non_current_assets = sum(float(a.current_balance or 0) for a in non_current_assets)
+    # Calculate totals from GL-computed balances
+    total_current_assets = sum(gl_balances.get(str(a.id), 0) for a in current_assets)
+    total_non_current_assets = sum(gl_balances.get(str(a.id), 0) for a in non_current_assets)
     total_assets = total_current_assets + total_non_current_assets
 
-    # For liabilities/equity: negate since current_balance stores debits-credits (negative for normal credit balances)
-    total_current_liabilities = -sum(float(l.current_balance or 0) for l in current_liabilities)
-    total_non_current_liabilities = -sum(float(l.current_balance or 0) for l in non_current_liabilities)
+    # Negate liabilities/equity (stored as negative for normal credit balances)
+    total_current_liabilities = -sum(gl_balances.get(str(l.id), 0) for l in current_liabilities)
+    total_non_current_liabilities = -sum(gl_balances.get(str(l.id), 0) for l in non_current_liabilities)
     total_liabilities = total_current_liabilities + total_non_current_liabilities
 
     # Equity includes current period P&L
-    total_equity = -sum(float(e.current_balance or 0) for e in equity_accounts) + current_period_pnl
+    total_equity = -sum(gl_balances.get(str(e.id), 0) for e in equity_accounts) + current_period_pnl
 
-    # Previous totals - negate liability/equity
+    # Previous totals
     prev_current_assets = sum(previous_balances.get(str(a.id), 0) for a in current_assets)
     prev_non_current_assets = sum(previous_balances.get(str(a.id), 0) for a in non_current_assets)
     prev_total_assets = prev_current_assets + prev_non_current_assets
