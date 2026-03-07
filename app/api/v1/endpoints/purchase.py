@@ -3484,22 +3484,32 @@ async def delete_grn(
             detail="Cannot delete GRN after put-away is complete. Inventory has been updated."
         )
 
-    # Clear po_serials.grn_id references before deletion
-    # Note: po_serials.grn_id is VARCHAR in production but UUID in SQLAlchemy model
-    # Use raw SQL to avoid type mismatch (SQLAlchemy tries UUID comparison)
+    # Use raw SQL for all deletions to avoid ORM lazy-loading po_serials
+    # relationship which has a VARCHAR/UUID type mismatch (po_serials.grn_id
+    # is String(36) but goods_receipt_notes.id is UUID)
     from sqlalchemy import text
     grn_id_str = str(grn_id)
+
+    # Clear po_serials references
     await db.execute(
-        text("""
-            UPDATE po_serials
-            SET grn_id = NULL, grn_item_id = NULL, received_at = NULL, received_by = NULL
-            WHERE grn_id = :grn_id
-        """),
+        text("UPDATE po_serials SET grn_id = NULL, grn_item_id = NULL, received_at = NULL, received_by = NULL WHERE grn_id = :grn_id"),
         {"grn_id": grn_id_str}
     )
 
-    # Delete the GRN (CASCADE will delete items)
-    await db.delete(grn)
+    # Delete GRN items first
+    await db.execute(
+        text("DELETE FROM grn_items WHERE grn_id = :grn_id"),
+        {"grn_id": grn_id_str}
+    )
+
+    # Delete the GRN
+    await db.execute(
+        text("DELETE FROM goods_receipt_notes WHERE id = :grn_id"),
+        {"grn_id": grn_id_str}
+    )
+
+    # Expunge the ORM object so SQLAlchemy doesn't try to flush/delete it
+    db.expunge(grn)
     await db.commit()
 
     return None
