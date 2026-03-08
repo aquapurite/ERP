@@ -174,7 +174,7 @@ export default function GeneralLedgerPage() {
     try {
       const allData = await ledgerApi.getLedger(selectedAccount, { page: 1, size: 500 });
       if (!allData?.items?.length) {
-        toast.error('No data to export');
+        toast.error('No ledger entries found for this account. If this is a group account, select a child account instead.');
         return;
       }
       const selectedAcc = accounts.find((a: Account) => a.id === selectedAccount);
@@ -209,13 +209,15 @@ export default function GeneralLedgerPage() {
         csvRows.push(`,,Closing Balance,,,${Math.abs(cb).toFixed(2)} ${cb >= 0 ? 'Dr' : 'Cr'}`);
       }
 
-      const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = url;
-      link.download = `Ledger_${accLabel.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+      link.setAttribute('href', url);
+      link.setAttribute('download', `Ledger_${accLabel.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
       link.click();
-      URL.revokeObjectURL(url);
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 100);
       toast.success('Ledger exported successfully');
     } catch {
       toast.error('Failed to export ledger');
