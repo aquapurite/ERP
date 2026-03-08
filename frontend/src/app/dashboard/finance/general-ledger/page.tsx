@@ -75,7 +75,13 @@ const ledgerApi = {
   },
   getLedger: async (accountId: string, params?: { page?: number; size?: number; from_date?: string; to_date?: string }) => {
     try {
-      const { data } = await apiClient.get(`/accounting/ledger/${accountId}`, { params });
+      // Backend expects skip/limit, not page/size
+      const backendParams: Record<string, unknown> = {};
+      if (params?.size) backendParams.limit = params.size;
+      if (params?.page && params?.size) backendParams.skip = (params.page - 1) * params.size;
+      if (params?.from_date) backendParams.start_date = params.from_date;
+      if (params?.to_date) backendParams.end_date = params.to_date;
+      const { data } = await apiClient.get(`/accounting/ledger/${accountId}`, { params: backendParams });
       return data;
     } catch {
       return { items: [], total: 0, pages: 0, opening_balance: 0, closing_balance: 0 };

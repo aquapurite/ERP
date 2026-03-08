@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel
-from sqlalchemy import select, func, and_, or_, case
+from sqlalchemy import select, func, and_, or_, case, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -2025,7 +2025,12 @@ async def delete_journal_entry(
             detail=f"Cannot delete journal entry with status '{journal.status}'. Only DRAFT entries can be deleted."
         )
 
-    # Delete journal lines first (cascade should handle this, but being explicit)
+    # Delete GL entries first (explicit cleanup to prevent orphans)
+    await db.execute(
+        delete(GeneralLedger).where(GeneralLedger.journal_entry_id == journal_id)
+    )
+
+    # Delete journal lines
     for line in journal.lines:
         await db.delete(line)
 
