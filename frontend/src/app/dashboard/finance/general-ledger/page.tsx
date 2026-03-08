@@ -164,6 +164,63 @@ export default function GeneralLedgerPage() {
     queryKey: ['accounts-list'],
     queryFn: ledgerApi.getAccounts,
   });
+  const accounts = accountsData?.items || [];
+
+  const handleExport = async () => {
+    if (!selectedAccount) {
+      toast.error('Please select an account first');
+      return;
+    }
+    try {
+      const allData = await ledgerApi.getLedger(selectedAccount, { page: 1, size: 500 });
+      if (!allData?.items?.length) {
+        toast.error('No data to export');
+        return;
+      }
+      const selectedAcc = accounts.find((a: Account) => a.id === selectedAccount);
+      const accLabel = selectedAcc ? `${selectedAcc.account_code} ${selectedAcc.account_name}` : selectedAccount;
+
+      const headers = ['Date', 'Voucher #', 'Particulars', 'Debit', 'Credit', 'Balance'];
+      const csvRows = [headers.join(',')];
+
+      // Opening balance row
+      if (allData.opening_balance !== undefined) {
+        const ob = allData.opening_balance;
+        csvRows.push(`,,Opening Balance,,,${Math.abs(ob).toFixed(2)} ${ob >= 0 ? 'Dr' : 'Cr'}`);
+      }
+
+      for (const item of allData.items) {
+        const row = [
+          item.entry_date,
+          `"${(item.entry_number || '').replace(/"/g, '""')}"`,
+          `"${(item.narration || '').replace(/"/g, '""')}"`,
+          item.debit ? item.debit.toFixed(2) : '',
+          item.credit ? item.credit.toFixed(2) : '',
+          `${Math.abs(item.running_balance).toFixed(2)} ${item.running_balance >= 0 ? 'Dr' : 'Cr'}`,
+        ];
+        csvRows.push(row.join(','));
+      }
+
+      // Totals row
+      csvRows.push(`,,Totals,${allData.total_debit?.toFixed(2) || '0.00'},${allData.total_credit?.toFixed(2) || '0.00'},`);
+      // Closing balance row
+      if (allData.closing_balance !== undefined) {
+        const cb = allData.closing_balance;
+        csvRows.push(`,,Closing Balance,,,${Math.abs(cb).toFixed(2)} ${cb >= 0 ? 'Dr' : 'Cr'}`);
+      }
+
+      const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Ledger_${accLabel.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success('Ledger exported successfully');
+    } catch {
+      toast.error('Failed to export ledger');
+    }
+  };
 
   const { data: ledgerData, isLoading } = useQuery({
     queryKey: ['ledger', selectedAccount, page, pageSize],
@@ -202,9 +259,6 @@ export default function GeneralLedgerPage() {
       recalculateMutation.mutate(selectedAccount);
     }
   };
-
-  // API returns { items: [...], total: ... }
-  const accounts = accountsData?.items || [];
 
   return (
     <div className="space-y-6">
@@ -263,7 +317,7 @@ export default function GeneralLedgerPage() {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-            <Button variant="outline">
+            <Button variant="outline" onClick={handleExport} disabled={!selectedAccount}>
               <Download className="mr-2 h-4 w-4" />
               Export
             </Button>
