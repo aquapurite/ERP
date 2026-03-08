@@ -1547,3 +1547,148 @@ class AutoJournalService:
             account.current_balance = new_balance
 
         await self.db.flush()
+
+    async def auto_clear_vendor_invoices(self, journal_id: UUID, user_id: UUID = None):
+        """
+        SAP F.13-inspired auto-clearing.
+        After a JE is posted to GL, check if any line debits a vendor-specific AP account.
+        If so, auto-match against open invoices for that vendor (FIFO by due_date).
+
+        Safe because:
+        - Only triggers on DEBIT to AP accounts (payments reduce AP)
+        - Only matches APPROVED/PAYMENT_INITIATED invoices
+        - Skips generic AP account (2100) — can't determine vendor
+        - Idempotent: checks for existing VendorLedger entry before creating
+        """
+        import logging
+        from app.models.vendor import Vendor, VendorLedger
+        from app.models.purchase import VendorInvoice
+
+        logger = logging.getLogger(__name__)
+
+        # Load journal with lines
+        result = await self.db.execute(
+            select(JournalEntry)
+            .options(selectinload(JournalEntry.lines))
+            .where(JournalEntry.id == journal_id)
+        )
+        journal = result.scalar_one_or_none()
+        if not journal:
+            return
+
+        for line in journal.lines:
+            debit = line.debit_amount or Decimal("0")
+            if debit <= 0:
+                continue
+
+            # Find vendor whose gl_account_id matches this line's account
+            vendor_result = await self.db.execute(
+                select(Vendor).where(Vendor.gl_account_id == line.account_id)
+            )
+            vendor = vendor_result.scalar_one_or_none()
+            if not vendor:
+                # Generic account or not linked to any vendor — skip
+                continue
+
+            # Idempotency: check if VendorLedger PAYMENT already exists for this JE + vendor
+            existing_ledger = await self.db.execute(
+                select(VendorLedger).where(
+                    and_(
+                        VendorLedger.reference_id == journal_id,
+                        VendorLedger.vendor_id == vendor.id,
+                        VendorLedger.transaction_type == "PAYMENT",
+                    )
+                )
+            )
+            if existing_ledger.scalar_one_or_none():
+                logger.info(
+                    "Auto-clear skipped: VendorLedger already exists for JE %s / vendor %s",
+                    journal.entry_number, vendor.name,
+                )
+                continue
+
+            # Load open invoices for this vendor, ordered by due_date ASC (FIFO)
+            invoices_result = await self.db.execute(
+                select(VendorInvoice).where(
+                    and_(
+                        VendorInvoice.vendor_id == vendor.id,
+                        VendorInvoice.status.in_(["APPROVED", "PAYMENT_INITIATED"]),
+                    )
+                ).order_by(VendorInvoice.due_date.asc())
+            )
+            open_invoices = list(invoices_result.scalars().all())
+
+            remaining = debit
+            cleared_invoices = []
+
+            # Reference match: check if JE narration/source_number contains an invoice number
+            if open_invoices and (journal.narration or journal.source_number):
+                search_text = f"{journal.source_number or ''} {journal.narration or ''}".upper()
+                for inv in list(open_invoices):
+                    if inv.invoice_number and inv.invoice_number.upper() in search_text:
+                        allocate = min(remaining, inv.balance_due or inv.net_payable or Decimal("0"))
+                        if allocate > 0:
+                            cleared_invoices.append((inv, allocate))
+                            remaining -= allocate
+                            open_invoices.remove(inv)
+                        if remaining <= 0:
+                            break
+
+            # FIFO clear: allocate remaining to oldest invoices
+            if remaining > 0:
+                for inv in open_invoices:
+                    inv_due = inv.balance_due if inv.balance_due is not None else (inv.net_payable or Decimal("0"))
+                    if inv_due <= 0:
+                        continue
+                    allocate = min(remaining, inv_due)
+                    cleared_invoices.append((inv, allocate))
+                    remaining -= allocate
+                    if remaining <= 0:
+                        break
+
+            # Apply allocations to invoices
+            total_cleared = Decimal("0")
+            for inv, allocated in cleared_invoices:
+                inv.amount_paid = (inv.amount_paid or Decimal("0")) + allocated
+                net = inv.net_payable or inv.grand_total or Decimal("0")
+                inv.balance_due = net - inv.amount_paid
+                if inv.balance_due <= 0:
+                    inv.balance_due = Decimal("0")
+                    inv.status = "PAID"
+                else:
+                    inv.status = "PAYMENT_INITIATED"
+                total_cleared += allocated
+
+            if not cleared_invoices:
+                # No open invoices to clear — just log
+                logger.info(
+                    "Auto-clear: No open invoices for vendor %s (JE %s, debit %s)",
+                    vendor.name, journal.entry_number, debit,
+                )
+
+            # Create ONE VendorLedger entry for the total amount
+            from uuid import uuid4
+            new_balance = (vendor.current_balance or Decimal("0")) - debit
+            ledger_entry = VendorLedger(
+                id=uuid4(),
+                vendor_id=vendor.id,
+                transaction_type="PAYMENT",
+                transaction_date=journal.entry_date,
+                reference_type="PAYMENT",
+                reference_number=journal.entry_number,
+                reference_id=journal_id,
+                debit_amount=debit,
+                credit_amount=Decimal("0"),
+                running_balance=new_balance,
+                narration=f"Auto-cleared from JE {journal.entry_number}",
+                created_by=user_id,
+            )
+            self.db.add(ledger_entry)
+
+            # Update vendor balance
+            vendor.current_balance = new_balance
+
+            logger.info(
+                "Auto-clear: vendor=%s, JE=%s, debit=%s, invoices_cleared=%d, total_cleared=%s",
+                vendor.name, journal.entry_number, debit, len(cleared_invoices), total_cleared,
+            )

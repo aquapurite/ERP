@@ -2495,6 +2495,17 @@ async def post_journal_entry(
     journal.posted_by = current_user.id
     journal.posted_at = datetime.now(timezone.utc)
 
+    # Auto-clear vendor invoices (SAP F.13-inspired)
+    try:
+        from app.services.auto_journal_service import AutoJournalService
+        await AutoJournalService(db).auto_clear_vendor_invoices(
+            journal_id=journal.id,
+            user_id=current_user.id,
+        )
+    except Exception:
+        import logging
+        logging.exception("Auto-clearing failed for JE %s", journal.entry_number)
+
     await db.commit()
     await db.refresh(journal)
 
