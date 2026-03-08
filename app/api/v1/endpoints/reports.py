@@ -11,7 +11,7 @@ from app.api.deps import DB, get_current_user
 from app.models.user import User
 from app.models.order import Order, OrderItem
 from app.models.product_cost import ProductCost
-from app.models.accounting import ChartOfAccount
+from app.models.accounting import ChartOfAccount, GeneralLedger
 
 router = APIRouter()
 
@@ -110,8 +110,6 @@ async def _compute_gl_balances(db, accounts: list, as_of_date: date) -> dict:
     Returns dict of account_id (str) -> balance (float).
     Balance = opening_balance + sum(debits) - sum(credits) from GL up to as_of_date.
     """
-    from app.models.accounting import GeneralLedger
-
     balances = {}
     for acc in accounts:
         opening = float(acc.opening_balance or 0)
@@ -134,6 +132,37 @@ async def _compute_gl_balances(db, accounts: list, as_of_date: date) -> dict:
     return balances
 
 
+async def _compute_period_amounts(db, account_ids: list, start_date: date, end_date: date) -> dict:
+    """Compute net amounts from GL entries within a specific date range.
+
+    Returns dict of account_id (str) -> net Decimal (debit - credit).
+    For revenue accounts (credit-nature), negate the result outside this function.
+    """
+    if not account_ids:
+        return {}
+
+    query = select(
+        GeneralLedger.account_id,
+        func.coalesce(func.sum(GeneralLedger.debit_amount), 0).label("total_debit"),
+        func.coalesce(func.sum(GeneralLedger.credit_amount), 0).label("total_credit"),
+    ).where(
+        and_(
+            GeneralLedger.account_id.in_(account_ids),
+            GeneralLedger.transaction_date >= start_date,
+            GeneralLedger.transaction_date <= end_date,
+        )
+    ).group_by(GeneralLedger.account_id)
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    amounts = {}
+    for row in rows:
+        amounts[str(row.account_id)] = Decimal(str(row.total_debit)) - Decimal(str(row.total_credit))
+
+    return amounts
+
+
 @router.get("/balance-sheet")
 async def get_balance_sheet(
     db: DB,
@@ -147,8 +176,6 @@ async def get_balance_sheet(
     Calculates balances DYNAMICALLY from GL entries (not stored current_balance)
     to ensure accuracy.
     """
-    from app.models.accounting import GeneralLedger
-
     today = date.today()
 
     # Get all non-group, active accounts by type
@@ -444,19 +471,6 @@ async def get_profit_loss_report(
     revenue_result = await db.execute(revenue_query)
     revenue_accounts = revenue_result.scalars().all()
 
-    revenue_items = []
-    total_revenue = Decimal("0")
-    prev_total_revenue = Decimal("0")
-
-    for acc in revenue_accounts:
-        # Revenue stores negative balance (credits > debits), negate to show positive
-        amount = -Decimal(str(acc.current_balance or 0))
-        prev_amount = -Decimal(str(acc.opening_balance or 0))
-        total_revenue += amount
-        prev_total_revenue += prev_amount
-        if amount != 0 or prev_amount != 0:
-            revenue_items.append(build_line_item(acc, amount, prev_amount))
-
     # Get COGS accounts (5xxx)
     cogs_query = select(ChartOfAccount).where(
         and_(
@@ -469,22 +483,6 @@ async def get_profit_loss_report(
 
     cogs_result = await db.execute(cogs_query)
     cogs_accounts = cogs_result.scalars().all()
-
-    cogs_items = []
-    total_cogs = Decimal("0")
-    prev_total_cogs = Decimal("0")
-
-    for acc in cogs_accounts:
-        amount = Decimal(str(acc.current_balance or 0))
-        prev_amount = Decimal(str(acc.opening_balance or 0))
-        total_cogs += amount
-        prev_total_cogs += prev_amount
-        if amount != 0 or prev_amount != 0:
-            cogs_items.append(build_line_item(acc, amount, prev_amount))
-
-    gross_profit = total_revenue - total_cogs
-    prev_gross_profit = prev_total_revenue - prev_total_cogs
-    gross_margin_pct = float((gross_profit / total_revenue * 100) if total_revenue > 0 else 0)
 
     # Get operating expense accounts (3xxx, 6xxx, 7xxx - excluding 5xxx COGS)
     opex_query = select(ChartOfAccount).where(
@@ -499,13 +497,49 @@ async def get_profit_loss_report(
     opex_result = await db.execute(opex_query)
     opex_accounts = opex_result.scalars().all()
 
+    # Compute GL-based amounts for current and previous periods
+    all_account_ids = [acc.id for acc in revenue_accounts + cogs_accounts + opex_accounts]
+    current_amounts = await _compute_period_amounts(db, all_account_ids, start_date, end_date)
+    previous_amounts = await _compute_period_amounts(db, all_account_ids, prev_start, prev_end)
+
+    # Build revenue items (negate: credit-nature accounts store negative net)
+    revenue_items = []
+    total_revenue = Decimal("0")
+    prev_total_revenue = Decimal("0")
+
+    for acc in revenue_accounts:
+        amount = -current_amounts.get(str(acc.id), Decimal("0"))
+        prev_amount = -previous_amounts.get(str(acc.id), Decimal("0"))
+        total_revenue += amount
+        prev_total_revenue += prev_amount
+        if amount != 0 or prev_amount != 0:
+            revenue_items.append(build_line_item(acc, amount, prev_amount))
+
+    # Build COGS items (debit-nature)
+    cogs_items = []
+    total_cogs = Decimal("0")
+    prev_total_cogs = Decimal("0")
+
+    for acc in cogs_accounts:
+        amount = current_amounts.get(str(acc.id), Decimal("0"))
+        prev_amount = previous_amounts.get(str(acc.id), Decimal("0"))
+        total_cogs += amount
+        prev_total_cogs += prev_amount
+        if amount != 0 or prev_amount != 0:
+            cogs_items.append(build_line_item(acc, amount, prev_amount))
+
+    gross_profit = total_revenue - total_cogs
+    prev_gross_profit = prev_total_revenue - prev_total_cogs
+    gross_margin_pct = float((gross_profit / total_revenue * 100) if total_revenue > 0 else 0)
+
+    # Build operating expense items (debit-nature)
     opex_items = []
     total_opex = Decimal("0")
     prev_total_opex = Decimal("0")
 
     for acc in opex_accounts:
-        amount = Decimal(str(acc.current_balance or 0))
-        prev_amount = Decimal(str(acc.opening_balance or 0))
+        amount = current_amounts.get(str(acc.id), Decimal("0"))
+        prev_amount = previous_amounts.get(str(acc.id), Decimal("0"))
         total_opex += amount
         prev_total_opex += prev_amount
         if amount != 0 or prev_amount != 0:
