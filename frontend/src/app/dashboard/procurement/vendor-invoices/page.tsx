@@ -271,6 +271,21 @@ const vendorInvoicesApi = {
     const { data } = await apiClient.delete(`/vendor-invoices/${id}`);
     return data;
   },
+  recordPayment: async (id: string, payload: {
+    amount: number;
+    payment_date: string;
+    payment_mode: string;
+    payment_reference?: string;
+    bank_name?: string;
+    cheque_number?: string;
+    cheque_date?: string;
+    tds_amount?: number;
+    tds_section?: string;
+    narration?: string;
+  }) => {
+    const { data } = await apiClient.post(`/vendor-invoices/${id}/record-payment`, payload);
+    return data;
+  },
 };
 
 const statusColors: Record<string, string> = {
@@ -305,6 +320,20 @@ export default function VendorInvoicesPage() {
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<VendorInvoice | null>(null);
+
+  // Record Payment dialog state
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [payingInvoice, setPayingInvoice] = useState<VendorInvoice | null>(null);
+  const [payAmount, setPayAmount] = useState<number>(0);
+  const [payDate, setPayDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [payMode, setPayMode] = useState<string>('NEFT');
+  const [payReference, setPayReference] = useState<string>('');
+  const [payBankName, setPayBankName] = useState<string>('');
+  const [payChequeNumber, setPayChequeNumber] = useState<string>('');
+  const [payChequeDate, setPayChequeDate] = useState<string>('');
+  const [payTdsAmount, setPayTdsAmount] = useState<number>(0);
+  const [payTdsSection, setPayTdsSection] = useState<string>('');
+  const [payNarration, setPayNarration] = useState<string>('');
 
   // Edit form state
   const [editInvoiceType, setEditInvoiceType] = useState<'PO_INVOICE' | 'EXPENSE_INVOICE'>('EXPENSE_INVOICE');
@@ -594,6 +623,21 @@ export default function VendorInvoicesPage() {
     },
   });
 
+  const recordPaymentMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Parameters<typeof vendorInvoicesApi.recordPayment>[1] }) =>
+      vendorInvoicesApi.recordPayment(id, payload),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['vendor-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['vendor-invoices-stats'] });
+      setIsPaymentDialogOpen(false);
+      setPayingInvoice(null);
+      toast.success(`Payment recorded. Status: ${data.status}`);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to record payment');
+    },
+  });
+
   const handleUploadSubmit = () => {
     if (!selectedVendorId) {
       toast.error('Please select a vendor');
@@ -829,6 +873,28 @@ export default function VendorInvoicesPage() {
                 <DropdownMenuItem onClick={() => approveMutation.mutate(invoice.id)}>
                   <CheckCircle className="mr-2 h-4 w-4" />
                   Approve for Payment
+                </DropdownMenuItem>
+              )}
+              {['APPROVED', 'PAYMENT_INITIATED'].includes(invoice.status) && invoice.payment_status !== 'PAID' && (
+                <DropdownMenuItem onClick={() => {
+                  setPayingInvoice(invoice);
+                  const balanceDue = (invoice.balance_due != null && invoice.balance_due > 0)
+                    ? invoice.balance_due
+                    : (invoice.grand_total || 0) - (invoice.amount_paid || 0);
+                  setPayAmount(balanceDue > 0 ? balanceDue : 0);
+                  setPayDate(new Date().toISOString().split('T')[0]);
+                  setPayMode('NEFT');
+                  setPayReference('');
+                  setPayBankName('');
+                  setPayChequeNumber('');
+                  setPayChequeDate('');
+                  setPayTdsAmount(0);
+                  setPayTdsSection('');
+                  setPayNarration('');
+                  setIsPaymentDialogOpen(true);
+                }}>
+                  <DollarSign className="mr-2 h-4 w-4" />
+                  Record Payment
                 </DropdownMenuItem>
               )}
               {invoice.match_status === 'MISMATCH' && (
@@ -1871,6 +1937,185 @@ export default function VendorInvoicesPage() {
                 </>
               ) : (
                 'Update Invoice'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Record Payment Dialog */}
+      <Dialog open={isPaymentDialogOpen} onOpenChange={(open) => {
+        setIsPaymentDialogOpen(open);
+        if (!open) setPayingInvoice(null);
+      }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Record Payment</DialogTitle>
+            <DialogDescription>
+              {payingInvoice && (
+                <>Invoice <strong>{payingInvoice.invoice_number}</strong> &mdash; {payingInvoice.vendor_name}</>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+            {/* Amount */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">Amount *</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={payAmount}
+                  onChange={(e) => setPayAmount(parseFloat(e.target.value) || 0)}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Payment Date *</label>
+                <Input
+                  type="date"
+                  value={payDate}
+                  onChange={(e) => setPayDate(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Payment Mode */}
+            <div>
+              <label className="text-sm font-medium">Payment Mode *</label>
+              <Select value={payMode} onValueChange={setPayMode}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NEFT">NEFT</SelectItem>
+                  <SelectItem value="RTGS">RTGS</SelectItem>
+                  <SelectItem value="UPI">UPI</SelectItem>
+                  <SelectItem value="CHEQUE">Cheque</SelectItem>
+                  <SelectItem value="CASH">Cash</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Payment Reference (UTR) */}
+            <div>
+              <label className="text-sm font-medium">Payment Reference (UTR)</label>
+              <Input
+                placeholder="UTR / Transaction ID"
+                value={payReference}
+                onChange={(e) => setPayReference(e.target.value)}
+              />
+            </div>
+
+            {/* Bank Name */}
+            {payMode !== 'CASH' && (
+              <div>
+                <label className="text-sm font-medium">Bank Name</label>
+                <Input
+                  placeholder="e.g. Punjab National Bank"
+                  value={payBankName}
+                  onChange={(e) => setPayBankName(e.target.value)}
+                />
+              </div>
+            )}
+
+            {/* Cheque fields */}
+            {payMode === 'CHEQUE' && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium">Cheque Number</label>
+                  <Input
+                    value={payChequeNumber}
+                    onChange={(e) => setPayChequeNumber(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Cheque Date</label>
+                  <Input
+                    type="date"
+                    value={payChequeDate}
+                    onChange={(e) => setPayChequeDate(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* TDS */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">TDS Amount</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={payTdsAmount}
+                  onChange={(e) => setPayTdsAmount(parseFloat(e.target.value) || 0)}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">TDS Section</label>
+                <Select value={payTdsSection} onValueChange={setPayTdsSection}>
+                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="194C">194C - Contractor</SelectItem>
+                    <SelectItem value="194J">194J - Professional</SelectItem>
+                    <SelectItem value="194H">194H - Commission</SelectItem>
+                    <SelectItem value="194I">194I - Rent</SelectItem>
+                    <SelectItem value="194A">194A - Interest</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Narration */}
+            <div>
+              <label className="text-sm font-medium">Narration</label>
+              <Input
+                placeholder="Optional payment note"
+                value={payNarration}
+                onChange={(e) => setPayNarration(e.target.value)}
+              />
+            </div>
+
+            {/* Summary */}
+            {payingInvoice && (
+              <div className="bg-muted rounded-md p-3 text-sm space-y-1">
+                <div className="flex justify-between"><span>Invoice Total</span><span>{formatCurrency(payingInvoice.grand_total)}</span></div>
+                <div className="flex justify-between"><span>Already Paid</span><span>{formatCurrency(payingInvoice.amount_paid || 0)}</span></div>
+                <div className="flex justify-between font-medium"><span>This Payment</span><span>{formatCurrency(payAmount)}</span></div>
+                {payTdsAmount > 0 && (
+                  <div className="flex justify-between text-orange-600"><span>TDS Deducted</span><span>{formatCurrency(payTdsAmount)}</span></div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (!payingInvoice) return;
+                if (payAmount <= 0) { toast.error('Amount must be greater than 0'); return; }
+                if (!payDate) { toast.error('Payment date is required'); return; }
+                recordPaymentMutation.mutate({
+                  id: payingInvoice.id,
+                  payload: {
+                    amount: payAmount,
+                    payment_date: payDate,
+                    payment_mode: payMode,
+                    payment_reference: payReference || undefined,
+                    bank_name: payBankName || undefined,
+                    cheque_number: payChequeNumber || undefined,
+                    cheque_date: payChequeDate || undefined,
+                    tds_amount: payTdsAmount || undefined,
+                    tds_section: payTdsSection || undefined,
+                    narration: payNarration || undefined,
+                  },
+                });
+              }}
+              disabled={recordPaymentMutation.isPending}
+            >
+              {recordPaymentMutation.isPending ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Processing...</>
+              ) : (
+                'Record Payment'
               )}
             </Button>
           </DialogFooter>

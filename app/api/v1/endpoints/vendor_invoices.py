@@ -15,7 +15,7 @@ from app.models.purchase import (
     VendorInvoice, VendorInvoiceStatus,
     PurchaseOrder, GoodsReceiptNote
 )
-from app.models.vendor import Vendor
+from app.models.vendor import Vendor, VendorLedger
 from app.models.accounting import ChartOfAccount, CostCenter
 from uuid import uuid4
 from datetime import date as date_type
@@ -841,15 +841,35 @@ async def delete_vendor_invoice(
     return {"message": "Invoice deleted successfully"}
 
 
+class RecordVendorPaymentRequest(BaseModel):
+    amount: Decimal
+    payment_date: date
+    payment_mode: str = "NEFT"  # NEFT, RTGS, UPI, CHEQUE, CASH
+    payment_reference: Optional[str] = None  # UTR number
+    bank_name: Optional[str] = None
+    cheque_number: Optional[str] = None
+    cheque_date: Optional[date] = None
+    tds_amount: Decimal = Decimal("0")
+    tds_section: Optional[str] = None
+    narration: Optional[str] = None
+
+
 @router.post("/{invoice_id}/record-payment")
 async def record_payment(
     invoice_id: UUID,
-    amount: Decimal = Body(..., embed=True),
-    payment_reference: Optional[str] = Body(None, embed=True),
+    payload: RecordVendorPaymentRequest,
     db: DB = None,
     current_user: User = Depends(get_current_user),
 ):
-    """Record a payment against the invoice."""
+    """
+    Record a payment against a vendor invoice.
+    Performs all 4 operations atomically:
+    1. Update VendorInvoice (amount_paid, balance_due, status)
+    2. Create VendorLedger entry (PAYMENT type)
+    3. Update Vendor.current_balance
+    4. Create GL journal entry (Dr AP, Cr Bank, Cr TDS)
+    """
+    # --- Load invoice ---
     invoice = await db.get(VendorInvoice, invoice_id)
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
@@ -860,8 +880,21 @@ async def record_payment(
             detail=f"Cannot record payment for invoice with status {invoice.status}"
         )
 
-    invoice.amount_paid += amount
-    invoice.balance_due = invoice.net_payable - invoice.amount_paid
+    # Validate amount
+    current_balance_due = (invoice.net_payable or invoice.grand_total) - (invoice.amount_paid or Decimal("0"))
+    if payload.amount > current_balance_due:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Payment amount {payload.amount} exceeds balance due {current_balance_due}"
+        )
+
+    # --- Load vendor ---
+    vendor = await db.get(Vendor, invoice.vendor_id) if invoice.vendor_id else None
+    vendor_name = vendor.name if vendor else "Vendor"
+
+    # --- (1) Update VendorInvoice ---
+    invoice.amount_paid = (invoice.amount_paid or Decimal("0")) + payload.amount
+    invoice.balance_due = (invoice.net_payable or invoice.grand_total) - invoice.amount_paid
 
     if invoice.balance_due <= 0:
         invoice.status = "PAID"
@@ -869,31 +902,64 @@ async def record_payment(
     else:
         invoice.status = "PAYMENT_INITIATED"
 
-    # Auto-create journal entry for vendor payment
+    # --- (2) Create VendorLedger entry ---
+    ledger_entry = VendorLedger(
+        id=uuid4(),
+        vendor_id=invoice.vendor_id,
+        transaction_type="PAYMENT",
+        transaction_date=payload.payment_date,
+        reference_type="PAYMENT",
+        reference_number=payload.payment_reference or invoice.invoice_number,
+        reference_id=invoice.id,
+        vendor_invoice_number=invoice.invoice_number,
+        vendor_invoice_date=invoice.invoice_date,
+        debit_amount=payload.amount,
+        credit_amount=Decimal("0"),
+        running_balance=(vendor.current_balance if vendor else Decimal("0")) - payload.amount,
+        tds_amount=payload.tds_amount,
+        tds_section=payload.tds_section,
+        payment_mode=payload.payment_mode,
+        payment_reference=payload.payment_reference,
+        bank_name=payload.bank_name,
+        cheque_number=payload.cheque_number,
+        cheque_date=payload.cheque_date,
+        narration=payload.narration or f"Payment against {invoice.invoice_number}",
+        created_by=current_user.id,
+    )
+    db.add(ledger_entry)
+
+    # --- (3) Update Vendor.current_balance ---
+    if vendor:
+        vendor.current_balance = (vendor.current_balance or Decimal("0")) - payload.amount
+
+    # --- (4) Create GL journal entry ---
     journal_entry = None
     try:
-        # Get vendor name
-        vendor = await db.get(Vendor, invoice.vendor_id) if invoice.vendor_id else None
-        vendor_name = vendor.name if vendor else "Vendor"
-
-        journal_entry = await AccountingService(db, created_by=current_user.id).post_vendor_payment(
-            payment_id=invoice.id,
-            payment_reference=payment_reference or invoice.invoice_number,
+        journal_service = AutoJournalService(db)
+        journal_entry = await journal_service.generate_for_vendor_payment(
+            vendor_id=invoice.vendor_id,
+            amount=payload.amount,
+            payment_date=payload.payment_date,
+            payment_mode=payload.payment_mode,
+            payment_reference=payload.payment_reference or "",
+            invoice_number=invoice.invoice_number,
             vendor_name=vendor_name,
-            amount=amount,
-            payment_mode="bank",
+            tds_amount=payload.tds_amount,
+            narration=payload.narration,
+            user_id=current_user.id,
+            source_id=invoice.id,
         )
     except Exception:
-        # Log but don't fail the payment recording
         import logging
-        logging.warning(f"Failed to create journal entry for vendor payment on invoice {invoice.invoice_number}")
+        logging.exception(f"Failed to create GL journal for vendor payment on {invoice.invoice_number}")
 
     await db.commit()
 
     return {
-        "message": "Payment recorded",
+        "message": "Payment recorded successfully",
         "amount_paid": float(invoice.amount_paid),
         "balance_due": float(invoice.balance_due),
         "status": invoice.status,
         "journal_entry_id": str(journal_entry.id) if journal_entry else None,
+        "ledger_entry_id": str(ledger_entry.id),
     }

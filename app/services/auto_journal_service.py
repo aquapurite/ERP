@@ -508,6 +508,131 @@ class AutoJournalService:
 
         return journal
 
+    async def generate_for_vendor_payment(
+        self,
+        vendor_id: UUID,
+        amount: Decimal,
+        payment_date: date,
+        payment_mode: str,
+        payment_reference: str,
+        invoice_number: str,
+        vendor_name: str,
+        tds_amount: Decimal = Decimal("0"),
+        narration: str = None,
+        user_id: Optional[UUID] = None,
+        source_id: Optional[UUID] = None,
+    ) -> JournalEntry:
+        """
+        Generate journal entry for vendor payment.
+
+        Dr  Vendor AP Account (vendor-specific GL or default 2100)    full amount
+        Cr  Bank Account (1020) or Cash (1101)                        amount - TDS
+        Cr  TDS Payable (2300)                                         TDS (if > 0)
+        """
+        # Get vendor-specific AP account
+        ap_account = await self.get_vendor_ap_account(vendor_id)
+
+        # Determine bank/cash account
+        is_cash = payment_mode.upper() == "CASH"
+        if is_cash:
+            bank_account = await self.get_or_create_account(
+                self.DEFAULT_ACCOUNTS["CASH"],
+                "Cash in Hand",
+                "ASSET",
+                "CASH"
+            )
+        else:
+            bank_account = await self.get_or_create_account(
+                self.DEFAULT_ACCOUNTS["BANK"],
+                "Bank Account",
+                "ASSET",
+                "BANK"
+            )
+
+        # Get financial period
+        period = await self._get_or_create_period()
+        entry_number = await self._generate_entry_number()
+
+        default_narration = f"Payment to {vendor_name} against {invoice_number} via {payment_mode}"
+        if payment_reference:
+            default_narration += f" (Ref: {payment_reference})"
+
+        journal = JournalEntry(
+            entry_number=entry_number,
+            entry_date=payment_date,
+            entry_type="PAYMENT",
+            source_type="VendorPayment",
+            source_id=source_id,
+            source_number=invoice_number,
+            period_id=period.id,
+            narration=narration or default_narration,
+            total_debit=amount,
+            total_credit=amount,
+            status=JournalEntryStatus.POSTED.value,
+            posted_at=datetime.now(timezone.utc),
+            created_by=user_id,
+        )
+        self.db.add(journal)
+        await self.db.flush()
+
+        journal_lines = []
+
+        # Debit: Vendor AP Account (full amount — reduces payable)
+        ap_line = JournalEntryLine(
+            journal_entry_id=journal.id,
+            account_id=ap_account.id,
+            debit_amount=amount,
+            credit_amount=Decimal("0"),
+            description=f"Payment to {vendor_name}"
+        )
+        journal_lines.append(ap_line)
+
+        # Credit: Bank/Cash (amount minus TDS)
+        bank_credit = amount - tds_amount
+        bank_line = JournalEntryLine(
+            journal_entry_id=journal.id,
+            account_id=bank_account.id,
+            debit_amount=Decimal("0"),
+            credit_amount=bank_credit,
+            description=f"{'Cash' if is_cash else 'Bank'} payment - {invoice_number}"
+        )
+        journal_lines.append(bank_line)
+
+        # Credit: TDS Payable (if applicable)
+        if tds_amount > 0:
+            tds_account = await self.get_or_create_account(
+                self.DEFAULT_ACCOUNTS.get("TDS_PAYABLE", "2300"),
+                "TDS Payable",
+                "LIABILITY",
+                "TAX_PAYABLE"
+            )
+            tds_line = JournalEntryLine(
+                journal_entry_id=journal.id,
+                account_id=tds_account.id,
+                debit_amount=Decimal("0"),
+                credit_amount=tds_amount,
+                description=f"TDS deducted on payment to {vendor_name}"
+            )
+            journal_lines.append(tds_line)
+
+        # Add all lines
+        for line in journal_lines:
+            self.db.add(line)
+
+        # Verify balanced
+        total_debit = sum(l.debit_amount for l in journal_lines)
+        total_credit = sum(l.credit_amount for l in journal_lines)
+        journal.total_debit = total_debit
+        journal.total_credit = total_credit
+
+        if abs(total_debit - total_credit) > Decimal("0.01"):
+            raise AutoJournalError(
+                f"Vendor payment JE not balanced. Dr: {total_debit}, Cr: {total_credit}"
+            )
+
+        await self.db.flush()
+        return journal
+
     async def generate_for_order_payment(
         self,
         order_id: UUID,
