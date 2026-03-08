@@ -609,6 +609,7 @@ class GRNBrief(BaseResponseSchema):
     grn_date: date
     po_number: str
     vendor_name: str
+    warehouse_name: Optional[str] = None
     status: str
     total_quantity_received: int
     total_value: Decimal

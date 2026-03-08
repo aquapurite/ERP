@@ -3390,12 +3390,21 @@ async def list_grns(
         )
         vendor_name = vendor_result.scalar() or ""
 
+        # Get warehouse name
+        warehouse_name = None
+        if grn.warehouse_id:
+            wh_result = await db.execute(
+                select(Warehouse.name).where(Warehouse.id == grn.warehouse_id)
+            )
+            warehouse_name = wh_result.scalar()
+
         items.append(GRNBrief(
             id=grn.id,
             grn_number=grn.grn_number,
             grn_date=grn.grn_date,
             po_number=po_number,
             vendor_name=vendor_name,
+            warehouse_name=warehouse_name,
             status=grn.status,
             total_quantity_received=grn.total_quantity_received,
             total_value=grn.total_value,

@@ -74,11 +74,16 @@ interface GRN {
   po_number?: string;
   warehouse_id: string;
   status: 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
-  received_date: string;
+  grn_date?: string;
+  received_date?: string;
   total_received: number;
   total_rejected: number;
+  total_quantity_received?: number;
+  total_value?: number;
   notes?: string;
   created_at: string;
+  vendor_name?: string;
+  warehouse_name?: string;
   warehouse?: { name: string; code?: string };
   vendor?: { name: string; code?: string; vendor_code?: string };
   purchase_order?: {
@@ -558,27 +563,27 @@ export default function GRNPage() {
       ),
     },
     {
-      accessorKey: 'vendor',
+      accessorKey: 'vendor_name',
       header: 'Vendor',
       cell: ({ row }) => (
         <span className="text-sm">
-          {row.original.vendor?.name || row.original.purchase_order?.vendor?.name || 'N/A'}
+          {row.original.vendor_name || row.original.vendor?.name || 'N/A'}
         </span>
       ),
     },
     {
-      accessorKey: 'warehouse',
+      accessorKey: 'warehouse_name',
       header: 'Warehouse',
       cell: ({ row }) => (
-        <span className="text-sm">{row.original.warehouse?.name || 'N/A'}</span>
+        <span className="text-sm">{row.original.warehouse_name || row.original.warehouse?.name || 'N/A'}</span>
       ),
     },
     {
-      accessorKey: 'received_date',
+      accessorKey: 'grn_date',
       header: 'Received Date',
       cell: ({ row }) => (
         <span className="text-sm text-muted-foreground">
-          {formatDate(row.original.received_date)}
+          {formatDate(row.original.grn_date || row.original.received_date)}
         </span>
       ),
     },
