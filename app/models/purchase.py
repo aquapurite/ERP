@@ -1588,6 +1588,12 @@ class VendorInvoice(Base):
     received_by_user: Mapped["User"] = relationship("User", foreign_keys=[received_by])
     verified_by_user: Mapped[Optional["User"]] = relationship("User", foreign_keys=[verified_by])
     approved_by_user: Mapped[Optional["User"]] = relationship("User", foreign_keys=[approved_by])
+    expense_lines: Mapped[List["VendorInvoiceExpenseLine"]] = relationship(
+        "VendorInvoiceExpenseLine",
+        back_populates="vendor_invoice",
+        cascade="all, delete-orphan",
+        order_by="VendorInvoiceExpenseLine.line_number"
+    )
 
     @property
     def is_overdue(self) -> bool:
@@ -1608,6 +1614,68 @@ class VendorInvoice(Base):
             return f"<VendorInvoice(ref='{self.our_reference}', vendor_inv='{self.invoice_number}')>"
         except Exception:
             return f"<VendorInvoice(id={getattr(self, 'id', 'unknown')})>"
+
+
+class VendorInvoiceExpenseLine(Base):
+    """
+    Expense line items for vendor invoices.
+    Allows splitting an expense invoice across multiple GL accounts.
+    """
+    __tablename__ = "vendor_invoice_expense_lines"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    vendor_invoice_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("vendor_invoices.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    gl_account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("chart_of_accounts.id", ondelete="RESTRICT"),
+        nullable=False,
+        comment="GL account for this expense line"
+    )
+    expense_category: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Expense category for this line"
+    )
+    description: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Description of this expense line"
+    )
+    amount: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        comment="Amount allocated to this GL account"
+    )
+    line_number: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        comment="Line sequence number"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+    # Relationships
+    vendor_invoice: Mapped["VendorInvoice"] = relationship(
+        "VendorInvoice",
+        back_populates="expense_lines"
+    )
+    gl_account: Mapped["ChartOfAccount"] = relationship("ChartOfAccount")
+
+    def __repr__(self) -> str:
+        return f"<VendorInvoiceExpenseLine(id={self.id}, amount={self.amount})>"
 
 
 # ==================== Vendor Proforma Invoice ====================

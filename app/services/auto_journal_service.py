@@ -963,13 +963,16 @@ class AutoJournalService:
             user_id: User creating the journal entry
             auto_post: If True, automatically post the journal entry
         """
-        from app.models.purchase import VendorInvoice
+        from app.models.purchase import VendorInvoice, VendorInvoiceExpenseLine
 
         result = await self.db.execute(
             select(VendorInvoice)
             .options(
                 selectinload(VendorInvoice.vendor),
                 selectinload(VendorInvoice.gl_account),
+                selectinload(VendorInvoice.expense_lines).selectinload(
+                    VendorInvoiceExpenseLine.gl_account
+                ),
             )
             .where(VendorInvoice.id == vendor_invoice_id)
         )
@@ -1004,19 +1007,23 @@ class AutoJournalService:
                 AccountSubType.ACCOUNTS_PAYABLE.value
             )
 
-        # Determine the expense/asset account to debit
-        # For expense invoices, use the GL account specified; for PO invoices, use Purchase account
-        if invoice.invoice_type == "EXPENSE_INVOICE" and invoice.gl_account_id:
-            # Use the GL account specified on the invoice
-            expense_account = invoice.gl_account
-        else:
-            # Default to Purchases account
-            expense_account = await self.get_or_create_account(
-                self.DEFAULT_ACCOUNTS["PURCHASE"],
-                "Purchases",
-                "EXPENSE",
-                AccountSubType.COST_OF_GOODS.value
-            )
+        # Determine the expense/asset account(s) to debit
+        has_expense_lines = (
+            invoice.invoice_type == "EXPENSE_INVOICE"
+            and invoice.expense_lines
+            and len(invoice.expense_lines) > 0
+        )
+
+        if not has_expense_lines:
+            if invoice.invoice_type == "EXPENSE_INVOICE" and invoice.gl_account_id:
+                expense_account = invoice.gl_account
+            else:
+                expense_account = await self.get_or_create_account(
+                    self.DEFAULT_ACCOUNTS["PURCHASE"],
+                    "Purchases",
+                    "EXPENSE",
+                    AccountSubType.COST_OF_GOODS.value
+                )
 
         # Create journal entry
         vendor_name = invoice.vendor.name if invoice.vendor else "Vendor"
@@ -1043,16 +1050,30 @@ class AutoJournalService:
 
         journal_lines = []
 
-        # Debit: Expense/Purchase (taxable amount)
-        taxable_amount = invoice.taxable_amount or invoice.subtotal or invoice.grand_total
-        expense_line = JournalEntryLine(
-            journal_entry_id=journal.id,
-            account_id=expense_account.id,
-            debit_amount=taxable_amount,
-            credit_amount=Decimal("0"),
-            description=f"{entry_type.title()} from {vendor_name}"
-        )
-        journal_lines.append(expense_line)
+        # Debit: Expense/Purchase lines
+        if has_expense_lines:
+            # Multiple GL lines - create a debit for each expense line
+            for exp_line in invoice.expense_lines:
+                desc_text = exp_line.description or f"{entry_type.title()} from {vendor_name}"
+                journal_line = JournalEntryLine(
+                    journal_entry_id=journal.id,
+                    account_id=exp_line.gl_account_id,
+                    debit_amount=exp_line.amount,
+                    credit_amount=Decimal("0"),
+                    description=desc_text
+                )
+                journal_lines.append(journal_line)
+        else:
+            # Single GL account (legacy or PO invoice)
+            taxable_amount = invoice.taxable_amount or invoice.subtotal or invoice.grand_total
+            expense_line = JournalEntryLine(
+                journal_entry_id=journal.id,
+                account_id=expense_account.id,
+                debit_amount=taxable_amount,
+                credit_amount=Decimal("0"),
+                description=f"{entry_type.title()} from {vendor_name}"
+            )
+            journal_lines.append(expense_line)
 
         # Debit: GST Input accounts
         if invoice.cgst_amount and invoice.cgst_amount > 0:

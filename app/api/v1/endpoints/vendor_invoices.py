@@ -13,6 +13,7 @@ from app.api.deps import DB, get_current_user
 from app.models.user import User
 from app.models.purchase import (
     VendorInvoice, VendorInvoiceStatus,
+    VendorInvoiceExpenseLine,
     PurchaseOrder, GoodsReceiptNote
 )
 from app.models.vendor import Vendor, VendorLedger
@@ -27,6 +28,14 @@ router = APIRouter()
 
 # ==================== Schemas ====================
 
+class ExpenseLineItem(BaseModel):
+    """Schema for a single expense line item."""
+    gl_account_id: UUID
+    expense_category: Optional[str] = None
+    description: Optional[str] = None
+    amount: Decimal
+
+
 class VendorInvoiceCreate(BaseModel):
     vendor_id: UUID
     invoice_number: str
@@ -36,7 +45,9 @@ class VendorInvoiceCreate(BaseModel):
     # For PO Invoices
     purchase_order_id: Optional[UUID] = None
     grn_id: Optional[UUID] = None
-    # For Expense Invoices (non-PO)
+    # For Expense Invoices (non-PO) - multiple GL lines
+    expense_lines: Optional[List[ExpenseLineItem]] = None
+    # Legacy single GL fields (backward compatibility)
     gl_account_id: Optional[UUID] = None
     cost_center_id: Optional[UUID] = None
     expense_category: Optional[str] = None
@@ -160,6 +171,7 @@ async def list_vendor_invoices(
         selectinload(VendorInvoice.grn),
         selectinload(VendorInvoice.gl_account),
         selectinload(VendorInvoice.cost_center),
+        selectinload(VendorInvoice.expense_lines).selectinload(VendorInvoiceExpenseLine.gl_account),
     )
 
     conditions = []
@@ -236,6 +248,19 @@ async def list_vendor_invoices(
                 "cost_center_name": inv.cost_center.name if inv.cost_center else None,
                 "expense_category": inv.expense_category,
                 "expense_description": inv.expense_description,
+                "expense_lines": [
+                    {
+                        "id": str(line.id),
+                        "gl_account_id": str(line.gl_account_id),
+                        "gl_account_name": line.gl_account.account_name if line.gl_account else None,
+                        "gl_account_code": line.gl_account.account_code if line.gl_account else None,
+                        "expense_category": line.expense_category,
+                        "description": line.description,
+                        "amount": float(line.amount),
+                        "line_number": line.line_number,
+                    }
+                    for line in (inv.expense_lines or [])
+                ],
                 # Amounts
                 "subtotal": float(inv.subtotal),
                 "taxable_amount": float(inv.taxable_amount),
@@ -357,6 +382,7 @@ async def get_vendor_invoice(
         selectinload(VendorInvoice.received_by_user),
         selectinload(VendorInvoice.verified_by_user),
         selectinload(VendorInvoice.approved_by_user),
+        selectinload(VendorInvoice.expense_lines).selectinload(VendorInvoiceExpenseLine.gl_account),
     ).where(VendorInvoice.id == invoice_id)
 
     result = await db.execute(query)
@@ -423,6 +449,19 @@ async def get_vendor_invoice(
         "verified_at": inv.verified_at.isoformat() if inv.verified_at else None,
         "approved_by": inv.approved_by_user.email if inv.approved_by_user else None,
         "approved_at": inv.approved_at.isoformat() if inv.approved_at else None,
+        "expense_lines": [
+            {
+                "id": str(line.id),
+                "gl_account_id": str(line.gl_account_id),
+                "gl_account_name": line.gl_account.account_name if line.gl_account else None,
+                "gl_account_code": line.gl_account.account_code if line.gl_account else None,
+                "expense_category": line.expense_category,
+                "description": line.description,
+                "amount": float(line.amount),
+                "line_number": line.line_number,
+            }
+            for line in (inv.expense_lines or [])
+        ],
         "created_at": inv.created_at.isoformat() if inv.created_at else None,
     }
 
@@ -466,6 +505,19 @@ async def create_vendor_invoice(
     net_payable = data.grand_total - tds_amount
     total_tax = data.cgst_amount + data.sgst_amount + data.igst_amount + data.cess_amount
 
+    # For expense invoices with lines, use the first line's GL as the primary (backward compat)
+    primary_gl_account_id = data.gl_account_id
+    primary_expense_category = data.expense_category
+    primary_expense_description = data.expense_description
+    if data.expense_lines and len(data.expense_lines) > 0:
+        first_line = data.expense_lines[0]
+        if not primary_gl_account_id:
+            primary_gl_account_id = first_line.gl_account_id
+        if not primary_expense_category:
+            primary_expense_category = first_line.expense_category
+        if not primary_expense_description:
+            primary_expense_description = first_line.description
+
     invoice = VendorInvoice(
         our_reference=our_reference,
         invoice_number=data.invoice_number,
@@ -477,10 +529,10 @@ async def create_vendor_invoice(
         purchase_order_id=data.purchase_order_id,
         grn_id=data.grn_id,
         # Expense Invoice fields
-        gl_account_id=data.gl_account_id,
+        gl_account_id=primary_gl_account_id,
         cost_center_id=data.cost_center_id,
-        expense_category=data.expense_category,
-        expense_description=data.expense_description,
+        expense_category=primary_expense_category,
+        expense_description=primary_expense_description,
         # Amounts
         subtotal=data.subtotal,
         discount_amount=data.discount_amount,
@@ -507,6 +559,28 @@ async def create_vendor_invoice(
         received_by=current_user.id,
     )
     db.add(invoice)
+    await db.flush()
+
+    # Create expense line items if provided
+    if data.expense_lines and len(data.expense_lines) > 0:
+        for idx, line_data in enumerate(data.expense_lines, start=1):
+            # Validate GL account
+            gl_acc = await db.get(ChartOfAccount, line_data.gl_account_id)
+            if not gl_acc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"GL Account not found for expense line {idx}"
+                )
+            expense_line = VendorInvoiceExpenseLine(
+                vendor_invoice_id=invoice.id,
+                gl_account_id=line_data.gl_account_id,
+                expense_category=line_data.expense_category,
+                description=line_data.description,
+                amount=line_data.amount,
+                line_number=idx,
+            )
+            db.add(expense_line)
+
     await db.commit()
     await db.refresh(invoice)
 
@@ -693,6 +767,7 @@ class VendorInvoiceUpdate(BaseModel):
     purchase_order_id: Optional[UUID] = None
     grn_id: Optional[UUID] = None
     # Expense invoice fields
+    expense_lines: Optional[List[ExpenseLineItem]] = None
     gl_account_id: Optional[UUID] = None
     cost_center_id: Optional[UUID] = None
     expense_category: Optional[str] = None
@@ -764,6 +839,38 @@ async def update_vendor_invoice(
         invoice.expense_category = data.expense_category
     if data.expense_description is not None:
         invoice.expense_description = data.expense_description
+
+    # Handle expense lines update (replace all lines)
+    if data.expense_lines is not None:
+        # Delete existing expense lines
+        existing_lines_query = select(VendorInvoiceExpenseLine).where(
+            VendorInvoiceExpenseLine.vendor_invoice_id == invoice_id
+        )
+        existing_lines_result = await db.execute(existing_lines_query)
+        for old_line in existing_lines_result.scalars().all():
+            await db.delete(old_line)
+
+        # Create new lines
+        for idx, line_data in enumerate(data.expense_lines, start=1):
+            gl_acc = await db.get(ChartOfAccount, line_data.gl_account_id)
+            if not gl_acc:
+                raise HTTPException(status_code=400, detail=f"GL Account not found for expense line {idx}")
+            expense_line = VendorInvoiceExpenseLine(
+                vendor_invoice_id=invoice_id,
+                gl_account_id=line_data.gl_account_id,
+                expense_category=line_data.expense_category,
+                description=line_data.description,
+                amount=line_data.amount,
+                line_number=idx,
+            )
+            db.add(expense_line)
+
+        # Update primary GL from first line for backward compat
+        if len(data.expense_lines) > 0:
+            first = data.expense_lines[0]
+            invoice.gl_account_id = first.gl_account_id
+            invoice.expense_category = first.expense_category
+            invoice.expense_description = first.description
 
     if data.subtotal is not None:
         invoice.subtotal = data.subtotal

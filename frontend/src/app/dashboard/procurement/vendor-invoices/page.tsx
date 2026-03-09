@@ -54,6 +54,16 @@ interface VendorInvoice {
   cost_center_name?: string;
   expense_category?: string;
   expense_description?: string;
+  expense_lines?: {
+    id: string;
+    gl_account_id: string;
+    gl_account_name?: string;
+    gl_account_code?: string;
+    expense_category?: string;
+    description?: string;
+    amount: number;
+    line_number: number;
+  }[];
   // Common fields
   invoice_date: string;
   due_date: string;
@@ -157,6 +167,14 @@ interface ExpenseCategory {
   label: string;
 }
 
+// Expense line item for multi-GL coding
+interface ExpenseLine {
+  gl_account_id: string;
+  expense_category: string;
+  description: string;
+  amount: number;
+}
+
 const vendorInvoicesApi = {
   list: async (params?: { page?: number; size?: number; status?: string; payment_status?: string; invoice_type?: string }) => {
     try {
@@ -208,7 +226,8 @@ const vendorInvoicesApi = {
     invoice_type?: string;
     // PO Invoice fields
     purchase_order_id?: string;
-    // Expense Invoice fields
+    // Expense Invoice fields - multiple GL lines
+    expense_lines?: { gl_account_id: string; expense_category?: string; description?: string; amount: number }[];
     gl_account_id?: string;
     cost_center_id?: string;
     expense_category?: string;
@@ -246,7 +265,8 @@ const vendorInvoicesApi = {
     invoice_date?: string;
     invoice_type?: string;
     purchase_order_id?: string;
-    // Expense invoice fields
+    // Expense invoice fields - multiple GL lines
+    expense_lines?: { gl_account_id: string; expense_category?: string; description?: string; amount: number }[];
     gl_account_id?: string;
     cost_center_id?: string;
     expense_category?: string;
@@ -337,9 +357,9 @@ export default function VendorInvoicesPage() {
 
   // Edit form state
   const [editInvoiceType, setEditInvoiceType] = useState<'PO_INVOICE' | 'EXPENSE_INVOICE'>('EXPENSE_INVOICE');
-  const [editGLAccountId, setEditGLAccountId] = useState<string>('');
-  const [editExpenseCategory, setEditExpenseCategory] = useState<string>('');
-  const [editExpenseDescription, setEditExpenseDescription] = useState<string>('');
+  const [editExpenseLines, setEditExpenseLines] = useState<ExpenseLine[]>([
+    { gl_account_id: '', expense_category: '', description: '', amount: 0 }
+  ]);
   const [editSubtotal, setEditSubtotal] = useState<number>(0);
   const [editGstType, setEditGstType] = useState<'INTRA_STATE' | 'INTER_STATE'>('INTRA_STATE');
   const [editGstRate, setEditGstRate] = useState<string>('18');
@@ -362,10 +382,10 @@ export default function VendorInvoicesPage() {
   const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
 
-  // For Expense Invoices
-  const [selectedGLAccountId, setSelectedGLAccountId] = useState<string>('');
-  const [expenseCategory, setExpenseCategory] = useState<string>('');
-  const [expenseDescription, setExpenseDescription] = useState<string>('');
+  // For Expense Invoices - multiple GL lines
+  const [expenseLines, setExpenseLines] = useState<ExpenseLine[]>([
+    { gl_account_id: '', expense_category: '', description: '', amount: 0 }
+  ]);
 
   // Amount fields
   const [subtotal, setSubtotal] = useState<number>(0);
@@ -434,9 +454,7 @@ export default function VendorInvoicesPage() {
       setSelectedVendorId('');
       setSelectedPOId('');
       setOurReference('');
-      setSelectedGLAccountId('');
-      setExpenseCategory('');
-      setExpenseDescription('');
+      setExpenseLines([{ gl_account_id: '', expense_category: '', description: '', amount: 0 }]);
       setInvoiceNumber('');
       setInvoiceDate(new Date().toISOString().split('T')[0]);
       setInvoiceFile(null);
@@ -663,13 +681,26 @@ export default function VendorInvoicesPage() {
         return;
       }
     } else {
-      // EXPENSE_INVOICE - require GL account
-      if (!selectedGLAccountId) {
-        toast.error('Please select a GL Account for expense coding');
+      // EXPENSE_INVOICE - require at least one GL line
+      const validLines = expenseLines.filter(l => l.gl_account_id);
+      if (validLines.length === 0) {
+        toast.error('Please add at least one GL Account line for expense coding');
         return;
       }
-      if (!expenseCategory) {
-        toast.error('Please select an expense category');
+      for (let i = 0; i < validLines.length; i++) {
+        if (!validLines[i].expense_category) {
+          toast.error(`Please select an expense category for line ${i + 1}`);
+          return;
+        }
+        if (validLines[i].amount <= 0) {
+          toast.error(`Please enter an amount for line ${i + 1}`);
+          return;
+        }
+      }
+      // Validate total of expense lines equals subtotal
+      const linesTotal = validLines.reduce((sum, l) => sum + l.amount, 0);
+      if (Math.abs(linesTotal - subtotal) > 0.01) {
+        toast.error(`Expense lines total (${linesTotal.toFixed(2)}) must equal the subtotal (${subtotal.toFixed(2)})`);
         return;
       }
     }
@@ -685,10 +716,15 @@ export default function VendorInvoicesPage() {
       invoice_type: invoiceType,
       // PO Invoice fields
       purchase_order_id: invoiceType === 'PO_INVOICE' ? selectedPOId || undefined : undefined,
-      // Expense Invoice fields
-      gl_account_id: invoiceType === 'EXPENSE_INVOICE' ? selectedGLAccountId || undefined : undefined,
-      expense_category: invoiceType === 'EXPENSE_INVOICE' ? expenseCategory || undefined : undefined,
-      expense_description: invoiceType === 'EXPENSE_INVOICE' ? expenseDescription || undefined : undefined,
+      // Expense Invoice fields - multiple GL lines
+      expense_lines: invoiceType === 'EXPENSE_INVOICE'
+        ? expenseLines.filter(l => l.gl_account_id).map(l => ({
+            gl_account_id: l.gl_account_id,
+            expense_category: l.expense_category || undefined,
+            description: l.description || undefined,
+            amount: l.amount,
+          }))
+        : undefined,
       // Amount fields
       subtotal: subtotal,
       taxable_amount: subtotal,
@@ -827,9 +863,24 @@ export default function VendorInvoicesPage() {
                   setEditingInvoice(invoice);
                   // Pre-populate the edit form with invoice data
                   setEditInvoiceType(invoice.invoice_type || 'EXPENSE_INVOICE');
-                  setEditGLAccountId(invoice.gl_account_id || '');
-                  setEditExpenseCategory(invoice.expense_category || '');
-                  setEditExpenseDescription(invoice.expense_description || '');
+                  // Load expense lines or fall back to single GL
+                  if (invoice.expense_lines && invoice.expense_lines.length > 0) {
+                    setEditExpenseLines(invoice.expense_lines.map((l: { gl_account_id: string; expense_category?: string; description?: string; amount: number }) => ({
+                      gl_account_id: l.gl_account_id || '',
+                      expense_category: l.expense_category || '',
+                      description: l.description || '',
+                      amount: l.amount || 0,
+                    })));
+                  } else if (invoice.gl_account_id) {
+                    setEditExpenseLines([{
+                      gl_account_id: invoice.gl_account_id || '',
+                      expense_category: invoice.expense_category || '',
+                      description: invoice.expense_description || '',
+                      amount: invoice.subtotal || 0,
+                    }]);
+                  } else {
+                    setEditExpenseLines([{ gl_account_id: '', expense_category: '', description: '', amount: 0 }]);
+                  }
                   const sub = invoice.subtotal || invoice.taxable_amount || 0;
                   setEditSubtotal(sub);
                   // Detect GST type from existing values: if IGST > 0, it's inter-state
@@ -1116,51 +1167,123 @@ export default function VendorInvoicesPage() {
                     </div>
                   )}
 
-                  {/* Expense Invoice: GL Account & Category */}
+                  {/* Expense Invoice: Multiple GL Lines */}
                   {invoiceType === 'EXPENSE_INVOICE' && (
                     <div className="space-y-4 border rounded-lg p-4 bg-blue-50/50">
-                      <h4 className="text-sm font-medium text-blue-700">Expense Coding</h4>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">GL Account *</label>
-                        <Select value={selectedGLAccountId} onValueChange={setSelectedGLAccountId}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select GL Account" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {glAccounts.map((acc) => (
-                              <SelectItem key={acc.id} value={acc.id}>
-                                <div className="flex flex-col">
-                                  <span>{acc.account_code} - {acc.account_name}</span>
-                                  <span className="text-xs text-muted-foreground">{acc.account_type}</span>
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-sm font-medium text-blue-700">Expense Coding</h4>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setExpenseLines([...expenseLines, { gl_account_id: '', expense_category: '', description: '', amount: 0 }])}
+                        >
+                          <Plus className="h-3 w-3 mr-1" /> Add Line
+                        </Button>
                       </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Expense Category *</label>
-                        <Select value={expenseCategory} onValueChange={setExpenseCategory}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select Category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {expenseCategories.map((cat) => (
-                              <SelectItem key={cat.value} value={cat.value}>
-                                {cat.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Description</label>
-                        <Input
-                          placeholder="Brief description of expense..."
-                          value={expenseDescription}
-                          onChange={(e) => setExpenseDescription(e.target.value)}
-                        />
-                      </div>
+                      {expenseLines.map((line, idx) => (
+                        <div key={idx} className="space-y-3 border rounded-md p-3 bg-white relative">
+                          {expenseLines.length > 1 && (
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs font-medium text-muted-foreground">Line {idx + 1}</span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                                onClick={() => setExpenseLines(expenseLines.filter((_, i) => i !== idx))}
+                              >
+                                <XCircle className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          )}
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">GL Account *</label>
+                            <Select
+                              value={line.gl_account_id}
+                              onValueChange={(v) => {
+                                const updated = [...expenseLines];
+                                updated[idx] = { ...updated[idx], gl_account_id: v };
+                                setExpenseLines(updated);
+                              }}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select GL Account" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {glAccounts.map((acc) => (
+                                  <SelectItem key={acc.id} value={acc.id}>
+                                    <div className="flex flex-col">
+                                      <span>{acc.account_code} - {acc.account_name}</span>
+                                      <span className="text-xs text-muted-foreground">{acc.account_type}</span>
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium">Category *</label>
+                              <Select
+                                value={line.expense_category}
+                                onValueChange={(v) => {
+                                  const updated = [...expenseLines];
+                                  updated[idx] = { ...updated[idx], expense_category: v };
+                                  setExpenseLines(updated);
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Category" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {expenseCategories.map((cat) => (
+                                    <SelectItem key={cat.value} value={cat.value}>
+                                      {cat.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium">Amount *</label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                value={line.amount || ''}
+                                onChange={(e) => {
+                                  const updated = [...expenseLines];
+                                  updated[idx] = { ...updated[idx], amount: parseFloat(e.target.value) || 0 };
+                                  setExpenseLines(updated);
+                                }}
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Description</label>
+                            <Input
+                              placeholder="Brief description..."
+                              value={line.description}
+                              onChange={(e) => {
+                                const updated = [...expenseLines];
+                                updated[idx] = { ...updated[idx], description: e.target.value };
+                                setExpenseLines(updated);
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                      {expenseLines.length > 0 && (
+                        <div className="flex justify-between text-sm pt-2 border-t">
+                          <span className="font-medium text-blue-700">Lines Total:</span>
+                          <span className={`font-medium ${Math.abs(expenseLines.reduce((s, l) => s + l.amount, 0) - subtotal) > 0.01 ? 'text-destructive' : 'text-green-600'}`}>
+                            {formatCurrency(expenseLines.reduce((s, l) => s + l.amount, 0))}
+                            {subtotal > 0 && ` / ${formatCurrency(subtotal)}`}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -1575,48 +1698,120 @@ export default function VendorInvoicesPage() {
                 </Select>
               </div>
 
-              {/* Expense Coding - Only for Expense Invoices */}
+              {/* Expense Coding - Only for Expense Invoices (Multi-GL) */}
               {editInvoiceType === 'EXPENSE_INVOICE' && (
                 <div className="space-y-4 border rounded-lg p-4 bg-blue-50/50">
-                  <h4 className="text-sm font-medium text-blue-700">Expense Coding</h4>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">GL Account *</label>
-                    <Select value={editGLAccountId} onValueChange={setEditGLAccountId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select GL Account" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {glAccounts.map((acc) => (
-                          <SelectItem key={acc.id} value={acc.id}>
-                            {acc.account_code} - {acc.account_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium text-blue-700">Expense Coding</h4>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEditExpenseLines([...editExpenseLines, { gl_account_id: '', expense_category: '', description: '', amount: 0 }])}
+                    >
+                      <Plus className="h-3 w-3 mr-1" /> Add Line
+                    </Button>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Expense Category *</label>
-                    <Select value={editExpenseCategory} onValueChange={setEditExpenseCategory}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select Category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {expenseCategories.map((cat) => (
-                          <SelectItem key={cat.value} value={cat.value}>
-                            {cat.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Description</label>
-                    <Input
-                      placeholder="Brief description of expense..."
-                      value={editExpenseDescription}
-                      onChange={(e) => setEditExpenseDescription(e.target.value)}
-                    />
-                  </div>
+                  {editExpenseLines.map((line, idx) => (
+                    <div key={idx} className="space-y-3 border rounded-md p-3 bg-white relative">
+                      {editExpenseLines.length > 1 && (
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-medium text-muted-foreground">Line {idx + 1}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                            onClick={() => setEditExpenseLines(editExpenseLines.filter((_, i) => i !== idx))}
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">GL Account *</label>
+                        <Select
+                          value={line.gl_account_id}
+                          onValueChange={(v) => {
+                            const updated = [...editExpenseLines];
+                            updated[idx] = { ...updated[idx], gl_account_id: v };
+                            setEditExpenseLines(updated);
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select GL Account" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {glAccounts.map((acc) => (
+                              <SelectItem key={acc.id} value={acc.id}>
+                                {acc.account_code} - {acc.account_name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Category *</label>
+                          <Select
+                            value={line.expense_category}
+                            onValueChange={(v) => {
+                              const updated = [...editExpenseLines];
+                              updated[idx] = { ...updated[idx], expense_category: v };
+                              setEditExpenseLines(updated);
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {expenseCategories.map((cat) => (
+                                <SelectItem key={cat.value} value={cat.value}>
+                                  {cat.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Amount *</label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            value={line.amount || ''}
+                            onChange={(e) => {
+                              const updated = [...editExpenseLines];
+                              updated[idx] = { ...updated[idx], amount: parseFloat(e.target.value) || 0 };
+                              setEditExpenseLines(updated);
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Description</label>
+                        <Input
+                          placeholder="Brief description..."
+                          value={line.description}
+                          onChange={(e) => {
+                            const updated = [...editExpenseLines];
+                            updated[idx] = { ...updated[idx], description: e.target.value };
+                            setEditExpenseLines(updated);
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  {editExpenseLines.length > 0 && (
+                    <div className="flex justify-between text-sm pt-2 border-t">
+                      <span className="font-medium text-blue-700">Lines Total:</span>
+                      <span className={`font-medium ${Math.abs(editExpenseLines.reduce((s, l) => s + l.amount, 0) - editSubtotal) > 0.01 ? 'text-destructive' : 'text-green-600'}`}>
+                        {formatCurrency(editExpenseLines.reduce((s, l) => s + l.amount, 0))}
+                        {editSubtotal > 0 && ` / ${formatCurrency(editSubtotal)}`}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1897,23 +2092,42 @@ export default function VendorInvoicesPage() {
                   toast.error('Grand total must be greater than 0');
                   return;
                 }
-                if (editInvoiceType === 'EXPENSE_INVOICE' && !editGLAccountId) {
-                  toast.error('Please select a GL Account');
-                  return;
-                }
-                if (editInvoiceType === 'EXPENSE_INVOICE' && !editExpenseCategory) {
-                  toast.error('Please select an Expense Category');
-                  return;
+                if (editInvoiceType === 'EXPENSE_INVOICE') {
+                  const validEditLines = editExpenseLines.filter(l => l.gl_account_id);
+                  if (validEditLines.length === 0) {
+                    toast.error('Please add at least one GL Account line');
+                    return;
+                  }
+                  for (let i = 0; i < validEditLines.length; i++) {
+                    if (!validEditLines[i].expense_category) {
+                      toast.error(`Please select a category for line ${i + 1}`);
+                      return;
+                    }
+                    if (validEditLines[i].amount <= 0) {
+                      toast.error(`Please enter an amount for line ${i + 1}`);
+                      return;
+                    }
+                  }
+                  const editLinesTotal = validEditLines.reduce((s, l) => s + l.amount, 0);
+                  if (Math.abs(editLinesTotal - editSubtotal) > 0.01) {
+                    toast.error(`Expense lines total (${editLinesTotal.toFixed(2)}) must equal the subtotal (${editSubtotal.toFixed(2)})`);
+                    return;
+                  }
                 }
 
                 updateInvoiceMutation.mutate({
                   id: editingInvoice.id,
                   data: {
                     invoice_type: editInvoiceType,
-                    // Expense coding fields
-                    gl_account_id: editInvoiceType === 'EXPENSE_INVOICE' ? editGLAccountId : undefined,
-                    expense_category: editInvoiceType === 'EXPENSE_INVOICE' ? editExpenseCategory : undefined,
-                    expense_description: editInvoiceType === 'EXPENSE_INVOICE' ? editExpenseDescription : undefined,
+                    // Expense coding fields - multiple GL lines
+                    expense_lines: editInvoiceType === 'EXPENSE_INVOICE'
+                      ? editExpenseLines.filter(l => l.gl_account_id).map(l => ({
+                          gl_account_id: l.gl_account_id,
+                          expense_category: l.expense_category || undefined,
+                          description: l.description || undefined,
+                          amount: l.amount,
+                        }))
+                      : undefined,
                     // Amount fields
                     subtotal: editSubtotal,
                     taxable_amount: editSubtotal,
