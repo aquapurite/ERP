@@ -109,7 +109,7 @@ class VendorOrchestrationService:
 
         # Check if vendor already has a supplier_code record
         existing = await self.db.execute(
-            select(SupplierCode).where(SupplierCode.vendor_id == vendor.id)
+            select(SupplierCode).where(SupplierCode.vendor_id == str(vendor.id))
         )
         if existing.scalar_one_or_none():
             return None  # Already exists
@@ -160,7 +160,7 @@ class VendorOrchestrationService:
         # Create SupplierCode record
         supplier_code_record = SupplierCode(
             id=str(uuid.uuid4()),
-            vendor_id=vendor.id,
+            vendor_id=str(vendor.id),
             code=code,
             name=vendor.name,
             description=f"Auto-created for {vendor.vendor_code} on approval",

@@ -312,9 +312,9 @@ class SupplierCode(Base):
         default=lambda: str(uuid.uuid4())
     )
 
-    # Vendor linkage
-    vendor_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+    # Vendor linkage (VARCHAR in DB, stores UUID as string)
+    vendor_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
         ForeignKey("vendors.id"),
         nullable=True,
         unique=True
