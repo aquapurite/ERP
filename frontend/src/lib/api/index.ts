@@ -5009,7 +5009,7 @@ export const expensesApi = {
   },
   createVoucher: async (voucher: {
     voucher_date: string;
-    expense_category_id: string;
+    expense_category_id?: string;
     amount: number;
     gst_amount?: number;
     tds_amount?: number;
@@ -5022,6 +5022,14 @@ export const expensesApi = {
     payment_mode?: string;
     bank_account_id?: string;
     notes?: string;
+    lines?: Array<{
+      expense_category_id: string;
+      description?: string;
+      amount: number;
+      gst_rate?: number;
+      gst_amount?: number;
+      cost_center_id?: string;
+    }>;
   }) => {
     const { data } = await apiClient.post<ExpenseVoucher>('/expenses', voucher);
     return data;

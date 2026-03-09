@@ -77,6 +77,18 @@ interface ExpenseCategory {
   updated_at: string;
 }
 
+interface ExpenseVoucherLineItem {
+  id?: string;
+  line_number?: number;
+  expense_category_id: string;
+  category?: { name: string; code: string };
+  description: string;
+  amount: number;
+  gst_rate: number;
+  gst_amount: number;
+  cost_center_id?: string;
+}
+
 interface ExpenseVoucher {
   id: string;
   voucher_number: string;
@@ -102,6 +114,7 @@ interface ExpenseVoucher {
   journal_entry_number?: string;
   payment_reference?: string;
   attachments?: { files?: Array<{ name: string; url: string }> };
+  lines?: ExpenseVoucherLineItem[];
   created_by_name?: string;
   approved_by_name?: string;
   approved_at?: string;
@@ -158,6 +171,50 @@ export default function ExpensesPage() {
     payment_mode: 'BANK',
     cost_center_id: '',
   });
+
+  // Multi-line mode
+  const [isMultiLine, setIsMultiLine] = useState(false);
+  const [expenseLines, setExpenseLines] = useState<Array<{
+    expense_category_id: string;
+    description: string;
+    amount: string;
+    gst_rate: string;
+    gst_amount: string;
+  }>>([]);
+
+  const addExpenseLine = () => {
+    setExpenseLines([...expenseLines, {
+      expense_category_id: '',
+      description: '',
+      amount: '',
+      gst_rate: '0',
+      gst_amount: '0',
+    }]);
+  };
+
+  const removeExpenseLine = (index: number) => {
+    setExpenseLines(expenseLines.filter((_, i) => i !== index));
+  };
+
+  const updateExpenseLine = (index: number, field: string, value: string) => {
+    const updated = [...expenseLines];
+    (updated[index] as Record<string, string>)[field] = value;
+    // Auto-calculate GST amount when amount or rate changes
+    if (field === 'amount' || field === 'gst_rate') {
+      const amt = parseFloat(updated[index].amount) || 0;
+      const rate = parseFloat(updated[index].gst_rate) || 0;
+      updated[index].gst_amount = ((amt * rate) / 100).toFixed(2);
+    }
+    setExpenseLines(updated);
+  };
+
+  const linesTotals = expenseLines.reduce(
+    (acc, line) => ({
+      amount: acc.amount + (parseFloat(line.amount) || 0),
+      gst: acc.gst + (parseFloat(line.gst_amount) || 0),
+    }),
+    { amount: 0, gst: 0 }
+  );
 
   const [categoryForm, setCategoryForm] = useState({
     code: '',
@@ -319,6 +376,8 @@ export default function ExpensesPage() {
       payment_mode: 'BANK',
       cost_center_id: '',
     });
+    setIsMultiLine(false);
+    setExpenseLines([]);
     setIsCreateDialogOpen(false);
   };
 
@@ -336,20 +395,56 @@ export default function ExpensesPage() {
   };
 
   const handleCreateVoucher = () => {
-    if (!voucherForm.expense_category_id || !voucherForm.amount || !voucherForm.narration) {
-      toast.error('Please fill in all required fields');
+    if (!voucherForm.narration) {
+      toast.error('Please fill in the description');
       return;
     }
-    createVoucherMutation.mutate({
-      voucher_date: voucherForm.voucher_date,
-      expense_category_id: voucherForm.expense_category_id,
-      amount: parseFloat(voucherForm.amount),
-      gst_amount: parseFloat(voucherForm.gst_amount || '0'),
-      tds_amount: parseFloat(voucherForm.tds_amount || '0'),
-      narration: voucherForm.narration,
-      purpose: voucherForm.purpose,
-      payment_mode: voucherForm.payment_mode,
-    });
+
+    if (isMultiLine) {
+      // Multi-line validation
+      if (expenseLines.length === 0) {
+        toast.error('Please add at least one expense line');
+        return;
+      }
+      for (let i = 0; i < expenseLines.length; i++) {
+        if (!expenseLines[i].expense_category_id || !expenseLines[i].amount) {
+          toast.error(`Line ${i + 1}: Category and Amount are required`);
+          return;
+        }
+      }
+      createVoucherMutation.mutate({
+        voucher_date: voucherForm.voucher_date,
+        amount: linesTotals.amount,
+        gst_amount: linesTotals.gst,
+        tds_amount: parseFloat(voucherForm.tds_amount || '0'),
+        narration: voucherForm.narration,
+        purpose: voucherForm.purpose,
+        payment_mode: voucherForm.payment_mode,
+        lines: expenseLines.map((line) => ({
+          expense_category_id: line.expense_category_id,
+          description: line.description,
+          amount: parseFloat(line.amount),
+          gst_rate: parseFloat(line.gst_rate || '0'),
+          gst_amount: parseFloat(line.gst_amount || '0'),
+        })),
+      });
+    } else {
+      // Single-line validation
+      if (!voucherForm.expense_category_id || !voucherForm.amount) {
+        toast.error('Please fill in all required fields');
+        return;
+      }
+      createVoucherMutation.mutate({
+        voucher_date: voucherForm.voucher_date,
+        expense_category_id: voucherForm.expense_category_id,
+        amount: parseFloat(voucherForm.amount),
+        gst_amount: parseFloat(voucherForm.gst_amount || '0'),
+        tds_amount: parseFloat(voucherForm.tds_amount || '0'),
+        narration: voucherForm.narration,
+        purpose: voucherForm.purpose,
+        payment_mode: voucherForm.payment_mode,
+      });
+    }
   };
 
   const handleCreateCategory = () => {
@@ -815,7 +910,7 @@ export default function ExpensesPage() {
 
       {/* Create Voucher Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className={isMultiLine ? "max-w-4xl max-h-[90vh] overflow-y-auto" : "max-w-2xl"}>
           <DialogHeader>
             <DialogTitle>Create Expense Voucher</DialogTitle>
             <DialogDescription>
@@ -823,6 +918,28 @@ export default function ExpensesPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+            {/* Mode toggle */}
+            <div className="flex items-center gap-3">
+              <Label className="text-sm font-medium">Mode:</Label>
+              <div className="flex rounded-lg border overflow-hidden">
+                <button
+                  type="button"
+                  className={`px-3 py-1.5 text-sm font-medium transition-colors ${!isMultiLine ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}
+                  onClick={() => { setIsMultiLine(false); setExpenseLines([]); }}
+                >
+                  Single Line
+                </button>
+                <button
+                  type="button"
+                  className={`px-3 py-1.5 text-sm font-medium transition-colors ${isMultiLine ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}
+                  onClick={() => { setIsMultiLine(true); if (expenseLines.length === 0) addExpenseLine(); }}
+                >
+                  Multi Line
+                </button>
+              </div>
+            </div>
+
+            {/* Common header fields */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Date *</Label>
@@ -833,71 +950,208 @@ export default function ExpensesPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Category *</Label>
+                <Label>Payment Mode</Label>
                 <Select
-                  value={voucherForm.expense_category_id}
-                  onValueChange={(v) => setVoucherForm({ ...voucherForm, expense_category_id: v })}
+                  value={voucherForm.payment_mode}
+                  onValueChange={(v) => setVoucherForm({ ...voucherForm, payment_mode: v })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {categoryDropdown?.map((cat: { id: string; name: string; code: string }) => (
-                      <SelectItem key={cat.id} value={cat.id}>
-                        {cat.code} - {cat.name}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="CASH">Cash</SelectItem>
+                    <SelectItem value="BANK">Bank Transfer</SelectItem>
+                    <SelectItem value="PETTY_CASH">Petty Cash</SelectItem>
+                    <SelectItem value="CREDIT_CARD">Credit Card</SelectItem>
+                    <SelectItem value="IMPREST">Imprest Account</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label>Amount *</Label>
-                <Input
-                  type="number"
-                  placeholder="0.00"
-                  value={voucherForm.amount}
-                  onChange={(e) => setVoucherForm({ ...voucherForm, amount: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>GST Amount</Label>
-                <Input
-                  type="number"
-                  placeholder="0.00"
-                  value={voucherForm.gst_amount}
-                  onChange={(e) => setVoucherForm({ ...voucherForm, gst_amount: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>TDS Amount</Label>
-                <Input
-                  type="number"
-                  placeholder="0.00"
-                  value={voucherForm.tds_amount}
-                  onChange={(e) => setVoucherForm({ ...voucherForm, tds_amount: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Payment Mode</Label>
-              <Select
-                value={voucherForm.payment_mode}
-                onValueChange={(v) => setVoucherForm({ ...voucherForm, payment_mode: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CASH">Cash</SelectItem>
-                  <SelectItem value="BANK">Bank Transfer</SelectItem>
-                  <SelectItem value="PETTY_CASH">Petty Cash</SelectItem>
-                  <SelectItem value="CREDIT_CARD">Credit Card</SelectItem>
-                  <SelectItem value="IMPREST">Imprest Account</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+
+            {!isMultiLine ? (
+              <>
+                {/* Single-line fields */}
+                <div className="space-y-2">
+                  <Label>Category *</Label>
+                  <Select
+                    value={voucherForm.expense_category_id}
+                    onValueChange={(v) => setVoucherForm({ ...voucherForm, expense_category_id: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categoryDropdown?.map((cat: { id: string; name: string; code: string }) => (
+                        <SelectItem key={cat.id} value={cat.id}>
+                          {cat.code} - {cat.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label>Amount *</Label>
+                    <Input
+                      type="number"
+                      placeholder="0.00"
+                      value={voucherForm.amount}
+                      onChange={(e) => setVoucherForm({ ...voucherForm, amount: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>GST Amount</Label>
+                    <Input
+                      type="number"
+                      placeholder="0.00"
+                      value={voucherForm.gst_amount}
+                      onChange={(e) => setVoucherForm({ ...voucherForm, gst_amount: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>TDS Amount</Label>
+                    <Input
+                      type="number"
+                      placeholder="0.00"
+                      value={voucherForm.tds_amount}
+                      onChange={(e) => setVoucherForm({ ...voucherForm, tds_amount: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Multi-line expense table */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Expense Lines</Label>
+                    <Button type="button" variant="outline" size="sm" onClick={addExpenseLine}>
+                      <Plus className="mr-1 h-3 w-3" /> Add Line
+                    </Button>
+                  </div>
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/50">
+                        <tr>
+                          <th className="text-left p-2 font-medium">#</th>
+                          <th className="text-left p-2 font-medium">Category *</th>
+                          <th className="text-left p-2 font-medium">Description</th>
+                          <th className="text-right p-2 font-medium">Amount *</th>
+                          <th className="text-right p-2 font-medium">GST %</th>
+                          <th className="text-right p-2 font-medium">GST Amt</th>
+                          <th className="p-2 w-10"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {expenseLines.map((line, idx) => (
+                          <tr key={idx} className="border-t">
+                            <td className="p-2 text-muted-foreground">{idx + 1}</td>
+                            <td className="p-2">
+                              <Select
+                                value={line.expense_category_id}
+                                onValueChange={(v) => updateExpenseLine(idx, 'expense_category_id', v)}
+                              >
+                                <SelectTrigger className="h-8 text-xs">
+                                  <SelectValue placeholder="Select" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {categoryDropdown?.map((cat: { id: string; name: string; code: string }) => (
+                                    <SelectItem key={cat.id} value={cat.id}>
+                                      {cat.code} - {cat.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                className="h-8 text-xs"
+                                placeholder="Description"
+                                value={line.description}
+                                onChange={(e) => updateExpenseLine(idx, 'description', e.target.value)}
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                className="h-8 text-xs text-right"
+                                type="number"
+                                placeholder="0.00"
+                                value={line.amount}
+                                onChange={(e) => updateExpenseLine(idx, 'amount', e.target.value)}
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                className="h-8 text-xs text-right w-20"
+                                type="number"
+                                placeholder="0"
+                                value={line.gst_rate}
+                                onChange={(e) => updateExpenseLine(idx, 'gst_rate', e.target.value)}
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                className="h-8 text-xs text-right w-24"
+                                type="number"
+                                placeholder="0.00"
+                                value={line.gst_amount}
+                                onChange={(e) => updateExpenseLine(idx, 'gst_amount', e.target.value)}
+                              />
+                            </td>
+                            <td className="p-2">
+                              {expenseLines.length > 1 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  onClick={() => removeExpenseLine(idx)}
+                                >
+                                  <Trash2 className="h-3 w-3 text-destructive" />
+                                </Button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Totals */}
+                  <div className="flex justify-end">
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                      <span className="text-muted-foreground text-right">Total Amount:</span>
+                      <span className="font-medium text-right">{formatCurrency(linesTotals.amount)}</span>
+                      <span className="text-muted-foreground text-right">Total GST:</span>
+                      <span className="font-medium text-right">{formatCurrency(linesTotals.gst)}</span>
+                    </div>
+                  </div>
+
+                  {/* TDS at header level */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>TDS Amount</Label>
+                      <Input
+                        type="number"
+                        placeholder="0.00"
+                        value={voucherForm.tds_amount}
+                        onChange={(e) => setVoucherForm({ ...voucherForm, tds_amount: e.target.value })}
+                      />
+                    </div>
+                    <div className="col-span-2 flex items-end">
+                      <div className="text-sm">
+                        <span className="text-muted-foreground">Net Payable: </span>
+                        <span className="text-lg font-bold">
+                          {formatCurrency(linesTotals.amount + linesTotals.gst - (parseFloat(voucherForm.tds_amount) || 0))}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
             <div className="space-y-2">
               <Label>Description *</Label>
               <Textarea
@@ -956,26 +1210,71 @@ export default function ExpensesPage() {
                   <p className="font-medium">{formatDate(selectedVoucher.voucher_date)}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Category</p>
-                  <p className="font-medium">{selectedVoucher.category_name}</p>
+                  <p className="text-muted-foreground">Payment Mode</p>
+                  <p className="font-medium">{selectedVoucher.payment_mode}</p>
                 </div>
-                <div>
-                  <p className="text-muted-foreground">Amount</p>
-                  <p className="font-medium">{formatCurrency(selectedVoucher.amount)}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">GST</p>
-                  <p className="font-medium">{formatCurrency(selectedVoucher.gst_amount)}</p>
-                </div>
+                {(!selectedVoucher.lines || selectedVoucher.lines.length === 0) && (
+                  <>
+                    <div>
+                      <p className="text-muted-foreground">Category</p>
+                      <p className="font-medium">{selectedVoucher.category_name}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Amount</p>
+                      <p className="font-medium">{formatCurrency(selectedVoucher.amount)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">GST</p>
+                      <p className="font-medium">{formatCurrency(selectedVoucher.gst_amount)}</p>
+                    </div>
+                  </>
+                )}
                 <div>
                   <p className="text-muted-foreground">TDS</p>
                   <p className="font-medium">{formatCurrency(selectedVoucher.tds_amount)}</p>
                 </div>
-                <div>
-                  <p className="text-muted-foreground">Payment Mode</p>
-                  <p className="font-medium">{selectedVoucher.payment_mode}</p>
-                </div>
               </div>
+
+              {/* Multi-line items display */}
+              {selectedVoucher.lines && selectedVoucher.lines.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">Expense Lines</p>
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/50">
+                        <tr>
+                          <th className="text-left p-2">#</th>
+                          <th className="text-left p-2">Category</th>
+                          <th className="text-left p-2">Description</th>
+                          <th className="text-right p-2">Amount</th>
+                          <th className="text-right p-2">GST %</th>
+                          <th className="text-right p-2">GST Amt</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedVoucher.lines.map((line, idx) => (
+                          <tr key={line.id || idx} className="border-t">
+                            <td className="p-2">{line.line_number || idx + 1}</td>
+                            <td className="p-2">{line.category?.name || '-'}</td>
+                            <td className="p-2">{line.description || '-'}</td>
+                            <td className="p-2 text-right">{formatCurrency(line.amount)}</td>
+                            <td className="p-2 text-right">{line.gst_rate}%</td>
+                            <td className="p-2 text-right">{formatCurrency(line.gst_amount)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-muted/30 font-medium">
+                        <tr className="border-t">
+                          <td colSpan={3} className="p-2 text-right">Totals:</td>
+                          <td className="p-2 text-right">{formatCurrency(selectedVoucher.amount)}</td>
+                          <td className="p-2"></td>
+                          <td className="p-2 text-right">{formatCurrency(selectedVoucher.gst_amount)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              )}
 
               <div className="text-sm">
                 <p className="text-muted-foreground">Description</p>

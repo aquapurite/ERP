@@ -51,6 +51,31 @@ class ExpenseCategoryResponse(BaseResponseSchema):
     updated_at: datetime
 
 
+# ==================== EXPENSE VOUCHER LINES ====================
+
+class ExpenseVoucherLineCreate(BaseModel):
+    expense_category_id: Optional[UUID] = None
+    description: Optional[str] = None
+    amount: Decimal = Field(..., gt=0)
+    gst_rate: Decimal = Field(default=Decimal("0"), ge=0)
+    gst_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    cost_center_id: Optional[UUID] = None
+
+
+class ExpenseVoucherLineResponse(BaseResponseSchema):
+    id: UUID
+    line_number: int
+    expense_category_id: Optional[UUID] = None
+    category: Optional[ExpenseCategoryResponse] = None
+    description: Optional[str] = None
+    amount: Decimal
+    gst_rate: Decimal
+    gst_amount: Decimal
+    cost_center_id: Optional[UUID] = None
+    created_at: datetime
+    updated_at: datetime
+
+
 # ==================== EXPENSE VOUCHER ====================
 
 class ExpenseVoucherBase(BaseModel):
@@ -68,6 +93,8 @@ class ExpenseVoucherBase(BaseModel):
 
 
 class ExpenseVoucherCreate(ExpenseVoucherBase):
+    lines: Optional[List[ExpenseVoucherLineCreate]] = None
+
     @field_validator("payment_mode")
     @classmethod
     def validate_payment_mode(cls, v):
@@ -86,6 +113,7 @@ class ExpenseVoucherUpdate(BaseModel):
     purpose: Optional[str] = None
     payment_mode: Optional[str] = None
     bank_account_id: Optional[UUID] = None
+    lines: Optional[List[ExpenseVoucherLineCreate]] = None
 
 
 class ExpenseVoucherResponse(BaseResponseSchema):
@@ -123,6 +151,7 @@ class ExpenseVoucherResponse(BaseResponseSchema):
     paid_at: Optional[datetime] = None
     payment_reference: Optional[str] = None
     attachments: List[dict] = []
+    lines: List[ExpenseVoucherLineResponse] = []
     created_at: datetime
     updated_at: datetime
 

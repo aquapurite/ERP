@@ -224,6 +224,9 @@ class AccountingService:
 
         self.db.add(journal_entry)
 
+        # Flush to persist JE + lines so GL FK references are valid
+        await self.db.flush()
+
         # Auto-post if requested
         if auto_post:
             await self._post_journal_entry(journal_entry, created_lines)
@@ -648,38 +651,72 @@ class AccountingService:
         bank_account_id: Optional[uuid.UUID],
         narration: str,
         cost_center_id: Optional[uuid.UUID] = None,
+        expense_lines: Optional[list] = None,
     ) -> JournalEntry:
         """
         Post journal entry for expense voucher.
 
-        Debit: Expense Account (from category)
-        Debit: GST Input Credit (if applicable)
-        Credit: TDS Payable (if applicable)
-        Credit: Accounts Payable / Cash / Bank
+        Single-line mode:
+          Debit: Expense Account (from category)
+          Debit: GST Input Credit (if applicable)
+          Credit: TDS Payable (if applicable)
+          Credit: Accounts Payable / Cash / Bank
+
+        Multi-line mode (expense_lines provided):
+          Debit: One line per expense category
+          Debit: GST Input Credit (sum of all line GST)
+          Credit: TDS Payable (if applicable)
+          Credit: Accounts Payable / Cash / Bank
         """
         lines = []
 
-        # Get expense account code
-        expense_code = None
-        if expense_account_id:
-            account_result = await self.db.execute(
-                select(ChartOfAccount.account_code)
-                .where(ChartOfAccount.id == expense_account_id)
-            )
-            expense_code = account_result.scalar_one_or_none()
+        if expense_lines:
+            # Multi-line: create one DR entry per expense line
+            for el in expense_lines:
+                el_gl_id = el.get("gl_account_id")
+                el_amount = el.get("amount", Decimal("0"))
+                el_desc = el.get("description", "")
 
-        if not expense_code:
-            raise ValueError("Expense account not found or not configured for category")
+                expense_code = None
+                if el_gl_id:
+                    account_result = await self.db.execute(
+                        select(ChartOfAccount.account_code)
+                        .where(ChartOfAccount.id == el_gl_id)
+                    )
+                    expense_code = account_result.scalar_one_or_none()
 
-        # Debit Expense Account
-        lines.append({
-            "account_code": expense_code,
-            "debit": amount,
-            "credit": Decimal("0"),
-            "description": narration,
-        })
+                if not expense_code:
+                    raise ValueError(
+                        f"Expense account not found for line: {el_desc or 'unknown'}"
+                    )
 
-        # Debit GST Input Credit if applicable
+                lines.append({
+                    "account_code": expense_code,
+                    "debit": el_amount,
+                    "credit": Decimal("0"),
+                    "description": el_desc or narration,
+                })
+        else:
+            # Single-line: existing behavior
+            expense_code = None
+            if expense_account_id:
+                account_result = await self.db.execute(
+                    select(ChartOfAccount.account_code)
+                    .where(ChartOfAccount.id == expense_account_id)
+                )
+                expense_code = account_result.scalar_one_or_none()
+
+            if not expense_code:
+                raise ValueError("Expense account not found or not configured for category")
+
+            lines.append({
+                "account_code": expense_code,
+                "debit": amount,
+                "credit": Decimal("0"),
+                "description": narration,
+            })
+
+        # Debit GST Input Credit if applicable (total GST across all lines)
         if gst_amount > 0:
             lines.append({
                 "account_code": self.ACCOUNT_CODES["CGST_INPUT"],

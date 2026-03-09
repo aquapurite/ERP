@@ -18,14 +18,15 @@ from sqlalchemy import select, func, and_, or_, text
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, CurrentUser, require_permissions
-from app.models.expense import ExpenseCategory, ExpenseVoucher
+from app.models.expense import ExpenseCategory, ExpenseVoucher, ExpenseVoucherLine
 from app.models.accounting import JournalEntry, ChartOfAccount
 from app.services.accounting_service import AccountingService
 from app.schemas.expense import (
     ExpenseCategoryCreate, ExpenseCategoryUpdate, ExpenseCategoryResponse,
     ExpenseVoucherCreate, ExpenseVoucherUpdate, ExpenseVoucherResponse,
     ExpenseVoucherListResponse, SubmitRequest, ApproveRequest, RejectRequest,
-    PostRequest, PaymentRequest, ExpenseDashboard
+    PostRequest, PaymentRequest, ExpenseDashboard,
+    ExpenseVoucherLineResponse,
 )
 
 
@@ -36,7 +37,10 @@ async def _load_voucher_for_response(db: DB, voucher_id: uuid.UUID) -> ExpenseVo
     """Re-fetch voucher with eagerly loaded relationships for serialization."""
     result = await db.execute(
         select(ExpenseVoucher)
-        .options(selectinload(ExpenseVoucher.category))
+        .options(
+            selectinload(ExpenseVoucher.category),
+            selectinload(ExpenseVoucher.lines).selectinload(ExpenseVoucherLine.category),
+        )
         .where(ExpenseVoucher.id == voucher_id)
     )
     voucher = result.scalar_one()
@@ -222,7 +226,10 @@ async def list_expense_vouchers(
     search: Optional[str] = Query(None),
 ):
     """List expense vouchers with filters."""
-    query = select(ExpenseVoucher).options(selectinload(ExpenseVoucher.category))
+    query = select(ExpenseVoucher).options(
+        selectinload(ExpenseVoucher.category),
+        selectinload(ExpenseVoucher.lines).selectinload(ExpenseVoucherLine.category),
+    )
     
     # Filters
     if status:
@@ -285,22 +292,31 @@ async def create_expense_voucher(
 ):
     """Create a new expense voucher (DRAFT status)."""
     voucher_number = await generate_voucher_number(db)
-    
+
+    # If multi-line, compute header totals from lines
+    has_lines = data.lines and len(data.lines) > 0
+    if has_lines:
+        total_amount = sum(line.amount for line in data.lines)
+        total_gst = sum(line.gst_amount for line in data.lines)
+    else:
+        total_amount = data.amount
+        total_gst = data.gst_amount
+
     # Calculate net amount
-    net_amount = data.amount + data.gst_amount - data.tds_amount
-    
+    net_amount = total_amount + total_gst - data.tds_amount
+
     # Get financial year and period
     fy = f"FY{data.voucher_date.year}-{str(data.voucher_date.year + 1)[2:]}"
     period = data.voucher_date.strftime("%Y-%m")
-    
+
     voucher = ExpenseVoucher(
         voucher_number=voucher_number,
         voucher_date=data.voucher_date,
         financial_year=fy,
         period=period,
-        expense_category_id=data.expense_category_id,
-        amount=data.amount,
-        gst_amount=data.gst_amount,
+        expense_category_id=data.expense_category_id if not has_lines else None,
+        amount=total_amount,
+        gst_amount=total_gst,
         tds_amount=data.tds_amount,
         net_amount=net_amount,
         vendor_id=data.vendor_id,
@@ -312,8 +328,25 @@ async def create_expense_voucher(
         status="DRAFT",
         created_by=current_user.id,
     )
-    
+
     db.add(voucher)
+    await db.flush()  # Get voucher.id before adding lines
+
+    # Create line items if multi-line
+    if has_lines:
+        for idx, line_data in enumerate(data.lines, start=1):
+            line = ExpenseVoucherLine(
+                voucher_id=voucher.id,
+                line_number=idx,
+                expense_category_id=line_data.expense_category_id,
+                description=line_data.description,
+                amount=line_data.amount,
+                gst_rate=line_data.gst_rate,
+                gst_amount=line_data.gst_amount,
+                cost_center_id=line_data.cost_center_id,
+            )
+            db.add(line)
+
     await db.commit()
     return await _load_voucher_for_response(db, voucher.id)
 
@@ -326,7 +359,10 @@ async def get_expense_voucher(
     """Get expense voucher details."""
     result = await db.execute(
         select(ExpenseVoucher)
-        .options(selectinload(ExpenseVoucher.category))
+        .options(
+            selectinload(ExpenseVoucher.category),
+            selectinload(ExpenseVoucher.lines).selectinload(ExpenseVoucherLine.category),
+        )
         .where(ExpenseVoucher.id == voucher_id)
     )
     voucher = result.scalar_one_or_none()
@@ -358,19 +394,51 @@ async def update_expense_voucher(
     voucher = await db.get(ExpenseVoucher, voucher_id)
     if not voucher:
         raise HTTPException(status_code=404, detail="Voucher not found")
-    
+
     if voucher.status != "DRAFT":
         raise HTTPException(status_code=400, detail="Only DRAFT vouchers can be updated")
-    
-    for field, value in data.model_dump(exclude_unset=True).items():
+
+    # Apply header field updates (exclude lines)
+    for field, value in data.model_dump(exclude_unset=True, exclude={"lines"}).items():
         setattr(voucher, field, value)
-    
+
+    # Handle lines update
+    has_lines = data.lines is not None and len(data.lines) > 0
+    if has_lines:
+        # Delete existing lines
+        existing_lines = await db.execute(
+            select(ExpenseVoucherLine).where(ExpenseVoucherLine.voucher_id == voucher_id)
+        )
+        for old_line in existing_lines.scalars().all():
+            await db.delete(old_line)
+
+        # Insert new lines
+        total_amount = Decimal("0")
+        total_gst = Decimal("0")
+        for idx, line_data in enumerate(data.lines, start=1):
+            line = ExpenseVoucherLine(
+                voucher_id=voucher_id,
+                line_number=idx,
+                expense_category_id=line_data.expense_category_id,
+                description=line_data.description,
+                amount=line_data.amount,
+                gst_rate=line_data.gst_rate,
+                gst_amount=line_data.gst_amount,
+                cost_center_id=line_data.cost_center_id,
+            )
+            db.add(line)
+            total_amount += line_data.amount
+            total_gst += line_data.gst_amount
+
+        voucher.amount = total_amount
+        voucher.gst_amount = total_gst
+        voucher.expense_category_id = None  # Multi-line: no header category
+
     # Recalculate net amount
     voucher.net_amount = voucher.amount + voucher.gst_amount - voucher.tds_amount
-    
+
     await db.commit()
-    await db.refresh(voucher)
-    return voucher
+    return await _load_voucher_for_response(db, voucher.id)
 
 
 @router.delete("/{voucher_id}", dependencies=[Depends(require_permissions("EXPENSE_DELETE"))])
@@ -520,23 +588,56 @@ async def post_expense_voucher(
     # CR: TDS Payable (if applicable)
     # CR: Accounts Payable / Cash / Bank
     try:
-        # Load expense category to get GL account
-        category = await db.get(ExpenseCategory, voucher.expense_category_id) if voucher.expense_category_id else None
-        gl_account_id = category.gl_account_id if category else None
-
-        journal_entry = await AccountingService(db, created_by=current_user.id).post_expense_voucher(
-            voucher_id=voucher.id,
-            voucher_number=voucher.voucher_number,
-            expense_account_id=gl_account_id,
-            amount=voucher.amount,
-            gst_amount=voucher.gst_amount,
-            tds_amount=voucher.tds_amount,
-            net_amount=voucher.net_amount,
-            payment_mode=voucher.payment_mode,
-            bank_account_id=voucher.bank_account_id,
-            narration=voucher.narration or f"Expense {voucher.voucher_number}",
-            cost_center_id=voucher.cost_center_id,
+        # Load lines for multi-line posting
+        lines_result = await db.execute(
+            select(ExpenseVoucherLine)
+            .where(ExpenseVoucherLine.voucher_id == voucher.id)
+            .order_by(ExpenseVoucherLine.line_number)
         )
+        voucher_lines = lines_result.scalars().all()
+
+        if voucher_lines:
+            # Multi-line: build expense_lines list for accounting service
+            expense_lines = []
+            for vl in voucher_lines:
+                cat = await db.get(ExpenseCategory, vl.expense_category_id) if vl.expense_category_id else None
+                expense_lines.append({
+                    "gl_account_id": cat.gl_account_id if cat else None,
+                    "amount": vl.amount,
+                    "gst_amount": vl.gst_amount,
+                    "description": vl.description or "",
+                })
+            journal_entry = await AccountingService(db, created_by=current_user.id).post_expense_voucher(
+                voucher_id=voucher.id,
+                voucher_number=voucher.voucher_number,
+                expense_account_id=None,
+                amount=voucher.amount,
+                gst_amount=voucher.gst_amount,
+                tds_amount=voucher.tds_amount,
+                net_amount=voucher.net_amount,
+                payment_mode=voucher.payment_mode,
+                bank_account_id=voucher.bank_account_id,
+                narration=voucher.narration or f"Expense {voucher.voucher_number}",
+                cost_center_id=voucher.cost_center_id,
+                expense_lines=expense_lines,
+            )
+        else:
+            # Single-line: existing behavior
+            category = await db.get(ExpenseCategory, voucher.expense_category_id) if voucher.expense_category_id else None
+            gl_account_id = category.gl_account_id if category else None
+            journal_entry = await AccountingService(db, created_by=current_user.id).post_expense_voucher(
+                voucher_id=voucher.id,
+                voucher_number=voucher.voucher_number,
+                expense_account_id=gl_account_id,
+                amount=voucher.amount,
+                gst_amount=voucher.gst_amount,
+                tds_amount=voucher.tds_amount,
+                net_amount=voucher.net_amount,
+                payment_mode=voucher.payment_mode,
+                bank_account_id=voucher.bank_account_id,
+                narration=voucher.narration or f"Expense {voucher.voucher_number}",
+                cost_center_id=voucher.cost_center_id,
+            )
         voucher.journal_entry_id = journal_entry.id
     except Exception as e:
         raise HTTPException(

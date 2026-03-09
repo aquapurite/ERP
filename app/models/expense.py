@@ -152,7 +152,59 @@ class ExpenseVoucher(Base):
 
     # Relationships
     category = relationship("ExpenseCategory", back_populates="vouchers")
+    lines = relationship("ExpenseVoucherLine", back_populates="voucher", cascade="all, delete-orphan", order_by="ExpenseVoucherLine.line_number")
 
     def __repr__(self):
         return f"<ExpenseVoucher {self.voucher_number}: {self.status}>"
+
+
+class ExpenseVoucherLine(Base):
+    """
+    Individual line item within a multi-line expense voucher.
+    Each line has its own category, amount, and GST rate.
+    """
+    __tablename__ = "expense_voucher_lines"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    voucher_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("expense_vouchers.id", ondelete="CASCADE"),
+        nullable=False
+    )
+    line_number: Mapped[int] = mapped_column(Integer, default=1)
+
+    # Expense details
+    expense_category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("expense_categories.id"),
+        nullable=True
+    )
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    gst_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"))
+    gst_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"))
+
+    # Cost allocation
+    cost_center_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+    # Audit
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
+
+    # Relationships
+    voucher = relationship("ExpenseVoucher", back_populates="lines")
+    category = relationship("ExpenseCategory")
+
+    def __repr__(self):
+        return f"<ExpenseVoucherLine {self.voucher_id}:{self.line_number}>"
 
