@@ -879,7 +879,10 @@ async def get_expense_dashboard(
     # Recent vouchers
     result = await db.execute(
         select(ExpenseVoucher)
-        .options(selectinload(ExpenseVoucher.category))
+        .options(
+            selectinload(ExpenseVoucher.category),
+            selectinload(ExpenseVoucher.lines).selectinload(ExpenseVoucherLine.category),
+        )
         .order_by(ExpenseVoucher.created_at.desc())
         .limit(5)
     )

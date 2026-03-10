@@ -54,6 +54,7 @@ def start_scheduler():
         from app.jobs.banking_jobs import auto_reconcile_bank_transactions
         from app.jobs.warranty_jobs import check_warranty_expiry
         from app.jobs.sla_jobs import check_sla_compliance
+        from app.jobs.depreciation_jobs import run_monthly_depreciation
 
         # Add scheduled jobs
 
@@ -145,6 +146,18 @@ def start_scheduler():
             minutes=30,
             id='check_sla_compliance',
             name='Check SLA Compliance & Auto-Escalate',
+            replace_existing=True,
+        )
+
+        # Monthly auto-depreciation on 1st of every month at 2 AM IST
+        scheduler.add_job(
+            run_monthly_depreciation,
+            'cron',
+            day=1,
+            hour=2,
+            minute=0,
+            id='run_monthly_depreciation',
+            name='Monthly Auto-Depreciation (Fixed Assets)',
             replace_existing=True,
         )
 
