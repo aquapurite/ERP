@@ -747,7 +747,7 @@ async def post_expense_voucher(
         action="POST", entity_type="ExpenseVoucher", entity_id=voucher.id,
         user_id=current_user.id,
         new_values={"journal_entry_id": str(voucher.journal_entry_id)},
-        description=f"Posted expense voucher {voucher.voucher_number} to GL (JE: {voucher.journal_entry_number})",
+        description=f"Posted expense voucher {voucher.voucher_number} to GL (JE: {journal_entry.entry_number})",
     )
     await db.commit()
     return await _load_voucher_for_response(db, voucher.id)
