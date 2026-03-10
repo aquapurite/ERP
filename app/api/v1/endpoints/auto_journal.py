@@ -4,7 +4,7 @@ from uuid import UUID
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -288,24 +288,13 @@ async def list_pending_journal_entries(
     db: DB,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
-    company_id: Optional[UUID] = None,
     current_user: User = Depends(get_current_user),
 ):
     """List all draft/pending journal entries for review."""
-    effective_company_id = company_id or getattr(current_user, 'company_id', None)
-
-    if not effective_company_id:
-        raise HTTPException(status_code=400, detail="Company ID is required")
-
     result = await db.execute(
         select(JournalEntry)
         .options(selectinload(JournalEntry.lines))
-        .where(
-            and_(
-                JournalEntry.company_id == effective_company_id,
-                JournalEntry.status == JournalEntryStatus.DRAFT
-            )
-        )
+        .where(JournalEntry.status == JournalEntryStatus.DRAFT)
         .order_by(JournalEntry.entry_date.desc())
         .offset(skip)
         .limit(limit)
@@ -332,28 +321,17 @@ async def list_pending_journal_entries(
 @router.post("/journals/post-all")
 async def post_all_pending_journals(
     db: DB,
-    company_id: Optional[UUID] = None,
     current_user: User = Depends(get_current_user),
 ):
     """Post all pending journal entries."""
-    effective_company_id = company_id or getattr(current_user, 'company_id', None)
-
-    if not effective_company_id:
-        raise HTTPException(status_code=400, detail="Company ID is required")
-
     result = await db.execute(
         select(JournalEntry)
         .options(selectinload(JournalEntry.lines))
-        .where(
-            and_(
-                JournalEntry.company_id == effective_company_id,
-                JournalEntry.status == JournalEntryStatus.DRAFT
-            )
-        )
+        .where(JournalEntry.status == JournalEntryStatus.DRAFT)
     )
     journals = result.scalars().all()
 
-    service = AutoJournalService(db, effective_company_id)
+    service = AutoJournalService(db)
     posted = 0
     failed = 0
     errors = []

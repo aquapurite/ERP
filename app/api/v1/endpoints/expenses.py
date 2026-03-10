@@ -46,7 +46,9 @@ async def _load_voucher_for_response(db: DB, voucher_id: uuid.UUID) -> ExpenseVo
         )
         .where(ExpenseVoucher.id == voucher_id)
     )
-    voucher = result.scalar_one()
+    voucher = result.scalar_one_or_none()
+    if not voucher:
+        raise HTTPException(status_code=404, detail="Expense voucher not found")
     # Populate journal_entry_number if linked
     if voucher.journal_entry_id:
         je_result = await db.execute(
