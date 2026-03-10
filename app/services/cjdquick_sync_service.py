@@ -59,6 +59,8 @@ class CJDQuickSyncService:
                 await svc.sync_purchase_order(entity_id)
             elif entity_type == "RETURN":
                 await svc.sync_return(entity_id)
+            elif entity_type == "GR":
+                await svc.sync_goods_receipt_for_po(entity_id)
             await db.commit()
         except Exception as e:
             logger.warning("CJDQuick auto-sync failed for %s %s: %s", entity_type, entity_id, e)
@@ -296,6 +298,48 @@ class CJDQuickSyncService:
         # Add dates
         if hasattr(po, "created_at") and po.created_at:
             payload["poDate"] = po.created_at.strftime("%Y-%m-%d")
+        if hasattr(po, "expected_delivery_date") and po.expected_delivery_date:
+            payload["expectedDeliveryDate"] = po.expected_delivery_date.strftime("%Y-%m-%d")
+
+        return payload
+
+    def _build_goods_receipt_payload(self, po: PurchaseOrder) -> Dict[str, Any]:
+        """Map Aquapurite PurchaseOrder to CJDQuick Goods Receipt payload.
+
+        SAP equivalent: MIGO (Movement Type 101 = GR against PO).
+        This notifies the 3PL warehouse that goods are expected for this PO.
+        """
+        items = []
+        if hasattr(po, "items") and po.items:
+            for item in po.items:
+                sku_code = ""
+                sku_name = ""
+                if hasattr(item, "product") and item.product:
+                    sku_code = item.product.sku or ""
+                    sku_name = item.product.name or ""
+
+                item_data: Dict[str, Any] = {
+                    "externalSkuCode": sku_code,
+                    "externalSkuName": sku_name,
+                    "expectedQty": item.quantity if hasattr(item, "quantity") else 0,
+                }
+                if hasattr(item, "unit_price") and item.unit_price:
+                    item_data["unitPrice"] = _decimal_to_float(item.unit_price)
+                items.append(item_data)
+
+        payload: Dict[str, Any] = {
+            "companyId": settings.CJDQUICK_COMPANY_ID,
+            "locationId": settings.CJDQUICK_DELHI_LOCATION_ID,
+            "movementType": "101",  # GR against PO (SAP standard)
+            "inboundSource": "PURCHASE",
+            "externalPoNumber": po.po_number if hasattr(po, "po_number") else str(po.id),
+            "items": items,
+        }
+        # Add vendor info
+        if hasattr(po, "vendor") and po.vendor:
+            payload["externalVendorCode"] = getattr(po.vendor, "vendor_code", "") or ""
+            payload["externalVendorName"] = getattr(po.vendor, "company_name", "") or ""
+        # Add expected delivery date
         if hasattr(po, "expected_delivery_date") and po.expected_delivery_date:
             payload["expectedDeliveryDate"] = po.expected_delivery_date.strftime("%Y-%m-%d")
 
@@ -577,6 +621,60 @@ class CJDQuickSyncService:
             logger.error("Failed to sync PO %s: %s", po_id, e.message)
             raise
 
+    async def sync_goods_receipt_for_po(self, po_id: uuid.UUID) -> CJDQuickSyncLog:
+        """Push a Goods Receipt to CJDQuick OMS for a PO (SAP MIGO equivalent).
+
+        Called on PO approval to notify the 3PL warehouse about incoming goods.
+        """
+        from sqlalchemy.orm import selectinload
+
+        result = await self.db.execute(
+            select(PurchaseOrder)
+            .options(
+                selectinload(PurchaseOrder.items).selectinload(PurchaseOrderItem.product),
+                selectinload(PurchaseOrder.vendor),
+            )
+            .where(PurchaseOrder.id == po_id)
+        )
+        po = result.scalar_one_or_none()
+        if not po:
+            raise ValueError(f"PurchaseOrder {po_id} not found")
+
+        payload = self._build_goods_receipt_payload(po)
+
+        try:
+            response = await self.client.create_goods_receipt(payload)
+            gr_id = response.get("id") or response.get("_id") or response.get("grNo")
+
+            # Update PO with CJDQuick GR tracking
+            po.cjdquick_gr_id = str(gr_id) if gr_id else None
+            po.cjdquick_gr_status = "CREATED"
+
+            log = await self._write_sync_log(
+                entity_type="GR",
+                entity_id=po_id,
+                operation="CREATE",
+                status="SUCCESS",
+                request_payload=payload,
+                response_payload=response,
+                oms_id=str(gr_id) if gr_id else None,
+            )
+            logger.info("GR for PO %s synced to CJDQuick: %s", po.po_number, gr_id)
+            return log
+        except CJDQuickAPIError as e:
+            po.cjdquick_gr_status = "FAILED"
+
+            log = await self._write_sync_log(
+                entity_type="GR",
+                entity_id=po_id,
+                operation="CREATE",
+                status="FAILED",
+                request_payload=payload,
+                error_message=e.message,
+            )
+            logger.error("Failed to sync GR for PO %s: %s", po.po_number, e.message)
+            raise
+
     async def sync_return(self, return_id: uuid.UUID) -> CJDQuickSyncLog:
         """Push a return order to CJDQuick OMS."""
         from sqlalchemy.orm import selectinload
@@ -642,6 +740,8 @@ class CJDQuickSyncService:
             return await self.sync_purchase_order(log.entity_id)
         elif log.entity_type == "RETURN":
             return await self.sync_return(log.entity_id)
+        elif log.entity_type == "GR":
+            return await self.sync_goods_receipt_for_po(log.entity_id)
         else:
             raise ValueError(f"Unknown entity type: {log.entity_type}")
 

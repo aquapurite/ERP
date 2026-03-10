@@ -614,6 +614,10 @@ class PurchaseOrder(Base):
     # Internal Notes
     internal_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # CJDQuick 3PL Integration
+    cjdquick_gr_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, comment="CJDQuick Goods Receipt ID")
+    cjdquick_gr_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, comment="CJDQuick GR sync status")
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -358,6 +358,24 @@ class CJDQuickService:
         """List Purchase Orders with optional filters."""
         return await self._request("GET", "/external-pos", params=params)
 
+    # ==================== Goods Receipt Methods ====================
+
+    async def create_goods_receipt(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a Goods Receipt in CJDQuick OMS (SAP MIGO equivalent)."""
+        return await self._request("POST", "/goods-receipts", data=payload)
+
+    async def add_goods_receipt_items(self, gr_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Add items to an existing Goods Receipt."""
+        return await self._request("POST", f"/goods-receipts/{gr_id}/items", data=payload)
+
+    async def post_goods_receipt(self, gr_id: str) -> Dict[str, Any]:
+        """Post/confirm a Goods Receipt (makes it final)."""
+        return await self._request("POST", f"/goods-receipts/{gr_id}/post")
+
+    async def get_goods_receipt(self, gr_id: str) -> Dict[str, Any]:
+        """Get Goods Receipt details by ID."""
+        return await self._request("GET", f"/goods-receipts/{gr_id}")
+
     # ==================== ASN Methods ====================
 
     async def create_asn(self, payload: Dict[str, Any]) -> Dict[str, Any]:

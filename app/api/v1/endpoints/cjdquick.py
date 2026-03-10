@@ -23,6 +23,7 @@ from app.models.cjdquick_sync_log import CJDQuickSyncLog
 from app.models.order import Order, OrderItem
 from app.models.shipment import Shipment, ShipmentTracking
 from app.models.return_order import ReturnOrder
+from app.models.purchase import PurchaseOrder
 from app.models.picklist import PicklistItem
 from app.models.billing import TaxInvoice, InvoiceStatus, InvoiceType
 from app.services.cjdquick_service import CJDQuickAPIError
@@ -611,6 +612,56 @@ async def register_webhook(
         )
 
 
+# ==================== GOODS RECEIPT SYNC ====================
+
+@router.post(
+    "/sync/goods-receipt/{po_id}",
+    dependencies=[Depends(require_permissions("purchase_orders:update"))],
+)
+async def sync_goods_receipt_for_po(
+    po_id: uuid.UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Manually trigger CJDQuick Goods Receipt sync for a PO.
+
+    Creates a GR in CJDQuick Delhi warehouse so they can prepare for incoming goods.
+    """
+    if not settings.CJDQUICK_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="CJDQuick OMS integration is disabled.",
+        )
+
+    # Verify PO exists and is approved
+    result = await db.execute(
+        select(PurchaseOrder).where(PurchaseOrder.id == po_id)
+    )
+    po = result.scalar_one_or_none()
+    if not po:
+        raise HTTPException(status_code=404, detail="Purchase Order not found")
+    if po.status != "APPROVED":
+        raise HTTPException(status_code=400, detail=f"PO must be APPROVED to sync GR. Current status: {po.status}")
+
+    try:
+        svc = CJDQuickSyncService(db)
+        log = await svc.sync_goods_receipt_for_po(po_id)
+        await db.commit()
+        return {
+            "success": True,
+            "gr_id": po.cjdquick_gr_id,
+            "gr_status": po.cjdquick_gr_status,
+            "sync_log_id": str(log.id),
+            "message": f"Goods Receipt created in CJDQuick for PO {po.po_number}",
+        }
+    except CJDQuickAPIError as e:
+        await db.commit()  # Commit the FAILED status update
+        raise HTTPException(
+            status_code=e.status_code,
+            detail=f"CJDQuick GR sync failed: {e.message}",
+        )
+
+
 # ==================== WEBHOOK RECEIVER ====================
 
 def _verify_webhook_signature(payload_body: bytes, signature: str, secret: str) -> bool:
@@ -715,6 +766,8 @@ async def cjdquick_webhook(
             await _handle_return_event(db, event_type, event_data)
         elif event_type in ("ndr.raised", "ndr.resolved"):
             await _handle_ndr_event(db, event_type, event_data)
+        elif event_type in ("gr.posted", "gr.completed", "gr.status_changed"):
+            await _handle_gr_event(db, event_type, event_data)
         elif event_type == "invoice.created":
             logger.info("Invoice created event received: %s", event_data.get("invoiceNo"))
         elif event_type == "webhook.test":
@@ -1032,6 +1085,51 @@ async def _handle_order_cancelled_event(db: DB, data: dict) -> None:
             order.cancellation_reason = reason
         order.cancelled_at = datetime.now(timezone.utc)
         logger.info("Order %s CANCELLED via webhook: %s", order_number, reason)
+
+
+async def _handle_gr_event(db: DB, event_type: str, data: dict) -> None:
+    """Handle gr.posted, gr.completed, gr.status_changed events from CJDQuick.
+
+    Updates the PurchaseOrder's cjdquick_gr_status based on warehouse GR status.
+    """
+    po_number = (
+        data.get("externalPoNumber")
+        or data.get("poNumber")
+        or data.get("poNo")
+    )
+    gr_no = data.get("grNo") or data.get("grNumber") or data.get("id")
+    new_status = data.get("status") or event_type.split(".")[-1].upper()
+
+    if not po_number:
+        logger.warning("GR webhook missing PO number: %s", data)
+        return
+
+    result = await db.execute(
+        select(PurchaseOrder).where(PurchaseOrder.po_number == po_number)
+    )
+    po = result.scalar_one_or_none()
+    if not po:
+        logger.warning("PO not found for GR webhook: %s", po_number)
+        return
+
+    # Update GR tracking fields
+    if gr_no and not po.cjdquick_gr_id:
+        po.cjdquick_gr_id = str(gr_no)
+
+    status_mapping = {
+        "posted": "POSTED",
+        "completed": "COMPLETED",
+        "POSTED": "POSTED",
+        "COMPLETED": "COMPLETED",
+        "IN_PROGRESS": "IN_PROGRESS",
+        "QC_PENDING": "QC_PENDING",
+    }
+    po.cjdquick_gr_status = status_mapping.get(new_status, new_status)
+
+    logger.info(
+        "PO %s GR status updated to %s (grNo: %s) via webhook",
+        po_number, po.cjdquick_gr_status, gr_no,
+    )
 
 
 async def _handle_ndr_event(db: DB, event_type: str, data: dict) -> None:

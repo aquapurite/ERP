@@ -459,6 +459,10 @@ class PurchaseOrderResponse(BaseResponseSchema):
     submitted_for_approval_at: Optional[datetime] = None
     rejection_reason: Optional[str] = None
 
+    # CJDQuick 3PL Integration
+    cjdquick_gr_id: Optional[str] = None
+    cjdquick_gr_status: Optional[str] = None
+
     # Audit fields
     created_by: UUID
     approved_by: Optional[UUID] = None

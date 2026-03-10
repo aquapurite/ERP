@@ -2301,6 +2301,16 @@ async def approve_purchase_order(
     await db.commit()
     print(f"=== PO APPROVE === Commit successful")
 
+    # Fire-and-forget: Push Goods Receipt to CJDQuick 3PL on approval
+    if request.action == "APPROVE":
+        try:
+            from app.services.cjdquick_sync_service import CJDQuickSyncService
+            await CJDQuickSyncService.fire_and_forget_sync(db, "GR", po.id)
+            print(f"=== PO APPROVE === CJDQuick GR sync triggered for PO {po.po_number}")
+        except Exception as e:
+            # Non-blocking: log but don't fail the approval
+            print(f"=== PO APPROVE === CJDQuick GR sync failed (non-blocking): {e}")
+
     # Now check for serial generation AFTER commit (in a clean transaction state)
     # This way, if serial check fails, the approval is already committed
     should_generate_serials = False

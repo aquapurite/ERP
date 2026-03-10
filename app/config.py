@@ -98,6 +98,7 @@ class Settings(BaseSettings):
     CJDQUICK_COMPANY_ID: str = "c1a2b3c4-d5e6-f7a8-b9c0-d1e2f3a4b5c6"  # OMS company UUID
     CJDQUICK_EMAIL: str = "themanagingdirector@aquapurite.com"  # OMS login email
     CJDQUICK_PASSWORD: str = "brand123"  # OMS login password
+    CJDQUICK_DELHI_LOCATION_ID: str = "40aeabeb-e4fd-4b08-a3bd-cd87270baf1c"  # Delhi warehouse (APWH-DEL)
 
     # Supabase Storage Settings
     SUPABASE_URL: str = ""  # e.g., "https://xxxx.supabase.co"
