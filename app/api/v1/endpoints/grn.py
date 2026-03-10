@@ -987,6 +987,13 @@ async def delete_grn(
         description=f"Deleted GRN {grn.grn_number} (was {grn.status})",
     )
 
+    # Clear po_serials references (grn_id is VARCHAR in po_serials, UUID in GRN)
+    from sqlalchemy import text
+    await db.execute(
+        text("UPDATE po_serials SET grn_id = NULL WHERE grn_id = CAST(:grn_id AS VARCHAR)"),
+        {"grn_id": str(grn_id)}
+    )
+
     # Delete GRN items first, then GRN
     items_del = select(GRNItem).where(GRNItem.grn_id == grn_id)
     del_result = await db.execute(items_del)
