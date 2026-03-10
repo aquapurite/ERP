@@ -2577,6 +2577,18 @@ export const grnApi = {
     const { data } = await apiClient.post('/purchase/grn', grn);
     return data;
   },
+  update: async (id: string, grn: {
+    vendor_challan_number?: string;
+    vendor_challan_date?: string;
+    transporter_name?: string;
+    vehicle_number?: string;
+    lr_number?: string;
+    e_way_bill_number?: string;
+    receiving_remarks?: string;
+  }) => {
+    const { data } = await apiClient.put(`/purchase/grn/${id}`, grn);
+    return data;
+  },
   scanSerial: async (id: string, scanData: { serial_number: string }) => {
     const { data } = await apiClient.post(`/purchase/grn/${id}/scan`, scanData);
     return data;

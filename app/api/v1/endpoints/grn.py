@@ -58,6 +58,16 @@ class GRNCreate(BaseModel):
     items: List[GRNItemCreate]
 
 
+class GRNUpdate(BaseModel):
+    vendor_challan_number: Optional[str] = None
+    vendor_challan_date: Optional[date] = None
+    transporter_name: Optional[str] = None
+    vehicle_number: Optional[str] = None
+    lr_number: Optional[str] = None
+    e_way_bill_number: Optional[str] = None
+    receiving_remarks: Optional[str] = None
+
+
 class GRNQCUpdate(BaseModel):
     items: List[dict]  # [{"item_id": uuid, "qc_result": "PASSED/FAILED", "quantity_accepted": int, "quantity_rejected": int, "rejection_reason": str}]
     qc_remarks: Optional[str] = None
@@ -425,6 +435,48 @@ async def get_grn(
         ],
         "created_at": grn.created_at.isoformat() if grn.created_at else None,
         "updated_at": grn.updated_at.isoformat() if grn.updated_at else None,
+    }
+
+
+@router.put("/{grn_id}")
+async def update_grn(
+    grn_id: UUID,
+    data: GRNUpdate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Update GRN editable fields (challan, transport, remarks)."""
+    grn = await db.get(GoodsReceiptNote, grn_id)
+    if not grn:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="GRN not found"
+        )
+
+    if grn.status in ["CANCELLED"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot edit a cancelled GRN"
+        )
+
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(grn, field, value)
+
+    await AuditService(db).log(
+        action="UPDATE", entity_type="GRN", entity_id=grn.id,
+        user_id=current_user.id,
+        new_values=update_data,
+        description=f"Updated GRN {grn.grn_number}",
+    )
+
+    await db.commit()
+
+    return {
+        "id": str(grn.id),
+        "grn_number": grn.grn_number,
+        "status": grn.status,
+        "message": "GRN updated successfully",
     }
 
 

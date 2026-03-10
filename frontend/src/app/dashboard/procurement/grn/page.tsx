@@ -7,7 +7,7 @@ import { ColumnDef } from '@tanstack/react-table';
 import {
   MoreHorizontal, Plus, Eye, Package, CheckCircle, XCircle,
   Loader2, Barcode, ClipboardList, CalendarIcon, AlertTriangle,
-  Download, Printer, Trash2
+  Download, Printer, Trash2, Pencil
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -82,6 +82,13 @@ interface GRN {
   total_quantity_received?: number;
   total_value?: number;
   notes?: string;
+  vendor_challan_number?: string;
+  vendor_challan_date?: string;
+  transporter_name?: string;
+  vehicle_number?: string;
+  lr_number?: string;
+  e_way_bill_number?: string;
+  receiving_remarks?: string;
   created_at: string;
   vendor_name?: string;
   warehouse_name?: string;
@@ -152,6 +159,7 @@ const statusOptions = [
 function GRNActionsCell({
   grn,
   onView,
+  onEdit,
   onComplete,
   onDownload,
   onPrint,
@@ -160,6 +168,7 @@ function GRNActionsCell({
 }: {
   grn: GRN;
   onView: (grn: GRN) => void;
+  onEdit: (grn: GRN) => void;
   onComplete: (grn: GRN) => void;
   onDownload: (grn: GRN) => void;
   onPrint: (grn: GRN) => void;
@@ -180,6 +189,12 @@ function GRNActionsCell({
           <Eye className="mr-2 h-4 w-4" />
           View Details
         </DropdownMenuItem>
+        {grn.status !== 'CANCELLED' && grn.status !== 'COMPLETED' && (
+          <DropdownMenuItem onClick={() => onEdit(grn)}>
+            <Pencil className="mr-2 h-4 w-4" />
+            Edit GRN
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onClick={() => onDownload(grn)}>
           <Download className="mr-2 h-4 w-4" />
           Download PDF
@@ -231,6 +246,17 @@ export default function GRNPage() {
   const [grnToComplete, setGrnToComplete] = useState<GRN | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [grnToDelete, setGrnToDelete] = useState<GRN | null>(null);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editGrn, setEditGrn] = useState<GRN | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    vendor_challan_number: '',
+    vendor_challan_date: '',
+    transporter_name: '',
+    vehicle_number: '',
+    lr_number: '',
+    e_way_bill_number: '',
+    receiving_remarks: '',
+  });
 
   // URL parameter handling for PO pre-selection
   const [urlPoId, setUrlPoId] = useState<string | null>(null);
@@ -534,6 +560,42 @@ export default function GRNPage() {
     setIsDetailsOpen(true);
   };
 
+  const handleEdit = (grn: GRN) => {
+    setEditGrn(grn);
+    setEditFormData({
+      vendor_challan_number: grn.vendor_challan_number || '',
+      vendor_challan_date: grn.vendor_challan_date || '',
+      transporter_name: grn.transporter_name || '',
+      vehicle_number: grn.vehicle_number || '',
+      lr_number: grn.lr_number || '',
+      e_way_bill_number: grn.e_way_bill_number || '',
+      receiving_remarks: grn.receiving_remarks || grn.notes || '',
+    });
+    setIsEditOpen(true);
+  };
+
+  const handleEditSubmit = async () => {
+    if (!editGrn) return;
+    try {
+      const payload: Record<string, string> = {};
+      if (editFormData.vendor_challan_number) payload.vendor_challan_number = editFormData.vendor_challan_number;
+      if (editFormData.vendor_challan_date) payload.vendor_challan_date = editFormData.vendor_challan_date;
+      if (editFormData.transporter_name) payload.transporter_name = editFormData.transporter_name;
+      if (editFormData.vehicle_number) payload.vehicle_number = editFormData.vehicle_number;
+      if (editFormData.lr_number) payload.lr_number = editFormData.lr_number;
+      if (editFormData.e_way_bill_number) payload.e_way_bill_number = editFormData.e_way_bill_number;
+      if (editFormData.receiving_remarks) payload.receiving_remarks = editFormData.receiving_remarks;
+
+      await grnApi.update(editGrn.id, payload);
+      toast.success(`GRN ${editGrn.grn_number} updated`);
+      setIsEditOpen(false);
+      setEditGrn(null);
+      queryClient.invalidateQueries({ queryKey: ['grns'] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to update GRN');
+    }
+  };
+
   const handleComplete = (grn: GRN) => {
     setGrnToComplete(grn);
   };
@@ -617,6 +679,7 @@ export default function GRNPage() {
         <GRNActionsCell
           grn={row.original}
           onView={handleView}
+          onEdit={handleEdit}
           onComplete={handleComplete}
           onDownload={handleDownload}
           onPrint={handlePrint}
@@ -1103,6 +1166,85 @@ export default function GRNPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit GRN Dialog */}
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit GRN — {editGrn?.grn_number}</DialogTitle>
+            <DialogDescription>Update transport and delivery details</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Vendor Challan No.</Label>
+                <Input
+                  value={editFormData.vendor_challan_number}
+                  onChange={(e) => setEditFormData({ ...editFormData, vendor_challan_number: e.target.value })}
+                  placeholder="DC/Challan number"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Vendor Challan Date</Label>
+                <Input
+                  type="date"
+                  value={editFormData.vendor_challan_date}
+                  onChange={(e) => setEditFormData({ ...editFormData, vendor_challan_date: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Transporter Name</Label>
+                <Input
+                  value={editFormData.transporter_name}
+                  onChange={(e) => setEditFormData({ ...editFormData, transporter_name: e.target.value })}
+                  placeholder="e.g., Blue Dart"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Vehicle Number</Label>
+                <Input
+                  value={editFormData.vehicle_number}
+                  onChange={(e) => setEditFormData({ ...editFormData, vehicle_number: e.target.value })}
+                  placeholder="e.g., DL 01 AB 1234"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>LR Number</Label>
+                <Input
+                  value={editFormData.lr_number}
+                  onChange={(e) => setEditFormData({ ...editFormData, lr_number: e.target.value })}
+                  placeholder="Lorry Receipt No."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>E-Way Bill Number</Label>
+                <Input
+                  value={editFormData.e_way_bill_number}
+                  onChange={(e) => setEditFormData({ ...editFormData, e_way_bill_number: e.target.value })}
+                  placeholder="E-Way Bill No."
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Remarks</Label>
+              <Textarea
+                value={editFormData.receiving_remarks}
+                onChange={(e) => setEditFormData({ ...editFormData, receiving_remarks: e.target.value })}
+                placeholder="Any additional remarks..."
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
+            <Button onClick={handleEditSubmit}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete GRN Confirmation */}
       <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
