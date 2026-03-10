@@ -802,20 +802,23 @@ class CJDQuickSyncService:
         return {"retried": len(failed_logs), "success": success_count, "failed": fail_count}
 
     async def bulk_sync_products(self) -> dict:
-        """Sync all active products to OMS."""
+        """Sync all active products to OMS (upsert: create or update)."""
         result = await self.db.execute(
             select(Product).where(Product.status == "ACTIVE")
         )
         products = result.scalars().all()
         success, failed = 0, 0
+        errors = []
         for product in products:
             try:
                 await self.sync_product(product.id)
                 success += 1
-            except Exception:
+            except Exception as e:
                 failed += 1
+                errors.append({"sku": product.sku, "error": str(e)})
+                logger.error("Bulk product sync failed for %s: %s", product.sku, e)
         await self.db.commit()
-        return {"total": len(products), "success": success, "failed": failed}
+        return {"total": len(products), "success": success, "failed": failed, "errors": errors}
 
     async def bulk_sync_orders(self, status_filter: str = "CONFIRMED") -> dict:
         """Push orders to CJDQuick OMS via the bulk integration endpoint.
