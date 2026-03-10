@@ -633,15 +633,16 @@ async def sync_goods_receipt_for_po(
             detail="CJDQuick OMS integration is disabled.",
         )
 
-    # Verify PO exists and is approved
+    # Verify PO exists and is post-approval
+    SYNCABLE_STATUSES = {"APPROVED", "SENT_TO_VENDOR", "PARTIALLY_RECEIVED", "FULLY_RECEIVED", "CLOSED"}
     result = await db.execute(
         select(PurchaseOrder).where(PurchaseOrder.id == po_id)
     )
     po = result.scalar_one_or_none()
     if not po:
         raise HTTPException(status_code=404, detail="Purchase Order not found")
-    if po.status != "APPROVED":
-        raise HTTPException(status_code=400, detail=f"PO must be APPROVED to sync GR. Current status: {po.status}")
+    if po.status not in SYNCABLE_STATUSES:
+        raise HTTPException(status_code=400, detail=f"PO must be in a post-approval status to sync GR. Current status: {po.status}")
 
     try:
         svc = CJDQuickSyncService(db)
@@ -660,6 +661,83 @@ async def sync_goods_receipt_for_po(
             status_code=e.status_code,
             detail=f"CJDQuick GR sync failed: {e.message}",
         )
+
+
+@router.post(
+    "/sync/goods-receipt/bulk",
+    dependencies=[Depends(require_permissions("purchase_orders:update"))],
+)
+async def bulk_sync_goods_receipts(
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Sync all existing POs to CJDQuick as Goods Receipts.
+
+    Finds all POs that are post-approval and haven't been synced yet
+    (cjdquick_gr_id is NULL), then pushes them to CJDQuick Delhi warehouse.
+    """
+    if not settings.CJDQUICK_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="CJDQuick OMS integration is disabled.",
+        )
+
+    SYNCABLE_STATUSES = ["APPROVED", "SENT_TO_VENDOR", "PARTIALLY_RECEIVED", "FULLY_RECEIVED", "CLOSED"]
+
+    # Find all unsynced POs
+    result = await db.execute(
+        select(PurchaseOrder)
+        .where(
+            PurchaseOrder.status.in_(SYNCABLE_STATUSES),
+            PurchaseOrder.cjdquick_gr_id.is_(None),
+        )
+        .order_by(PurchaseOrder.created_at)
+    )
+    pos = result.scalars().all()
+
+    if not pos:
+        return {
+            "success": True,
+            "message": "No unsynced POs found. All POs are already synced.",
+            "total": 0,
+            "synced": 0,
+            "failed": 0,
+        }
+
+    svc = CJDQuickSyncService(db)
+    synced = 0
+    failed = 0
+    results = []
+
+    for po in pos:
+        try:
+            log = await svc.sync_goods_receipt_for_po(po.id)
+            synced += 1
+            results.append({
+                "po_number": po.po_number,
+                "po_status": po.status,
+                "gr_id": po.cjdquick_gr_id,
+                "sync_status": "SUCCESS",
+            })
+        except Exception as e:
+            failed += 1
+            results.append({
+                "po_number": po.po_number,
+                "po_status": po.status,
+                "sync_status": "FAILED",
+                "error": str(e),
+            })
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "message": f"Bulk GR sync completed: {synced} synced, {failed} failed out of {len(pos)} POs",
+        "total": len(pos),
+        "synced": synced,
+        "failed": failed,
+        "details": results,
+    }
 
 
 # ==================== WEBHOOK RECEIVER ====================
