@@ -615,55 +615,6 @@ async def register_webhook(
 # ==================== GOODS RECEIPT SYNC ====================
 
 @router.post(
-    "/sync/goods-receipt/{po_id}",
-    dependencies=[Depends(require_permissions("purchase_orders:update"))],
-)
-async def sync_goods_receipt_for_po(
-    po_id: uuid.UUID,
-    db: DB,
-    current_user: CurrentUser,
-):
-    """Manually trigger CJDQuick Goods Receipt sync for a PO.
-
-    Creates a GR in CJDQuick Delhi warehouse so they can prepare for incoming goods.
-    """
-    if not settings.CJDQUICK_ENABLED:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="CJDQuick OMS integration is disabled.",
-        )
-
-    # Verify PO exists and is post-approval
-    SYNCABLE_STATUSES = {"APPROVED", "SENT_TO_VENDOR", "PARTIALLY_RECEIVED", "FULLY_RECEIVED", "CLOSED"}
-    result = await db.execute(
-        select(PurchaseOrder).where(PurchaseOrder.id == po_id)
-    )
-    po = result.scalar_one_or_none()
-    if not po:
-        raise HTTPException(status_code=404, detail="Purchase Order not found")
-    if po.status not in SYNCABLE_STATUSES:
-        raise HTTPException(status_code=400, detail=f"PO must be in a post-approval status to sync GR. Current status: {po.status}")
-
-    try:
-        svc = CJDQuickSyncService(db)
-        log = await svc.sync_goods_receipt_for_po(po_id)
-        await db.commit()
-        return {
-            "success": True,
-            "gr_id": po.cjdquick_gr_id,
-            "gr_status": po.cjdquick_gr_status,
-            "sync_log_id": str(log.id),
-            "message": f"Goods Receipt created in CJDQuick for PO {po.po_number}",
-        }
-    except CJDQuickAPIError as e:
-        await db.commit()  # Commit the FAILED status update
-        raise HTTPException(
-            status_code=e.status_code,
-            detail=f"CJDQuick GR sync failed: {e.message}",
-        )
-
-
-@router.post(
     "/sync/goods-receipt/bulk",
     dependencies=[Depends(require_permissions("purchase_orders:update"))],
 )
@@ -738,6 +689,55 @@ async def bulk_sync_goods_receipts(
         "failed": failed,
         "details": results,
     }
+
+
+@router.post(
+    "/sync/goods-receipt/{po_id}",
+    dependencies=[Depends(require_permissions("purchase_orders:update"))],
+)
+async def sync_goods_receipt_for_po(
+    po_id: uuid.UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Manually trigger CJDQuick Goods Receipt sync for a PO.
+
+    Creates a GR in CJDQuick Delhi warehouse so they can prepare for incoming goods.
+    """
+    if not settings.CJDQUICK_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="CJDQuick OMS integration is disabled.",
+        )
+
+    # Verify PO exists and is post-approval
+    SYNCABLE_STATUSES = {"APPROVED", "SENT_TO_VENDOR", "PARTIALLY_RECEIVED", "FULLY_RECEIVED", "CLOSED"}
+    result = await db.execute(
+        select(PurchaseOrder).where(PurchaseOrder.id == po_id)
+    )
+    po = result.scalar_one_or_none()
+    if not po:
+        raise HTTPException(status_code=404, detail="Purchase Order not found")
+    if po.status not in SYNCABLE_STATUSES:
+        raise HTTPException(status_code=400, detail=f"PO must be in a post-approval status to sync GR. Current status: {po.status}")
+
+    try:
+        svc = CJDQuickSyncService(db)
+        log = await svc.sync_goods_receipt_for_po(po_id)
+        await db.commit()
+        return {
+            "success": True,
+            "gr_id": po.cjdquick_gr_id,
+            "gr_status": po.cjdquick_gr_status,
+            "sync_log_id": str(log.id),
+            "message": f"Goods Receipt created in CJDQuick for PO {po.po_number}",
+        }
+    except CJDQuickAPIError as e:
+        await db.commit()  # Commit the FAILED status update
+        raise HTTPException(
+            status_code=e.status_code,
+            detail=f"CJDQuick GR sync failed: {e.message}",
+        )
 
 
 # ==================== WEBHOOK RECEIVER ====================
