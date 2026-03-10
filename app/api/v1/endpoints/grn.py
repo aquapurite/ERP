@@ -939,6 +939,64 @@ async def accept_grn(
     }
 
 
+@router.delete("/{grn_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_grn(
+    grn_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a GRN. Only super admins can delete non-completed GRNs."""
+    grn = await db.get(GoodsReceiptNote, grn_id)
+    if not grn:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="GRN not found"
+        )
+
+    # Reverse PO quantity updates if GRN was accepted
+    if grn.status in ["ACCEPTED", "PUT_AWAY_PENDING", "PUT_AWAY_COMPLETE"]:
+        items_query = select(GRNItem).where(GRNItem.grn_id == grn_id)
+        result = await db.execute(items_query)
+        items = result.scalars().all()
+
+        for item in items:
+            po_item = await db.get(PurchaseOrderItem, item.po_item_id)
+            if po_item:
+                po_item.quantity_received = max(0, po_item.quantity_received - item.quantity_accepted)
+                po_item.quantity_accepted = max(0, po_item.quantity_accepted - item.quantity_accepted)
+                po_item.quantity_rejected = max(0, po_item.quantity_rejected - item.quantity_rejected)
+
+        # Revert PO status
+        po = await db.get(PurchaseOrder, grn.purchase_order_id)
+        if po:
+            po.total_received_value = max(Decimal("0"), po.total_received_value - (grn.total_value or Decimal("0")))
+            # Re-check if still partially/fully received
+            po_items_q = select(PurchaseOrderItem).where(PurchaseOrderItem.purchase_order_id == po.id)
+            po_result = await db.execute(po_items_q)
+            po_items = po_result.scalars().all()
+            any_received = any(item.quantity_received > 0 for item in po_items)
+            if any_received:
+                po.status = "PARTIALLY_RECEIVED"
+            else:
+                po.status = "APPROVED"
+
+    await AuditService(db).log(
+        action="DELETE", entity_type="GRN", entity_id=grn.id,
+        user_id=current_user.id,
+        new_values={"grn_number": grn.grn_number, "status_before_delete": grn.status},
+        description=f"Deleted GRN {grn.grn_number} (was {grn.status})",
+    )
+
+    # Delete GRN items first, then GRN
+    items_del = select(GRNItem).where(GRNItem.grn_id == grn_id)
+    del_result = await db.execute(items_del)
+    for item in del_result.scalars().all():
+        await db.delete(item)
+
+    await db.delete(grn)
+    await db.commit()
+
+
 @router.post("/{grn_id}/put-away")
 async def complete_put_away(
     grn_id: UUID,
