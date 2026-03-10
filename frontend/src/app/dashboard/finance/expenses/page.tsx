@@ -96,6 +96,7 @@ interface ExpenseVoucher {
   financial_year: string;
   period?: string;
   expense_category_id: string;
+  category?: { id: string; code: string; name: string };
   category_code?: string;
   category_name?: string;
   amount: number;
@@ -509,12 +510,12 @@ export default function ExpensesPage() {
       cell: ({ row }) => formatDate(row.original.voucher_date),
     },
     {
-      accessorKey: 'category_name',
+      accessorKey: 'category',
       header: 'Category',
       cell: ({ row }) => (
         <div>
-          <div className="font-medium">{row.original.category_name}</div>
-          <div className="text-xs text-muted-foreground">{row.original.category_code}</div>
+          <div className="font-medium">{row.original.category?.name || row.original.category_name || '-'}</div>
+          <div className="text-xs text-muted-foreground">{row.original.category?.code || row.original.category_code || ''}</div>
         </div>
       ),
     },
@@ -1232,7 +1233,7 @@ export default function ExpensesPage() {
                   <>
                     <div>
                       <p className="text-muted-foreground">Category</p>
-                      <p className="font-medium">{selectedVoucher.category_name}</p>
+                      <p className="font-medium">{selectedVoucher.category?.name || selectedVoucher.category_name || '-'}</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Amount</p>
