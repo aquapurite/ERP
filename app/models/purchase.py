@@ -423,11 +423,28 @@ class PurchaseOrder(Base):
         index=True
     )
 
+    # PO Type (SAP Account Assignment Category)
+    po_type: Mapped[str] = mapped_column(
+        String(20),
+        default="INVENTORY",
+        nullable=False,
+        index=True,
+        comment="INVENTORY, ASSET, CONSUMABLE - determines GRN behavior"
+    )
+
     # From Requisition (optional)
     requisition_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("purchase_requisitions.id", ondelete="SET NULL"),
         nullable=True
+    )
+
+    # CAPEX Request Link (for ASSET type POs)
+    capex_request_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("capex_requests.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Link to approved CAPEX request for ASSET type POs"
     )
 
     # Delivery
@@ -689,6 +706,14 @@ class PurchaseOrderItem(Base):
         UUID(as_uuid=True),
         ForeignKey("product_variants.id", ondelete="SET NULL"),
         nullable=True
+    )
+
+    # Asset Category (for ASSET type PO items)
+    asset_category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("asset_categories.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Asset category for ASSET type PO items - determines depreciation settings"
     )
 
     # Snapshot
@@ -1094,6 +1119,15 @@ class GoodsReceiptNote(Base):
         nullable=False,
         index=True,
         comment="DRAFT, PENDING_QC, QC_PASSED, QC_FAILED, PARTIALLY_ACCEPTED, ACCEPTED, REJECTED, PUT_AWAY_PENDING, PUT_AWAY_COMPLETE, CANCELLED"
+    )
+
+    # GRN Type (auto-derived from linked PO's po_type)
+    grn_type: Mapped[str] = mapped_column(
+        String(20),
+        default="INVENTORY",
+        nullable=False,
+        index=True,
+        comment="INVENTORY or ASSET - auto-derived from linked PO po_type"
     )
 
     # Against PO

@@ -1713,3 +1713,210 @@ class AutoJournalService:
                 "Auto-clear: vendor=%s, JE=%s, debit=%s, invoices_cleared=%d, total_cleared=%s",
                 vendor.name, journal.entry_number, debit, len(cleared_invoices), total_cleared,
             )
+
+    # ==================== Asset Capitalization ====================
+
+    async def generate_for_asset_capitalization(
+        self,
+        asset_id: UUID,
+        user_id: Optional[UUID] = None,
+    ) -> JournalEntry:
+        """
+        Generate journal entry for asset capitalization (GRN acceptance of ASSET type).
+
+        Dr: Fixed Asset Account (from asset category)  →  capitalized_value
+        Cr: Accounts Payable                           →  capitalized_value
+
+        This mirrors SAP FI-AA: at GRN time for asset POs, the system
+        debits the fixed asset account instead of inventory.
+        """
+        from app.models.fixed_assets import Asset, AssetCategory
+
+        result = await self.db.execute(
+            select(Asset).where(Asset.id == asset_id)
+        )
+        asset = result.scalar_one_or_none()
+        if not asset:
+            raise AutoJournalError("Asset not found")
+
+        # Check for existing journal
+        existing = await self.db.execute(
+            select(JournalEntry).where(
+                and_(
+                    JournalEntry.source_type == "AssetCapitalization",
+                    JournalEntry.source_id == asset_id
+                )
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise AutoJournalError("Journal entry already exists for this asset capitalization")
+
+        # Get asset category for GL accounts
+        cat_result = await self.db.execute(
+            select(AssetCategory).where(AssetCategory.id == asset.category_id)
+        )
+        category = cat_result.scalar_one_or_none()
+
+        # Determine fixed asset account
+        if category and category.asset_account_id:
+            asset_account = await self.get_account_by_id(category.asset_account_id)
+        else:
+            # Fallback to generic Fixed Assets account
+            asset_account = await self.get_or_create_account(
+                self.AccountCode.FIXED_ASSETS.value,
+                "Fixed Assets",
+                "ASSET",
+                "FIXED_ASSET"
+            )
+
+        # Get AP account
+        if asset.vendor_id:
+            ap_account = await self.get_vendor_ap_account(asset.vendor_id)
+        else:
+            ap_account = await self.get_or_create_account(
+                self.DEFAULT_ACCOUNTS["ACCOUNTS_PAYABLE"],
+                "Accounts Payable",
+                "LIABILITY",
+                AccountSubType.ACCOUNTS_PAYABLE.value
+            )
+
+        period = await self._get_or_create_period()
+
+        journal = JournalEntry(
+            entry_type="ASSET_CAPITALIZATION",
+            entry_number=f"JV-ASSET-{asset.asset_code}",
+            entry_date=asset.capitalization_date,
+            period_id=period.id,
+            source_type="AssetCapitalization",
+            source_id=asset_id,
+            source_number=asset.asset_code,
+            narration=f"Capitalization of asset {asset.name} ({asset.asset_code})",
+            status=JournalEntryStatus.DRAFT.value,
+            created_by=user_id,
+        )
+        self.db.add(journal)
+        await self.db.flush()
+
+        # Dr: Fixed Asset Account
+        dr_line = JournalEntryLine(
+            journal_entry_id=journal.id,
+            account_id=asset_account.id,
+            debit_amount=asset.capitalized_value,
+            credit_amount=Decimal("0"),
+            description=f"Capitalize {asset.name} ({asset.asset_code})"
+        )
+        self.db.add(dr_line)
+
+        # Cr: Accounts Payable
+        cr_line = JournalEntryLine(
+            journal_entry_id=journal.id,
+            account_id=ap_account.id,
+            debit_amount=Decimal("0"),
+            credit_amount=asset.capitalized_value,
+            description=f"Payable for asset {asset.name}"
+        )
+        self.db.add(cr_line)
+
+        journal.total_debit = asset.capitalized_value
+        journal.total_credit = asset.capitalized_value
+
+        await self.db.flush()
+        return journal
+
+    async def generate_for_depreciation(
+        self,
+        asset_id: UUID,
+        depreciation_amount: Decimal,
+        depreciation_date: "date",
+        user_id: Optional[UUID] = None,
+    ) -> JournalEntry:
+        """
+        Generate journal entry for monthly depreciation.
+
+        Dr: Depreciation Expense (6700)     →  depreciation_amount
+        Cr: Accumulated Depreciation (1600) →  depreciation_amount
+
+        Compliant with:
+        - Companies Act 2013, Schedule II (SLM for books)
+        - Income Tax Act, Section 32 (WDV for tax)
+        """
+        from app.models.fixed_assets import Asset, AssetCategory
+
+        result = await self.db.execute(
+            select(Asset).where(Asset.id == asset_id)
+        )
+        asset = result.scalar_one_or_none()
+        if not asset:
+            raise AutoJournalError("Asset not found")
+
+        # Get category for GL accounts
+        cat_result = await self.db.execute(
+            select(AssetCategory).where(AssetCategory.id == asset.category_id)
+        )
+        category = cat_result.scalar_one_or_none()
+
+        # Depreciation Expense account
+        if category and category.expense_account_id:
+            expense_account = await self.get_account_by_id(category.expense_account_id)
+        else:
+            expense_account = await self.get_or_create_account(
+                self.AccountCode.DEPRECIATION_EXPENSE.value,
+                "Depreciation Expense",
+                "EXPENSE",
+                "DEPRECIATION"
+            )
+
+        # Accumulated Depreciation account
+        if category and category.depreciation_account_id:
+            accum_account = await self.get_account_by_id(category.depreciation_account_id)
+        else:
+            accum_account = await self.get_or_create_account(
+                self.AccountCode.ACCUMULATED_DEPRECIATION.value,
+                "Accumulated Depreciation",
+                "ASSET",
+                "ACCUMULATED_DEPRECIATION"
+            )
+
+        period = await self._get_or_create_period()
+
+        month_str = depreciation_date.strftime("%b%Y")
+        journal = JournalEntry(
+            entry_type="DEPRECIATION",
+            entry_number=f"JV-DEP-{asset.asset_code}-{month_str}",
+            entry_date=depreciation_date,
+            period_id=period.id,
+            source_type="Depreciation",
+            source_id=asset_id,
+            source_number=asset.asset_code,
+            narration=f"Depreciation for {asset.name} ({asset.asset_code}) - {month_str}",
+            status=JournalEntryStatus.DRAFT.value,
+            created_by=user_id,
+        )
+        self.db.add(journal)
+        await self.db.flush()
+
+        # Dr: Depreciation Expense
+        dr_line = JournalEntryLine(
+            journal_entry_id=journal.id,
+            account_id=expense_account.id,
+            debit_amount=depreciation_amount,
+            credit_amount=Decimal("0"),
+            description=f"Depreciation - {asset.name} ({month_str})"
+        )
+        self.db.add(dr_line)
+
+        # Cr: Accumulated Depreciation
+        cr_line = JournalEntryLine(
+            journal_entry_id=journal.id,
+            account_id=accum_account.id,
+            debit_amount=Decimal("0"),
+            credit_amount=depreciation_amount,
+            description=f"Accum. depreciation - {asset.name} ({month_str})"
+        )
+        self.db.add(cr_line)
+
+        journal.total_debit = depreciation_amount
+        journal.total_credit = depreciation_amount
+
+        await self.db.flush()
+        return journal

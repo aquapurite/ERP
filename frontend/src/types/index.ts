@@ -452,15 +452,19 @@ export type POStatus =
   | 'CLOSED'
   | 'CANCELLED';
 
+export type POType = 'INVENTORY' | 'ASSET' | 'CONSUMABLE';
+
 export interface PurchaseOrder {
   id: string;
   po_number: string;
+  po_type?: POType;
   vendor_id: string;
   vendor_name?: string;
   warehouse_id: string;
   delivery_warehouse_id?: string;
   delivery_type?: string;
   delivery_address?: Record<string, string>;
+  capex_request_id?: string;
   status: POStatus;
   po_date?: string;
   credit_days?: number;
@@ -493,6 +497,7 @@ export interface POItem {
   product_id: string;
   product_name?: string;
   sku?: string;
+  asset_category_id?: string;
   quantity?: number;
   quantity_ordered?: number;
   quantity_received?: number;

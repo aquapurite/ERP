@@ -161,6 +161,7 @@ class POItemBase(BaseModel):
     """Base schema for PO item."""
     product_id: Optional[UUID] = None  # Nullable - vendor items may not be in our catalog
     variant_id: Optional[UUID] = None
+    asset_category_id: Optional[UUID] = None  # Required for ASSET type PO items
     product_name: str
     sku: str
     hsn_code: Optional[str] = None
@@ -190,6 +191,7 @@ class POItemResponse(BaseResponseSchema):
     # Product info
     product_id: Optional[UUID] = None
     variant_id: Optional[UUID] = None
+    asset_category_id: Optional[UUID] = None
     product_name: str
     sku: str
     hsn_code: Optional[str] = None
@@ -307,6 +309,7 @@ class PODeliveryPaymentRequest(BaseModel):
 class PurchaseOrderBase(BaseModel):
     """Base schema for Purchase Order."""
     vendor_id: UUID
+    po_type: str = Field("INVENTORY", description="INVENTORY, ASSET, or CONSUMABLE")
     delivery_type: str = Field("WAREHOUSE", description="WAREHOUSE or DIRECT")
     delivery_warehouse_id: Optional[UUID] = None
     expected_delivery_date: Optional[date] = None
@@ -314,6 +317,15 @@ class PurchaseOrderBase(BaseModel):
         None,
         description="Freeform address for direct delivery. Keys: deliver_to, address_line1, address_line2, city, state, pincode, contact_person, contact_phone"
     )
+
+    @field_validator('po_type')
+    @classmethod
+    def validate_po_type(cls, v):
+        allowed = {'INVENTORY', 'ASSET', 'CONSUMABLE'}
+        v = v.upper()
+        if v not in allowed:
+            raise ValueError(f"po_type must be one of {allowed}")
+        return v
 
     @field_validator('delivery_type')
     @classmethod
@@ -350,6 +362,7 @@ class PurchaseOrderBase(BaseModel):
 class PurchaseOrderCreate(PurchaseOrderBase):
     """Schema for creating PO."""
     requisition_id: Optional[UUID] = None
+    capex_request_id: Optional[UUID] = None
     items: List[POItemCreate]
     # Delivery schedules for lot-wise tracking (auto-generated from monthly_quantities if not provided)
     delivery_schedules: Optional[List[PODeliveryScheduleCreate]] = None
@@ -385,7 +398,9 @@ class PurchaseOrderResponse(BaseResponseSchema):
     po_number: str
     po_date: date
     status: str
+    po_type: str = "INVENTORY"
     requisition_id: Optional[UUID] = None
+    capex_request_id: Optional[UUID] = None
 
     # Vendor info (snapshot stored on PO)
     vendor_id: UUID
@@ -475,6 +490,7 @@ class POBrief(BaseResponseSchema):
     id: UUID
     po_number: str
     po_date: date
+    po_type: str = "INVENTORY"
     vendor_name: str
     status: str
     grand_total: Decimal
@@ -581,6 +597,7 @@ class GoodsReceiptResponse(BaseResponseSchema):
     id: UUID
     grn_number: str
     grn_date: date
+    grn_type: str = "INVENTORY"
     status: str
     vendor_id: UUID
     total_items: int
@@ -607,6 +624,7 @@ class GRNBrief(BaseResponseSchema):
     id: UUID
     grn_number: str
     grn_date: date
+    grn_type: str = "INVENTORY"
     po_number: str
     vendor_name: str
     warehouse_name: Optional[str] = None

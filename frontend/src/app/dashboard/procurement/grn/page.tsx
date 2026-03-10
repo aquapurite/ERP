@@ -70,6 +70,7 @@ import { formatDate, formatCurrency, cn } from '@/lib/utils';
 interface GRN {
   id: string;
   grn_number: string;
+  grn_type?: 'INVENTORY' | 'ASSET';
   po_id: string;
   po_number?: string;
   warehouse_id: string;

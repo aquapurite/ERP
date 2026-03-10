@@ -68,6 +68,7 @@ interface POItem {
   product_id: string;
   product_name?: string;
   sku?: string;
+  asset_category_id?: string;
   quantity?: number;
   quantity_ordered?: number;
   quantity_received?: number;
@@ -86,11 +87,13 @@ interface MonthQuantity {
 interface PurchaseOrder {
   id: string;
   po_number: string;
+  po_type?: 'INVENTORY' | 'ASSET' | 'CONSUMABLE';
   vendor_id: string;
   vendor?: { id: string; name: string; code?: string; vendor_code?: string };
   delivery_warehouse_id?: string;
   delivery_type?: string;
   delivery_address?: Record<string, string>;
+  capex_request_id?: string;
   warehouse_id?: string;
   warehouse?: { id: string; name: string };
   status: string;
@@ -213,6 +216,7 @@ export default function PurchaseOrdersPage() {
 
   const [formData, setFormData] = useState({
     requisition_id: '',  // Required - PO must be linked to an approved PR
+    po_type: 'INVENTORY' as 'INVENTORY' | 'ASSET' | 'CONSUMABLE',
     vendor_id: '',
     expected_delivery_date: '',
     credit_days: 30,
@@ -770,6 +774,7 @@ export default function PurchaseOrdersPage() {
   const resetForm = () => {
     setFormData({
       requisition_id: '',
+      po_type: 'INVENTORY' as 'INVENTORY' | 'ASSET' | 'CONSUMABLE',
       vendor_id: '',
       expected_delivery_date: '',
       credit_days: 30,
@@ -898,6 +903,7 @@ export default function PurchaseOrdersPage() {
 
     const poPayload = {
       requisition_id: formData.requisition_id,  // Link PO to PR
+      po_type: formData.po_type || 'INVENTORY',
       vendor_id: formData.vendor_id,
       delivery_type: isDirectDelivery ? 'DIRECT' : 'WAREHOUSE',
       delivery_warehouse_id: isDirectDelivery ? null : (deliveryWarehouseId || undefined),
@@ -920,6 +926,7 @@ export default function PurchaseOrdersPage() {
         product_id: item.product_id || undefined,
         product_name: item.product_name || 'Unknown Product',
         sku: item.sku || 'N/A',
+        asset_category_id: item.asset_category_id || undefined,
         quantity_ordered: item.quantity || 1,
         unit_price: item.unit_price || 0,
         discount_percentage: 0,
@@ -1089,6 +1096,23 @@ export default function PurchaseOrdersPage() {
             : '-'}
         </span>
       ),
+    },
+    {
+      accessorKey: 'po_type',
+      header: 'Type',
+      cell: ({ row }) => {
+        const poType = row.original.po_type || 'INVENTORY';
+        const typeColors: Record<string, string> = {
+          INVENTORY: 'bg-green-100 text-green-800',
+          ASSET: 'bg-blue-100 text-blue-800',
+          CONSUMABLE: 'bg-orange-100 text-orange-800',
+        };
+        return (
+          <span className={`text-xs font-medium px-2 py-0.5 rounded ${typeColors[poType] || 'bg-gray-100 text-gray-800'}`}>
+            {poType}
+          </span>
+        );
+      },
     },
     {
       accessorKey: 'status',
@@ -1281,6 +1305,28 @@ export default function PurchaseOrdersPage() {
                   </div>
 
                   <Separator />
+
+                  <div className="space-y-2">
+                    <Label>PO Type *</Label>
+                    <Select
+                      value={formData.po_type}
+                      onValueChange={(value) => setFormData({ ...formData, po_type: value as 'INVENTORY' | 'ASSET' | 'CONSUMABLE' })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select PO type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="INVENTORY">Inventory (Finished Goods / Raw Materials)</SelectItem>
+                        <SelectItem value="ASSET">Asset (Fixed Asset / CAPEX)</SelectItem>
+                        <SelectItem value="CONSUMABLE">Consumable (Office / Maintenance)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {formData.po_type === 'ASSET' && (
+                      <p className="text-xs text-blue-600">
+                        Asset PO: GRN will create Fixed Asset records instead of stock items. Depreciation will be auto-calculated.
+                      </p>
+                    )}
+                  </div>
 
                   <div className="space-y-2">
                     <Label>Vendor *</Label>

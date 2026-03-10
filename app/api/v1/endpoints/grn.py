@@ -23,7 +23,9 @@ from app.services.costing_service import CostingService
 from app.services.channel_inventory_service import ChannelInventoryService, allocate_grn_to_channels
 from app.services.grn_service import GRNService
 from app.services.audit_service import AuditService
+from app.services.auto_journal_service import AutoJournalService
 from app.models.channel import SalesChannel, ChannelInventory, ProductChannelSettings
+from app.models.fixed_assets import Asset, AssetCategory, AssetStatus, CapexRequest
 
 router = APIRouter()
 
@@ -73,6 +75,113 @@ class ChannelAllocationItem(BaseModel):
 class GRNChannelAllocation(BaseModel):
     """Channel allocation request for GRN items."""
     allocations: List[ChannelAllocationItem]
+
+
+# ==================== Helper Functions ====================
+
+async def _generate_asset_code(db) -> str:
+    """Generate unique asset code for GRN-created assets."""
+    today = date.today()
+    prefix = f"FA-{today.strftime('%Y%m')}"
+    result = await db.execute(
+        select(func.count(Asset.id)).where(Asset.asset_code.like(f"{prefix}%"))
+    )
+    count = result.scalar() or 0
+    return f"{prefix}-{(count + 1):04d}"
+
+
+async def _create_assets_from_grn(db, grn, grn_items, po, current_user):
+    """
+    Create Fixed Asset records from ASSET type GRN.
+    Each accepted GRN item with an asset_category creates an asset.
+    """
+    created_assets = []
+
+    for item in grn_items:
+        if item.quantity_accepted <= 0:
+            continue
+
+        # Get asset category from PO item
+        po_item = await db.get(PurchaseOrderItem, item.po_item_id)
+        if not po_item or not po_item.asset_category_id:
+            continue
+
+        category = await db.get(AssetCategory, po_item.asset_category_id)
+        if not category:
+            continue
+
+        # Create one asset per accepted quantity
+        for i in range(item.quantity_accepted):
+            asset_code = await _generate_asset_code(db)
+
+            asset = Asset(
+                asset_code=asset_code,
+                name=item.product_name,
+                description=f"Auto-created from GRN {grn.grn_number}, PO {po.po_number}" if po else None,
+                category_id=category.id,
+                serial_number=(item.serial_numbers[i] if item.serial_numbers and i < len(item.serial_numbers) else None),
+                warehouse_id=grn.warehouse_id,
+                location_type="WAREHOUSE",
+                purchase_date=grn.grn_date,
+                purchase_price=item.unit_price or Decimal("0"),
+                vendor_id=grn.vendor_id,
+                po_number=po.po_number if po else None,
+                capitalization_date=grn.grn_date,
+                installation_cost=Decimal("0"),
+                other_costs=Decimal("0"),
+                capitalized_value=item.unit_price or Decimal("0"),
+                depreciation_method=category.depreciation_method,
+                depreciation_rate=category.depreciation_rate,
+                useful_life_years=category.useful_life_years,
+                salvage_value=Decimal("0"),
+                accumulated_depreciation=Decimal("0"),
+                current_book_value=item.unit_price or Decimal("0"),
+                status=AssetStatus.ACTIVE,
+                notes=f"Auto-capitalized from GRN {grn.grn_number}",
+            )
+            db.add(asset)
+            await db.flush()
+
+            # Generate capitalization journal entry (Dr: Fixed Asset, Cr: AP)
+            try:
+                journal_service = AutoJournalService(db)
+                await journal_service.generate_for_asset_capitalization(
+                    asset_id=asset.id,
+                    user_id=current_user.id if hasattr(current_user, 'id') else None,
+                )
+            except Exception as je_err:
+                import logging
+                logging.getLogger(__name__).error(
+                    f"Failed to create capitalization journal for asset {asset.asset_code}: {je_err}"
+                )
+
+            created_assets.append({
+                "asset_id": str(asset.id),
+                "asset_code": asset.asset_code,
+                "name": asset.name,
+                "capitalized_value": float(asset.capitalized_value),
+            })
+
+    # Update CAPEX request if linked
+    if po and po.capex_request_id:
+        capex = await db.get(CapexRequest, po.capex_request_id)
+        if capex:
+            capex.grn_id = grn.id
+            capex.received_at = datetime.now(timezone.utc)
+            capex.status = "RECEIVED"
+            if created_assets:
+                # Link first asset to CAPEX (for single-asset requests)
+                from uuid import UUID as UUID_type
+                capex.asset_id = UUID_type(created_assets[0]["asset_id"])
+                capex.status = "CAPITALIZED"
+                capex.capitalized_at = datetime.now(timezone.utc)
+
+    await db.commit()
+
+    return {
+        "total_assets_created": len(created_assets),
+        "assets": created_assets,
+    }
 
 
 # ==================== Endpoints ====================
@@ -160,6 +269,7 @@ async def list_grns(
                 "id": str(grn.id),
                 "grn_number": grn.grn_number,
                 "grn_date": grn.grn_date.isoformat() if grn.grn_date else None,
+                "grn_type": getattr(grn, 'grn_type', 'INVENTORY'),
                 "status": grn.status,
                 "purchase_order_id": str(grn.purchase_order_id),
                 "po_number": grn.purchase_order.po_number if grn.purchase_order else None,
@@ -252,6 +362,7 @@ async def get_grn(
         "id": str(grn.id),
         "grn_number": grn.grn_number,
         "grn_date": grn.grn_date.isoformat() if grn.grn_date else None,
+        "grn_type": getattr(grn, 'grn_type', 'INVENTORY'),
         "status": grn.status,
         "purchase_order": {
             "id": str(grn.purchase_order_id),
@@ -342,10 +453,13 @@ async def create_grn(
     seq_service = DocumentSequenceService(db)
     grn_number = await seq_service.get_next_number("GRN")
 
-    # Create GRN
+    # Create GRN - auto-derive grn_type from PO's po_type
+    grn_type = "ASSET" if getattr(po, 'po_type', 'INVENTORY') == "ASSET" else "INVENTORY"
+
     grn = GoodsReceiptNote(
         grn_number=grn_number,
         grn_date=data.grn_date,
+        grn_type=grn_type,
         status="DRAFT",
         purchase_order_id=data.purchase_order_id,
         vendor_id=po.vendor_id,
@@ -730,25 +844,45 @@ async def accept_grn(
         import logging
         logging.getLogger(__name__).error(f"Failed to update product costs for GRN {grn_id}: {e}")
 
-    # Create stock items and update inventory
+    # Bifurcate based on GRN type
     stock_result = None
-    try:
-        stock_result = await grn_service.create_stock_items_from_grn(
-            grn_id=grn_id,
-            user_id=current_user.id,
-        )
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"Failed to create stock items for GRN {grn_id}: {e}")
-        # Don't fail the acceptance, but include the error
-        stock_result = {"error": str(e)}
+    asset_result = None
+    grn_type = getattr(grn, 'grn_type', 'INVENTORY')
+
+    if grn_type == "ASSET":
+        # For ASSET GRNs: create Fixed Asset records instead of stock items
+        try:
+            asset_result = await _create_assets_from_grn(db, grn, items, po, current_user)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Failed to create assets for GRN {grn_id}: {e}")
+            asset_result = {"error": str(e)}
+    else:
+        # For INVENTORY GRNs: create stock items (existing behavior)
+        try:
+            stock_result = await grn_service.create_stock_items_from_grn(
+                grn_id=grn_id,
+                user_id=current_user.id,
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Failed to create stock items for GRN {grn_id}: {e}")
+            stock_result = {"error": str(e)}
+
+    message = "GRN accepted"
+    if grn_type == "ASSET":
+        message += ", fixed assets created"
+    else:
+        message += ", stock items created, and inventory updated"
 
     return {
-        "message": "GRN accepted, stock items created, and inventory updated",
+        "message": message,
         "status": grn.status,
+        "grn_type": grn_type,
         "po_status": po.status if po else None,
         "cost_update": costing_result,
         "stock_items": stock_result,
+        "assets_created": asset_result,
         "serial_validation_status": grn.serial_validation_status,
     }
 
