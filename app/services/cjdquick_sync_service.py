@@ -451,7 +451,7 @@ class CJDQuickSyncService:
         return log
 
     async def sync_product(self, product_id: uuid.UUID) -> CJDQuickSyncLog:
-        """Push a product to CJDQuick OMS as an SKU."""
+        """Push a product to CJDQuick OMS as an SKU (upsert: create or update)."""
         result = await self.db.execute(
             select(Product).where(Product.id == product_id)
         )
@@ -462,6 +462,7 @@ class CJDQuickSyncService:
         payload = self._build_sku_payload(product)
 
         try:
+            # Try create first
             response = await self.client.create_sku(payload)
             oms_id = response.get("id") or response.get("_id") or response.get("code")
             log = await self._write_sync_log(
@@ -473,9 +474,39 @@ class CJDQuickSyncService:
                 response_payload=response,
                 oms_id=str(oms_id) if oms_id else None,
             )
-            logger.info("Product %s synced to CJDQuick OMS: %s", product.sku, oms_id)
+            logger.info("Product %s created in CJDQuick OMS: %s", product.sku, oms_id)
             return log
         except CJDQuickAPIError as e:
+            if "already exists" in (e.message or "").lower():
+                # SKU exists — update instead
+                try:
+                    existing = await self.client.get_sku_by_code(product.sku)
+                    sku_id = str(existing.get("id") or existing.get("_id") or "")
+                    if sku_id:
+                        response = await self.client.update_sku(sku_id, payload)
+                        log = await self._write_sync_log(
+                            entity_type="PRODUCT",
+                            entity_id=product_id,
+                            operation="UPDATE",
+                            status="SUCCESS",
+                            request_payload=payload,
+                            response_payload=response,
+                            oms_id=sku_id,
+                        )
+                        logger.info("Product %s updated in CJDQuick OMS: %s", product.sku, sku_id)
+                        return log
+                except CJDQuickAPIError as update_err:
+                    log = await self._write_sync_log(
+                        entity_type="PRODUCT",
+                        entity_id=product_id,
+                        operation="UPDATE",
+                        status="FAILED",
+                        request_payload=payload,
+                        error_message=update_err.message,
+                    )
+                    logger.error("Failed to update product %s: %s", product.sku, update_err.message)
+                    raise
+
             log = await self._write_sync_log(
                 entity_type="PRODUCT",
                 entity_id=product_id,
