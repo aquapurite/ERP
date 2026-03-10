@@ -135,10 +135,14 @@ class ExpenseVoucherResponse(BaseResponseSchema):
     payment_mode: str
     bank_account_id: Optional[UUID] = None
     status: str
+    vendor_name: Optional[str] = None
+    cost_center_name: Optional[str] = None
     created_by: Optional[UUID] = None
+    created_by_name: Optional[str] = None
     submitted_by: Optional[UUID] = None
     submitted_at: Optional[datetime] = None
     approved_by: Optional[UUID] = None
+    approved_by_name: Optional[str] = None
     approved_at: Optional[datetime] = None
     approval_level: Optional[str] = None
     rejected_by: Optional[UUID] = None

@@ -19,7 +19,9 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import DB, CurrentUser, require_permissions
 from app.models.expense import ExpenseCategory, ExpenseVoucher, ExpenseVoucherLine
-from app.models.accounting import JournalEntry, ChartOfAccount
+from app.models.accounting import JournalEntry, ChartOfAccount, CostCenter
+from app.models.user import User
+from app.models.vendor import Vendor
 from app.services.accounting_service import AccountingService
 from app.schemas.expense import (
     ExpenseCategoryCreate, ExpenseCategoryUpdate, ExpenseCategoryResponse,
@@ -50,6 +52,22 @@ async def _load_voucher_for_response(db: DB, voucher_id: uuid.UUID) -> ExpenseVo
             select(JournalEntry.entry_number).where(JournalEntry.id == voucher.journal_entry_id)
         )
         voucher.journal_entry_number = je_result.scalar()  # type: ignore[attr-defined]
+    # Populate user names
+    for field, name_field in [('created_by', 'created_by_name'), ('approved_by', 'approved_by_name')]:
+        uid = getattr(voucher, field, None)
+        if uid:
+            u = await db.execute(select(User.first_name, User.last_name).where(User.id == uid))
+            row = u.first()
+            if row:
+                setattr(voucher, name_field, f"{row[0]} {row[1]}" if row[1] else row[0])
+    # Populate vendor name
+    if voucher.vendor_id:
+        v = await db.execute(select(Vendor.name).where(Vendor.id == voucher.vendor_id))
+        voucher.vendor_name = v.scalar()  # type: ignore[attr-defined]
+    # Populate cost center name
+    if voucher.cost_center_id:
+        cc = await db.execute(select(CostCenter.name).where(CostCenter.id == voucher.cost_center_id))
+        voucher.cost_center_name = cc.scalar()  # type: ignore[attr-defined]
     return voucher
 
 
@@ -260,8 +278,22 @@ async def list_expense_vouchers(
     result = await db.execute(query)
     vouchers = result.scalars().all()
 
-    # Populate journal_entry_number for vouchers with journal_entry_id
+    # Batch-resolve related names for all vouchers
     je_ids = [v.journal_entry_id for v in vouchers if v.journal_entry_id]
+    user_ids = set()
+    vendor_ids = set()
+    cc_ids = set()
+    for v in vouchers:
+        if v.created_by:
+            user_ids.add(v.created_by)
+        if v.approved_by:
+            user_ids.add(v.approved_by)
+        if v.vendor_id:
+            vendor_ids.add(v.vendor_id)
+        if v.cost_center_id:
+            cc_ids.add(v.cost_center_id)
+
+    # Resolve JE numbers
     je_map: dict = {}
     if je_ids:
         je_result = await db.execute(
@@ -270,9 +302,47 @@ async def list_expense_vouchers(
         )
         je_map = {row[0]: row[1] for row in je_result.all()}
 
+    # Resolve user names
+    user_map: dict = {}
+    if user_ids:
+        user_result = await db.execute(
+            select(User.id, User.first_name, User.last_name)
+            .where(User.id.in_(list(user_ids)))
+        )
+        for row in user_result.all():
+            name = f"{row[1]} {row[2]}" if row[2] else row[1]
+            user_map[row[0]] = name
+
+    # Resolve vendor names
+    vendor_map: dict = {}
+    if vendor_ids:
+        vendor_result = await db.execute(
+            select(Vendor.id, Vendor.name)
+            .where(Vendor.id.in_(list(vendor_ids)))
+        )
+        vendor_map = {row[0]: row[1] for row in vendor_result.all()}
+
+    # Resolve cost center names
+    cc_map: dict = {}
+    if cc_ids:
+        cc_result = await db.execute(
+            select(CostCenter.id, CostCenter.name)
+            .where(CostCenter.id.in_(list(cc_ids)))
+        )
+        cc_map = {row[0]: row[1] for row in cc_result.all()}
+
+    # Populate flat fields on each voucher
     for v in vouchers:
         if v.journal_entry_id and v.journal_entry_id in je_map:
             v.journal_entry_number = je_map[v.journal_entry_id]  # type: ignore[attr-defined]
+        if v.created_by and v.created_by in user_map:
+            v.created_by_name = user_map[v.created_by]  # type: ignore[attr-defined]
+        if v.approved_by and v.approved_by in user_map:
+            v.approved_by_name = user_map[v.approved_by]  # type: ignore[attr-defined]
+        if v.vendor_id and v.vendor_id in vendor_map:
+            v.vendor_name = vendor_map[v.vendor_id]  # type: ignore[attr-defined]
+        if v.cost_center_id and v.cost_center_id in cc_map:
+            v.cost_center_name = cc_map[v.cost_center_id]  # type: ignore[attr-defined]
 
     return ExpenseVoucherListResponse(
         items=vouchers,
