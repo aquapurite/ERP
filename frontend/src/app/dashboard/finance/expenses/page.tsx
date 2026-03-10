@@ -144,6 +144,7 @@ export default function ExpensesPage() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
   // Dialog states
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -233,11 +234,12 @@ export default function ExpensesPage() {
   });
 
   const { data: vouchersData, isLoading: vouchersLoading } = useQuery({
-    queryKey: ['expense-vouchers', page, pageSize, statusFilter],
+    queryKey: ['expense-vouchers', page, pageSize, statusFilter, categoryFilter],
     queryFn: () => expensesApi.listVouchers({
       page: page + 1,
       size: pageSize,
-      status: statusFilter === 'all' ? undefined : statusFilter
+      status: statusFilter === 'all' ? undefined : statusFilter,
+      category_id: categoryFilter === 'all' ? undefined : categoryFilter
     }),
     enabled: activeTab === 'vouchers',
   });
@@ -859,7 +861,7 @@ export default function ExpensesPage() {
         <TabsContent value="vouchers" className="space-y-4">
           <div className="flex justify-between items-center">
             <div className="flex gap-2">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="Filter by status" />
                 </SelectTrigger>
@@ -871,6 +873,19 @@ export default function ExpensesPage() {
                   <SelectItem value="POSTED">Posted</SelectItem>
                   <SelectItem value="PAID">Paid</SelectItem>
                   <SelectItem value="REJECTED">Rejected</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={categoryFilter} onValueChange={(v) => { setCategoryFilter(v); setPage(0); }}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Filter by category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {categoryDropdown?.map((cat: { id: string; code: string; name: string }) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
