@@ -22,6 +22,7 @@ from uuid import uuid4
 from datetime import date as date_type
 from app.services.auto_journal_service import AutoJournalService, AutoJournalError
 from app.services.accounting_service import AccountingService
+from app.services.audit_service import AuditService
 
 router = APIRouter()
 
@@ -581,6 +582,24 @@ async def create_vendor_invoice(
             )
             db.add(expense_line)
 
+    await db.flush()
+
+    # Audit log
+    await AuditService(db).log(
+        action="CREATE",
+        entity_type="VendorInvoice",
+        entity_id=invoice.id,
+        user_id=current_user.id,
+        new_values={
+            "our_reference": invoice.our_reference,
+            "invoice_number": invoice.invoice_number,
+            "vendor_id": str(invoice.vendor_id) if invoice.vendor_id else None,
+            "grand_total": str(invoice.grand_total),
+            "invoice_type": invoice.invoice_type,
+        },
+        description=f"Created vendor invoice {invoice.invoice_number} ({invoice.our_reference}) for ₹{invoice.grand_total}",
+    )
+
     await db.commit()
     await db.refresh(invoice)
 
@@ -749,6 +768,19 @@ async def approve_invoice(
         import logging
         logging.warning(f"Failed to sync ITC for vendor invoice {invoice.invoice_number}: {str(e)}")
 
+    # Audit log
+    await AuditService(db).log(
+        action="APPROVE",
+        entity_type="VendorInvoice",
+        entity_id=invoice.id,
+        user_id=current_user.id,
+        new_values={
+            "status": "APPROVED",
+            "journal_entry_id": str(journal_entry.id) if journal_entry else None,
+        },
+        description=f"Approved vendor invoice {invoice.invoice_number} (₹{invoice.grand_total})",
+    )
+
     await db.commit()
 
     return {
@@ -912,6 +944,20 @@ async def update_vendor_invoice(
     invoice.net_payable = invoice.grand_total - tds_amount
     invoice.balance_due = invoice.net_payable - invoice.amount_paid
 
+    # Audit log
+    await AuditService(db).log(
+        action="UPDATE",
+        entity_type="VendorInvoice",
+        entity_id=invoice.id,
+        user_id=current_user.id,
+        new_values={
+            "invoice_number": invoice.invoice_number,
+            "grand_total": str(invoice.grand_total),
+            "net_payable": str(invoice.net_payable),
+        },
+        description=f"Updated vendor invoice {invoice.invoice_number} (₹{invoice.grand_total})",
+    )
+
     await db.commit()
     await db.refresh(invoice)
 
@@ -941,6 +987,21 @@ async def delete_vendor_invoice(
             status_code=400,
             detail=f"Cannot delete invoice with status {invoice.status}. Only RECEIVED invoices can be deleted."
         )
+
+    # Audit log before delete
+    await AuditService(db).log(
+        action="DELETE",
+        entity_type="VendorInvoice",
+        entity_id=invoice.id,
+        user_id=current_user.id,
+        old_values={
+            "invoice_number": invoice.invoice_number,
+            "our_reference": invoice.our_reference,
+            "grand_total": str(invoice.grand_total),
+            "vendor_id": str(invoice.vendor_id) if invoice.vendor_id else None,
+        },
+        description=f"Deleted vendor invoice {invoice.invoice_number} ({invoice.our_reference})",
+    )
 
     await db.delete(invoice)
     await db.commit()
@@ -1059,6 +1120,23 @@ async def record_payment(
     except Exception:
         import logging
         logging.exception(f"Failed to create GL journal for vendor payment on {invoice.invoice_number}")
+
+    # Audit log
+    await AuditService(db).log(
+        action="PAY",
+        entity_type="VendorInvoice",
+        entity_id=invoice.id,
+        user_id=current_user.id,
+        new_values={
+            "payment_amount": str(payload.amount),
+            "payment_mode": payload.payment_mode,
+            "payment_reference": payload.payment_reference,
+            "total_paid": str(invoice.amount_paid),
+            "balance_due": str(invoice.balance_due),
+            "status": invoice.status,
+        },
+        description=f"Recorded payment of ₹{payload.amount} against invoice {invoice.invoice_number} via {payload.payment_mode}",
+    )
 
     await db.commit()
 

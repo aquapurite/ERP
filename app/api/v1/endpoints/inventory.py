@@ -33,6 +33,7 @@ from app.schemas.inventory import (
     BulkStockVerificationResponse,
 )
 from app.services.inventory_service import InventoryService
+from app.services.audit_service import AuditService
 
 
 router = APIRouter(tags=["Inventory"])
@@ -686,6 +687,15 @@ async def create_stock_item(
             )
 
     item = await service.create_stock_item(data.model_dump(), created_by=current_user.id)
+
+    await AuditService(db).log(
+        action="CREATE", entity_type="StockItem", entity_id=item.id,
+        user_id=current_user.id,
+        new_values={"serial_number": data.serial_number, "product_id": str(data.product_id), "warehouse_id": str(data.warehouse_id)},
+        description=f"Created stock item {data.serial_number or 'N/A'}",
+    )
+    await db.commit()
+
     return StockItemResponse.model_validate(item)
 
 
@@ -714,6 +724,14 @@ async def bulk_receive_stock(
         vendor_id=data.vendor_id,
         created_by=current_user.id,
     )
+
+    await AuditService(db).log(
+        action="BULK_RECEIVE", entity_type="StockItem", entity_id=data.warehouse_id,
+        user_id=current_user.id,
+        new_values={"grn_number": data.grn_number, "items_count": len(items), "warehouse_id": str(data.warehouse_id)},
+        description=f"Bulk received {len(items)} stock items (GRN: {data.grn_number})",
+    )
+    await db.commit()
 
     return BulkStockReceiptResponse(
         message=f"Successfully received {len(items)} stock items",
@@ -790,6 +808,13 @@ async def delete_stock_item(
     # Soft delete - mark as DISPOSED
     item.status = StockItemStatus.DISPOSED.value
     item.notes = f"Deleted by user on {datetime.now(timezone.utc).isoformat()}"
+
+    await AuditService(db).log(
+        action="DELETE", entity_type="StockItem", entity_id=item_id,
+        user_id=current_user.id,
+        old_values={"serial_number": item.serial_number, "status": "DISPOSED"},
+        description=f"Disposed stock item {item.serial_number or str(item_id)[:8]}",
+    )
 
     await db.commit()
     return None

@@ -17,6 +17,7 @@ from app.models.stock_adjustment import StockAdjustment, StockAdjustmentItem, In
 from app.models.warehouse import Warehouse
 from app.models.product import Product
 from app.services.document_sequence_service import DocumentSequenceService
+from app.services.audit_service import AuditService
 
 router = APIRouter()
 
@@ -193,6 +194,14 @@ async def create_inventory_audit(
     )
 
     db.add(audit)
+
+    await AuditService(db).log(
+        action="CREATE", entity_type="InventoryAudit", entity_id=audit.id,
+        user_id=current_user.id,
+        new_values={"audit_number": audit_number, "warehouse_id": str(data["warehouse_id"])},
+        description=f"Scheduled inventory audit {audit_number}",
+    )
+
     await db.commit()
     await db.refresh(audit)
 
@@ -366,6 +375,13 @@ async def create_stock_adjustment(
         )
         db.add(adj_item)
 
+    await AuditService(db).log(
+        action="CREATE", entity_type="StockAdjustment", entity_id=adjustment.id,
+        user_id=current_user.id,
+        new_values={"adjustment_number": adjustment_number, "type": data["adjustment_type"], "total_items": total_items, "total_value": str(total_value)},
+        description=f"Created stock adjustment {adjustment_number} ({data['adjustment_type']}) — {total_items} items, ₹{total_value}",
+    )
+
     await db.commit()
     await db.refresh(adjustment)
 
@@ -476,6 +492,13 @@ async def submit_adjustment(
 
     adjustment.status = "PENDING_APPROVAL"
 
+    await AuditService(db).log(
+        action="SUBMIT", entity_type="StockAdjustment", entity_id=adjustment.id,
+        user_id=current_user.id,
+        new_values={"status": "PENDING_APPROVAL"},
+        description=f"Submitted stock adjustment {adjustment.adjustment_number} for approval",
+    )
+
     await db.commit()
 
     return {"message": "Adjustment submitted for approval", "status": adjustment.status}
@@ -536,6 +559,13 @@ async def approve_adjustment(
     adjustment.approved_by = current_user.id
     adjustment.approved_at = datetime.now(timezone.utc)
     adjustment.completed_at = datetime.now(timezone.utc)
+
+    await AuditService(db).log(
+        action="APPROVE", entity_type="StockAdjustment", entity_id=adjustment.id,
+        user_id=current_user.id,
+        new_values={"status": "APPROVED", "total_value": str(adjustment.total_value_impact)},
+        description=f"Approved stock adjustment {adjustment.adjustment_number} — inventory updated",
+    )
 
     await db.commit()
 
@@ -607,6 +637,13 @@ async def reject_adjustment(
     adjustment.rejection_reason = data.get("reason")
     adjustment.approved_by = current_user.id
     adjustment.approved_at = datetime.now(timezone.utc)
+
+    await AuditService(db).log(
+        action="REJECT", entity_type="StockAdjustment", entity_id=adjustment.id,
+        user_id=current_user.id,
+        new_values={"status": "REJECTED", "reason": data.get("reason")},
+        description=f"Rejected stock adjustment {adjustment.adjustment_number}: {data.get('reason')}",
+    )
 
     await db.commit()
 

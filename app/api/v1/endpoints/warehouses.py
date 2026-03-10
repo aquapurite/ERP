@@ -15,6 +15,7 @@ from app.schemas.warehouse import (
     WarehouseListResponse,
 )
 from app.services.inventory_service import InventoryService
+from app.services.audit_service import AuditService
 
 
 router = APIRouter(tags=["Warehouses"])
@@ -128,6 +129,15 @@ async def create_warehouse(
             )
 
     warehouse = await service.create_warehouse(data.model_dump())
+
+    await AuditService(db).log(
+        action="CREATE", entity_type="Warehouse", entity_id=warehouse.id,
+        user_id=current_user.id,
+        new_values={"name": data.name, "code": data.code},
+        description=f"Created warehouse {data.name} ({data.code})",
+    )
+    await db.commit()
+
     return WarehouseResponse.model_validate(warehouse)
 
 
@@ -159,6 +169,14 @@ async def update_warehouse(
             detail="Warehouse not found"
         )
 
+    await AuditService(db).log(
+        action="UPDATE", entity_type="Warehouse", entity_id=warehouse_id,
+        user_id=current_user.id,
+        new_values=data.model_dump(exclude_unset=True),
+        description=f"Updated warehouse {warehouse.name}",
+    )
+    await db.commit()
+
     return WarehouseResponse.model_validate(warehouse)
 
 
@@ -184,5 +202,12 @@ async def deactivate_warehouse(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Warehouse not found"
         )
+
+    await AuditService(db).log(
+        action="DEACTIVATE", entity_type="Warehouse", entity_id=warehouse_id,
+        user_id=current_user.id,
+        new_values={"is_active": False},
+        description=f"Deactivated warehouse {warehouse.name}",
+    )
 
     await service.update_warehouse(warehouse_id, {"is_active": False})

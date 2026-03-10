@@ -13,6 +13,7 @@ from app.models.wms import WarehouseZone, WarehouseBin, PutAwayRule, ZoneType, B
 from app.models.warehouse import Warehouse
 from app.models.inventory import StockItem
 from app.models.product import Product
+from app.services.audit_service import AuditService
 from app.schemas.wms import (
     ZoneCreate,
     ZoneUpdate,
@@ -1011,6 +1012,13 @@ async def execute_putaway(
     bin.current_items += 1
     bin.last_activity_at = datetime.now(timezone.utc)
 
+    await AuditService(db).log(
+        action="PUTAWAY", entity_type="StockItem", entity_id=stock_item.id,
+        user_id=current_user.id,
+        new_values={"bin_id": str(bin.id), "bin_code": bin.bin_code},
+        description=f"Put away stock item {stock_item.serial_number or str(stock_item.id)[:8]} to bin {bin.bin_code}",
+    )
+
     await db.commit()
 
     return PutAwayExecuteResponse(
@@ -1089,6 +1097,13 @@ async def move_inventory(
 
     # Update stock item
     stock_item.bin_id = to_bin.id
+
+    await AuditService(db).log(
+        action="MOVE", entity_type="StockItem", entity_id=stock_item.id,
+        user_id=current_user.id,
+        new_values={"from_bin": from_bin.bin_code, "to_bin": to_bin.bin_code},
+        description=f"Moved stock item {stock_item.serial_number or str(stock_item.id)[:8]} from {from_bin.bin_code} to {to_bin.bin_code}",
+    )
 
     await db.commit()
 

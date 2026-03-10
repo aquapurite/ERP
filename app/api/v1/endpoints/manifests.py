@@ -14,6 +14,7 @@ from app.models.shipment import Shipment, ShipmentStatus, ShipmentTracking
 from app.models.warehouse import Warehouse
 from app.models.transporter import Transporter
 from app.models.order import Order, OrderStatus
+from app.services.audit_service import AuditService
 from app.schemas.manifest import (
     ManifestCreate,
     ManifestUpdate,
@@ -199,6 +200,15 @@ async def create_manifest(
     )
 
     db.add(manifest)
+    await db.flush()
+
+    await AuditService(db).log(
+        action="CREATE", entity_type="Manifest", entity_id=manifest.id,
+        user_id=current_user.id,
+        new_values={"manifest_number": manifest.manifest_number, "warehouse_id": str(data.warehouse_id), "transporter_id": str(data.transporter_id)},
+        description=f"Created manifest {manifest.manifest_number}",
+    )
+
     await db.commit()
 
     # Reload with transporter relationship
@@ -584,6 +594,13 @@ async def confirm_manifest(
     if data.remarks:
         manifest.remarks = data.remarks
 
+    await AuditService(db).log(
+        action="CONFIRM", entity_type="Manifest", entity_id=manifest.id,
+        user_id=current_user.id,
+        new_values={"status": "CONFIRMED", "total_shipments": manifest.total_shipments},
+        description=f"Confirmed manifest {manifest.manifest_number} — goods issue for {manifest.total_shipments} shipments",
+    )
+
     await db.commit()
     await db.refresh(manifest)
 
@@ -750,6 +767,13 @@ async def complete_handover(
     if data.handover_remarks:
         manifest.remarks = data.handover_remarks
 
+    await AuditService(db).log(
+        action="HANDOVER", entity_type="Manifest", entity_id=manifest.id,
+        user_id=current_user.id,
+        new_values={"status": "HANDED_OVER", "shipped_count": shipped_count},
+        description=f"Handed over manifest {manifest.manifest_number} — {shipped_count} shipments shipped",
+    )
+
     await db.commit()
     await db.refresh(manifest)
 
@@ -813,6 +837,13 @@ async def cancel_manifest(
     manifest.scanned_shipments = 0
     manifest.total_weight_kg = 0
     manifest.total_boxes = 0
+
+    await AuditService(db).log(
+        action="CANCEL", entity_type="Manifest", entity_id=manifest.id,
+        user_id=current_user.id,
+        new_values={"status": "CANCELLED", "reason": data.reason},
+        description=f"Cancelled manifest {manifest.manifest_number}: {data.reason}",
+    )
 
     await db.commit()
     await db.refresh(manifest)

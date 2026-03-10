@@ -23,6 +23,7 @@ from app.models.accounting import JournalEntry, ChartOfAccount, CostCenter
 from app.models.user import User
 from app.models.vendor import Vendor
 from app.services.accounting_service import AccountingService
+from app.services.audit_service import AuditService
 from app.schemas.expense import (
     ExpenseCategoryCreate, ExpenseCategoryUpdate, ExpenseCategoryResponse,
     ExpenseVoucherCreate, ExpenseVoucherUpdate, ExpenseVoucherResponse,
@@ -417,6 +418,12 @@ async def create_expense_voucher(
             )
             db.add(line)
 
+    await AuditService(db).log(
+        action="CREATE", entity_type="ExpenseVoucher", entity_id=voucher.id,
+        user_id=current_user.id,
+        new_values={"voucher_number": voucher_number, "amount": str(net_amount), "narration": data.narration},
+        description=f"Created expense voucher {voucher_number} for ₹{net_amount}",
+    )
     await db.commit()
     return await _load_voucher_for_response(db, voucher.id)
 
@@ -571,6 +578,11 @@ async def submit_expense_voucher(
     voucher.submitted_by = current_user.id
     voucher.submitted_at = datetime.now(timezone.utc)
 
+    await AuditService(db).log(
+        action="SUBMIT", entity_type="ExpenseVoucher", entity_id=voucher.id,
+        user_id=current_user.id,
+        description=f"Submitted expense voucher {voucher.voucher_number} for approval",
+    )
     await db.commit()
     return await _load_voucher_for_response(db, voucher.id)
 
@@ -608,6 +620,11 @@ async def approve_expense_voucher(
     voucher.approved_at = datetime.now(timezone.utc)
     voucher.approval_level = approval_level
 
+    await AuditService(db).log(
+        action="APPROVE", entity_type="ExpenseVoucher", entity_id=voucher.id,
+        user_id=current_user.id,
+        description=f"Approved expense voucher {voucher.voucher_number} (₹{voucher.net_amount}, {approval_level})",
+    )
     await db.commit()
     return await _load_voucher_for_response(db, voucher.id)
 
@@ -633,6 +650,11 @@ async def reject_expense_voucher(
     voucher.rejected_at = datetime.now(timezone.utc)
     voucher.rejection_reason = data.reason
 
+    await AuditService(db).log(
+        action="REJECT", entity_type="ExpenseVoucher", entity_id=voucher.id,
+        user_id=current_user.id,
+        description=f"Rejected expense voucher {voucher.voucher_number}: {data.reason}",
+    )
     await db.commit()
     return await _load_voucher_for_response(db, voucher.id)
 
@@ -719,6 +741,12 @@ async def post_expense_voucher(
     voucher.posted_by = current_user.id
     voucher.posted_at = datetime.now(timezone.utc)
 
+    await AuditService(db).log(
+        action="POST", entity_type="ExpenseVoucher", entity_id=voucher.id,
+        user_id=current_user.id,
+        new_values={"journal_entry_id": str(voucher.journal_entry_id)},
+        description=f"Posted expense voucher {voucher.voucher_number} to GL (JE: {voucher.journal_entry_number})",
+    )
     await db.commit()
     return await _load_voucher_for_response(db, voucher.id)
 
@@ -743,6 +771,12 @@ async def mark_expense_paid(
     voucher.paid_at = data.paid_at or datetime.now(timezone.utc)
     voucher.payment_reference = data.payment_reference
 
+    await AuditService(db).log(
+        action="PAY", entity_type="ExpenseVoucher", entity_id=voucher.id,
+        user_id=current_user.id,
+        new_values={"payment_reference": data.payment_reference},
+        description=f"Marked expense voucher {voucher.voucher_number} as paid (ref: {data.payment_reference})",
+    )
     await db.commit()
     return await _load_voucher_for_response(db, voucher.id)
 

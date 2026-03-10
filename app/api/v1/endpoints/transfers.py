@@ -21,6 +21,7 @@ from app.schemas.stock_transfer import (
     TransferItemDetail,
 )
 from app.services.transfer_service import TransferService
+from app.services.audit_service import AuditService
 
 
 router = APIRouter(tags=["Stock Transfers"])
@@ -135,6 +136,13 @@ async def create_transfer(
             notes=data.notes,
             requested_by=current_user.id,
         )
+        await AuditService(db).log(
+            action="CREATE", entity_type="StockTransfer", entity_id=transfer.id,
+            user_id=current_user.id,
+            new_values={"transfer_number": transfer.transfer_number, "from": str(data.from_warehouse_id), "to": str(data.to_warehouse_id), "items": len(data.items)},
+            description=f"Created stock transfer {transfer.transfer_number} with {len(data.items)} items",
+        )
+        await db.commit()
         return StockTransferResponse.model_validate(transfer)
     except ValueError as e:
         raise HTTPException(
@@ -202,6 +210,13 @@ async def submit_transfer(
 
     try:
         transfer = await service.submit_for_approval(transfer_id)
+        await AuditService(db).log(
+            action="SUBMIT", entity_type="StockTransfer", entity_id=transfer_id,
+            user_id=current_user.id,
+            new_values={"status": transfer.status.value if hasattr(transfer.status, 'value') else str(transfer.status)},
+            description=f"Submitted stock transfer {transfer.transfer_number} for approval",
+        )
+        await db.commit()
         return StockTransferResponse.model_validate(transfer)
     except ValueError as e:
         raise HTTPException(
@@ -234,6 +249,13 @@ async def approve_transfer(
             item_approvals=data.items,
             notes=data.notes,
         )
+        await AuditService(db).log(
+            action="APPROVE", entity_type="StockTransfer", entity_id=transfer_id,
+            user_id=current_user.id,
+            new_values={"status": "APPROVED"},
+            description=f"Approved stock transfer {transfer.transfer_number}",
+        )
+        await db.commit()
         return StockTransferResponse.model_validate(transfer)
     except ValueError as e:
         raise HTTPException(
@@ -265,6 +287,13 @@ async def reject_transfer(
             rejected_by=current_user.id,
             reason=data.reason,
         )
+        await AuditService(db).log(
+            action="REJECT", entity_type="StockTransfer", entity_id=transfer_id,
+            user_id=current_user.id,
+            new_values={"status": "REJECTED", "reason": data.reason},
+            description=f"Rejected stock transfer {transfer.transfer_number}: {data.reason}",
+        )
+        await db.commit()
         return StockTransferResponse.model_validate(transfer)
     except ValueError as e:
         raise HTTPException(
@@ -302,6 +331,13 @@ async def dispatch_transfer(
             serial_items=data.serial_items,
             notes=data.notes,
         )
+        await AuditService(db).log(
+            action="DISPATCH", entity_type="StockTransfer", entity_id=transfer_id,
+            user_id=current_user.id,
+            new_values={"status": "IN_TRANSIT", "vehicle": data.vehicle_number, "challan": data.challan_number},
+            description=f"Dispatched stock transfer {transfer.transfer_number} (vehicle: {data.vehicle_number})",
+        )
+        await db.commit()
         return StockTransferResponse.model_validate(transfer)
     except ValueError as e:
         raise HTTPException(
@@ -334,6 +370,13 @@ async def receive_transfer(
             item_receipts=[item.model_dump() for item in data.items],
             notes=data.notes,
         )
+        await AuditService(db).log(
+            action="RECEIVE", entity_type="StockTransfer", entity_id=transfer_id,
+            user_id=current_user.id,
+            new_values={"status": "RECEIVED", "items_received": len(data.items)},
+            description=f"Received stock transfer {transfer.transfer_number} ({len(data.items)} items)",
+        )
+        await db.commit()
         return StockTransferResponse.model_validate(transfer)
     except ValueError as e:
         raise HTTPException(
@@ -365,6 +408,13 @@ async def cancel_transfer(
             cancelled_by=current_user.id,
             reason=data.reason,
         )
+        await AuditService(db).log(
+            action="CANCEL", entity_type="StockTransfer", entity_id=transfer_id,
+            user_id=current_user.id,
+            new_values={"status": "CANCELLED", "reason": data.reason},
+            description=f"Cancelled stock transfer {transfer.transfer_number}: {data.reason}",
+        )
+        await db.commit()
         return StockTransferResponse.model_validate(transfer)
     except ValueError as e:
         raise HTTPException(

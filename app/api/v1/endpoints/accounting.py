@@ -1518,6 +1518,21 @@ async def create_journal_entry(
         )
         db.add(line)
 
+    # Audit log
+    await AuditService(db).log(
+        action="CREATE",
+        entity_type="JournalEntry",
+        entity_id=journal.id,
+        user_id=current_user.id,
+        new_values={
+            "entry_number": entry_number,
+            "entry_type": journal_in.entry_type,
+            "total_debit": str(total_debit),
+            "narration": journal_in.narration,
+        },
+        description=f"Created journal entry {entry_number} for ₹{total_debit}",
+    )
+
     await db.commit()
 
     # Load full journal with lines and their accounts
@@ -2025,6 +2040,20 @@ async def delete_journal_entry(
             detail=f"Cannot delete journal entry with status '{journal.status}'. Only DRAFT entries can be deleted."
         )
 
+    # Audit log before delete
+    await AuditService(db).log(
+        action="DELETE",
+        entity_type="JournalEntry",
+        entity_id=journal.id,
+        user_id=current_user.id,
+        old_values={
+            "entry_number": journal.entry_number,
+            "total_debit": str(journal.total_debit),
+            "narration": journal.narration,
+        },
+        description=f"Deleted draft journal entry {journal.entry_number}",
+    )
+
     # Delete GL entries first (explicit cleanup to prevent orphans)
     await db.execute(
         delete(GeneralLedger).where(GeneralLedger.journal_entry_id == journal_id)
@@ -2105,6 +2134,16 @@ async def submit_journal_for_approval(
     journal.submitted_at = datetime.now(timezone.utc)
     journal.approval_level = approval_level
 
+    # Audit log
+    await AuditService(db).log(
+        action="SUBMIT",
+        entity_type="JournalEntry",
+        entity_id=journal.id,
+        user_id=current_user.id,
+        new_values={"status": "PENDING_APPROVAL", "approval_level": approval_level},
+        description=f"Submitted journal entry {journal.entry_number} for {approval_level} approval",
+    )
+
     await db.commit()
     await db.refresh(journal)
 
@@ -2183,6 +2222,16 @@ async def approve_journal_entry(
     journal.status = JournalStatus.APPROVED.value
     journal.approved_by = current_user.id
     journal.approved_at = datetime.now(timezone.utc)
+
+    # Audit log
+    await AuditService(db).log(
+        action="APPROVE",
+        entity_type="JournalEntry",
+        entity_id=journal.id,
+        user_id=current_user.id,
+        new_values={"status": "APPROVED", "auto_post": request.auto_post},
+        description=f"Approved journal entry {journal.entry_number} (₹{journal.total_debit})",
+    )
 
     await db.commit()
     await db.refresh(journal)
@@ -2320,6 +2369,16 @@ async def reject_journal_entry(
     journal.approved_by = current_user.id  # Record who rejected
     journal.approved_at = datetime.now(timezone.utc)
     journal.rejection_reason = request.reason
+
+    # Audit log
+    await AuditService(db).log(
+        action="REJECT",
+        entity_type="JournalEntry",
+        entity_id=journal.id,
+        user_id=current_user.id,
+        new_values={"status": "REJECTED", "reason": request.reason},
+        description=f"Rejected journal entry {journal.entry_number}: {request.reason}",
+    )
 
     await db.commit()
     await db.refresh(journal)
@@ -2506,6 +2565,16 @@ async def post_journal_entry(
         import logging
         logging.exception("Auto-clearing failed for JE %s", journal.entry_number)
 
+    # Audit log
+    await AuditService(db).log(
+        action="POST",
+        entity_type="JournalEntry",
+        entity_id=journal.id,
+        user_id=current_user.id,
+        new_values={"status": "POSTED", "accounts_affected": len(affected_accounts)},
+        description=f"Posted journal entry {journal.entry_number} to GL (₹{journal.total_debit})",
+    )
+
     await db.commit()
     await db.refresh(journal)
 
@@ -2617,6 +2686,20 @@ async def reverse_journal_entry(
     # Mark original as reversed
     original.is_reversed = True
     original.reversed_by_id = reversal.id
+
+    # Audit log
+    await AuditService(db).log(
+        action="REVERSE",
+        entity_type="JournalEntry",
+        entity_id=original.id,
+        user_id=current_user.id,
+        new_values={
+            "reversal_entry_number": reversal_number,
+            "reversal_date": str(reversal_date),
+            "reason": reason,
+        },
+        description=f"Reversed journal entry {original.entry_number} → {reversal_number}",
+    )
 
     await db.commit()
 

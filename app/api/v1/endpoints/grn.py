@@ -22,6 +22,7 @@ from app.services.document_sequence_service import DocumentSequenceService
 from app.services.costing_service import CostingService
 from app.services.channel_inventory_service import ChannelInventoryService, allocate_grn_to_channels
 from app.services.grn_service import GRNService
+from app.services.audit_service import AuditService
 from app.models.channel import SalesChannel, ChannelInventory, ProductChannelSettings
 
 router = APIRouter()
@@ -402,6 +403,14 @@ async def create_grn(
     grn.total_quantity_received = total_quantity
     grn.qc_status = "PENDING"
 
+    # Audit log
+    await AuditService(db).log(
+        action="CREATE", entity_type="GRN", entity_id=grn.id,
+        user_id=current_user.id,
+        new_values={"grn_number": grn_number, "po_id": str(data.purchase_order_id), "total_items": len(data.items), "total_qty": total_quantity},
+        description=f"Created GRN {grn_number} against PO with {len(data.items)} items",
+    )
+
     await db.commit()
     await db.refresh(grn)
 
@@ -434,6 +443,14 @@ async def submit_grn(
         )
 
     grn.status = "PENDING_QC"
+
+    await AuditService(db).log(
+        action="SUBMIT", entity_type="GRN", entity_id=grn.id,
+        user_id=current_user.id,
+        new_values={"status": "PENDING_QC"},
+        description=f"Submitted GRN {grn.grn_number} for QC",
+    )
+
     await db.commit()
 
     return {"message": "GRN submitted for QC", "status": grn.status}
@@ -506,6 +523,13 @@ async def complete_qc(
     grn.qc_done_by = current_user.id
     grn.qc_done_at = datetime.now(timezone.utc)
     grn.qc_remarks = data.qc_remarks
+
+    await AuditService(db).log(
+        action="QC_COMPLETE", entity_type="GRN", entity_id=grn.id,
+        user_id=current_user.id,
+        new_values={"qc_status": grn.qc_status, "status": grn.status, "accepted": total_accepted, "rejected": total_rejected},
+        description=f"QC completed for GRN {grn.grn_number}: {grn.qc_status} (accepted={total_accepted}, rejected={total_rejected})",
+    )
 
     await db.commit()
 
@@ -686,6 +710,14 @@ async def accept_grn(
             po.status = "PARTIALLY_RECEIVED"
 
     grn.status = "ACCEPTED"
+
+    await AuditService(db).log(
+        action="ACCEPT", entity_type="GRN", entity_id=grn.id,
+        user_id=current_user.id,
+        new_values={"status": "ACCEPTED", "serial_validation": grn.serial_validation_status, "po_status": po.status if po else None},
+        description=f"Accepted GRN {grn.grn_number} — stock items created, PO status: {po.status if po else 'N/A'}",
+    )
+
     await db.commit()
 
     # Update Product Costs (COGS) using Weighted Average Cost
@@ -752,6 +784,13 @@ async def complete_put_away(
     grn.put_away_at = datetime.now(timezone.utc)
     grn.status = "PUT_AWAY_COMPLETE"
 
+    await AuditService(db).log(
+        action="PUT_AWAY", entity_type="GRN", entity_id=grn.id,
+        user_id=current_user.id,
+        new_values={"status": "PUT_AWAY_COMPLETE"},
+        description=f"Put-away completed for GRN {grn.grn_number}",
+    )
+
     await db.commit()
 
     return {"message": "Put-away completed", "status": grn.status}
@@ -780,6 +819,13 @@ async def cancel_grn(
 
     grn.status = "CANCELLED"
     grn.receiving_remarks = f"Cancelled: {reason}"
+
+    await AuditService(db).log(
+        action="CANCEL", entity_type="GRN", entity_id=grn.id,
+        user_id=current_user.id,
+        new_values={"status": "CANCELLED", "reason": reason},
+        description=f"Cancelled GRN {grn.grn_number}: {reason}",
+    )
 
     await db.commit()
 

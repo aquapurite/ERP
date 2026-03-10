@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import DB, CurrentUser, require_permissions
 from app.models.shipment import Shipment, ShipmentTracking, ShipmentStatus, PaymentMode, PackagingType
 from app.models.order import Order, OrderStatus
+from app.services.audit_service import AuditService
 from app.models.warehouse import Warehouse
 from app.models.transporter import Transporter
 from app.schemas.shipment import (
@@ -250,6 +251,13 @@ async def create_shipment(
     )
     db.add(tracking)
 
+    await AuditService(db).log(
+        action="CREATE", entity_type="Shipment", entity_id=shipment.id,
+        user_id=current_user.id,
+        new_values={"shipment_number": shipment.shipment_number, "order_id": str(data.order_id), "warehouse_id": str(data.warehouse_id)},
+        description=f"Created shipment {shipment.shipment_number} for order {data.order_id}",
+    )
+
     await db.commit()
 
     # Reload with transporter relationship
@@ -378,6 +386,13 @@ async def pack_shipment(
     )
     db.add(tracking)
 
+    await AuditService(db).log(
+        action="PACK", entity_type="Shipment", entity_id=shipment.id,
+        user_id=current_user.id,
+        new_values={"status": "PACKED", "boxes": data.no_of_boxes, "weight_kg": float(data.weight_kg)},
+        description=f"Packed shipment {shipment.shipment_number} ({data.no_of_boxes} boxes, {data.weight_kg}kg)",
+    )
+
     await db.commit()
     await db.refresh(shipment)
 
@@ -449,6 +464,13 @@ async def generate_awb(
         updated_by=current_user.id,
     )
     db.add(tracking)
+
+    await AuditService(db).log(
+        action="GENERATE_AWB", entity_type="Shipment", entity_id=shipment.id,
+        user_id=current_user.id,
+        new_values={"awb_number": awb_number, "status": "READY_FOR_PICKUP"},
+        description=f"Generated AWB {awb_number} for shipment {shipment.shipment_number}",
+    )
 
     await db.commit()
     await db.refresh(shipment)
@@ -580,6 +602,13 @@ async def mark_delivered(
     if order:
         order.status = OrderStatus.DELIVERED.value
         order.delivered_at = now
+
+    await AuditService(db).log(
+        action="DELIVER", entity_type="Shipment", entity_id=shipment.id,
+        user_id=current_user.id,
+        new_values={"status": "DELIVERED", "delivered_to": data.delivered_to, "order_id": str(shipment.order_id)},
+        description=f"Marked shipment {shipment.shipment_number} as delivered to {data.delivered_to}",
+    )
 
     await db.commit()
     await db.refresh(shipment)
@@ -713,6 +742,13 @@ async def initiate_rto(
     )
     db.add(tracking)
 
+    await AuditService(db).log(
+        action="RTO", entity_type="Shipment", entity_id=shipment.id,
+        user_id=current_user.id,
+        new_values={"status": "RTO_INITIATED", "reason": data.reason},
+        description=f"Initiated RTO for shipment {shipment.shipment_number}: {data.reason}",
+    )
+
     await db.commit()
     await db.refresh(shipment)
 
@@ -768,6 +804,13 @@ async def cancel_shipment(
         updated_by=current_user.id,
     )
     db.add(tracking)
+
+    await AuditService(db).log(
+        action="CANCEL", entity_type="Shipment", entity_id=shipment.id,
+        user_id=current_user.id,
+        new_values={"status": "CANCELLED", "reason": data.reason},
+        description=f"Cancelled shipment {shipment.shipment_number}: {data.reason}",
+    )
 
     await db.commit()
     await db.refresh(shipment)
