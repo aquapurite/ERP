@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, FileText, Send, CheckCircle, X, Loader2, Trash2, Download, Printer, Package, Barcode, Lock, FileSpreadsheet, Pencil, Shield } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, FileText, Send, CheckCircle, X, Loader2, Trash2, Download, Printer, Package, Barcode, Lock, FileSpreadsheet, Pencil, Shield, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/providers/auth-provider';
 import { Button } from '@/components/ui/button';
@@ -59,7 +59,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
-import { purchaseOrdersApi, purchaseRequisitionsApi, PurchaseRequisition, vendorsApi, warehousesApi, productsApi, serializationApi, companyApi, Company, ModelCodeReference, SupplierCode as SupplierCodeType, POSerialsResponse } from '@/lib/api';
+import { purchaseOrdersApi, purchaseRequisitionsApi, PurchaseRequisition, vendorsApi, warehousesApi, productsApi, serializationApi, companyApi, Company, ModelCodeReference, SupplierCode as SupplierCodeType, POSerialsResponse, cjdquickApi } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 interface POItem {
@@ -454,6 +454,15 @@ export default function PurchaseOrdersPage() {
       toast.success('PO sent to vendor successfully. Email dispatched.');
     },
     onError: (error: Error) => toast.error(error.message || 'Failed to send PO to vendor'),
+  });
+
+  const syncToCJDQuick = useMutation({
+    mutationFn: () => cjdquickApi.bulkSyncPurchaseOrders(),
+    onSuccess: (data: any) => {
+      toast.success(`CJDQuick sync: ${data.synced} synced, ${data.failed} failed out of ${data.total} POs`);
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    },
+    onError: (error: Error) => toast.error(error.message || 'CJDQuick sync failed'),
   });
 
   // Handle Edit PO - Fetch full details including items
@@ -1234,6 +1243,18 @@ export default function PurchaseOrdersPage() {
                 <SelectItem value="CLOSED">Closed</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              variant="outline"
+              onClick={() => syncToCJDQuick.mutate()}
+              disabled={syncToCJDQuick.isPending}
+            >
+              {syncToCJDQuick.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              Sync to CJDQuick
+            </Button>
             <Dialog open={isCreateOpen} onOpenChange={(open) => { if (!open) resetForm(); else setIsCreateOpen(true); }}>
               <DialogTrigger asChild>
                 <Button onClick={() => setIsCreateOpen(true)}>
