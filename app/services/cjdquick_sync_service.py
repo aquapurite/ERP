@@ -294,7 +294,7 @@ class CJDQuickSyncService:
         # Add vendor info if available
         if hasattr(po, "vendor") and po.vendor:
             payload["externalVendorCode"] = getattr(po.vendor, "vendor_code", "") or ""
-            payload["externalVendorName"] = getattr(po.vendor, "company_name", "") or ""
+            payload["externalVendorName"] = getattr(po.vendor, "name", "") or ""
         # Add dates
         if hasattr(po, "created_at") and po.created_at:
             payload["poDate"] = po.created_at.strftime("%Y-%m-%d")
@@ -338,7 +338,7 @@ class CJDQuickSyncService:
         # Add vendor info
         if hasattr(po, "vendor") and po.vendor:
             payload["externalVendorCode"] = getattr(po.vendor, "vendor_code", "") or ""
-            payload["externalVendorName"] = getattr(po.vendor, "company_name", "") or ""
+            payload["externalVendorName"] = getattr(po.vendor, "name", "") or ""
         # Add expected delivery date
         if hasattr(po, "expected_delivery_date") and po.expected_delivery_date:
             payload["expectedDeliveryDate"] = po.expected_delivery_date.strftime("%Y-%m-%d")

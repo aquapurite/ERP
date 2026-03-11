@@ -425,7 +425,7 @@ async def bulk_sync_purchase_orders(
             synced += 1
             details.append({
                 "po_number": po.po_number,
-                "vendor": po.vendor.company_name if po.vendor else "N/A",
+                "vendor": po.vendor.name if po.vendor else "N/A",
                 "items_count": len(po.items) if po.items else 0,
                 "oms_id": log.oms_id,
                 "sync_status": "SUCCESS",
