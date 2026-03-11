@@ -160,59 +160,43 @@ class CJDQuickSyncService:
         }
 
     def _build_integration_order_payload(self, order: Order, customer: Customer) -> Dict[str, Any]:
-        """Build ERP-native order payload for the integration endpoint.
+        """Build order payload for POST /api/v1/orders/external.
 
-        POST /api/v1/integration/orders — sends ERP's native JSON format.
-        CJDQuick does field mapping server-side via the integration profile.
+        Uses X-API-Key auth. CJDQuick resolves SKU automatically using
+        Aquapurite's product codes (no translation needed).
         """
         customer_name = f"{customer.first_name} {customer.last_name or ''}".strip()
         shipping = order.shipping_address or {}
 
-        line_items = []
+        items = []
         if hasattr(order, "items") and order.items:
             for item in order.items:
-                line_items.append({
-                    "sku_code": item.product_sku,
-                    "product_name": item.product_name,
-                    "qty": item.quantity or 1,
-                    "unit_price": _decimal_to_float(item.unit_price) or 0,
-                    "discount": _decimal_to_float(item.discount_amount) or 0,
-                    "tax_percent": _decimal_to_float(item.tax_rate) or 18.0,
+                items.append({
+                    "sku": item.product_sku,
+                    "name": item.product_name,
+                    "quantity": item.quantity or 1,
+                    "unitPrice": str(_decimal_to_float(item.unit_price) or 0),
+                    "taxRate": str(_decimal_to_float(item.tax_rate) or 18.0),
                 })
 
-        prepaid_methods = {"CARD", "UPI", "NET_BANKING", "WALLET", "EMI"}
-        payment_method = "PREPAID" if order.payment_method in prepaid_methods else order.payment_method
+        payment_mode = self._map_payment_method(order.payment_method)
 
         return {
-            "order_number": order.order_number,
-            "order_date": order.created_at.isoformat() if order.created_at else None,
-            "payment_method": payment_method,
+            "externalOrderId": order.order_number,
+            "channel": "AQUAPURITE_ERP",
+            "paymentMode": payment_mode,
             "customer": {
-                "full_name": customer_name,
-                "mobile": customer.phone or "",
-                "email": customer.email or "",
+                "name": customer_name,
+                "phone": customer.phone or "",
             },
-            "delivery_address": {
-                "recipient": shipping.get("contact_name", shipping.get("name", customer_name)),
-                "address_line_1": shipping.get("address_line1", shipping.get("address_line_1", shipping.get("address", ""))),
-                "address_line_2": shipping.get("address_line2", shipping.get("address_line_2", shipping.get("address_2", ""))),
+            "shippingAddress": {
+                "name": shipping.get("contact_name", shipping.get("name", customer_name)),
+                "line1": shipping.get("address_line1", shipping.get("address_line_1", shipping.get("address", ""))),
                 "city": shipping.get("city", ""),
                 "state": shipping.get("state", ""),
-                "pin_code": str(shipping.get("pincode", shipping.get("zip_code", ""))),
-                "country": shipping.get("country", "India"),
-                "phone": shipping.get("contact_phone", shipping.get("phone", customer.phone or "")),
+                "pincode": str(shipping.get("pincode", shipping.get("zip_code", ""))),
             },
-            "line_items": line_items,
-            "order_total": {
-                "subtotal": _decimal_to_float(order.subtotal) or 0,
-                "total_discount": _decimal_to_float(order.discount_amount) or 0,
-                "shipping_fee": _decimal_to_float(order.shipping_amount) if hasattr(order, "shipping_amount") else 0,
-                "tax": _decimal_to_float(order.tax_amount) or 0,
-                "grand_total": _decimal_to_float(order.total_amount) or 0,
-            },
-            "priority": False,
-            "notes": getattr(order, "notes", "") or "",
-            "tags": [],
+            "items": items,
         }
 
     def _build_customer_payload(self, customer: Customer) -> Dict[str, Any]:
@@ -802,28 +786,80 @@ class CJDQuickSyncService:
         return {"retried": len(failed_logs), "success": success_count, "failed": fail_count}
 
     async def bulk_sync_products(self) -> dict:
-        """Sync all active products to OMS (upsert: create or update)."""
+        """Sync all active products to CJDQuick via external-sku-mappings/sync.
+
+        Uses POST /api/v1/external-sku-mappings/sync with autoCreate: true.
+        CJDQuick creates/maps SKUs using Aquapurite's own product codes.
+        Falls back to individual SKU creation if the bulk endpoint fails.
+        """
         result = await self.db.execute(
             select(Product).where(Product.status == "ACTIVE")
         )
         products = result.scalars().all()
-        success, failed = 0, 0
-        errors = []
+        if not products:
+            return {"total": 0, "success": 0, "failed": 0, "errors": []}
+
+        # Build mappings for bulk SKU sync
+        mappings = []
         for product in products:
-            try:
-                await self.sync_product(product.id)
-                success += 1
-            except Exception as e:
-                failed += 1
-                errors.append({"sku": product.sku, "error": str(e)})
-                logger.error("Bulk product sync failed for %s: %s", product.sku, e)
-        await self.db.commit()
-        return {"total": len(products), "success": success, "failed": failed, "errors": errors}
+            mappings.append({
+                "externalCode": product.sku,
+                "name": product.name,
+                "brand": "Aquapurite",
+                "hsn": product.hsn_code or "",
+                "mrp": _decimal_to_float(product.mrp),
+                "costPrice": _decimal_to_float(product.cost_price),
+                "sellingPrice": _decimal_to_float(product.selling_price),
+                "taxRate": _decimal_to_float(product.gst_rate),
+                "weight": _decimal_to_float(product.dead_weight_kg),
+                "length": _decimal_to_float(product.length_cm),
+                "width": _decimal_to_float(product.width_cm),
+                "height": _decimal_to_float(product.height_cm),
+                "isSerialized": True,
+            })
+
+        try:
+            response = await self.client.sync_sku_mappings(mappings)
+            synced = response.get("created", 0) + response.get("updated", 0)
+            failed_count = response.get("failed", 0)
+
+            # Log the bulk sync
+            await self._write_sync_log(
+                entity_type="PRODUCT",
+                entity_id=uuid.uuid4(),  # Bulk operation — no single entity
+                operation="BULK_SKU_SYNC",
+                status="SUCCESS" if failed_count == 0 else "PARTIAL",
+                request_payload={"count": len(mappings), "autoCreate": True},
+                response_payload=response,
+            )
+            await self.db.commit()
+            return {
+                "total": len(products),
+                "success": synced,
+                "failed": failed_count,
+                "errors": response.get("errors", []),
+            }
+        except CJDQuickAPIError as e:
+            logger.warning("Bulk SKU sync endpoint failed (%s), falling back to individual sync", e.message)
+
+            # Fallback: sync products individually via /skus
+            success, failed = 0, 0
+            errors = []
+            for product in products:
+                try:
+                    await self.sync_product(product.id)
+                    success += 1
+                except Exception as ex:
+                    failed += 1
+                    errors.append({"sku": product.sku, "error": str(ex)})
+                    logger.error("Bulk product sync failed for %s: %s", product.sku, ex)
+            await self.db.commit()
+            return {"total": len(products), "success": success, "failed": failed, "errors": errors}
 
     async def bulk_sync_orders(self, status_filter: str = "CONFIRMED") -> dict:
-        """Push orders to CJDQuick OMS via the bulk integration endpoint.
+        """Push orders to CJDQuick OMS via the bulk external orders endpoint.
 
-        Uses POST /api/v1/integration/orders/bulk (max 100 per request).
+        Uses POST /api/v1/orders/external/bulk (max 100 per request).
         Falls back to individual pushes if bulk endpoint fails.
         """
         from sqlalchemy.orm import selectinload

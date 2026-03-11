@@ -275,24 +275,39 @@ class CJDQuickService:
             )
 
     async def push_integration_order(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Push a single order via the integration endpoint.
+        """Push a single order via the external orders endpoint.
 
-        POST /api/v1/integration/orders
-        Sends ERP's native JSON format — CJDQuick does field mapping server-side.
+        POST /api/v1/orders/external
+        Uses X-API-Key auth. CJDQuick resolves SKUs automatically using Aquapurite's product codes.
         """
-        return await self._integration_request("POST", "/integration/orders", data=payload)
+        return await self._integration_request("POST", "/orders/external", data=payload)
 
     async def push_integration_orders_bulk(self, orders: list) -> Dict[str, Any]:
         """Push up to 100 orders via the bulk integration endpoint.
 
-        POST /api/v1/integration/orders/bulk
+        POST /api/v1/orders/external/bulk
         Each order processed independently — one failure doesn't roll back others.
         """
         if len(orders) > 100:
             raise ValueError("Maximum 100 orders per bulk request")
         return await self._integration_request(
-            "POST", "/integration/orders/bulk",
+            "POST", "/orders/external/bulk",
             data={"orders": orders},
+            timeout=60.0,
+        )
+
+    # ==================== SKU Sync (External SKU Mappings) ====================
+
+    async def sync_sku_mappings(self, mappings: list) -> Dict[str, Any]:
+        """Push product catalog to CJDQuick via external SKU mappings sync.
+
+        POST /api/v1/external-sku-mappings/sync
+        Uses X-API-Key auth. autoCreate: true tells CJDQuick to create/map SKUs
+        using Aquapurite's own product codes (no translation needed).
+        """
+        return await self._integration_request(
+            "POST", "/external-sku-mappings/sync",
+            data={"mappings": mappings, "autoCreate": True},
             timeout=60.0,
         )
 
