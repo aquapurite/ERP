@@ -1746,6 +1746,13 @@ async def create_purchase_order(
     )
     po = result.scalar_one()
 
+    # CJDQuick OMS auto-sync — push PO to 3PL
+    try:
+        from app.services.cjdquick_sync_service import CJDQuickSyncService
+        await CJDQuickSyncService.fire_and_forget_sync(db, "PO", po.id)
+    except Exception:
+        pass
+
     return po
 
 

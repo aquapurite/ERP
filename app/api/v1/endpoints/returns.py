@@ -236,6 +236,13 @@ async def request_return(
     await db.commit()
     await db.refresh(return_order)
 
+    # CJDQuick OMS auto-sync — push return order
+    try:
+        from app.services.cjdquick_sync_service import CJDQuickSyncService
+        await CJDQuickSyncService.fire_and_forget_sync(db, "RETURN", return_order.id)
+    except Exception:
+        pass
+
     # Load items for response
     items_result = await db.execute(
         select(ReturnItem).where(ReturnItem.return_order_id == return_order.id)

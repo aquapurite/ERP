@@ -511,6 +511,13 @@ async def cancel_order(
         notes=notes or "Order cancelled",
     )
 
+    # CJDQuick OMS auto-sync — notify cancellation
+    try:
+        from app.services.cjdquick_sync_service import CJDQuickSyncService
+        await CJDQuickSyncService.fire_and_forget_sync(db, "ORDER", order.id)
+    except Exception:
+        pass
+
     return _build_order_detail_response(order)
 
 
