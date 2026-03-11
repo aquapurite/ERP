@@ -288,7 +288,7 @@ class CJDQuickSyncService:
         payload: Dict[str, Any] = {
             "companyId": settings.CJDQUICK_COMPANY_ID,
             "externalPoNumber": po.po_number if hasattr(po, "po_number") else str(po.id),
-            "locationId": settings.CJDQUICK_LOCATION_ID,
+            "locationId": settings.CJDQUICK_DELHI_LOCATION_ID,
             "items": items,
         }
         # Add vendor info if available
