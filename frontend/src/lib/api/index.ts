@@ -7113,6 +7113,22 @@ export const cjdquickApi = {
     return data;
   },
 
+  // Purchase Order sync
+  bulkSyncPurchaseOrders: async () => {
+    const { data } = await apiClient.post('/cjdquick/sync/bulk/purchase-orders');
+    return data;
+  },
+
+  // Goods Receipt sync
+  syncGoodsReceipt: async (poId: string) => {
+    const { data } = await apiClient.post(`/cjdquick/sync/goods-receipt/${poId}`);
+    return data;
+  },
+  bulkSyncGoodsReceipts: async () => {
+    const { data } = await apiClient.post('/cjdquick/sync/goods-receipt/bulk');
+    return data;
+  },
+
   // Reconciliation — find shipped orders without invoices
   getUninvoicedOrders: async (daysBack?: number) => {
     const { data } = await apiClient.get('/cjdquick/reconciliation/uninvoiced-orders', {

@@ -74,6 +74,7 @@ const entityTypes = [
   { value: 'ORDER', label: 'Order' },
   { value: 'CUSTOMER', label: 'Customer' },
   { value: 'PO', label: 'Purchase Order' },
+  { value: 'GR', label: 'Goods Receipt' },
   { value: 'RETURN', label: 'Return' },
   { value: 'WEBHOOK', label: 'Webhook' },
 ];
@@ -155,6 +156,26 @@ export default function OMSSyncPage() {
       queryClient.invalidateQueries({ queryKey: ['sync-logs'] });
     },
     onError: () => toast.error('Bulk order sync failed'),
+  });
+
+  const bulkSyncPurchaseOrders = useMutation({
+    mutationFn: () => cjdquickApi.bulkSyncPurchaseOrders(),
+    onSuccess: (data: any) => {
+      toast.success(`PO sync: ${data.synced} synced, ${data.failed} failed out of ${data.total}`);
+      queryClient.invalidateQueries({ queryKey: ['sync-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['sync-logs'] });
+    },
+    onError: () => toast.error('Bulk PO sync failed'),
+  });
+
+  const bulkSyncGoodsReceipts = useMutation({
+    mutationFn: () => cjdquickApi.bulkSyncGoodsReceipts(),
+    onSuccess: (data: any) => {
+      toast.success(`GR sync: ${data.synced} synced, ${data.failed} failed out of ${data.total}`);
+      queryClient.invalidateQueries({ queryKey: ['sync-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['sync-logs'] });
+    },
+    onError: () => toast.error('Bulk GR sync failed'),
   });
 
   const retryAllFailed = useMutation({
@@ -288,7 +309,7 @@ export default function OMSSyncPage() {
   const totalPages = Math.ceil(totalLogs / pageSize);
 
   const isAnyBulkRunning =
-    bulkSyncProducts.isPending || bulkSyncOrders.isPending || retryAllFailed.isPending;
+    bulkSyncProducts.isPending || bulkSyncOrders.isPending || bulkSyncPurchaseOrders.isPending || bulkSyncGoodsReceipts.isPending || retryAllFailed.isPending;
 
   return (
     <div className="space-y-6 p-6">
@@ -384,6 +405,30 @@ export default function OMSSyncPage() {
             <ShoppingCart className="h-4 w-4 mr-2" />
           )}
           Bulk Sync Orders
+        </Button>
+        <Button
+          onClick={() => bulkSyncPurchaseOrders.mutate()}
+          disabled={isAnyBulkRunning}
+          variant="outline"
+        >
+          {bulkSyncPurchaseOrders.isPending ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <FileText className="h-4 w-4 mr-2" />
+          )}
+          Sync Purchase Orders
+        </Button>
+        <Button
+          onClick={() => bulkSyncGoodsReceipts.mutate()}
+          disabled={isAnyBulkRunning}
+          variant="outline"
+        >
+          {bulkSyncGoodsReceipts.isPending ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Package className="h-4 w-4 mr-2" />
+          )}
+          Sync Goods Receipts
         </Button>
         <Button
           onClick={() => retryAllFailed.mutate()}
