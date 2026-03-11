@@ -23,7 +23,7 @@ from app.models.cjdquick_sync_log import CJDQuickSyncLog
 from app.models.order import Order, OrderItem
 from app.models.shipment import Shipment, ShipmentTracking
 from app.models.return_order import ReturnOrder
-from app.models.purchase import PurchaseOrder
+from app.models.purchase import PurchaseOrder, PurchaseOrderItem
 from app.models.picklist import PicklistItem
 from app.models.billing import TaxInvoice, InvoiceStatus, InvoiceType
 from app.services.cjdquick_service import CJDQuickAPIError
@@ -375,6 +375,79 @@ async def bulk_sync_products(
     sync_service = CJDQuickSyncService(db)
     result = await sync_service.bulk_sync_products()
     return BulkSyncResponse(**result)
+
+
+@router.post(
+    "/sync/bulk/purchase-orders",
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_permissions("purchase_orders:update"))],
+)
+async def bulk_sync_purchase_orders(
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Bulk push all POs to CJDQuick OMS via /external-pos.
+
+    Finds all post-approval POs and pushes them with line items (SKUs, quantities, prices).
+    CJDQuick will show them as 'Open POs' for GRN processing.
+    """
+    if not settings.CJDQUICK_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="CJDQuick OMS integration is disabled.",
+        )
+
+    from sqlalchemy.orm import selectinload
+
+    SYNCABLE_STATUSES = ["APPROVED", "SENT_TO_VENDOR", "PARTIALLY_RECEIVED", "FULLY_RECEIVED", "CLOSED"]
+    result = await db.execute(
+        select(PurchaseOrder)
+        .options(
+            selectinload(PurchaseOrder.items).selectinload(PurchaseOrderItem.product),
+            selectinload(PurchaseOrder.vendor),
+        )
+        .where(PurchaseOrder.status.in_(SYNCABLE_STATUSES))
+        .order_by(PurchaseOrder.created_at)
+    )
+    pos = result.scalars().all()
+
+    if not pos:
+        return {"success": True, "message": "No POs to sync.", "total": 0, "synced": 0, "failed": 0}
+
+    svc = CJDQuickSyncService(db)
+    synced = 0
+    failed = 0
+    details = []
+
+    for po in pos:
+        try:
+            log = await svc.sync_purchase_order(po.id)
+            synced += 1
+            details.append({
+                "po_number": po.po_number,
+                "vendor": po.vendor.company_name if po.vendor else "N/A",
+                "items_count": len(po.items) if po.items else 0,
+                "oms_id": log.oms_id,
+                "sync_status": "SUCCESS",
+            })
+        except Exception as e:
+            failed += 1
+            details.append({
+                "po_number": po.po_number,
+                "sync_status": "FAILED",
+                "error": str(e),
+            })
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "message": f"PO sync completed: {synced} synced, {failed} failed out of {len(pos)} POs",
+        "total": len(pos),
+        "synced": synced,
+        "failed": failed,
+        "details": details,
+    }
 
 
 @router.post(
