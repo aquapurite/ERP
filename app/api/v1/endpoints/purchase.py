@@ -3479,7 +3479,7 @@ async def delete_grn(
         "DRAFT", "CANCELLED", "REJECTED"  # Also allow string values
     ]
 
-    # Super admin can also delete PENDING_QC, QC_PASSED, QC_FAILED, ACCEPTED (if not put away)
+    # Super admin can also delete PENDING_QC, QC_PASSED, QC_FAILED, ACCEPTED, PUT_AWAY_PENDING (if not put away)
     if permissions.is_super_admin():
         deletable_statuses.extend([
             GRNStatus.PENDING_QC.value,
@@ -3487,7 +3487,9 @@ async def delete_grn(
             GRNStatus.QC_FAILED.value,
             GRNStatus.PARTIALLY_ACCEPTED.value,
             GRNStatus.ACCEPTED.value,
-            "PENDING_QC", "QC_PASSED", "QC_FAILED", "PARTIALLY_ACCEPTED", "ACCEPTED"
+            GRNStatus.PUT_AWAY_PENDING.value,
+            "PENDING_QC", "QC_PASSED", "QC_FAILED", "PARTIALLY_ACCEPTED", "ACCEPTED",
+            "PUT_AWAY_PENDING"
         ])
 
     # Check if GRN can be deleted
@@ -3504,6 +3506,32 @@ async def delete_grn(
             status_code=400,
             detail="Cannot delete GRN after put-away is complete. Inventory has been updated."
         )
+
+    # Reverse PO quantity updates if GRN was accepted/put_away_pending
+    if grn_status in ["ACCEPTED", "PUT_AWAY_PENDING", "PARTIALLY_ACCEPTED"]:
+        items_result = await db.execute(
+            select(GRNItem).where(GRNItem.grn_id == grn_id)
+        )
+        grn_items = items_result.scalars().all()
+        for item in grn_items:
+            po_item = await db.get(PurchaseOrderItem, item.po_item_id)
+            if po_item:
+                po_item.quantity_received = max(0, po_item.quantity_received - item.quantity_accepted)
+                po_item.quantity_accepted = max(0, po_item.quantity_accepted - item.quantity_accepted)
+                po_item.quantity_rejected = max(0, po_item.quantity_rejected - item.quantity_rejected)
+
+        po = await db.get(PurchaseOrder, grn.purchase_order_id)
+        if po:
+            po.total_received_value = max(Decimal("0"), po.total_received_value - (grn.total_value or Decimal("0")))
+            po_items_result = await db.execute(
+                select(PurchaseOrderItem).where(PurchaseOrderItem.purchase_order_id == po.id)
+            )
+            po_items = po_items_result.scalars().all()
+            any_received = any(pi.quantity_received > 0 for pi in po_items)
+            if any_received:
+                po.status = "PARTIALLY_RECEIVED"
+            else:
+                po.status = "APPROVED"
 
     # Use raw SQL for all deletions to avoid ORM lazy-loading po_serials
     # relationship which has a VARCHAR/UUID type mismatch (po_serials.grn_id
