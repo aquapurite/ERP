@@ -66,7 +66,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { PageHeader } from '@/components/common';
 import { formatCurrency } from '@/lib/utils';
-import { customersApi, productsApi, channelsApi, warehousesApi, ordersApi } from '@/lib/api';
+import { customersApi, productsApi, channelsApi, warehousesApi, ordersApi, inventoryApi } from '@/lib/api';
 
 // Types
 interface Customer {
@@ -135,6 +135,28 @@ const orderApi = {
   searchProducts: async (query: string): Promise<Product[]> => {
     try {
       const result = await productsApi.list({ search: query, size: 10 });
+
+      // Fetch inventory stock for each product in parallel
+      const stockMap: Record<string, number> = {};
+      try {
+        const stockPromises = result.items.map(async (p: { id: string }) => {
+          try {
+            const inv = await inventoryApi.getInventorySummaryList({ product_id: p.id, size: 50 });
+            // Sum available_quantity across all warehouses
+            const totalAvailable = (inv.items || []).reduce(
+              (sum: number, s: { available_quantity?: number }) => sum + (s.available_quantity || 0),
+              0
+            );
+            stockMap[p.id] = totalAvailable;
+          } catch {
+            stockMap[p.id] = 0;
+          }
+        });
+        await Promise.all(stockPromises);
+      } catch {
+        // Inventory fetch failed, continue with 0s
+      }
+
       return result.items.map((p: { id: string; name: string; sku: string; mrp?: number; selling_price?: number; gst_rate?: number; hsn_code?: string; category?: { name: string }; brand?: { name: string } }) => ({
         id: p.id,
         name: p.name,
@@ -143,7 +165,7 @@ const orderApi = {
         selling_price: p.selling_price || 0,
         gst_rate: p.gst_rate || 18,
         hsn_code: p.hsn_code || '',
-        stock_available: 0, // Would need inventory API integration
+        stock_available: stockMap[p.id] || 0,
         category: p.category?.name || '',
         brand: p.brand?.name || '',
       }));
@@ -421,7 +443,7 @@ export default function CreateOrderPage() {
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-96 p-0" align="start">
-                      <Command>
+                      <Command shouldFilter={false}>
                         <CommandInput
                           placeholder="Enter phone number or name..."
                           value={customerSearch}
@@ -577,7 +599,7 @@ export default function CreateOrderPage() {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-[500px] p-0" align="start">
-                    <Command>
+                    <Command shouldFilter={false}>
                       <CommandInput
                         placeholder="Search products by name or SKU..."
                         value={productSearch}
