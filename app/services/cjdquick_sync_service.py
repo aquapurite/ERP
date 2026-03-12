@@ -79,6 +79,7 @@ class CJDQuickSyncService:
         hsnCode, taxRate, isSerialized, hasBatchTracking, isActive, tags.
         """
         payload: Dict[str, Any] = {
+            "companyId": settings.CJDQUICK_COMPANY_ID,
             "code": product.sku,
             "name": product.name,
             "brand": "Aquapurite",
@@ -347,6 +348,7 @@ class CJDQuickSyncService:
             notes += f" Expected delivery: {expected_date}."
 
         return {
+            "companyId": settings.CJDQUICK_COMPANY_ID,
             "locationId": settings.CJDQUICK_DELHI_LOCATION_ID,
             "movementType": "101",
             "inboundSource": "PURCHASE",
@@ -910,7 +912,7 @@ class CJDQuickSyncService:
                 entity_id=uuid.uuid4(),  # Bulk operation — no single entity
                 operation="BULK_SKU_SYNC",
                 status="SUCCESS" if failed_count == 0 else "PARTIAL",
-                request_payload={"count": len(mappings), "autoCreate": True},
+                request_payload={"count": len(skus), "autoCreate": True},
                 response_payload=response,
             )
             await self.db.commit()

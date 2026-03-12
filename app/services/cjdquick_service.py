@@ -302,40 +302,38 @@ class CJDQuickService:
         """Push product catalog to CJDQuick via external SKU mappings sync.
 
         POST /api/v1/external-sku-mappings/sync
-        Uses X-API-Key auth. Per v3 guide: sends externalSystem, integrationProfileId,
-        and skus array with autoCreate: true per SKU.
+        Uses JWT Bearer auth (confirmed by live API testing — X-API-Key returns 401).
         """
-        return await self._integration_request(
+        return await self._request(
             "POST", "/external-sku-mappings/sync",
             data={
                 "externalSystem": "AQUAPURITE",
                 "integrationProfileId": settings.CJDQUICK_INTEGRATION_PROFILE_ID,
                 "skus": skus,
             },
-            timeout=60.0,
         )
 
-    # ==================== SKU Methods (X-API-Key auth per v3 guide) ====================
+    # ==================== SKU Methods (JWT auth — confirmed by live testing) ====================
 
     async def create_sku(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new SKU in CJDQuick OMS. POST /api/v1/skus"""
-        return await self._integration_request("POST", "/skus", data=payload)
+        return await self._request("POST", "/skus", data=payload)
 
     async def update_sku(self, sku_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Update an existing SKU."""
-        return await self._integration_request("PATCH", f"/skus/{sku_id}", data=payload)
+        return await self._request("PATCH", f"/skus/{sku_id}", data=payload)
 
     async def get_sku(self, sku_id: str) -> Dict[str, Any]:
         """Get SKU details by ID."""
-        return await self._integration_request("GET", f"/skus/{sku_id}")
+        return await self._request("GET", f"/skus/{sku_id}")
 
     async def get_sku_by_code(self, code: str) -> Dict[str, Any]:
         """Get SKU by code."""
-        return await self._integration_request("GET", f"/skus/code/{code}")
+        return await self._request("GET", f"/skus/code/{code}")
 
     async def list_skus(self, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """List SKUs with optional filters."""
-        return await self._integration_request("GET", "/skus", params=params)
+        return await self._request("GET", "/skus", params=params)
 
     # ==================== Order Methods ====================
 
@@ -377,36 +375,38 @@ class CJDQuickService:
         """List Purchase Orders with optional filters."""
         return await self._request("GET", "/external-pos", params=params)
 
-    # ==================== Goods Receipt Methods (X-API-Key auth per v3 guide) ====================
+    # ==================== Goods Receipt Methods (JWT auth — confirmed by live testing) ====================
 
     async def create_goods_receipt(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Create a Goods Receipt in CJDQuick OMS (SAP MIGO equivalent).
 
         POST /api/v1/goods-receipts — creates DRAFT GRN, then items added separately.
+        Requires companyId in payload.
         """
-        return await self._integration_request("POST", "/goods-receipts", data=payload)
+        return await self._request("POST", "/goods-receipts", data=payload)
 
     async def add_goods_receipt_item(self, gr_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Add a single item to an existing Goods Receipt.
 
         POST /api/v1/goods-receipts/{gr_id}/items — one call per PO line item.
+        Requires goodsReceiptId in payload body.
         """
-        return await self._integration_request("POST", f"/goods-receipts/{gr_id}/items", data=payload)
+        return await self._request("POST", f"/goods-receipts/{gr_id}/items", data=payload)
 
     async def update_goods_receipt(self, gr_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Update GRN with vehicle/dispatch info (Step 3 in inbound flow).
 
         PATCH /api/v1/goods-receipts/{gr_id}
         """
-        return await self._integration_request("PATCH", f"/goods-receipts/{gr_id}", data=payload)
+        return await self._request("PATCH", f"/goods-receipts/{gr_id}", data=payload)
 
     async def post_goods_receipt(self, gr_id: str) -> Dict[str, Any]:
         """Post/confirm a Goods Receipt (makes it final)."""
-        return await self._integration_request("POST", f"/goods-receipts/{gr_id}/post")
+        return await self._request("POST", f"/goods-receipts/{gr_id}/post")
 
     async def get_goods_receipt(self, gr_id: str) -> Dict[str, Any]:
         """Get Goods Receipt details by ID."""
-        return await self._integration_request("GET", f"/goods-receipts/{gr_id}")
+        return await self._request("GET", f"/goods-receipts/{gr_id}")
 
     # ==================== ASN Methods ====================
 
