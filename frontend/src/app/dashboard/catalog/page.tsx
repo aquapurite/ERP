@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Pencil, Trash2, Package, Loader2, Barcode, Tag } from 'lucide-react';
+import { MoreHorizontal, Plus, Pencil, Trash2, Package, Loader2, Barcode, Tag, Upload } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -34,7 +34,7 @@ import {
 } from '@/components/ui/select';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
-import { productsApi, categoriesApi } from '@/lib/api';
+import { productsApi, categoriesApi, cjdquickApi } from '@/lib/api';
 import { Product, Category } from '@/types';
 
 const formatCurrency = (value: number) => {
@@ -95,6 +95,16 @@ export default function ProductsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['products', page, pageSize, activeCategoryFilter],
     queryFn: () => productsApi.list({ page: page + 1, size: pageSize, category_id: activeCategoryFilter }),
+  });
+
+  const bulkSyncMutation = useMutation({
+    mutationFn: () => cjdquickApi.bulkSyncProducts(),
+    onSuccess: (result: { success_count?: number; fail_count?: number }) => {
+      toast.success(`Synced ${result.success_count ?? 0} products to warehouse/3PL partners${result.fail_count ? ` (${result.fail_count} failed)` : ''}`);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to sync products');
+    },
   });
 
   const deleteMutation = useMutation({
@@ -227,12 +237,26 @@ export default function ProductsPage() {
         title="Products"
         description="Manage your product catalog"
         actions={
-          <Button asChild>
-            <Link href="/dashboard/catalog/new">
-              <Plus className="mr-2 h-4 w-4" />
-              Add Product
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => bulkSyncMutation.mutate()}
+              disabled={bulkSyncMutation.isPending}
+            >
+              {bulkSyncMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="mr-2 h-4 w-4" />
+              )}
+              {bulkSyncMutation.isPending ? 'Syncing...' : 'Sync to Warehouse / 3PL'}
+            </Button>
+            <Button asChild>
+              <Link href="/dashboard/catalog/new">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Product
+              </Link>
+            </Button>
+          </div>
         }
       />
 
