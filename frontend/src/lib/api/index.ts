@@ -7156,6 +7156,12 @@ export const cjdquickApi = {
     return data;
   },
 
+  // Inventory pull sync (CJDQuick → ERP)
+  pullInventory: async () => {
+    const { data } = await apiClient.post('/cjdquick/sync/inventory');
+    return data;
+  },
+
   // Reconciliation — find shipped orders without invoices
   getUninvoicedOrders: async (daysBack?: number) => {
     const { data } = await apiClient.get('/cjdquick/reconciliation/uninvoiced-orders', {

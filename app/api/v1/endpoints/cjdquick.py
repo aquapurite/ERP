@@ -813,6 +813,43 @@ async def sync_goods_receipt_for_po(
         )
 
 
+# ==================== INVENTORY PULL SYNC (CJDQuick → ERP) ====================
+
+@router.post(
+    "/sync/inventory",
+    dependencies=[Depends(require_permissions("inventory:update"))],
+)
+async def pull_inventory_from_cjdquick(
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Pull current inventory levels from CJDQuick OMS into Aquapurite ERP.
+
+    Calls CJDQuick GET /inventory, maps SKUs and locations, and upserts
+    inventory_summary records with real quantities.
+    """
+    if not settings.CJDQUICK_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="CJDQuick OMS integration is disabled.",
+        )
+
+    try:
+        svc = CJDQuickSyncService(db)
+        stats = await svc.pull_inventory_from_cjdquick()
+        return {
+            "success": True,
+            "message": f"Inventory sync complete: {stats['synced']} synced, {stats['skipped']} skipped, {stats['failed']} failed",
+            **stats,
+        }
+    except Exception as e:
+        logger.error("Inventory pull sync failed: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Inventory sync failed: {str(e)}",
+        )
+
+
 # ==================== WEBHOOK RECEIVER ====================
 
 def _verify_webhook_signature(payload_body: bytes, signature: str, secret: str) -> bool:
@@ -1288,6 +1325,15 @@ async def _handle_gr_event(db: DB, event_type: str, data: dict) -> None:
         po_number, po.cjdquick_gr_status, gr_no,
     )
 
+    # On GR completion, trigger inventory pull sync
+    if po.cjdquick_gr_status in ("COMPLETED", "POSTED"):
+        try:
+            svc = CJDQuickSyncService(db)
+            stats = await svc.pull_inventory_from_cjdquick()
+            logger.info("Auto inventory pull triggered by GR event: %s", stats)
+        except Exception as e:
+            logger.error("Auto inventory pull failed after GR event: %s", e)
+
 
 async def _handle_inventory_updated_event(db: DB, data: dict) -> None:
     """Handle inventory.updated event from CJDQuick.
@@ -1325,6 +1371,14 @@ async def _handle_inventory_updated_event(db: DB, data: dict) -> None:
         )
     else:
         logger.info("No PO found for inventory.updated grNo: %s (informational only)", gr_no)
+
+    # Trigger inventory pull sync to update ERP stock levels
+    try:
+        svc = CJDQuickSyncService(db)
+        stats = await svc.pull_inventory_from_cjdquick()
+        logger.info("Auto inventory pull triggered by webhook: %s", stats)
+    except Exception as e:
+        logger.error("Auto inventory pull failed after webhook: %s", e)
 
 
 async def _handle_ndr_event(db: DB, event_type: str, data: dict) -> None:

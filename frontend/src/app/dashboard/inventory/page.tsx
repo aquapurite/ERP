@@ -1,13 +1,15 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { Package, Warehouse, ArrowLeftRight, AlertTriangle } from 'lucide-react';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Package, Warehouse, ArrowLeftRight, AlertTriangle, RefreshCw, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/common';
-import { inventoryApi } from '@/lib/api';
+import { inventoryApi, cjdquickApi } from '@/lib/api';
+import { toast } from 'sonner';
 
 interface StatCardProps {
   title: string;
@@ -38,10 +40,32 @@ function StatCard({ title, value, icon, href, isLoading }: StatCardProps) {
 }
 
 export default function InventoryPage() {
+  const queryClient = useQueryClient();
+  const [isSyncing, setIsSyncing] = useState(false);
+
   const { data: summary, isLoading } = useQuery({
     queryKey: ['inventory-summary'],
     queryFn: inventoryApi.getStockSummary,
   });
+
+  const handleSyncInventory = async () => {
+    setIsSyncing(true);
+    try {
+      const result = await cjdquickApi.pullInventory();
+      toast.success(
+        `Inventory synced: ${result.synced} updated, ${result.skipped} skipped, ${result.failed} failed`
+      );
+      // Refresh inventory data
+      queryClient.invalidateQueries({ queryKey: ['inventory-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Sync failed';
+      toast.error(`Inventory sync failed: ${message}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -49,12 +73,26 @@ export default function InventoryPage() {
         title="Inventory"
         description="Monitor and manage your stock levels"
         actions={
-          <Button asChild>
-            <Link href="/dashboard/inventory/transfers/new">
-              <ArrowLeftRight className="mr-2 h-4 w-4" />
-              Create Transfer
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={handleSyncInventory}
+              disabled={isSyncing}
+            >
+              {isSyncing ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              Sync from Warehouse
+            </Button>
+            <Button asChild>
+              <Link href="/dashboard/inventory/transfers/new">
+                <ArrowLeftRight className="mr-2 h-4 w-4" />
+                Create Transfer
+              </Link>
+            </Button>
+          </div>
         }
       />
 

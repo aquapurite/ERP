@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -1092,3 +1092,170 @@ class CJDQuickSyncService:
             "by_entity": by_entity,
             "last_sync_at": last_sync_row,
         }
+
+    # ==================== INVENTORY PULL SYNC (CJDQuick → ERP) ====================
+
+    async def pull_inventory_from_cjdquick(self) -> Dict[str, Any]:
+        """
+        Pull current inventory levels from CJDQuick OMS and update
+        Aquapurite ERP's inventory_summary table.
+
+        Flow:
+        1. GET /inventory from CJDQuick → list of stock records
+        2. Map skuCode → product_id via products table
+        3. Map locationCode → warehouse_id via warehouses table
+        4. Upsert inventory_summary with real quantities
+        5. Create stock movements for any changes
+        """
+        from app.models.inventory import InventorySummary, StockMovement
+        from app.models.warehouse import Warehouse
+
+        client = CJDQuickService()
+        stats = {"total": 0, "synced": 0, "skipped": 0, "failed": 0, "errors": []}
+
+        try:
+            inventory_items = await client.get_inventory()
+        except Exception as e:
+            logger.error(f"Failed to pull inventory from CJDQuick: {e}")
+            stats["errors"].append(str(e))
+            return stats
+
+        if not isinstance(inventory_items, list):
+            inventory_items = inventory_items.get("items", []) if isinstance(inventory_items, dict) else []
+
+        stats["total"] = len(inventory_items)
+
+        # Build SKU → product_id map
+        all_skus = [item.get("skuCode") for item in inventory_items if item.get("skuCode")]
+        product_map = {}
+        if all_skus:
+            result = await self.db.execute(
+                select(Product.id, Product.sku).where(Product.sku.in_(all_skus))
+            )
+            for row in result.all():
+                product_map[row[1]] = row[0]
+
+        # Build locationCode → warehouse_id map
+        location_codes = list(set(item.get("locationCode") for item in inventory_items if item.get("locationCode")))
+        warehouse_map = {}
+        if location_codes:
+            result = await self.db.execute(
+                select(Warehouse.id, Warehouse.code).where(Warehouse.code.in_(location_codes))
+            )
+            for row in result.all():
+                warehouse_map[row[1]] = row[0]
+
+        # Also map by config warehouse code
+        if settings.CJDQUICK_WAREHOUSE_CODE not in warehouse_map:
+            result = await self.db.execute(
+                select(Warehouse.id).where(Warehouse.code == settings.CJDQUICK_WAREHOUSE_CODE)
+            )
+            wh_id = result.scalar_one_or_none()
+            if wh_id:
+                warehouse_map[settings.CJDQUICK_WAREHOUSE_CODE] = wh_id
+
+        for item in inventory_items:
+            sku_code = item.get("skuCode")
+            location_code = item.get("locationCode", settings.CJDQUICK_WAREHOUSE_CODE)
+            on_hand = int(item.get("quantity", 0))
+            reserved = int(item.get("reservedQty", 0))
+            available = int(item.get("availableQty", on_hand - reserved))
+
+            product_id = product_map.get(sku_code)
+            warehouse_id = warehouse_map.get(location_code)
+
+            if not product_id:
+                stats["skipped"] += 1
+                logger.warning(f"Inventory sync: SKU {sku_code} not found in ERP products")
+                continue
+            if not warehouse_id:
+                stats["skipped"] += 1
+                logger.warning(f"Inventory sync: Location {location_code} not found in ERP warehouses")
+                continue
+
+            try:
+                # Upsert inventory_summary
+                existing = await self.db.execute(
+                    select(InventorySummary).where(
+                        InventorySummary.product_id == product_id,
+                        InventorySummary.warehouse_id == warehouse_id,
+                        InventorySummary.variant_id.is_(None),
+                    )
+                )
+                summary = existing.scalar_one_or_none()
+
+                old_qty = 0
+                if summary:
+                    old_qty = summary.total_quantity or 0
+                    summary.total_quantity = on_hand
+                    summary.available_quantity = available
+                    summary.reserved_quantity = reserved
+                    summary.last_stock_in_date = datetime.now(timezone.utc)
+                else:
+                    summary = InventorySummary(
+                        warehouse_id=warehouse_id,
+                        product_id=product_id,
+                        variant_id=None,
+                        total_quantity=on_hand,
+                        available_quantity=available,
+                        reserved_quantity=reserved,
+                        allocated_quantity=0,
+                        damaged_quantity=0,
+                        in_transit_quantity=0,
+                        last_stock_in_date=datetime.now(timezone.utc),
+                    )
+                    self.db.add(summary)
+
+                # Create stock movement if quantity changed
+                qty_diff = on_hand - old_qty
+                if qty_diff != 0:
+                    # Generate movement number
+                    now = datetime.now(timezone.utc)
+                    date_prefix = now.strftime("%Y%m%d")
+                    count_result = await self.db.execute(
+                        select(func.count(StockMovement.id)).where(
+                            StockMovement.movement_number.like(f"MOV-{date_prefix}-%")
+                        )
+                    )
+                    count = count_result.scalar() or 0
+                    movement_number = f"MOV-{date_prefix}-{count + 1:04d}"
+
+                    movement = StockMovement(
+                        movement_number=movement_number,
+                        movement_type="RECEIPT" if qty_diff > 0 else "ISSUE",
+                        movement_date=datetime.now(timezone.utc),
+                        warehouse_id=warehouse_id,
+                        product_id=product_id,
+                        quantity=qty_diff,
+                        balance_before=old_qty,
+                        balance_after=on_hand,
+                        reference_type="cjdquick_sync",
+                        reference_number=f"CJDQ-INV-SYNC-{date_prefix}",
+                        unit_cost=float(item.get("costPrice", 0) or 0),
+                        total_cost=abs(qty_diff) * float(item.get("costPrice", 0) or 0),
+                        notes=f"Auto-synced from CJDQuick OMS. SKU: {sku_code}, Location: {location_code}",
+                    )
+                    self.db.add(movement)
+
+                await self.db.flush()
+                stats["synced"] += 1
+
+            except Exception as e:
+                stats["failed"] += 1
+                stats["errors"].append(f"{sku_code}: {str(e)}")
+                logger.error(f"Inventory sync failed for {sku_code}: {e}")
+
+        await self.db.commit()
+
+        # Log the sync
+        await self._write_sync_log(
+            entity_type="INVENTORY_PULL",
+            entity_id=uuid.uuid4(),
+            operation="PULL",
+            status="SUCCESS" if stats["failed"] == 0 else "PARTIAL",
+            request_payload={"source": "cjdquick", "total_items": stats["total"]},
+            response_payload=stats,
+        )
+
+        logger.info(f"Inventory pull sync complete: {stats}")
+        return stats
