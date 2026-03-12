@@ -1063,3 +1063,55 @@ async def track_order_public(
             )
 
     return _build_order_response(order)
+
+
+@router.delete(
+    "/{order_id}",
+    dependencies=[Depends(require_permissions("orders:view"))],
+)
+async def delete_order(
+    order_id: uuid.UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """
+    Hard-delete an order and all related data.
+    Requires SUPER_ADMIN role.
+    """
+    from sqlalchemy import text
+
+    # Only SUPER_ADMIN can delete
+    user_roles = [r.name for r in current_user.roles] if current_user.roles else []
+    if "SUPER_ADMIN" not in user_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only SUPER_ADMIN can delete orders",
+        )
+
+    service = OrderService(db)
+    order = await service.get_order_by_id(order_id, include_all=True)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    order_number = order.order_number
+
+    # Nullify FKs in tables with SET NULL / no cascade
+    await db.execute(text("UPDATE picklist_items SET order_id = NULL WHERE order_id = :oid"), {"oid": order_id})
+    await db.execute(text("UPDATE inventory_movements SET order_id = NULL WHERE order_id = :oid"), {"oid": order_id})
+    await db.execute(text("UPDATE service_requests SET order_id = NULL WHERE order_id = :oid"), {"oid": order_id})
+    await db.execute(text("UPDATE installations SET order_id = NULL WHERE order_id = :oid"), {"oid": order_id})
+
+    # Delete from tables with RESTRICT FK
+    await db.execute(text("DELETE FROM shipments WHERE order_id = :oid"), {"oid": order_id})
+    await db.execute(text("DELETE FROM picklist_items WHERE order_id = :oid"), {"oid": order_id})
+
+    # Clean up sync log
+    await db.execute(text(
+        "DELETE FROM cjdquick_sync_log WHERE entity_type = 'ORDER' AND entity_id = :oid"
+    ), {"oid": order_id})
+
+    # Delete the order (cascade handles items, payments, status_history, etc.)
+    await db.delete(order)
+    await db.commit()
+
+    return {"detail": f"Order {order_number} deleted successfully"}
