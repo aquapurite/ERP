@@ -106,7 +106,16 @@ interface Channel {
   id: string;
   name: string;
   code: string;
+  channel_type?: string;
 }
+
+// B2C channel types where selling price is GST-inclusive (MRP rule)
+const B2C_CHANNEL_TYPES = new Set([
+  'D2C', 'D2C_WEBSITE', 'D2C_APP', 'MARKETPLACE',
+  'AMAZON', 'FLIPKART', 'MYNTRA', 'TATACLIQ', 'JIOMART',
+  'MEESHO', 'NYKAA', 'AJIO', 'RETAIL_STORE', 'QUICK_COMMERCE',
+  'MODERN_TRADE', 'OFFLINE',
+]);
 
 interface Warehouse {
   id: string;
@@ -178,16 +187,17 @@ const orderApi = {
   getChannels: async (): Promise<Channel[]> => {
     try {
       const channels = await channelsApi.dropdown();
-      return channels.map((c) => ({
+      return channels.map((c: { id: string; name: string; code: string; channel_type?: string }) => ({
         id: c.id,
         name: c.name,
         code: c.code,
+        channel_type: c.channel_type || c.code,
       }));
     } catch (error) {
       console.error('Error fetching channels:', error);
       // Fallback to default channels if API fails
       return [
-        { id: 'default-d2c', name: 'Direct to Consumer', code: 'D2C' },
+        { id: 'default-d2c', name: 'Direct to Consumer', code: 'D2C', channel_type: 'D2C' },
       ];
     }
   },
@@ -204,21 +214,23 @@ const orderApi = {
     try {
       const orderPayload = {
         customer_id: data.customer_id,
-        shipping_address_id: data.shipping_address_id,
-        billing_address_id: data.same_billing_address ? data.shipping_address_id : data.billing_address_id,
-        channel_id: data.channel_id,
-        warehouse_id: data.warehouse_id,
-        payment_mode: data.payment_mode,
-        prepaid_amount: data.prepaid_amount,
+        shipping_address: {
+          address_id: data.shipping_address_id,
+        },
+        billing_address: data.same_billing_address
+          ? { address_id: data.shipping_address_id }
+          : data.billing_address_id
+            ? { address_id: data.billing_address_id }
+            : null,
+        channel_id: data.channel_id || null,
+        payment_method: data.payment_mode === 'PREPAID' ? 'UPI' : data.payment_mode === 'PARTIAL' ? 'UPI' : 'COD',
         items: data.items.map(item => ({
           product_id: item.product_id,
           quantity: item.quantity,
           unit_price: item.unit_price,
-          discount_percent: item.discount_percent,
         })),
-        notes: data.notes,
-        requires_installation: data.installation_required,
-        priority: data.priority,
+        customer_notes: data.notes || null,
+        source: 'PHONE',
       };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await ordersApi.create(orderPayload as any);
@@ -325,19 +337,45 @@ export default function CreateOrderPage() {
     },
   });
 
-  // Calculations
+  // Determine if selected channel is B2C (tax-inclusive MRP pricing)
+  const selectedChannelId = form.watch('channel_id');
+  const selectedChannel = channels?.find((ch) => ch.id === selectedChannelId);
+  const isTaxInclusive = selectedChannel
+    ? B2C_CHANNEL_TYPES.has((selectedChannel.channel_type || '').toUpperCase())
+    : false;
+
+  // Calculations — SAP-style pricing:
+  // B2C: selling_price is GST-inclusive (MRP rule) → back-calculate tax
+  // B2B: price is GST-exclusive → add tax on top
   const calculateItemTotal = (item: OrderItemData) => {
-    const basePrice = item.unit_price * item.quantity;
-    const discount = (basePrice * item.discount_percent) / 100;
-    const taxableAmount = basePrice - discount;
-    const gstAmount = (taxableAmount * item.gst_rate) / 100;
-    return {
-      basePrice,
-      discount,
-      taxableAmount,
-      gstAmount,
-      total: taxableAmount + gstAmount,
-    };
+    const grossPrice = item.unit_price * item.quantity;
+    const discount = (grossPrice * item.discount_percent) / 100;
+    const priceAfterDiscount = grossPrice - discount;
+
+    if (isTaxInclusive) {
+      // B2C: Price includes GST → back-calculate (SAP Calc Type "H")
+      const taxDivisor = 1 + item.gst_rate / 100;
+      const taxableAmount = Math.round((priceAfterDiscount / taxDivisor) * 100) / 100;
+      const gstAmount = Math.round((priceAfterDiscount - taxableAmount) * 100) / 100;
+      return {
+        basePrice: grossPrice,
+        discount,
+        taxableAmount,
+        gstAmount,
+        total: priceAfterDiscount, // Total = selling price (never exceeds MRP)
+      };
+    } else {
+      // B2B: Price excludes GST → add on top
+      const taxableAmount = priceAfterDiscount;
+      const gstAmount = Math.round((taxableAmount * item.gst_rate) / 100 * 100) / 100;
+      return {
+        basePrice: grossPrice,
+        discount,
+        taxableAmount,
+        gstAmount,
+        total: taxableAmount + gstAmount,
+      };
+    }
   };
 
   const orderSummary = form.watch('items').reduce(
