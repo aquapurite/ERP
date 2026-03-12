@@ -630,6 +630,19 @@ class CJDQuickSyncService:
             )
             return log
         except CJDQuickAPIError as e:
+            # Handle duplicate order (already synced) — treat as success
+            if "UniqueViolation" in e.message or "duplicate key" in e.message or "already exists" in e.message:
+                logger.info("Order %s already exists in CJDQuick, treating as success", order.order_number)
+                log = await self._write_sync_log(
+                    entity_type="ORDER",
+                    entity_id=order_id,
+                    operation="INTEGRATION_PUSH",
+                    status="SUCCESS",
+                    request_payload=payload,
+                    response_payload={"message": "Order already exists in CJDQuick OMS"},
+                    oms_id=order.order_number,
+                )
+                return log
             log = await self._write_sync_log(
                 entity_type="ORDER",
                 entity_id=order_id,

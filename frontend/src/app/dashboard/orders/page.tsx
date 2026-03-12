@@ -73,6 +73,7 @@ function OrdersPageContent() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [trackingInfo, setTrackingInfo] = useState<any>(null);
   const [isLoadingTracking, setIsLoadingTracking] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Sync URL params when filters change
   useEffect(() => {
@@ -132,6 +133,32 @@ function OrdersPageContent() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Sync failed';
       toast.error(`Sync failed: ${message}`, { id: `sync-${order.id}` });
+    }
+  };
+
+  const handleBulkSyncToWarehouse = async () => {
+    const orders = data?.items || [];
+    if (orders.length === 0) {
+      toast.error('No orders to sync');
+      return;
+    }
+    setIsSyncing(true);
+    toast.loading(`Syncing ${orders.length} orders to warehouse...`, { id: 'bulk-sync' });
+    let success = 0;
+    let failed = 0;
+    for (const order of orders) {
+      try {
+        await cjdquickApi.syncOrder(order.id);
+        success++;
+      } catch {
+        failed++;
+      }
+    }
+    setIsSyncing(false);
+    if (failed === 0) {
+      toast.success(`All ${success} orders synced to warehouse`, { id: 'bulk-sync' });
+    } else {
+      toast.warning(`Synced ${success} orders, ${failed} failed`, { id: 'bulk-sync' });
     }
   };
 
@@ -237,12 +264,18 @@ function OrdersPageContent() {
         title="Orders"
         description="Manage and track customer orders"
         actions={
-          <Button asChild>
-            <Link href="/dashboard/orders/new">
-              <Plus className="mr-2 h-4 w-4" />
-              Create Order
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleBulkSyncToWarehouse} disabled={isSyncing}>
+              {isSyncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              Sync to Warehouse
+            </Button>
+            <Button asChild>
+              <Link href="/dashboard/orders/new">
+                <Plus className="mr-2 h-4 w-4" />
+                Create Order
+              </Link>
+            </Button>
+          </div>
         }
       />
 
