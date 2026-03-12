@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   User, Phone, Mail, MapPin, Calendar, ShoppingBag, Wrench, Shield, Package, Star, AlertTriangle,
   CreditCard, Clock, CheckCircle, ArrowLeft, Edit, MoreHorizontal, FileText, Heart, Activity,
-  MessageSquare, IndianRupee, TrendingUp, Home, Building2, Truck, Loader2
+  MessageSquare, IndianRupee, TrendingUp, Home, Building2, Truck, Loader2, Plus, Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -243,6 +243,52 @@ interface EditFormData {
   is_active: boolean;
 }
 
+interface AddressFormData {
+  id?: string;
+  address_type: string;
+  contact_name: string;
+  contact_phone: string;
+  address_line1: string;
+  address_line2: string;
+  landmark: string;
+  city: string;
+  state: string;
+  pincode: string;
+  is_default: boolean;
+}
+
+const emptyAddress: AddressFormData = {
+  address_type: 'HOME',
+  contact_name: '',
+  contact_phone: '',
+  address_line1: '',
+  address_line2: '',
+  landmark: '',
+  city: '',
+  state: '',
+  pincode: '',
+  is_default: false,
+};
+
+const addressTypes = [
+  { value: 'HOME', label: 'Home' },
+  { value: 'OFFICE', label: 'Office' },
+  { value: 'BILLING', label: 'Billing' },
+  { value: 'SHIPPING', label: 'Shipping' },
+  { value: 'OTHER', label: 'Other' },
+];
+
+// Map legacy/variant customer_type values to standard enum
+const normalizeCustomerType = (val?: string): EditFormData['customer_type'] => {
+  if (!val) return 'INDIVIDUAL';
+  const upper = val.toUpperCase();
+  if (upper === 'RETAIL' || upper === 'INDIVIDUAL') return 'INDIVIDUAL';
+  if (upper === 'BUSINESS' || upper === 'B2B') return 'BUSINESS';
+  if (upper === 'DEALER') return 'DEALER';
+  if (upper === 'DISTRIBUTOR') return 'DISTRIBUTOR';
+  return 'INDIVIDUAL';
+};
+
 const customerTypes = [
   { value: 'INDIVIDUAL', label: 'Individual' },
   { value: 'BUSINESS', label: 'Business' },
@@ -283,6 +329,8 @@ export default function Customer360Page() {
     notes: '',
     is_active: true,
   });
+  const [editAddresses, setEditAddresses] = useState<AddressFormData[]>([]);
+  const [savingAddresses, setSavingAddresses] = useState(false);
 
   const { data: response, isLoading, error } = useQuery<Customer360Response>({
     queryKey: ['customer-360', params.id],
@@ -305,7 +353,6 @@ export default function Customer360Page() {
   const handleEditOpen = () => {
     if (response?.customer) {
       const c = response.customer;
-      // Parse first/last name from available fields
       const fullName = c.name || c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() || '';
       const nameParts = fullName.split(' ');
       setEditForm({
@@ -313,7 +360,7 @@ export default function Customer360Page() {
         last_name: c.last_name || nameParts.slice(1).join(' ') || '',
         phone: c.phone || '',
         email: c.email || '',
-        customer_type: (c.customer_type as EditFormData['customer_type']) || 'INDIVIDUAL',
+        customer_type: normalizeCustomerType(c.customer_type),
         source: c.source || '',
         alternate_phone: c.alternate_phone || '',
         company_name: c.company_name || '',
@@ -323,11 +370,41 @@ export default function Customer360Page() {
         notes: '',
         is_active: c.is_active,
       });
+      // Load addresses into editable state
+      setEditAddresses(
+        (c.addresses ?? []).map((a) => ({
+          id: a.id,
+          address_type: a.address_type || 'HOME',
+          contact_name: a.contact_name || '',
+          contact_phone: a.contact_phone || '',
+          address_line1: a.address_line1 || '',
+          address_line2: a.address_line2 || '',
+          landmark: a.landmark || '',
+          city: a.city || '',
+          state: a.state || '',
+          pincode: a.pincode || '',
+          is_default: a.is_default,
+        }))
+      );
       setEditDialogOpen(true);
     }
   };
 
-  const handleEditSubmit = () => {
+  const handleAddAddress = () => {
+    setEditAddresses([...editAddresses, { ...emptyAddress }]);
+  };
+
+  const handleRemoveAddress = (index: number) => {
+    setEditAddresses(editAddresses.filter((_, i) => i !== index));
+  };
+
+  const handleAddressChange = (index: number, field: keyof AddressFormData, value: string | boolean) => {
+    const updated = [...editAddresses];
+    updated[index] = { ...updated[index], [field]: value };
+    setEditAddresses(updated);
+  };
+
+  const handleEditSubmit = async () => {
     if (!editForm.first_name.trim()) {
       toast.error('First name is required');
       return;
@@ -336,7 +413,15 @@ export default function Customer360Page() {
       toast.error('Phone number is required');
       return;
     }
-    // Build payload matching backend CustomerUpdate schema
+    // Validate addresses
+    for (const addr of editAddresses) {
+      if (!addr.address_line1.trim() || !addr.city.trim() || !addr.state.trim() || !addr.pincode.trim()) {
+        toast.error('Address line 1, city, state and pincode are required for all addresses');
+        return;
+      }
+    }
+
+    // 1. Save customer profile
     const payload: Record<string, unknown> = {
       first_name: editForm.first_name.trim(),
       last_name: editForm.last_name.trim() || undefined,
@@ -352,6 +437,49 @@ export default function Customer360Page() {
     if (editForm.source) payload.source = editForm.source;
     if (editForm.date_of_birth) payload.date_of_birth = editForm.date_of_birth;
     if (editForm.anniversary_date) payload.anniversary_date = editForm.anniversary_date;
+
+    // 2. Save addresses
+    setSavingAddresses(true);
+    try {
+      const customerId = params.id as string;
+      const originalAddresses = response?.customer?.addresses ?? [];
+      const originalIds = new Set(originalAddresses.map(a => a.id));
+      const editIds = new Set(editAddresses.filter(a => a.id).map(a => a.id));
+
+      // Delete removed addresses
+      for (const orig of originalAddresses) {
+        if (!editIds.has(orig.id)) {
+          await customersApi.deleteAddress(customerId, orig.id);
+        }
+      }
+      // Update existing addresses
+      for (const addr of editAddresses) {
+        if (addr.id && originalIds.has(addr.id)) {
+          const { id, ...addrData } = addr;
+          await customersApi.updateAddress(customerId, id!, addrData);
+        }
+      }
+      // Create new addresses
+      for (const addr of editAddresses) {
+        if (!addr.id) {
+          const { id: _id, ...addrData } = addr;
+          await customersApi.addAddress(customerId, {
+            ...addrData,
+            address_line1: addrData.address_line1,
+            city: addrData.city,
+            state: addrData.state,
+            pincode: addrData.pincode,
+          });
+        }
+      }
+    } catch (err) {
+      toast.error((err as Error).message || 'Failed to save addresses');
+      setSavingAddresses(false);
+      return;
+    }
+    setSavingAddresses(false);
+
+    // 3. Save profile
     updateMutation.mutate(payload);
   };
 
@@ -1185,31 +1313,109 @@ export default function Customer360Page() {
 
             <Separator />
 
-            {/* Addresses (read-only display) */}
+            {/* Addresses (editable) */}
             <div>
-              <h3 className="text-sm font-semibold mb-3">Addresses</h3>
-              {(customer.addresses ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground">No addresses on file</p>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold">Addresses</h3>
+                <Button type="button" variant="outline" size="sm" onClick={handleAddAddress}>
+                  <Plus className="mr-1 h-3 w-3" /> Add Address
+                </Button>
+              </div>
+              {editAddresses.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No addresses. Click &quot;Add Address&quot; to add one.</p>
               ) : (
-                <div className="space-y-3">
-                  {(customer.addresses ?? []).map((addr) => (
-                    <div key={addr.id} className="p-3 border rounded-lg bg-muted/30">
-                      <div className="flex items-center gap-2 mb-1">
-                        {addr.address_type === 'HOME' ? <Home className="h-4 w-4" /> : <Building2 className="h-4 w-4" />}
-                        <span className="font-medium text-sm">{addr.address_type || 'Address'}</span>
-                        {addr.is_default && <Badge variant="outline" className="text-xs">Default</Badge>}
+                <div className="space-y-4">
+                  {editAddresses.map((addr, idx) => (
+                    <div key={addr.id || `new-${idx}`} className="p-4 border rounded-lg space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={addr.address_type}
+                            onValueChange={(v) => handleAddressChange(idx, 'address_type', v)}
+                          >
+                            <SelectTrigger className="w-[130px] h-8">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {addressTypes.map((t) => (
+                                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <label className="flex items-center gap-1.5 text-xs">
+                            <input
+                              type="checkbox"
+                              checked={addr.is_default}
+                              onChange={(e) => {
+                                // Uncheck others when setting default
+                                if (e.target.checked) {
+                                  const updated = editAddresses.map((a, i) => ({ ...a, is_default: i === idx }));
+                                  setEditAddresses(updated);
+                                } else {
+                                  handleAddressChange(idx, 'is_default', false);
+                                }
+                              }}
+                              className="rounded"
+                            />
+                            Default
+                          </label>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive"
+                          onClick={() => handleRemoveAddress(idx)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
-                      <p className="text-sm text-muted-foreground">
-                        {addr.address_line1}
-                        {addr.address_line2 && `, ${addr.address_line2}`}
-                        {addr.landmark && ` (${addr.landmark})`}
-                        <br />{addr.city}, {addr.state} - {addr.pincode}
-                      </p>
-                      {addr.contact_name && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Contact: {addr.contact_name} {addr.contact_phone && `- ${addr.contact_phone}`}
-                        </p>
-                      )}
+                      <div className="space-y-2">
+                        <Input
+                          placeholder="Address Line 1 *"
+                          value={addr.address_line1}
+                          onChange={(e) => handleAddressChange(idx, 'address_line1', e.target.value)}
+                        />
+                        <Input
+                          placeholder="Address Line 2"
+                          value={addr.address_line2}
+                          onChange={(e) => handleAddressChange(idx, 'address_line2', e.target.value)}
+                        />
+                        <Input
+                          placeholder="Landmark"
+                          value={addr.landmark}
+                          onChange={(e) => handleAddressChange(idx, 'landmark', e.target.value)}
+                        />
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <Input
+                          placeholder="City *"
+                          value={addr.city}
+                          onChange={(e) => handleAddressChange(idx, 'city', e.target.value)}
+                        />
+                        <Input
+                          placeholder="State *"
+                          value={addr.state}
+                          onChange={(e) => handleAddressChange(idx, 'state', e.target.value)}
+                        />
+                        <Input
+                          placeholder="Pincode *"
+                          value={addr.pincode}
+                          onChange={(e) => handleAddressChange(idx, 'pincode', e.target.value)}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          placeholder="Contact Name"
+                          value={addr.contact_name}
+                          onChange={(e) => handleAddressChange(idx, 'contact_name', e.target.value)}
+                        />
+                        <Input
+                          placeholder="Contact Phone"
+                          value={addr.contact_phone}
+                          onChange={(e) => handleAddressChange(idx, 'contact_phone', e.target.value)}
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1252,8 +1458,8 @@ export default function Customer360Page() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleEditSubmit} disabled={updateMutation.isPending}>
-              {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <Button onClick={handleEditSubmit} disabled={updateMutation.isPending || savingAddresses}>
+              {(updateMutation.isPending || savingAddresses) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save Changes
             </Button>
           </DialogFooter>

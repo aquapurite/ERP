@@ -743,3 +743,128 @@ async def get_ar_aging_summary(
         ],
         top_overdue_customers=top_customers,
     )
+
+
+# ==================== ADDRESS CRUD ENDPOINTS ====================
+
+@router.get(
+    "/{customer_id}/addresses",
+    response_model=List[AddressResponse],
+    dependencies=[Depends(require_permissions("crm:view"))],
+)
+async def list_customer_addresses(
+    customer_id: uuid.UUID,
+    db: DB,
+):
+    """List all addresses for a customer."""
+    from app.models.customer import CustomerAddress
+    result = await db.execute(
+        select(CustomerAddress).where(CustomerAddress.customer_id == customer_id)
+    )
+    return [AddressResponse.model_validate(a) for a in result.scalars().all()]
+
+
+@router.post(
+    "/{customer_id}/addresses",
+    response_model=AddressResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permissions("crm:update"))],
+)
+async def add_customer_address(
+    customer_id: uuid.UUID,
+    data: AddressCreate,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Add a new address to a customer."""
+    from app.models.customer import CustomerAddress
+
+    service = OrderService(db)
+    customer = await service.get_customer_by_id(customer_id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    addr = CustomerAddress(customer_id=customer_id, **data.model_dump())
+    # If this is default, unset other defaults
+    if data.is_default:
+        from sqlalchemy import update
+        await db.execute(
+            update(CustomerAddress)
+            .where(CustomerAddress.customer_id == customer_id)
+            .values(is_default=False)
+        )
+    db.add(addr)
+    await db.commit()
+    await db.refresh(addr)
+    return AddressResponse.model_validate(addr)
+
+
+@router.put(
+    "/{customer_id}/addresses/{address_id}",
+    response_model=AddressResponse,
+    dependencies=[Depends(require_permissions("crm:update"))],
+)
+async def update_customer_address(
+    customer_id: uuid.UUID,
+    address_id: uuid.UUID,
+    data: AddressUpdate,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Update a customer address."""
+    from app.models.customer import CustomerAddress
+
+    result = await db.execute(
+        select(CustomerAddress).where(
+            CustomerAddress.id == address_id,
+            CustomerAddress.customer_id == customer_id,
+        )
+    )
+    addr = result.scalar_one_or_none()
+    if not addr:
+        raise HTTPException(status_code=404, detail="Address not found")
+
+    update_data = data.model_dump(exclude_unset=True)
+    # If setting as default, unset other defaults
+    if update_data.get("is_default"):
+        from sqlalchemy import update
+        await db.execute(
+            update(CustomerAddress)
+            .where(CustomerAddress.customer_id == customer_id)
+            .values(is_default=False)
+        )
+
+    for key, value in update_data.items():
+        setattr(addr, key, value)
+
+    await db.commit()
+    await db.refresh(addr)
+    return AddressResponse.model_validate(addr)
+
+
+@router.delete(
+    "/{customer_id}/addresses/{address_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permissions("crm:update"))],
+)
+async def delete_customer_address(
+    customer_id: uuid.UUID,
+    address_id: uuid.UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Delete a customer address."""
+    from app.models.customer import CustomerAddress
+
+    result = await db.execute(
+        select(CustomerAddress).where(
+            CustomerAddress.id == address_id,
+            CustomerAddress.customer_id == customer_id,
+        )
+    )
+    addr = result.scalar_one_or_none()
+    if not addr:
+        raise HTTPException(status_code=404, detail="Address not found")
+
+    await db.delete(addr)
+    await db.commit()

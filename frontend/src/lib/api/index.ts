@@ -484,6 +484,33 @@ export const customersApi = {
       throw error;
     }
   },
+  // Address CRUD
+  listAddresses: async (customerId: string) => {
+    const { data } = await apiClient.get(`/customers/${customerId}/addresses`);
+    return data;
+  },
+  addAddress: async (customerId: string, address: {
+    address_type?: string;
+    contact_name?: string;
+    contact_phone?: string;
+    address_line1: string;
+    address_line2?: string;
+    landmark?: string;
+    city: string;
+    state: string;
+    pincode: string;
+    is_default?: boolean;
+  }) => {
+    const { data } = await apiClient.post(`/customers/${customerId}/addresses`, address);
+    return data;
+  },
+  updateAddress: async (customerId: string, addressId: string, address: Record<string, unknown>) => {
+    const { data } = await apiClient.put(`/customers/${customerId}/addresses/${addressId}`, address);
+    return data;
+  },
+  deleteAddress: async (customerId: string, addressId: string) => {
+    await apiClient.delete(`/customers/${customerId}/addresses/${addressId}`);
+  },
 };
 
 // Warehouses API
