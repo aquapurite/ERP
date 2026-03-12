@@ -393,8 +393,8 @@ export default function OrderDetailPage() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold">Order {order.order_number}</h1>
-              <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusColors[order.status]}`}>
-                {order.status.replace(/_/g, ' ')}
+              <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusColors[order.status] || ''}`}>
+                {(order.status || '').replace(/_/g, ' ')}
               </span>
             </div>
             <p className="text-muted-foreground">
@@ -679,7 +679,7 @@ export default function OrderDetailPage() {
                           <TableCell className="font-mono font-medium">{invoice.invoice_number}</TableCell>
                           <TableCell>
                             <span className={`px-2 py-1 rounded text-xs font-medium ${typeColors[invoice.invoice_type] || 'bg-gray-100 text-gray-800'}`}>
-                              {invoice.invoice_type.replace(/_/g, ' ')}
+                              {(invoice.invoice_type || '').replace(/_/g, ' ')}
                             </span>
                           </TableCell>
                           <TableCell>{formatDate(invoice.invoice_date)}</TableCell>
@@ -735,8 +735,8 @@ export default function OrderDetailPage() {
                     </div>
                     <div className="flex-1 pb-4">
                       <div className="flex items-center gap-2">
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusColors[history.status]}`}>
-                          {history.status.replace(/_/g, ' ')}
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusColors[history.status] || ''}`}>
+                          {(history.status || '').replace(/_/g, ' ')}
                         </span>
                         <span className="text-sm text-muted-foreground">
                           by {history.changed_by}
