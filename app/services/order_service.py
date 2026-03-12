@@ -347,6 +347,26 @@ class OrderService:
         pricing_service = PricingService(self.db)
         customer_segment = data.customer_segment or "STANDARD"
 
+        # Determine if channel uses tax-inclusive pricing (B2C/MRP rule)
+        # In India, MRP is GST-inclusive. For B2C sales, total cannot exceed MRP.
+        # B2C channels: selling_price is treated as GST-inclusive → back-calculate tax
+        # B2B channels: price is GST-exclusive → add tax on top (standard SAP SD approach)
+        is_tax_inclusive = False  # Default: B2B forward-calculation
+        B2C_CHANNEL_TYPES = {
+            "D2C", "D2C_WEBSITE", "D2C_APP", "MARKETPLACE",
+            "AMAZON", "FLIPKART", "MYNTRA", "TATACLIQ", "JIOMART",
+            "MEESHO", "NYKAA", "AJIO", "RETAIL_STORE", "QUICK_COMMERCE",
+            "MODERN_TRADE", "OFFLINE",
+        }
+        if data.channel_id:
+            from app.models.channel import SalesChannel
+            channel_result = await self.db.execute(
+                select(SalesChannel.channel_type).where(SalesChannel.id == data.channel_id)
+            )
+            channel_type = channel_result.scalar_one_or_none()
+            if channel_type and channel_type.upper() in B2C_CHANNEL_TYPES:
+                is_tax_inclusive = True
+
         # Calculate totals
         subtotal = Decimal("0.00")
         tax_amount = Decimal("0.00")
@@ -406,11 +426,28 @@ class OrderService:
                     unit_mrp = variant.mrp
                 # Note: Variant pricing is already considered in PricingService if variant_id passed
 
-            # Calculate item totals
-            item_subtotal = unit_price * item_data.quantity
+            # Calculate item totals using SAP-style pricing:
+            # B2C (tax-inclusive): selling_price includes GST → back-calculate
+            # B2B (tax-exclusive): price is net → add GST on top
             item_tax_rate = product.gst_rate or Decimal("18.00")
-            item_tax = (item_subtotal * item_tax_rate) / 100
-            item_total = item_subtotal + item_tax
+
+            if is_tax_inclusive:
+                # SAP Calculation Type "H" — tax is embedded in selling price
+                # Base price = selling_price / (1 + GST/100)
+                # Tax = selling_price - base_price
+                # Total = selling_price (never exceeds MRP)
+                inclusive_total = unit_price * item_data.quantity
+                tax_divisor = Decimal("1") + (item_tax_rate / Decimal("100"))
+                item_subtotal = (inclusive_total / tax_divisor).quantize(Decimal("0.01"))
+                item_tax = inclusive_total - item_subtotal
+                item_total = inclusive_total  # Total = original price (MRP-compliant)
+                # Adjust unit_price to be the tax-exclusive base for accounting
+                unit_price = (unit_price / tax_divisor).quantize(Decimal("0.01"))
+            else:
+                # Standard B2B forward-calculation — GST added on top
+                item_subtotal = unit_price * item_data.quantity
+                item_tax = (item_subtotal * item_tax_rate / Decimal("100")).quantize(Decimal("0.01"))
+                item_total = item_subtotal + item_tax
 
             items_data.append({
                 "product": product,

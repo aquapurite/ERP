@@ -939,8 +939,15 @@ export default function CreateOrderPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                {isTaxInclusive && (
+                  <div className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950 px-2 py-1 rounded mb-1">
+                    B2C pricing: GST included in selling price (MRP rule)
+                  </div>
+                )}
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="text-muted-foreground">
+                    {isTaxInclusive ? 'Selling Price (incl. GST)' : 'Subtotal'}
+                  </span>
                   <span>{formatCurrency(orderSummary.subtotal)}</span>
                 </div>
                 {orderSummary.discount > 0 && (

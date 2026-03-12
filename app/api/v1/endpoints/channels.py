@@ -231,6 +231,7 @@ async def get_channels_dropdown(
             "code": c.code,
             "name": c.name,
             "type": c.channel_type,
+            "channel_type": c.channel_type,
         }
         for c in channels
     ]
