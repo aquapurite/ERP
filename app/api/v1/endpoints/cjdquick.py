@@ -958,6 +958,8 @@ async def cjdquick_webhook(
             await _handle_gr_event(db, event_type, event_data)
         elif event_type == "inventory.updated":
             await _handle_inventory_updated_event(db, event_data)
+        elif event_type == "inventory.level_changed":
+            await _handle_inventory_level_changed_event(db, event_data)
         elif event_type in ("invoice.created", "invoice.paid"):
             logger.info("Invoice event received: %s %s", event_type, event_data.get("invoiceNo"))
         elif event_type == "order.created":
@@ -1379,6 +1381,123 @@ async def _handle_inventory_updated_event(db: DB, data: dict) -> None:
         logger.info("Auto inventory pull triggered by webhook: %s", stats)
     except Exception as e:
         logger.error("Auto inventory pull failed after webhook: %s", e)
+
+
+async def _handle_inventory_level_changed_event(db: DB, data: dict) -> None:
+    """Handle inventory.level_changed event from CJDQuick.
+
+    This is the PRIMARY real-time inventory sync event.
+    Fires whenever stock levels change (GRN, adjustment, transfer, allocation, return).
+
+    Payload:
+      skuCode, warehouseCode, quantity, reservedQty, availableQty, reason, timestamp
+    """
+    from app.models.inventory import InventorySummary, StockMovement
+    from app.models.product import Product
+    from app.models.warehouse import Warehouse
+
+    sku_code = data.get("skuCode")
+    warehouse_code = data.get("warehouseCode") or settings.CJDQUICK_WAREHOUSE_CODE
+    on_hand = int(data.get("quantity", 0))
+    reserved = int(data.get("reservedQty", 0))
+    available = int(data.get("availableQty", on_hand - reserved))
+    reason = data.get("reason", "unknown")
+
+    logger.info(
+        "inventory.level_changed: SKU=%s, warehouse=%s, qty=%s, available=%s, reason=%s",
+        sku_code, warehouse_code, on_hand, available, reason,
+    )
+
+    if not sku_code:
+        logger.warning("inventory.level_changed missing skuCode: %s", data)
+        return
+
+    # Resolve product
+    result = await db.execute(
+        select(Product.id).where(Product.sku == sku_code)
+    )
+    product_id = result.scalar_one_or_none()
+    if not product_id:
+        logger.warning("inventory.level_changed: SKU %s not found in ERP", sku_code)
+        return
+
+    # Resolve warehouse
+    result = await db.execute(
+        select(Warehouse.id).where(Warehouse.code == warehouse_code)
+    )
+    warehouse_id = result.scalar_one_or_none()
+    if not warehouse_id:
+        logger.warning("inventory.level_changed: warehouse %s not found in ERP", warehouse_code)
+        return
+
+    # Upsert inventory_summary
+    result = await db.execute(
+        select(InventorySummary).where(
+            InventorySummary.product_id == product_id,
+            InventorySummary.warehouse_id == warehouse_id,
+            InventorySummary.variant_id.is_(None),
+        )
+    )
+    summary = result.scalar_one_or_none()
+
+    old_qty = 0
+    if summary:
+        old_qty = summary.total_quantity or 0
+        summary.total_quantity = on_hand
+        summary.available_quantity = available
+        summary.reserved_quantity = reserved
+        summary.last_stock_in_date = datetime.now(timezone.utc)
+    else:
+        summary = InventorySummary(
+            warehouse_id=warehouse_id,
+            product_id=product_id,
+            variant_id=None,
+            total_quantity=on_hand,
+            available_quantity=available,
+            reserved_quantity=reserved,
+            allocated_quantity=0,
+            damaged_quantity=0,
+            in_transit_quantity=0,
+            last_stock_in_date=datetime.now(timezone.utc),
+        )
+        db.add(summary)
+
+    # Create stock movement if quantity changed
+    qty_diff = on_hand - old_qty
+    if qty_diff != 0:
+        from sqlalchemy import func as sa_func
+
+        now = datetime.now(timezone.utc)
+        date_prefix = now.strftime("%Y%m%d")
+        count_result = await db.execute(
+            select(sa_func.count(StockMovement.id)).where(
+                StockMovement.movement_number.like(f"MOV-{date_prefix}-%")
+            )
+        )
+        count = count_result.scalar() or 0
+        movement_number = f"MOV-{date_prefix}-{count + 1:04d}"
+
+        movement = StockMovement(
+            movement_number=movement_number,
+            movement_type="RECEIPT" if qty_diff > 0 else "ISSUE",
+            movement_date=now,
+            warehouse_id=warehouse_id,
+            product_id=product_id,
+            quantity=qty_diff,
+            balance_before=old_qty,
+            balance_after=on_hand,
+            reference_type="cjdquick_webhook",
+            reference_number=f"CJDQ-{reason}-{date_prefix}",
+            unit_cost=0,
+            total_cost=0,
+            notes=f"Real-time sync from CJDQuick webhook. SKU: {sku_code}, Reason: {reason}",
+        )
+        db.add(movement)
+
+    logger.info(
+        "inventory.level_changed processed: SKU=%s, %d → %d (diff: %+d, reason: %s)",
+        sku_code, old_qty, on_hand, qty_diff, reason,
+    )
 
 
 async def _handle_ndr_event(db: DB, event_type: str, data: dict) -> None:
