@@ -66,6 +66,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { PageHeader } from '@/components/common';
 import { formatCurrency } from '@/lib/utils';
+import { toast } from 'sonner';
 import { customersApi, productsApi, channelsApi, warehousesApi, ordersApi, inventoryApi } from '@/lib/api';
 
 // Types
@@ -245,8 +246,8 @@ const orderFormSchema = z.object({
   customer_id: z.string().min(1, 'Customer is required'),
   shipping_address_id: z.string().min(1, 'Shipping address is required'),
   billing_address_id: z.string().optional(),
-  channel_id: z.string().min(1, 'Channel is required'),
-  warehouse_id: z.string().min(1, 'Warehouse is required'),
+  channel_id: z.string().optional(),
+  warehouse_id: z.string().optional(),
   payment_mode: z.enum(['COD', 'PREPAID', 'PARTIAL']),
   prepaid_amount: z.number().optional(),
   items: z.array(orderItemSchema).min(1, 'At least one item is required'),
@@ -405,6 +406,15 @@ export default function CreateOrderPage() {
     createOrderMutation.mutate(data);
   };
 
+  const onSubmitError = () => {
+    const errors = form.formState.errors;
+    const messages: string[] = [];
+    if (errors.customer_id) messages.push('Customer is required');
+    if (errors.shipping_address_id) messages.push('Shipping address is required');
+    if (errors.items) messages.push('At least one product is required');
+    toast.error(messages.length > 0 ? messages.join('. ') : 'Please fill all required fields');
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -420,7 +430,7 @@ export default function CreateOrderPage() {
         }
       />
 
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit, onSubmitError)} className="space-y-6">
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Main Form */}
           <div className="lg:col-span-2 space-y-6">
