@@ -444,31 +444,36 @@ export default function Customer360Page() {
       const customerId = params.id as string;
       const originalAddresses = response?.customer?.addresses ?? [];
       const originalIds = new Set(originalAddresses.map(a => a.id));
-      const editIds = new Set(editAddresses.filter(a => a.id).map(a => a.id));
+      const currentEditIds = new Set(editAddresses.filter(a => a.id).map(a => a.id));
 
-      // Delete removed addresses
+      // Delete removed addresses (existed originally but no longer in edit list)
       for (const orig of originalAddresses) {
-        if (!editIds.has(orig.id)) {
-          await customersApi.deleteAddress(customerId, orig.id);
+        if (!currentEditIds.has(orig.id)) {
+          try { await customersApi.deleteAddress(customerId, orig.id); } catch { /* ignore */ }
         }
       }
-      // Update existing addresses
+      // Update existing addresses (have an id that matches an original)
       for (const addr of editAddresses) {
         if (addr.id && originalIds.has(addr.id)) {
-          const { id, ...addrData } = addr;
-          await customersApi.updateAddress(customerId, id!, addrData);
+          const { id: addrId, ...addrData } = addr;
+          try { await customersApi.updateAddress(customerId, addrId!, addrData); } catch { /* ignore */ }
         }
       }
-      // Create new addresses
+      // Create only truly new addresses (no id at all)
       for (const addr of editAddresses) {
         if (!addr.id) {
           const { id: _id, ...addrData } = addr;
           await customersApi.addAddress(customerId, {
-            ...addrData,
+            address_type: addrData.address_type,
+            contact_name: addrData.contact_name || undefined,
+            contact_phone: addrData.contact_phone || undefined,
             address_line1: addrData.address_line1,
+            address_line2: addrData.address_line2 || undefined,
+            landmark: addrData.landmark || undefined,
             city: addrData.city,
             state: addrData.state,
             pincode: addrData.pincode,
+            is_default: addrData.is_default,
           });
         }
       }
