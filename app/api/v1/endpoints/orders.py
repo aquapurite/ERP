@@ -1094,20 +1094,20 @@ async def delete_order(
 
     order_number = order.order_number
 
-    # Nullify FKs in tables with SET NULL / no cascade
-    await db.execute(text("UPDATE picklist_items SET order_id = NULL WHERE order_id = :oid"), {"oid": order_id})
-    await db.execute(text("UPDATE inventory_movements SET order_id = NULL WHERE order_id = :oid"), {"oid": order_id})
-    await db.execute(text("UPDATE service_requests SET order_id = NULL WHERE order_id = :oid"), {"oid": order_id})
-    await db.execute(text("UPDATE installations SET order_id = NULL WHERE order_id = :oid"), {"oid": order_id})
-
-    # Delete from tables with RESTRICT FK
-    await db.execute(text("DELETE FROM shipments WHERE order_id = :oid"), {"oid": order_id})
-    await db.execute(text("DELETE FROM picklist_items WHERE order_id = :oid"), {"oid": order_id})
-
-    # Clean up sync log
-    await db.execute(text(
-        "DELETE FROM cjdquick_sync_log WHERE entity_type = 'ORDER' AND entity_id = :oid"
-    ), {"oid": order_id})
+    # Defensively clean up FK references (ignore missing tables)
+    cleanup_sqls = [
+        "UPDATE picklist_items SET order_id = NULL WHERE order_id = :oid",
+        "UPDATE service_requests SET order_id = NULL WHERE order_id = :oid",
+        "UPDATE installations SET order_id = NULL WHERE order_id = :oid",
+        "DELETE FROM shipments WHERE order_id = :oid",
+        "DELETE FROM picklist_items WHERE order_id = :oid",
+        "DELETE FROM cjdquick_sync_log WHERE entity_type = 'ORDER' AND entity_id = :oid",
+    ]
+    for sql in cleanup_sqls:
+        try:
+            await db.execute(text(sql), {"oid": order_id})
+        except Exception:
+            await db.rollback()
 
     # Delete the order (cascade handles items, payments, status_history, etc.)
     await db.delete(order)
