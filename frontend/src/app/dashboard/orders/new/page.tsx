@@ -340,9 +340,13 @@ export default function CreateOrderPage() {
   // Determine if selected channel is B2C (tax-inclusive MRP pricing)
   const selectedChannelId = form.watch('channel_id');
   const selectedChannel = channels?.find((ch) => ch.id === selectedChannelId);
+  // Default to tax-inclusive (B2C/MRP rule) unless a B2B channel is explicitly selected
+  const B2B_CHANNEL_TYPES = new Set([
+    'B2B', 'DEALER', 'DISTRIBUTOR', 'CORPORATE', 'B2B_PORTAL', 'GOVERNMENT', 'EXPORT',
+  ]);
   const isTaxInclusive = selectedChannel
-    ? B2C_CHANNEL_TYPES.has((selectedChannel.channel_type || '').toUpperCase())
-    : false;
+    ? !B2B_CHANNEL_TYPES.has((selectedChannel.channel_type || '').toUpperCase())
+    : true; // No channel selected = assume B2C (MRP-inclusive)
 
   // Calculations — SAP-style pricing:
   // B2C: selling_price is GST-inclusive (MRP rule) → back-calculate tax

@@ -351,12 +351,12 @@ class OrderService:
         # In India, MRP is GST-inclusive. For B2C sales, total cannot exceed MRP.
         # B2C channels: selling_price is treated as GST-inclusive → back-calculate tax
         # B2B channels: price is GST-exclusive → add tax on top (standard SAP SD approach)
-        is_tax_inclusive = False  # Default: B2B forward-calculation
-        B2C_CHANNEL_TYPES = {
-            "D2C", "D2C_WEBSITE", "D2C_APP", "MARKETPLACE",
-            "AMAZON", "FLIPKART", "MYNTRA", "TATACLIQ", "JIOMART",
-            "MEESHO", "NYKAA", "AJIO", "RETAIL_STORE", "QUICK_COMMERCE",
-            "MODERN_TRADE", "OFFLINE",
+        # Default to tax-inclusive (B2C/MRP rule) — in India, MRP includes GST.
+        # Only switch to tax-exclusive when a B2B channel is explicitly selected.
+        is_tax_inclusive = True  # Default: B2C back-calculation (MRP-inclusive)
+        B2B_CHANNEL_TYPES = {
+            "B2B", "DEALER", "DISTRIBUTOR", "CORPORATE",
+            "B2B_PORTAL", "GOVERNMENT", "EXPORT",
         }
         if data.channel_id:
             from app.models.channel import SalesChannel
@@ -364,8 +364,8 @@ class OrderService:
                 select(SalesChannel.channel_type).where(SalesChannel.id == data.channel_id)
             )
             channel_type = channel_result.scalar_one_or_none()
-            if channel_type and channel_type.upper() in B2C_CHANNEL_TYPES:
-                is_tax_inclusive = True
+            if channel_type and channel_type.upper() in B2B_CHANNEL_TYPES:
+                is_tax_inclusive = False
 
         # Calculate totals
         subtotal = Decimal("0.00")
