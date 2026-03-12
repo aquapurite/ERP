@@ -178,7 +178,7 @@ async def update_customer(
             detail="Customer not found"
         )
 
-    updated = await service.update_customer(
+    await service.update_customer(
         customer_id,
         data.model_dump(exclude_unset=True)
     )
@@ -190,7 +190,9 @@ async def update_customer(
     except Exception:
         pass
 
-    return CustomerResponse.model_validate(updated)
+    # Re-fetch with eager-loaded relationships to avoid MissingGreenlet
+    refreshed = await service.get_customer_by_id(customer_id)
+    return CustomerResponse.model_validate(refreshed)
 
 
 @router.delete(
