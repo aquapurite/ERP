@@ -162,7 +162,7 @@ const orderApi = {
         name: p.name,
         sku: p.sku,
         mrp: p.mrp || 0,
-        selling_price: p.selling_price || 0,
+        selling_price: p.selling_price || p.mrp || 0,
         gst_rate: p.gst_rate || 18,
         hsn_code: p.hsn_code || '',
         stock_available: stockMap[p.id] || 0,
