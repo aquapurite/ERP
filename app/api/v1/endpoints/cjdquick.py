@@ -919,8 +919,14 @@ async def cjdquick_webhook(
             await _handle_ndr_event(db, event_type, event_data)
         elif event_type in ("gr.posted", "gr.completed", "gr.status_changed"):
             await _handle_gr_event(db, event_type, event_data)
-        elif event_type == "invoice.created":
-            logger.info("Invoice created event received: %s", event_data.get("invoiceNo"))
+        elif event_type == "inventory.updated":
+            await _handle_inventory_updated_event(db, event_data)
+        elif event_type in ("invoice.created", "invoice.paid"):
+            logger.info("Invoice event received: %s %s", event_type, event_data.get("invoiceNo"))
+        elif event_type == "order.created":
+            logger.info("Order created in CJDQuick: %s", event_data.get("orderNo"))
+        elif event_type == "order.invoiced":
+            logger.info("Order invoiced in CJDQuick: %s %s", event_data.get("orderId"), event_data.get("invoiceNo"))
         elif event_type == "webhook.test":
             logger.info("Webhook test ping received successfully")
         else:
@@ -1281,6 +1287,44 @@ async def _handle_gr_event(db: DB, event_type: str, data: dict) -> None:
         "PO %s GR status updated to %s (grNo: %s) via webhook",
         po_number, po.cjdquick_gr_status, gr_no,
     )
+
+
+async def _handle_inventory_updated_event(db: DB, data: dict) -> None:
+    """Handle inventory.updated event from CJDQuick.
+
+    Per v3 guide: Fires when GRN is posted by warehouse team.
+    Payload contains: skuId, locationId, companyId, grNo, quantityAdded.
+    Used to auto-update PO received quantities in Aquapurite ERP.
+    """
+    gr_no = data.get("grNo") or data.get("grNumber")
+    quantity_added = data.get("quantityAdded", 0)
+    sku_id = data.get("skuId")
+
+    logger.info(
+        "Inventory updated event: grNo=%s, skuId=%s, quantityAdded=%s",
+        gr_no, sku_id, quantity_added,
+    )
+
+    if not gr_no:
+        logger.warning("inventory.updated webhook missing grNo: %s", data)
+        return
+
+    # Find PO by CJDQuick GR ID or GR number
+    result = await db.execute(
+        select(PurchaseOrder).where(
+            (PurchaseOrder.cjdquick_gr_id == gr_no)
+            | (PurchaseOrder.cjdquick_gr_id == str(data.get("id", "")))
+        )
+    )
+    po = result.scalar_one_or_none()
+    if po:
+        po.cjdquick_gr_status = "POSTED"
+        logger.info(
+            "PO %s marked as POSTED via inventory.updated (grNo: %s, qty: %s)",
+            po.po_number, gr_no, quantity_added,
+        )
+    else:
+        logger.info("No PO found for inventory.updated grNo: %s (informational only)", gr_no)
 
 
 async def _handle_ndr_event(db: DB, event_type: str, data: dict) -> None:

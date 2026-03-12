@@ -72,13 +72,17 @@ class CJDQuickSyncService:
     # ==================== Transformer Methods ====================
 
     def _build_sku_payload(self, product: Product) -> Dict[str, Any]:
-        """Map Aquapurite Product fields to CJDQuick OMS SKU format."""
+        """Map Aquapurite Product fields to CJDQuick OMS SKU format.
+
+        Per v3 guide: POST /skus uses fields: code, name, description, category,
+        brand, mrp, costPrice, sellingPrice, weight, length, width, height,
+        hsnCode, taxRate, isSerialized, hasBatchTracking, isActive, tags.
+        """
         payload: Dict[str, Any] = {
-            "companyId": settings.CJDQUICK_COMPANY_ID,
             "code": product.sku,
             "name": product.name,
             "brand": "Aquapurite",
-            "hsn": product.hsn_code or "",
+            "hsnCode": product.hsn_code or "",
             "mrp": _decimal_to_float(product.mrp),
             "costPrice": _decimal_to_float(product.cost_price),
             "sellingPrice": _decimal_to_float(product.selling_price),
@@ -88,10 +92,22 @@ class CJDQuickSyncService:
             "width": _decimal_to_float(product.width_cm),
             "height": _decimal_to_float(product.height_cm),
             "isSerialized": True,
+            "hasBatchTracking": False,
+            "isActive": product.status == "ACTIVE",
         }
-        # Add description if available (avoid lazy-loaded relationships)
         if hasattr(product, "description") and product.description:
             payload["description"] = product.description
+        # Add category from product's item_type
+        item_type_category = {
+            "FG": "Water Purifiers",
+            "SP": "Spare Parts",
+            "CO": "Components",
+            "CN": "Consumables",
+            "AC": "Accessories",
+        }
+        payload["category"] = item_type_category.get(
+            getattr(product, "item_type", "FG") or "FG", "Water Purifiers"
+        )
         return payload
 
     def _build_order_payload(self, order: Order, customer: Customer) -> Dict[str, Any]:
@@ -162,8 +178,8 @@ class CJDQuickSyncService:
     def _build_integration_order_payload(self, order: Order, customer: Customer) -> Dict[str, Any]:
         """Build order payload for POST /api/v1/orders/external.
 
-        Uses X-API-Key auth. CJDQuick resolves SKU automatically using
-        Aquapurite's product codes (no translation needed).
+        Per v3 guide: Uses X-API-Key auth. Complete payload reference with all
+        required and optional fields. CJDQuick resolves SKU automatically.
         """
         customer_name = f"{customer.first_name} {customer.last_name or ''}".strip()
         shipping = order.shipping_address or {}
@@ -175,29 +191,52 @@ class CJDQuickSyncService:
                     "sku": item.product_sku,
                     "name": item.product_name,
                     "quantity": item.quantity or 1,
-                    "unitPrice": str(_decimal_to_float(item.unit_price) or 0),
-                    "taxRate": str(_decimal_to_float(item.tax_rate) or 18.0),
+                    "unitPrice": _decimal_to_float(item.unit_price) or 0,
+                    "discount": _decimal_to_float(item.discount_amount) or 0,
+                    "taxRate": _decimal_to_float(item.tax_rate) or 18.0,
                 })
 
         payment_mode = self._map_payment_method(order.payment_method)
 
-        return {
+        payload: Dict[str, Any] = {
+            # Required fields
             "externalOrderId": order.order_number,
-            "channel": "AQUAPURITE_ERP",
-            "paymentMode": payment_mode,
             "customer": {
                 "name": customer_name,
                 "phone": customer.phone or "",
+                "email": customer.email or "",
             },
             "shippingAddress": {
                 "name": shipping.get("contact_name", shipping.get("name", customer_name)),
                 "line1": shipping.get("address_line1", shipping.get("address_line_1", shipping.get("address", ""))),
+                "line2": shipping.get("address_line2", shipping.get("address_line_2", shipping.get("address_2", ""))),
                 "city": shipping.get("city", ""),
                 "state": shipping.get("state", ""),
                 "pincode": str(shipping.get("pincode", shipping.get("zip_code", ""))),
+                "country": shipping.get("country", "India"),
+                "phone": shipping.get("contact_phone", shipping.get("phone", customer.phone or "")),
             },
             "items": items,
+            # Optional fields
+            "channel": "AQUAPURITE_ERP",
+            "orderDate": order.created_at.isoformat() if order.created_at else None,
+            "paymentMode": payment_mode,
+            "paymentStatus": "PAID" if order.payment_status == "PAID" else "PENDING",
+            "charges": {
+                "subtotal": _decimal_to_float(order.subtotal) or 0,
+                "discount": _decimal_to_float(order.discount_amount) or 0,
+                "shippingCharges": _decimal_to_float(order.shipping_amount) if hasattr(order, "shipping_amount") else 0,
+                "codCharges": 0,
+                "giftWrap": 0,
+                "taxAmount": _decimal_to_float(order.tax_amount) or 0,
+                "totalAmount": _decimal_to_float(order.total_amount) or 0,
+            },
+            "notes": getattr(order, "notes", "") or "",
+            "tags": [],
+            "isPriority": False,
+            "preferredWarehouse": settings.CJDQUICK_WAREHOUSE_CODE,
         }
+        return payload
 
     def _build_customer_payload(self, customer: Customer) -> Dict[str, Any]:
         """Map Aquapurite Customer to CJDQuick OMS customer format.
@@ -288,46 +327,63 @@ class CJDQuickSyncService:
         return payload
 
     def _build_goods_receipt_payload(self, po: PurchaseOrder) -> Dict[str, Any]:
-        """Map Aquapurite PurchaseOrder to CJDQuick Goods Receipt payload.
+        """Build GRN creation payload per v3 guide.
 
-        SAP equivalent: MIGO (Movement Type 101 = GR against PO).
-        This notifies the 3PL warehouse that goods are expected for this PO.
+        POST /api/v1/goods-receipts — creates DRAFT GRN.
+        Per v3 guide: locationId, movementType, inboundSource, source,
+        externalReferenceType, externalReferenceNo, notes.
+        Items are added separately via POST /goods-receipts/{id}/items.
         """
-        items = []
+        vendor_name = ""
+        if hasattr(po, "vendor") and po.vendor:
+            vendor_name = getattr(po.vendor, "name", "") or ""
+
+        expected_date = ""
+        if hasattr(po, "expected_delivery_date") and po.expected_delivery_date:
+            expected_date = po.expected_delivery_date.strftime("%Y-%m-%d")
+
+        notes = f"PO from Aquapurite ERP. Vendor: {vendor_name}."
+        if expected_date:
+            notes += f" Expected delivery: {expected_date}."
+
+        return {
+            "locationId": settings.CJDQUICK_DELHI_LOCATION_ID,
+            "movementType": "101",
+            "inboundSource": "PURCHASE",
+            "source": "API",
+            "externalReferenceType": "EXTERNAL_PO",
+            "externalReferenceNo": po.po_number if hasattr(po, "po_number") else str(po.id),
+            "notes": notes,
+        }
+
+    def _build_goods_receipt_item_payloads(self, po: PurchaseOrder, gr_id: str) -> list:
+        """Build individual GRN item payloads per v3 guide.
+
+        POST /goods-receipts/{gr_id}/items — one call per PO line item.
+        Fields: goodsReceiptId, skuId (UUID from SKU sync), expectedQty, costPrice, mrp.
+        """
+        item_payloads = []
         if hasattr(po, "items") and po.items:
             for item in po.items:
                 sku_code = ""
-                sku_name = ""
                 if hasattr(item, "product") and item.product:
                     sku_code = item.product.sku or ""
-                    sku_name = item.product.name or ""
 
+                qty = item.quantity if hasattr(item, "quantity") else 0
                 item_data: Dict[str, Any] = {
-                    "externalSkuCode": sku_code,
-                    "externalSkuName": sku_name,
-                    "expectedQty": item.quantity if hasattr(item, "quantity") else 0,
+                    "goodsReceiptId": gr_id,
+                    "expectedQty": qty,
                 }
+                # skuId needs to be the CJDQuick UUID — we pass code for resolution
+                # The API resolves by code when skuId is not a UUID
+                if sku_code:
+                    item_data["skuCode"] = sku_code
                 if hasattr(item, "unit_price") and item.unit_price:
-                    item_data["unitPrice"] = _decimal_to_float(item.unit_price)
-                items.append(item_data)
-
-        payload: Dict[str, Any] = {
-            "companyId": settings.CJDQUICK_COMPANY_ID,
-            "locationId": settings.CJDQUICK_DELHI_LOCATION_ID,
-            "movementType": "101",  # GR against PO (SAP standard)
-            "inboundSource": "PURCHASE",
-            "externalPoNumber": po.po_number if hasattr(po, "po_number") else str(po.id),
-            "items": items,
-        }
-        # Add vendor info
-        if hasattr(po, "vendor") and po.vendor:
-            payload["externalVendorCode"] = getattr(po.vendor, "vendor_code", "") or ""
-            payload["externalVendorName"] = getattr(po.vendor, "name", "") or ""
-        # Add expected delivery date
-        if hasattr(po, "expected_delivery_date") and po.expected_delivery_date:
-            payload["expectedDeliveryDate"] = po.expected_delivery_date.strftime("%Y-%m-%d")
-
-        return payload
+                    item_data["costPrice"] = _decimal_to_float(item.unit_price)
+                if hasattr(item, "product") and item.product:
+                    item_data["mrp"] = _decimal_to_float(item.product.mrp)
+                item_payloads.append(item_data)
+        return item_payloads
 
     def _build_return_payload(self, return_order: ReturnOrder) -> Dict[str, Any]:
         """Map Aquapurite ReturnOrder to CJDQuick OMS return format.
@@ -639,6 +695,10 @@ class CJDQuickSyncService:
     async def sync_goods_receipt_for_po(self, po_id: uuid.UUID) -> CJDQuickSyncLog:
         """Push a Goods Receipt to CJDQuick OMS for a PO (SAP MIGO equivalent).
 
+        Per v3 guide — 2-step flow:
+        1. POST /goods-receipts → creates DRAFT GRN
+        2. POST /goods-receipts/{id}/items → add each PO line item
+
         Called on PO approval to notify the 3PL warehouse about incoming goods.
         """
         from sqlalchemy.orm import selectinload
@@ -655,26 +715,44 @@ class CJDQuickSyncService:
         if not po:
             raise ValueError(f"PurchaseOrder {po_id} not found")
 
-        payload = self._build_goods_receipt_payload(po)
+        gr_payload = self._build_goods_receipt_payload(po)
 
         try:
-            response = await self.client.create_goods_receipt(payload)
-            gr_id = response.get("id") or response.get("_id") or response.get("grNo")
+            # Step 1: Create DRAFT GRN
+            gr_response = await self.client.create_goods_receipt(gr_payload)
+            gr_id = str(gr_response.get("id") or gr_response.get("_id") or "")
+            gr_no = gr_response.get("grNo", "")
+
+            # Step 2: Add items individually
+            item_payloads = self._build_goods_receipt_item_payloads(po, gr_id)
+            items_added = 0
+            for item_payload in item_payloads:
+                try:
+                    await self.client.add_goods_receipt_item(gr_id, item_payload)
+                    items_added += 1
+                except CJDQuickAPIError as item_err:
+                    logger.warning("Failed to add GRN item for PO %s: %s", po.po_number, item_err.message)
 
             # Update PO with CJDQuick GR tracking
-            po.cjdquick_gr_id = str(gr_id) if gr_id else None
-            po.cjdquick_gr_status = "CREATED"
+            po.cjdquick_gr_id = gr_id or None
+            po.cjdquick_gr_status = "DRAFT"
 
             log = await self._write_sync_log(
                 entity_type="GR",
                 entity_id=po_id,
                 operation="CREATE",
                 status="SUCCESS",
-                request_payload=payload,
-                response_payload=response,
-                oms_id=str(gr_id) if gr_id else None,
+                request_payload=gr_payload,
+                response_payload={
+                    "grId": gr_id,
+                    "grNo": gr_no,
+                    "itemsAdded": items_added,
+                    "totalItems": len(item_payloads),
+                },
+                oms_id=gr_id or None,
             )
-            logger.info("GR for PO %s synced to CJDQuick: %s", po.po_number, gr_id)
+            logger.info("GR %s for PO %s synced to CJDQuick (%d/%d items)",
+                         gr_no, po.po_number, items_added, len(item_payloads))
             return log
         except CJDQuickAPIError as e:
             po.cjdquick_gr_status = "FAILED"
@@ -684,7 +762,7 @@ class CJDQuickSyncService:
                 entity_id=po_id,
                 operation="CREATE",
                 status="FAILED",
-                request_payload=payload,
+                request_payload=gr_payload,
                 error_message=e.message,
             )
             logger.error("Failed to sync GR for PO %s: %s", po.po_number, e.message)
@@ -799,27 +877,30 @@ class CJDQuickSyncService:
         if not products:
             return {"total": 0, "success": 0, "failed": 0, "errors": []}
 
-        # Build mappings for bulk SKU sync
-        mappings = []
+        # Build SKU array per v3 guide format for /external-sku-mappings/sync
+        item_type_category = {
+            "FG": "Water Purifiers", "SP": "Spare Parts",
+            "CO": "Components", "CN": "Consumables", "AC": "Accessories",
+        }
+        skus = []
         for product in products:
-            mappings.append({
-                "externalCode": product.sku,
-                "name": product.name,
+            skus.append({
+                "externalSkuCode": product.sku,
+                "externalSkuName": product.name,
+                "autoCreate": True,
+                "category": item_type_category.get(
+                    getattr(product, "item_type", "FG") or "FG", "Water Purifiers"
+                ),
                 "brand": "Aquapurite",
                 "hsn": product.hsn_code or "",
                 "mrp": _decimal_to_float(product.mrp),
                 "costPrice": _decimal_to_float(product.cost_price),
                 "sellingPrice": _decimal_to_float(product.selling_price),
-                "taxRate": _decimal_to_float(product.gst_rate),
                 "weight": _decimal_to_float(product.dead_weight_kg),
-                "length": _decimal_to_float(product.length_cm),
-                "width": _decimal_to_float(product.width_cm),
-                "height": _decimal_to_float(product.height_cm),
-                "isSerialized": True,
             })
 
         try:
-            response = await self.client.sync_sku_mappings(mappings)
+            response = await self.client.sync_sku_mappings(skus)
             synced = response.get("created", 0) + response.get("updated", 0)
             failed_count = response.get("failed", 0)
 
