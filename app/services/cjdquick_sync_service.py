@@ -303,7 +303,7 @@ class CJDQuickSyncService:
                 item_data: Dict[str, Any] = {
                     "externalSkuCode": sku_code,
                     "externalSkuName": sku_name,
-                    "orderedQty": item.quantity if hasattr(item, "quantity") else 0,
+                    "orderedQty": item.quantity_ordered if hasattr(item, "quantity_ordered") else 0,
                 }
                 if hasattr(item, "unit_price") and item.unit_price:
                     item_data["unitPrice"] = _decimal_to_float(item.unit_price)
@@ -371,7 +371,7 @@ class CJDQuickSyncService:
                 if hasattr(item, "product") and item.product:
                     sku_code = item.product.sku or ""
 
-                qty = item.quantity if hasattr(item, "quantity") else 0
+                qty = item.quantity_ordered if hasattr(item, "quantity_ordered") else 0
                 item_data: Dict[str, Any] = {
                     "goodsReceiptId": gr_id,
                     "expectedQty": qty,
@@ -396,7 +396,7 @@ class CJDQuickSyncService:
         if hasattr(return_order, "items") and return_order.items:
             for item in return_order.items:
                 item_data: Dict[str, Any] = {
-                    "quantity": item.quantity if hasattr(item, "quantity") else 0,
+                    "quantity": item.quantity_returned if hasattr(item, "quantity_returned") else 0,
                 }
                 # Use product_id as reference since we may not have OMS skuId
                 if hasattr(item, "product_id") and item.product_id:
