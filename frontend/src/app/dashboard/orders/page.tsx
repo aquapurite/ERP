@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Eye, Pencil, Truck, Package, MapPin, Calendar, Loader2 } from 'lucide-react';
+import { MoreHorizontal, Plus, Eye, Pencil, Truck, Package, MapPin, Calendar, Loader2, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
@@ -32,7 +32,7 @@ import {
 } from '@/components/ui/sheet';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader, StatusBadge } from '@/components/common';
-import { ordersApi, shipmentsApi } from '@/lib/api';
+import { ordersApi, shipmentsApi, cjdquickApi } from '@/lib/api';
 import { Order, OrderStatus } from '@/types';
 import { toast } from 'sonner';
 
@@ -124,6 +124,17 @@ function OrdersPageContent() {
     }
   };
 
+  const handleSyncToWarehouse = async (order: Order) => {
+    try {
+      toast.loading('Syncing order to warehouse...', { id: `sync-${order.id}` });
+      await cjdquickApi.syncOrder(order.id);
+      toast.success('Order synced to warehouse/3PL successfully', { id: `sync-${order.id}` });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Sync failed';
+      toast.error(`Sync failed: ${message}`, { id: `sync-${order.id}` });
+    }
+  };
+
   const columns: ColumnDef<Order>[] = [
     {
       accessorKey: 'order_number',
@@ -208,6 +219,11 @@ function OrdersPageContent() {
             <DropdownMenuItem onClick={() => handleTrackShipment(row.original)}>
               <Truck className="mr-2 h-4 w-4" />
               Track Shipment
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => handleSyncToWarehouse(row.original)}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Sync to Warehouse
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
