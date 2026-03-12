@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   User, Phone, Mail, MapPin, Calendar, ShoppingBag, Wrench, Shield, Package, Star, AlertTriangle,
   CreditCard, Clock, CheckCircle, ArrowLeft, Edit, MoreHorizontal, FileText, Heart, Activity,
-  MessageSquare, IndianRupee, TrendingUp, Home, Building2, Truck
+  MessageSquare, IndianRupee, TrendingUp, Home, Building2, Truck, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -16,6 +16,24 @@ import { Progress } from '@/components/ui/progress';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -209,17 +227,87 @@ const statusColors: Record<string, string> = {
   PAID: 'bg-green-100 text-green-800',
 };
 
+interface EditFormData {
+  name: string;
+  phone: string;
+  email: string;
+  customer_type: 'INDIVIDUAL' | 'BUSINESS' | 'DEALER';
+  alternate_phone: string;
+  company_name: string;
+  gst_number: string;
+  notes: string;
+}
+
+const customerTypes = [
+  { value: 'INDIVIDUAL', label: 'Individual' },
+  { value: 'BUSINESS', label: 'Business' },
+  { value: 'DEALER', label: 'Dealer' },
+];
+
 export default function Customer360Page() {
   const params = useParams();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const initialTab = searchParams.get('tab') || 'overview';
   const [activeTab, setActiveTab] = useState(initialTab);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editForm, setEditForm] = useState<EditFormData>({
+    name: '',
+    phone: '',
+    email: '',
+    customer_type: 'INDIVIDUAL',
+    alternate_phone: '',
+    company_name: '',
+    gst_number: '',
+    notes: '',
+  });
 
   const { data: response, isLoading, error } = useQuery<Customer360Response>({
     queryKey: ['customer-360', params.id],
     queryFn: () => customersApi.get360View(params.id as string),
   });
+
+  const updateMutation = useMutation({
+    mutationFn: (data: Partial<EditFormData>) => customersApi.update(params.id as string, data),
+    onSuccess: () => {
+      toast.success('Customer updated successfully');
+      queryClient.invalidateQueries({ queryKey: ['customer-360', params.id] });
+      setEditDialogOpen(false);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to update customer');
+    },
+  });
+
+  const handleEditOpen = () => {
+    if (response?.customer) {
+      const c = response.customer;
+      setEditForm({
+        name: c.name || c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() || '',
+        phone: c.phone || '',
+        email: c.email || '',
+        customer_type: (c.customer_type as EditFormData['customer_type']) || 'INDIVIDUAL',
+        alternate_phone: c.alternate_phone || '',
+        company_name: c.company_name || '',
+        gst_number: c.gst_number || '',
+        notes: '',
+      });
+      setEditDialogOpen(true);
+    }
+  };
+
+  const handleEditSubmit = () => {
+    if (!editForm.name.trim()) {
+      toast.error('Customer name is required');
+      return;
+    }
+    if (!editForm.phone.trim()) {
+      toast.error('Phone number is required');
+      return;
+    }
+    updateMutation.mutate(editForm);
+  };
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-96">Loading...</div>;
@@ -269,7 +357,7 @@ export default function Customer360Page() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline"><Edit className="mr-2 h-4 w-4" />Edit</Button>
+          <Button variant="outline" onClick={handleEditOpen}><Edit className="mr-2 h-4 w-4" />Edit</Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
@@ -900,6 +988,96 @@ export default function Customer360Page() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Edit Customer Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Customer</DialogTitle>
+            <DialogDescription>Update customer profile information</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Full Name *</Label>
+              <Input
+                id="edit-name"
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-phone">Phone *</Label>
+                <Input
+                  id="edit-phone"
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-email">Email</Label>
+                <Input
+                  id="edit-email"
+                  type="email"
+                  value={editForm.email}
+                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-type">Customer Type</Label>
+                <Select
+                  value={editForm.customer_type}
+                  onValueChange={(value: EditFormData['customer_type']) => setEditForm({ ...editForm, customer_type: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {customerTypes.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-alt-phone">Alternate Phone</Label>
+                <Input
+                  id="edit-alt-phone"
+                  value={editForm.alternate_phone}
+                  onChange={(e) => setEditForm({ ...editForm, alternate_phone: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-company">Company Name</Label>
+                <Input
+                  id="edit-company"
+                  value={editForm.company_name}
+                  onChange={(e) => setEditForm({ ...editForm, company_name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-gst">GST Number</Label>
+                <Input
+                  id="edit-gst"
+                  value={editForm.gst_number}
+                  onChange={(e) => setEditForm({ ...editForm, gst_number: e.target.value.toUpperCase() })}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleEditSubmit} disabled={updateMutation.isPending}>
+              {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
