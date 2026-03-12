@@ -928,7 +928,12 @@ class CJDQuickSyncService:
 
         try:
             response = await self.client.sync_sku_mappings(skus)
-            synced = response.get("created", 0) + response.get("updated", 0)
+            synced = (
+                response.get("created", 0)
+                + response.get("mapped", 0)
+                + response.get("updated", 0)
+                + response.get("skipped", 0)
+            )
             failed_count = response.get("failed", 0)
 
             # Log the bulk sync

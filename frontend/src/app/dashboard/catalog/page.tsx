@@ -99,8 +99,8 @@ export default function ProductsPage() {
 
   const bulkSyncMutation = useMutation({
     mutationFn: () => cjdquickApi.bulkSyncProducts(),
-    onSuccess: (result: { success_count?: number; fail_count?: number }) => {
-      toast.success(`Synced ${result.success_count ?? 0} products to warehouse/3PL partners${result.fail_count ? ` (${result.fail_count} failed)` : ''}`);
+    onSuccess: (result: { total?: number; success?: number; failed?: number }) => {
+      toast.success(`Synced ${result.success ?? result.total ?? 0} products to warehouse/3PL partners${result.failed ? ` (${result.failed} failed)` : ''}`);
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to sync products');
