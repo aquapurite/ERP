@@ -145,7 +145,29 @@ const orderApi = {
   get: async (id: string): Promise<Order | null> => {
     try {
       const { data } = await apiClient.get(`/orders/${id}`);
-      return data;
+      // Normalize API response to match Order interface
+      return {
+        ...data,
+        invoices: data.invoices || [],
+        payments: data.payments || [],
+        status_history: data.status_history || [],
+        tax_invoices: data.tax_invoices || [],
+        grand_total: Number(data.grand_total || data.total_amount || 0),
+        subtotal: Number(data.subtotal || 0),
+        discount_amount: Number(data.discount_amount || 0),
+        tax_amount: Number(data.tax_amount || 0),
+        shipping_amount: Number(data.shipping_amount || 0),
+        amount_paid: Number(data.amount_paid || 0),
+        balance_due: Number(data.balance_due || 0),
+        items: (data.items || []).map((item: Record<string, unknown>) => ({
+          ...item,
+          sku: item.product_sku || item.sku || '',
+          unit_price: Number(item.unit_price || 0),
+          discount: Number(item.discount_amount || item.discount || 0),
+          tax_amount: Number(item.tax_amount || 0),
+          total: Number(item.total_amount || item.total || 0),
+        })),
+      };
     } catch {
       return null;
     }
