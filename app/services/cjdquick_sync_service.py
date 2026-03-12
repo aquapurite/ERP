@@ -142,7 +142,7 @@ class CJDQuickSyncService:
         payment_mode = self._map_payment_method(order.payment_method)
 
         # Map order source to OMS channel
-        channel = "D2C" if order.source == "WEBSITE" else (order.source or "D2C")
+        channel = self._map_source_to_channel(order.source)
 
         # Build shipping address from JSONB
         shipping = order.shipping_address or {}
@@ -219,7 +219,7 @@ class CJDQuickSyncService:
             },
             "items": items,
             # Optional fields
-            "channel": "AQUAPURITE_ERP",
+            "channel": self._map_source_to_channel(order.source),
             "orderDate": order.created_at.isoformat() if order.created_at else None,
             "paymentMode": payment_mode,
             "paymentStatus": "PAID" if order.payment_status == "PAID" else "PENDING",
@@ -427,6 +427,31 @@ class CJDQuickSyncService:
         }
 
     # ==================== Status Mapping ====================
+
+    @staticmethod
+    def _map_source_to_channel(source: str) -> str:
+        """Map ERP order source to CJDQuick OMS channel value.
+
+        Valid CJDQuick channels: D2C, AMAZON, FLIPKART, MYNTRA, MEESHO,
+        GT, MODERN_TRADE, DISTRIBUTOR, B2B, INSTITUTIONAL, SHOPIFY, WEBSITE.
+        """
+        SOURCE_TO_CHANNEL = {
+            "WEBSITE": "D2C",
+            "MOBILE_APP": "D2C",
+            "AMAZON": "AMAZON",
+            "FLIPKART": "FLIPKART",
+            "MYNTRA": "MYNTRA",
+            "MEESHO": "MEESHO",
+            "STORE": "GT",
+            "DEALER": "GT",
+            "PHONE": "D2C",
+            "DISTRIBUTOR": "DISTRIBUTOR",
+            "MODERN_TRADE": "MODERN_TRADE",
+            "B2B": "B2B",
+            "INSTITUTIONAL": "INSTITUTIONAL",
+            "SHOPIFY": "SHOPIFY",
+        }
+        return SOURCE_TO_CHANNEL.get(source, source or "D2C")
 
     @staticmethod
     def _map_payment_method(payment_method: str) -> str:
