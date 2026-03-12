@@ -1067,12 +1067,12 @@ async def track_order_public(
 
 @router.delete(
     "/{order_id}",
-    dependencies=[Depends(require_permissions("orders:view"))],
 )
 async def delete_order(
     order_id: uuid.UUID,
     db: DB,
     current_user: CurrentUser,
+    permissions: Permissions = None,
 ):
     """
     Hard-delete an order and all related data.
@@ -1081,8 +1081,7 @@ async def delete_order(
     from sqlalchemy import text
 
     # Only SUPER_ADMIN can delete
-    user_roles = [r.name for r in current_user.roles] if current_user.roles else []
-    if "SUPER_ADMIN" not in user_roles:
+    if not permissions or not permissions.is_super_admin():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only SUPER_ADMIN can delete orders",
