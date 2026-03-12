@@ -158,13 +158,13 @@ const orderApi = {
         // Inventory fetch failed, continue with 0s
       }
 
-      return result.items.map((p: { id: string; name: string; sku: string; mrp?: number; selling_price?: number; gst_rate?: number; hsn_code?: string; category?: { name: string }; brand?: { name: string } }) => ({
+      return result.items.map((p: { id: string; name: string; sku: string; mrp?: number | string; selling_price?: number | string; gst_rate?: number | string; hsn_code?: string; category?: { name: string }; brand?: { name: string } }) => ({
         id: p.id,
         name: p.name,
         sku: p.sku,
-        mrp: p.mrp || 0,
-        selling_price: p.selling_price || p.mrp || 0,
-        gst_rate: p.gst_rate || 18,
+        mrp: Number(p.mrp) || 0,
+        selling_price: Number(p.selling_price || p.mrp) || 0,
+        gst_rate: Number(p.gst_rate) || 18,
         hsn_code: p.hsn_code || '',
         stock_available: stockMap[p.id] || 0,
         category: p.category?.name || '',
@@ -406,13 +406,18 @@ export default function CreateOrderPage() {
     createOrderMutation.mutate(data);
   };
 
-  const onSubmitError = () => {
-    const errors = form.formState.errors;
+  const onSubmitError = (errors: Record<string, unknown>) => {
     const messages: string[] = [];
-    if (errors.customer_id) messages.push('Customer is required');
-    if (errors.shipping_address_id) messages.push('Shipping address is required');
-    if (errors.items) messages.push('At least one product is required');
+    Object.entries(errors).forEach(([key, val]) => {
+      const err = val as { message?: string };
+      if (err?.message) {
+        messages.push(err.message);
+      } else {
+        messages.push(`${key} is invalid`);
+      }
+    });
     toast.error(messages.length > 0 ? messages.join('. ') : 'Please fill all required fields');
+    console.error('Form validation errors:', errors);
   };
 
   return (

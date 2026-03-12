@@ -138,8 +138,8 @@ class InventorySummaryResponse(BaseResponseSchema):
     reorder_level: int
     minimum_stock: int
     maximum_stock: int
-    average_cost: float
-    total_value: float
+    average_cost: Optional[float] = 0.0
+    total_value: Optional[float] = 0.0
     is_low_stock: bool
     is_out_of_stock: bool
     last_stock_in_date: Optional[datetime] = None
