@@ -228,20 +228,36 @@ const statusColors: Record<string, string> = {
 };
 
 interface EditFormData {
-  name: string;
+  first_name: string;
+  last_name: string;
   phone: string;
   email: string;
-  customer_type: 'INDIVIDUAL' | 'BUSINESS' | 'DEALER';
+  customer_type: 'INDIVIDUAL' | 'BUSINESS' | 'DEALER' | 'DISTRIBUTOR';
+  source: string;
   alternate_phone: string;
   company_name: string;
   gst_number: string;
+  date_of_birth: string;
+  anniversary_date: string;
   notes: string;
+  is_active: boolean;
 }
 
 const customerTypes = [
   { value: 'INDIVIDUAL', label: 'Individual' },
   { value: 'BUSINESS', label: 'Business' },
   { value: 'DEALER', label: 'Dealer' },
+  { value: 'DISTRIBUTOR', label: 'Distributor' },
+];
+
+const customerSources = [
+  { value: 'WEBSITE', label: 'Website' },
+  { value: 'WALK_IN', label: 'Walk-in' },
+  { value: 'REFERRAL', label: 'Referral' },
+  { value: 'DEALER', label: 'Dealer' },
+  { value: 'CAMPAIGN', label: 'Campaign' },
+  { value: 'SOCIAL_MEDIA', label: 'Social Media' },
+  { value: 'OTHER', label: 'Other' },
 ];
 
 export default function Customer360Page() {
@@ -253,14 +269,19 @@ export default function Customer360Page() {
   const [activeTab, setActiveTab] = useState(initialTab);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editForm, setEditForm] = useState<EditFormData>({
-    name: '',
+    first_name: '',
+    last_name: '',
     phone: '',
     email: '',
     customer_type: 'INDIVIDUAL',
+    source: '',
     alternate_phone: '',
     company_name: '',
     gst_number: '',
+    date_of_birth: '',
+    anniversary_date: '',
     notes: '',
+    is_active: true,
   });
 
   const { data: response, isLoading, error } = useQuery<Customer360Response>({
@@ -269,7 +290,8 @@ export default function Customer360Page() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: Partial<EditFormData>) => customersApi.update(params.id as string, data),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mutationFn: (data: Record<string, unknown>) => customersApi.update(params.id as string, data as any),
     onSuccess: () => {
       toast.success('Customer updated successfully');
       queryClient.invalidateQueries({ queryKey: ['customer-360', params.id] });
@@ -283,30 +305,54 @@ export default function Customer360Page() {
   const handleEditOpen = () => {
     if (response?.customer) {
       const c = response.customer;
+      // Parse first/last name from available fields
+      const fullName = c.name || c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() || '';
+      const nameParts = fullName.split(' ');
       setEditForm({
-        name: c.name || c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() || '',
+        first_name: c.first_name || nameParts[0] || '',
+        last_name: c.last_name || nameParts.slice(1).join(' ') || '',
         phone: c.phone || '',
         email: c.email || '',
         customer_type: (c.customer_type as EditFormData['customer_type']) || 'INDIVIDUAL',
+        source: c.source || '',
         alternate_phone: c.alternate_phone || '',
         company_name: c.company_name || '',
         gst_number: c.gst_number || '',
+        date_of_birth: c.date_of_birth || '',
+        anniversary_date: c.anniversary_date || '',
         notes: '',
+        is_active: c.is_active,
       });
       setEditDialogOpen(true);
     }
   };
 
   const handleEditSubmit = () => {
-    if (!editForm.name.trim()) {
-      toast.error('Customer name is required');
+    if (!editForm.first_name.trim()) {
+      toast.error('First name is required');
       return;
     }
     if (!editForm.phone.trim()) {
       toast.error('Phone number is required');
       return;
     }
-    updateMutation.mutate(editForm);
+    // Build payload matching backend CustomerUpdate schema
+    const payload: Record<string, unknown> = {
+      first_name: editForm.first_name.trim(),
+      last_name: editForm.last_name.trim() || undefined,
+      phone: editForm.phone.trim(),
+      email: editForm.email.trim() || undefined,
+      customer_type: editForm.customer_type,
+      alternate_phone: editForm.alternate_phone.trim() || undefined,
+      company_name: editForm.company_name.trim() || undefined,
+      gstin: editForm.gst_number.trim() || undefined,
+      notes: editForm.notes.trim() || undefined,
+      is_active: editForm.is_active,
+    };
+    if (editForm.source) payload.source = editForm.source;
+    if (editForm.date_of_birth) payload.date_of_birth = editForm.date_of_birth;
+    if (editForm.anniversary_date) payload.anniversary_date = editForm.anniversary_date;
+    updateMutation.mutate(payload);
   };
 
   if (isLoading) {
@@ -991,81 +1037,216 @@ export default function Customer360Page() {
 
       {/* Edit Customer Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Customer</DialogTitle>
-            <DialogDescription>Update customer profile information</DialogDescription>
+            <DialogDescription>Update all customer profile details</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Full Name *</Label>
-              <Input
-                id="edit-name"
-                value={editForm.name}
-                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-              />
+          <div className="space-y-6 py-4">
+            {/* Basic Information */}
+            <div>
+              <h3 className="text-sm font-semibold mb-3">Basic Information</h3>
+              <div className="grid gap-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-first-name">First Name *</Label>
+                    <Input
+                      id="edit-first-name"
+                      value={editForm.first_name}
+                      onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-last-name">Last Name</Label>
+                    <Input
+                      id="edit-last-name"
+                      value={editForm.last_name}
+                      onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-phone">Phone *</Label>
+                    <Input
+                      id="edit-phone"
+                      value={editForm.phone}
+                      onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-alt-phone">Alternate Phone</Label>
+                    <Input
+                      id="edit-alt-phone"
+                      value={editForm.alternate_phone}
+                      onChange={(e) => setEditForm({ ...editForm, alternate_phone: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-email">Email</Label>
+                  <Input
+                    id="edit-email"
+                    type="email"
+                    value={editForm.email}
+                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-type">Customer Type</Label>
+                    <Select
+                      value={editForm.customer_type}
+                      onValueChange={(value: EditFormData['customer_type']) => setEditForm({ ...editForm, customer_type: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {customerTypes.map((t) => (
+                          <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-source">Source</Label>
+                    <Select
+                      value={editForm.source || 'none'}
+                      onValueChange={(value) => setEditForm({ ...editForm, source: value === 'none' ? '' : value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select source" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Not set</SelectItem>
+                        {customerSources.map((s) => (
+                          <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-phone">Phone *</Label>
-                <Input
-                  id="edit-phone"
-                  value={editForm.phone}
-                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-email">Email</Label>
-                <Input
-                  id="edit-email"
-                  type="email"
-                  value={editForm.email}
-                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-type">Customer Type</Label>
-                <Select
-                  value={editForm.customer_type}
-                  onValueChange={(value: EditFormData['customer_type']) => setEditForm({ ...editForm, customer_type: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customerTypes.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-alt-phone">Alternate Phone</Label>
-                <Input
-                  id="edit-alt-phone"
-                  value={editForm.alternate_phone}
-                  onChange={(e) => setEditForm({ ...editForm, alternate_phone: e.target.value })}
-                />
+
+            <Separator />
+
+            {/* Business Details */}
+            <div>
+              <h3 className="text-sm font-semibold mb-3">Business Details</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-company">Company Name</Label>
+                  <Input
+                    id="edit-company"
+                    value={editForm.company_name}
+                    onChange={(e) => setEditForm({ ...editForm, company_name: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-gst">GST Number</Label>
+                  <Input
+                    id="edit-gst"
+                    placeholder="22AAAAA0000A1Z5"
+                    value={editForm.gst_number}
+                    onChange={(e) => setEditForm({ ...editForm, gst_number: e.target.value.toUpperCase() })}
+                  />
+                </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-company">Company Name</Label>
-                <Input
-                  id="edit-company"
-                  value={editForm.company_name}
-                  onChange={(e) => setEditForm({ ...editForm, company_name: e.target.value })}
-                />
+
+            <Separator />
+
+            {/* Personal Details */}
+            <div>
+              <h3 className="text-sm font-semibold mb-3">Personal Details</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-dob">Date of Birth</Label>
+                  <Input
+                    id="edit-dob"
+                    type="date"
+                    value={editForm.date_of_birth}
+                    onChange={(e) => setEditForm({ ...editForm, date_of_birth: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-anniversary">Anniversary Date</Label>
+                  <Input
+                    id="edit-anniversary"
+                    type="date"
+                    value={editForm.anniversary_date}
+                    onChange={(e) => setEditForm({ ...editForm, anniversary_date: e.target.value })}
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-gst">GST Number</Label>
-                <Input
-                  id="edit-gst"
-                  value={editForm.gst_number}
-                  onChange={(e) => setEditForm({ ...editForm, gst_number: e.target.value.toUpperCase() })}
-                />
+            </div>
+
+            <Separator />
+
+            {/* Addresses (read-only display) */}
+            <div>
+              <h3 className="text-sm font-semibold mb-3">Addresses</h3>
+              {(customer.addresses ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No addresses on file</p>
+              ) : (
+                <div className="space-y-3">
+                  {(customer.addresses ?? []).map((addr) => (
+                    <div key={addr.id} className="p-3 border rounded-lg bg-muted/30">
+                      <div className="flex items-center gap-2 mb-1">
+                        {addr.address_type === 'HOME' ? <Home className="h-4 w-4" /> : <Building2 className="h-4 w-4" />}
+                        <span className="font-medium text-sm">{addr.address_type || 'Address'}</span>
+                        {addr.is_default && <Badge variant="outline" className="text-xs">Default</Badge>}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {addr.address_line1}
+                        {addr.address_line2 && `, ${addr.address_line2}`}
+                        {addr.landmark && ` (${addr.landmark})`}
+                        <br />{addr.city}, {addr.state} - {addr.pincode}
+                      </p>
+                      {addr.contact_name && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Contact: {addr.contact_name} {addr.contact_phone && `- ${addr.contact_phone}`}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* Notes & Status */}
+            <div>
+              <h3 className="text-sm font-semibold mb-3">Notes & Status</h3>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-notes">Notes</Label>
+                  <Textarea
+                    id="edit-notes"
+                    placeholder="Additional notes about the customer..."
+                    rows={3}
+                    value={editForm.notes}
+                    onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <Label htmlFor="edit-active">Status</Label>
+                  <Select
+                    value={editForm.is_active ? 'active' : 'inactive'}
+                    onValueChange={(value) => setEditForm({ ...editForm, is_active: value === 'active' })}
+                  >
+                    <SelectTrigger className="w-[150px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
           </div>
