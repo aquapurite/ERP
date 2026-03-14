@@ -3447,24 +3447,97 @@ async def list_grns(
     )
 
 
-@router.get("/grn/{grn_id}", response_model=GoodsReceiptResponse)
+@router.get("/grn/{grn_id}")
 async def get_grn(
     grn_id: UUID,
     db: DB,
     current_user: User = Depends(get_current_user),
 ):
-    """Get GRN by ID."""
+    """Get full GRN details including items with quantities and pricing."""
     result = await db.execute(
-        select(GoodsReceiptNote)
-        .options(selectinload(GoodsReceiptNote.items))
-        .where(GoodsReceiptNote.id == grn_id)
+        select(GoodsReceiptNote).options(
+            selectinload(GoodsReceiptNote.vendor),
+            selectinload(GoodsReceiptNote.warehouse),
+            selectinload(GoodsReceiptNote.purchase_order),
+            selectinload(GoodsReceiptNote.received_by_user),
+            selectinload(GoodsReceiptNote.qc_done_by_user),
+            selectinload(GoodsReceiptNote.items).selectinload(GRNItem.product),
+        ).where(GoodsReceiptNote.id == grn_id)
     )
     grn = result.scalar_one_or_none()
 
     if not grn:
         raise HTTPException(status_code=404, detail="GRN not found")
 
-    return grn
+    return {
+        "id": str(grn.id),
+        "grn_number": grn.grn_number,
+        "grn_date": grn.grn_date.isoformat() if grn.grn_date else None,
+        "grn_type": getattr(grn, 'grn_type', 'INVENTORY'),
+        "status": grn.status,
+        "purchase_order": {
+            "id": str(grn.purchase_order_id),
+            "po_number": grn.purchase_order.po_number if grn.purchase_order else None,
+        },
+        "vendor": {
+            "id": str(grn.vendor_id),
+            "name": grn.vendor.name if grn.vendor else None,
+        },
+        "warehouse": {
+            "id": str(grn.warehouse_id),
+            "name": grn.warehouse.name if grn.warehouse else None,
+        },
+        "vendor_challan_number": grn.vendor_challan_number,
+        "vendor_challan_date": grn.vendor_challan_date.isoformat() if grn.vendor_challan_date else None,
+        "transporter_name": grn.transporter_name,
+        "vehicle_number": grn.vehicle_number,
+        "lr_number": grn.lr_number,
+        "e_way_bill_number": grn.e_way_bill_number,
+        "total_items": grn.total_items,
+        "total_quantity_received": grn.total_quantity_received,
+        "total_quantity_accepted": grn.total_quantity_accepted,
+        "total_quantity_rejected": grn.total_quantity_rejected,
+        "total_value": float(grn.total_value) if grn.total_value else 0,
+        "qc_required": grn.qc_required,
+        "qc_status": grn.qc_status,
+        "qc_done_by": grn.qc_done_by_user.email if grn.qc_done_by_user else None,
+        "qc_done_at": grn.qc_done_at.isoformat() if grn.qc_done_at else None,
+        "qc_remarks": grn.qc_remarks,
+        "receiving_remarks": grn.receiving_remarks,
+        "received_by": grn.received_by_user.email if grn.received_by_user else None,
+        "put_away_complete": grn.put_away_complete,
+        "put_away_at": grn.put_away_at.isoformat() if grn.put_away_at else None,
+        "photos_urls": grn.photos_urls,
+        "items": [
+            {
+                "id": str(item.id),
+                "po_item_id": str(item.po_item_id),
+                "product_id": str(item.product_id),
+                "product_name": item.product_name,
+                "sku": item.sku,
+                "part_code": item.part_code,
+                "sub_item_code": item.sub_item_code,
+                "hsn_code": item.hsn_code,
+                "quantity_expected": item.quantity_expected,
+                "quantity_received": item.quantity_received,
+                "quantity_accepted": item.quantity_accepted,
+                "quantity_rejected": item.quantity_rejected,
+                "unit_price": float(item.unit_price) if item.unit_price else 0,
+                "accepted_value": float(item.accepted_value) if item.accepted_value else 0,
+                "batch_number": item.batch_number,
+                "manufacturing_date": item.manufacturing_date.isoformat() if item.manufacturing_date else None,
+                "expiry_date": item.expiry_date.isoformat() if item.expiry_date else None,
+                "serial_numbers": item.serial_numbers,
+                "bin_location": item.bin_location,
+                "qc_result": item.qc_result,
+                "rejection_reason": item.rejection_reason,
+                "remarks": item.remarks,
+            }
+            for item in grn.items
+        ],
+        "created_at": grn.created_at.isoformat() if grn.created_at else None,
+        "updated_at": grn.updated_at.isoformat() if grn.updated_at else None,
+    }
 
 
 @router.delete("/grn/{grn_id}", status_code=status.HTTP_204_NO_CONTENT)
