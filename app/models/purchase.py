@@ -1408,6 +1408,12 @@ class GRNItem(Base):
 
     remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # Invoicing tracking
+    quantity_invoiced: Mapped[int] = mapped_column(
+        Integer, default=0,
+        comment="Total qty invoiced across all vendor invoices"
+    )
+
     # Relationships
     grn: Mapped["GoodsReceiptNote"] = relationship("GoodsReceiptNote", back_populates="items")
     po_item: Mapped["PurchaseOrderItem"] = relationship("PurchaseOrderItem")
@@ -1647,6 +1653,12 @@ class VendorInvoice(Base):
         cascade="all, delete-orphan",
         order_by="VendorInvoiceExpenseLine.line_number"
     )
+    invoice_items: Mapped[List["VendorInvoiceItem"]] = relationship(
+        "VendorInvoiceItem",
+        back_populates="vendor_invoice",
+        cascade="all, delete-orphan",
+        order_by="VendorInvoiceItem.line_number"
+    )
 
     @property
     def is_overdue(self) -> bool:
@@ -1729,6 +1741,82 @@ class VendorInvoiceExpenseLine(Base):
 
     def __repr__(self) -> str:
         return f"<VendorInvoiceExpenseLine(id={self.id}, amount={self.amount})>"
+
+
+class VendorInvoiceItem(Base):
+    """Line items for PO-based vendor invoices. Links invoice to GRN accepted items."""
+    __tablename__ = "vendor_invoice_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    vendor_invoice_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("vendor_invoices.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    grn_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("grn_items.id", ondelete="RESTRICT"),
+        nullable=False
+    )
+    po_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("purchase_order_items.id", ondelete="RESTRICT"),
+        nullable=False
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="RESTRICT"), nullable=False
+    )
+    variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("product_variants.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # Product snapshot
+    product_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    sku: Mapped[str] = mapped_column(String(50), nullable=False)
+    hsn_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    uom: Mapped[str] = mapped_column(String(20), default="PCS")
+    line_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    # Quantities
+    po_quantity: Mapped[int] = mapped_column(Integer, nullable=False, comment="Qty ordered in PO")
+    grn_accepted_quantity: Mapped[int] = mapped_column(Integer, nullable=False, comment="Qty accepted in GRN")
+    invoice_quantity: Mapped[int] = mapped_column(Integer, nullable=False, comment="Qty being invoiced")
+
+    # Pricing
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    discount_percentage: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"))
+    discount_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+    taxable_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+
+    # GST
+    gst_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("18"))
+    cgst_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+    sgst_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+    igst_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+    cess_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+
+    # Line total
+    total_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+
+    # 3-way match at line level
+    quantity_match: Mapped[bool] = mapped_column(Boolean, default=False)
+    rate_match: Mapped[bool] = mapped_column(Boolean, default=False)
+    amount_match: Mapped[bool] = mapped_column(Boolean, default=False)
+    match_status: Mapped[str] = mapped_column(
+        String(20), default="PENDING",
+        comment="PENDING, MATCHED, PARTIAL, MISMATCH"
+    )
+    variance_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    # Relationships
+    vendor_invoice: Mapped["VendorInvoice"] = relationship("VendorInvoice", back_populates="invoice_items")
+    grn_item: Mapped["GRNItem"] = relationship("GRNItem")
+    po_item: Mapped["PurchaseOrderItem"] = relationship("PurchaseOrderItem")
+    product: Mapped["Product"] = relationship("Product")
+
+    def __repr__(self) -> str:
+        return f"<VendorInvoiceItem(sku='{self.sku}', qty={self.invoice_quantity})>"
 
 
 # ==================== Vendor Proforma Invoice ====================

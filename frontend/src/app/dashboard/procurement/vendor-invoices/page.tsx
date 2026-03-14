@@ -219,6 +219,22 @@ const vendorInvoicesApi = {
       return [];
     }
   },
+  getGRNsForPO: async (poId: string) => {
+    try {
+      const { data } = await apiClient.get(`/vendor-invoices/grns-for-po/${poId}`);
+      return data || [];
+    } catch {
+      return [];
+    }
+  },
+  getGRNItemsForInvoice: async (grnId: string) => {
+    try {
+      const { data } = await apiClient.get(`/vendor-invoices/grn-items-for-invoice/${grnId}`);
+      return data;
+    } catch {
+      return null;
+    }
+  },
   create: async (invoiceData: {
     vendor_id: string;
     invoice_number: string;
@@ -226,6 +242,8 @@ const vendorInvoicesApi = {
     invoice_type?: string;
     // PO Invoice fields
     purchase_order_id?: string;
+    grn_id?: string;
+    line_items?: any[];
     // Expense Invoice fields - multiple GL lines
     expense_lines?: { gl_account_id: string; expense_category?: string; description?: string; amount: number }[];
     gl_account_id?: string;
@@ -377,6 +395,8 @@ export default function VendorInvoicesPage() {
   const [invoiceType, setInvoiceType] = useState<'PO_INVOICE' | 'EXPENSE_INVOICE'>('PO_INVOICE');
   const [selectedVendorId, setSelectedVendorId] = useState<string>('');
   const [selectedPOId, setSelectedPOId] = useState<string>('');
+  const [selectedGRNId, setSelectedGRNId] = useState<string>('');
+  const [invoiceLineItems, setInvoiceLineItems] = useState<any[]>([]);
   const [ourReference, setOurReference] = useState<string>('');
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
   const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -454,6 +474,21 @@ export default function VendorInvoicesPage() {
   const availablePOs = selectedVendorId
     ? posItems.filter(po => po.vendor?.id === selectedVendorId)
     : posItems;
+
+  // Fetch GRNs for selected PO
+  const { data: grnsData, isLoading: grnsLoading } = useQuery({
+    queryKey: ['grns-for-po', selectedPOId],
+    queryFn: () => vendorInvoicesApi.getGRNsForPO(selectedPOId),
+    enabled: !!selectedPOId && invoiceType === 'PO_INVOICE',
+  });
+  const availableGRNs = Array.isArray(grnsData) ? grnsData : [];
+
+  // Fetch GRN items for invoice when GRN selected
+  const { data: grnItemsData, isLoading: grnItemsLoading } = useQuery({
+    queryKey: ['grn-items-for-invoice', selectedGRNId],
+    queryFn: () => vendorInvoicesApi.getGRNItemsForInvoice(selectedGRNId),
+    enabled: !!selectedGRNId,
+  });
 
   // Reset form when dialog closes
   // Fetch next reference and reset form when dialog opens/closes
@@ -557,25 +592,35 @@ export default function VendorInvoicesPage() {
     setNetPayable(netPay);
   };
 
-  // Auto-populate amounts from selected PO
+  // Auto-populate amounts from GRN items (SAP MIRO style)
   useEffect(() => {
-    if (selectedPOId) {
-      const selectedPO = availablePOs.find(po => po.id === selectedPOId);
-      if (selectedPO) {
-        // Use PO grand_total as reference for invoice amounts
-        const poTotal = selectedPO.grand_total || 0;
-        // Estimate GST at 18% (typical rate)
-        const estimatedTaxable = poTotal / 1.18;
-        const estimatedGst = poTotal - estimatedTaxable;
-        const halfGst = estimatedGst / 2;
-
-        setSubtotal(Math.round(estimatedTaxable * 100) / 100);
-        setCgstAmount(Math.round(halfGst * 100) / 100);
-        setSgstAmount(Math.round(halfGst * 100) / 100);
-        setGrandTotal(poTotal);
+    if (grnItemsData?.items && grnItemsData.items.length > 0) {
+      const items = grnItemsData.items.map((item: any) => ({
+        ...item,
+        invoice_quantity: item.invoiceable_quantity,
+      }));
+      setInvoiceLineItems(items);
+      // Set totals from GRN summary
+      const summary = grnItemsData.summary;
+      setSubtotal(summary.total_taxable);
+      setCgstAmount(summary.total_cgst);
+      setSgstAmount(summary.total_sgst);
+      setIgstAmount(summary.total_igst);
+      setGrandTotal(summary.grand_total);
+      // Detect GST type
+      if (summary.total_igst > 0) {
+        setGstType('INTER_STATE');
+      } else {
+        setGstType('INTRA_STATE');
       }
     }
-  }, [selectedPOId, availablePOs]);
+  }, [grnItemsData]);
+
+  // Reset GRN when PO changes
+  useEffect(() => {
+    setSelectedGRNId('');
+    setInvoiceLineItems([]);
+  }, [selectedPOId]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['vendor-invoices', page, pageSize, statusFilter, paymentFilter],
@@ -729,6 +774,33 @@ export default function VendorInvoicesPage() {
       invoice_type: invoiceType,
       // PO Invoice fields
       purchase_order_id: invoiceType === 'PO_INVOICE' ? selectedPOId || undefined : undefined,
+      grn_id: invoiceType === 'PO_INVOICE' ? selectedGRNId || undefined : undefined,
+      // PO Invoice line items from GRN
+      line_items: invoiceType === 'PO_INVOICE' && invoiceLineItems.length > 0
+        ? invoiceLineItems.filter((item: any) => item.invoice_quantity > 0).map((item: any) => ({
+            grn_item_id: item.grn_item_id,
+            po_item_id: item.po_item_id,
+            product_id: item.product_id,
+            variant_id: item.variant_id || undefined,
+            product_name: item.product_name,
+            sku: item.sku,
+            hsn_code: item.hsn_code || undefined,
+            uom: item.uom || 'PCS',
+            po_quantity: item.po_quantity,
+            grn_accepted_quantity: item.grn_accepted_quantity,
+            invoice_quantity: item.invoice_quantity,
+            unit_price: item.unit_price,
+            discount_percentage: item.discount_percentage || 0,
+            discount_amount: item.discount_amount || 0,
+            taxable_amount: item.taxable_amount,
+            gst_rate: item.gst_rate || 18,
+            cgst_amount: item.cgst_amount || 0,
+            sgst_amount: item.sgst_amount || 0,
+            igst_amount: item.igst_amount || 0,
+            cess_amount: item.cess_amount || 0,
+            total_amount: item.total_amount,
+          }))
+        : undefined,
       // Expense Invoice fields - multiple GL lines
       expense_lines: invoiceType === 'EXPENSE_INVOICE'
         ? expenseLines.filter(l => l.gl_account_id).map(l => ({
@@ -1172,10 +1244,138 @@ export default function VendorInvoicesPage() {
                           {availablePOs.length} approved PO(s) available for this vendor
                         </p>
                       )}
-                      {selectedPOId && (
-                        <p className="text-xs text-green-600">
-                          ✓ Amounts auto-populated from PO. Adjust if invoice differs.
+                      {selectedPOId && !selectedGRNId && (
+                        <p className="text-xs text-amber-600">
+                          Select a GRN below to auto-populate line items.
                         </p>
+                      )}
+
+                      {/* GRN Selection */}
+                      {selectedPOId && (
+                        <div className="space-y-2 mt-3">
+                          <label className="text-sm font-medium">Select GRN (Goods Receipt) *</label>
+                          <Select
+                            value={selectedGRNId}
+                            onValueChange={setSelectedGRNId}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={
+                                grnsLoading ? "Loading GRNs..." : "Select GRN to invoice against"
+                              } />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {grnsLoading ? (
+                                <div className="flex items-center justify-center py-4">
+                                  <Loader2 className="h-4 w-4 animate-spin mr-2" />Loading...
+                                </div>
+                              ) : availableGRNs.length === 0 ? (
+                                <div className="py-4 text-center text-sm text-muted-foreground">
+                                  No accepted GRNs for this PO
+                                </div>
+                              ) : (
+                                availableGRNs.map((grn: any) => (
+                                  <SelectItem key={grn.id} value={grn.id}>
+                                    <span>{grn.grn_number} • {grn.grn_date} • Accepted: {grn.total_quantity_accepted} • {formatCurrency(grn.total_value)}</span>
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+
+                      {/* Line Items Table from GRN */}
+                      {invoiceLineItems.length > 0 && (
+                        <div className="mt-4 space-y-2">
+                          <label className="text-sm font-medium">Invoice Line Items (from GRN)</label>
+                          <div className="border rounded-lg overflow-x-auto">
+                            <table className="w-full text-xs">
+                              <thead className="bg-muted">
+                                <tr>
+                                  <th className="px-2 py-1.5 text-left">Product</th>
+                                  <th className="px-2 py-1.5 text-center">PO Qty</th>
+                                  <th className="px-2 py-1.5 text-center">GRN Acc.</th>
+                                  <th className="px-2 py-1.5 text-center">Invoiced</th>
+                                  <th className="px-2 py-1.5 text-center">Inv Qty</th>
+                                  <th className="px-2 py-1.5 text-right">Rate</th>
+                                  <th className="px-2 py-1.5 text-right">Taxable</th>
+                                  <th className="px-2 py-1.5 text-right">GST</th>
+                                  <th className="px-2 py-1.5 text-right">Total</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {invoiceLineItems.map((item: any, index: number) => (
+                                  <tr key={index} className="border-t">
+                                    <td className="px-2 py-1.5">
+                                      <div className="font-medium">{item.product_name}</div>
+                                      <div className="text-muted-foreground">{item.sku}</div>
+                                      {item.sub_item_code && <div className="text-blue-600">Sub: {item.sub_item_code}</div>}
+                                    </td>
+                                    <td className="px-2 py-1.5 text-center">{item.po_quantity}</td>
+                                    <td className="px-2 py-1.5 text-center text-green-600 font-medium">{item.grn_accepted_quantity}</td>
+                                    <td className="px-2 py-1.5 text-center text-muted-foreground">{item.already_invoiced}</td>
+                                    <td className="px-2 py-1.5 text-center">
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        max={item.invoiceable_quantity}
+                                        value={item.invoice_quantity}
+                                        onChange={(e) => {
+                                          const qty = Math.min(parseInt(e.target.value) || 0, item.invoiceable_quantity);
+                                          const updated = [...invoiceLineItems];
+                                          const unitPrice = item.unit_price;
+                                          const taxable = Math.round(qty * unitPrice * 100) / 100;
+                                          const gstR = item.gst_rate || 18;
+                                          const cgst = item.igst_rate > 0 ? 0 : Math.round(taxable * (gstR / 2) / 100 * 100) / 100;
+                                          const sgst = item.igst_rate > 0 ? 0 : Math.round(taxable * (gstR / 2) / 100 * 100) / 100;
+                                          const igst = item.igst_rate > 0 ? Math.round(taxable * gstR / 100 * 100) / 100 : 0;
+                                          updated[index] = {
+                                            ...item,
+                                            invoice_quantity: qty,
+                                            taxable_amount: taxable,
+                                            cgst_amount: cgst,
+                                            sgst_amount: sgst,
+                                            igst_amount: igst,
+                                            total_amount: taxable + cgst + sgst + igst,
+                                          };
+                                          setInvoiceLineItems(updated);
+                                          // Recalculate totals
+                                          const totTaxable = updated.reduce((s, i) => s + i.taxable_amount, 0);
+                                          const totCgst = updated.reduce((s, i) => s + i.cgst_amount, 0);
+                                          const totSgst = updated.reduce((s, i) => s + i.sgst_amount, 0);
+                                          const totIgst = updated.reduce((s, i) => s + i.igst_amount, 0);
+                                          setSubtotal(Math.round(totTaxable * 100) / 100);
+                                          setCgstAmount(Math.round(totCgst * 100) / 100);
+                                          setSgstAmount(Math.round(totSgst * 100) / 100);
+                                          setIgstAmount(Math.round(totIgst * 100) / 100);
+                                          setGrandTotal(Math.round((totTaxable + totCgst + totSgst + totIgst) * 100) / 100);
+                                        }}
+                                        className="w-16 text-center border rounded px-1 py-0.5"
+                                      />
+                                    </td>
+                                    <td className="px-2 py-1.5 text-right">{formatCurrency(item.unit_price)}</td>
+                                    <td className="px-2 py-1.5 text-right">{formatCurrency(item.taxable_amount)}</td>
+                                    <td className="px-2 py-1.5 text-right text-muted-foreground">
+                                      {formatCurrency(item.cgst_amount + item.sgst_amount + item.igst_amount)}
+                                    </td>
+                                    <td className="px-2 py-1.5 text-right font-medium">{formatCurrency(item.total_amount)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                              <tfoot className="bg-muted/50 font-medium">
+                                <tr className="border-t">
+                                  <td colSpan={6} className="px-2 py-1.5 text-right">Totals:</td>
+                                  <td className="px-2 py-1.5 text-right">{formatCurrency(subtotal)}</td>
+                                  <td className="px-2 py-1.5 text-right">{formatCurrency(cgstAmount + sgstAmount + igstAmount)}</td>
+                                  <td className="px-2 py-1.5 text-right">{formatCurrency(grandTotal)}</td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                          <p className="text-xs text-green-600">
+                            ✓ Line items auto-populated from GRN. Adjust invoice quantities if needed.
+                          </p>
+                        </div>
                       )}
                     </div>
                   )}

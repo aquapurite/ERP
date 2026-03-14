@@ -13,8 +13,9 @@ from app.api.deps import DB, get_current_user
 from app.models.user import User
 from app.models.purchase import (
     VendorInvoice, VendorInvoiceStatus,
-    VendorInvoiceExpenseLine,
-    PurchaseOrder, GoodsReceiptNote
+    VendorInvoiceExpenseLine, VendorInvoiceItem,
+    PurchaseOrder, PurchaseOrderItem,
+    GoodsReceiptNote, GRNItem
 )
 from app.models.vendor import Vendor, VendorLedger
 from app.models.accounting import ChartOfAccount, CostCenter
@@ -37,6 +38,31 @@ class ExpenseLineItem(BaseModel):
     amount: Decimal
 
 
+class InvoiceLineItemCreate(BaseModel):
+    """Schema for a single PO invoice line item (from GRN)."""
+    grn_item_id: UUID
+    po_item_id: UUID
+    product_id: UUID
+    variant_id: Optional[UUID] = None
+    product_name: str
+    sku: str
+    hsn_code: Optional[str] = None
+    uom: str = "PCS"
+    po_quantity: int
+    grn_accepted_quantity: int
+    invoice_quantity: int
+    unit_price: Decimal
+    discount_percentage: Decimal = Decimal("0")
+    discount_amount: Decimal = Decimal("0")
+    taxable_amount: Decimal
+    gst_rate: Decimal = Decimal("18")
+    cgst_amount: Decimal = Decimal("0")
+    sgst_amount: Decimal = Decimal("0")
+    igst_amount: Decimal = Decimal("0")
+    cess_amount: Decimal = Decimal("0")
+    total_amount: Decimal
+
+
 class VendorInvoiceCreate(BaseModel):
     vendor_id: UUID
     invoice_number: str
@@ -46,6 +72,8 @@ class VendorInvoiceCreate(BaseModel):
     # For PO Invoices
     purchase_order_id: Optional[UUID] = None
     grn_id: Optional[UUID] = None
+    # For PO Invoices - line items from GRN (SAP MIRO style)
+    line_items: Optional[List[InvoiceLineItemCreate]] = None
     # For Expense Invoices (non-PO) - multiple GL lines
     expense_lines: Optional[List[ExpenseLineItem]] = None
     # Legacy single GL fields (backward compatibility)
@@ -148,6 +176,135 @@ async def get_expense_categories(
         {"value": "OTHER", "label": "Other Expenses"},
     ]
     return categories
+
+
+@router.get("/grns-for-po/{po_id}")
+async def get_grns_for_po(
+    po_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get GRNs available for invoicing against a PO."""
+    result = await db.execute(
+        select(GoodsReceiptNote)
+        .where(
+            GoodsReceiptNote.purchase_order_id == po_id,
+            GoodsReceiptNote.status.in_([
+                "ACCEPTED", "QC_PASSED", "PUT_AWAY_PENDING",
+                "PUT_AWAY_COMPLETE", "PARTIALLY_ACCEPTED"
+            ])
+        )
+        .order_by(desc(GoodsReceiptNote.grn_date))
+    )
+    grns = result.scalars().all()
+
+    return [
+        {
+            "id": str(g.id),
+            "grn_number": g.grn_number,
+            "grn_date": g.grn_date.isoformat() if g.grn_date else None,
+            "status": g.status,
+            "total_quantity_accepted": g.total_quantity_accepted,
+            "total_value": float(g.total_value) if g.total_value else 0,
+        }
+        for g in grns
+    ]
+
+
+@router.get("/grn-items-for-invoice/{grn_id}")
+async def get_grn_items_for_invoice(
+    grn_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get GRN accepted items with PO rates for invoice creation (SAP MIRO style)."""
+    grn = await db.get(GoodsReceiptNote, grn_id)
+    if not grn:
+        raise HTTPException(status_code=404, detail="GRN not found")
+
+    # Load GRN items with PO items for GST rates
+    items_result = await db.execute(
+        select(GRNItem)
+        .options(selectinload(GRNItem.po_item))
+        .where(GRNItem.grn_id == grn_id, GRNItem.quantity_accepted > 0)
+    )
+    grn_items = items_result.scalars().all()
+
+    # Load PO for reference
+    po = await db.get(PurchaseOrder, grn.purchase_order_id) if grn.purchase_order_id else None
+
+    items = []
+    total_taxable = Decimal("0")
+    total_cgst = Decimal("0")
+    total_sgst = Decimal("0")
+    total_igst = Decimal("0")
+
+    for item in grn_items:
+        invoiceable_qty = item.quantity_accepted - (item.quantity_invoiced or 0)
+        if invoiceable_qty <= 0:
+            continue
+
+        po_item = item.po_item
+        unit_price = item.unit_price or (po_item.unit_price if po_item else Decimal("0"))
+        gst_rate = po_item.gst_rate if po_item else Decimal("18")
+        cgst_rate = po_item.cgst_rate if po_item else (gst_rate / 2)
+        sgst_rate = po_item.sgst_rate if po_item else (gst_rate / 2)
+        igst_rate = po_item.igst_rate if po_item else Decimal("0")
+
+        taxable = (Decimal(str(invoiceable_qty)) * unit_price).quantize(Decimal("0.01"))
+        cgst_amt = (taxable * cgst_rate / 100).quantize(Decimal("0.01"))
+        sgst_amt = (taxable * sgst_rate / 100).quantize(Decimal("0.01"))
+        igst_amt = (taxable * igst_rate / 100).quantize(Decimal("0.01"))
+        line_total = taxable + cgst_amt + sgst_amt + igst_amt
+
+        total_taxable += taxable
+        total_cgst += cgst_amt
+        total_sgst += sgst_amt
+        total_igst += igst_amt
+
+        items.append({
+            "grn_item_id": str(item.id),
+            "po_item_id": str(item.po_item_id),
+            "product_id": str(item.product_id),
+            "variant_id": str(item.variant_id) if item.variant_id else None,
+            "product_name": item.product_name,
+            "sku": item.sku,
+            "sub_item_code": item.sub_item_code,
+            "hsn_code": item.hsn_code or (po_item.hsn_code if po_item else None),
+            "uom": item.uom or "PCS",
+            "po_quantity": po_item.quantity_ordered if po_item else 0,
+            "grn_accepted_quantity": item.quantity_accepted,
+            "already_invoiced": item.quantity_invoiced or 0,
+            "invoiceable_quantity": invoiceable_qty,
+            "unit_price": float(unit_price),
+            "gst_rate": float(gst_rate),
+            "cgst_rate": float(cgst_rate),
+            "sgst_rate": float(sgst_rate),
+            "igst_rate": float(igst_rate),
+            "taxable_amount": float(taxable),
+            "cgst_amount": float(cgst_amt),
+            "sgst_amount": float(sgst_amt),
+            "igst_amount": float(igst_amt),
+            "total_amount": float(line_total),
+        })
+
+    grand_total = total_taxable + total_cgst + total_sgst + total_igst
+
+    return {
+        "grn_id": str(grn.id),
+        "grn_number": grn.grn_number,
+        "grn_date": grn.grn_date.isoformat() if grn.grn_date else None,
+        "po_id": str(grn.purchase_order_id) if grn.purchase_order_id else None,
+        "po_number": po.po_number if po else None,
+        "items": items,
+        "summary": {
+            "total_taxable": float(total_taxable),
+            "total_cgst": float(total_cgst),
+            "total_sgst": float(total_sgst),
+            "total_igst": float(total_igst),
+            "grand_total": float(grand_total),
+        }
+    }
 
 
 @router.get("")
@@ -584,6 +741,53 @@ async def create_vendor_invoice(
 
     await db.flush()
 
+    # Create PO invoice line items from GRN (SAP MIRO style)
+    if data.invoice_type == "PO_INVOICE" and data.line_items:
+        for idx, item_data in enumerate(data.line_items, start=1):
+            # Validate GRN item and check invoiceable quantity
+            grn_item = await db.get(GRNItem, item_data.grn_item_id)
+            if not grn_item:
+                raise HTTPException(status_code=400, detail=f"GRN item not found for line {idx}")
+
+            available_qty = grn_item.quantity_accepted - (grn_item.quantity_invoiced or 0)
+            if item_data.invoice_quantity > available_qty:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Line {idx} ({item_data.product_name}): Invoice qty ({item_data.invoice_quantity}) exceeds available qty ({available_qty})"
+                )
+
+            invoice_item = VendorInvoiceItem(
+                vendor_invoice_id=invoice.id,
+                grn_item_id=item_data.grn_item_id,
+                po_item_id=item_data.po_item_id,
+                product_id=item_data.product_id,
+                variant_id=item_data.variant_id,
+                product_name=item_data.product_name,
+                sku=item_data.sku,
+                hsn_code=item_data.hsn_code,
+                uom=item_data.uom,
+                line_number=idx,
+                po_quantity=item_data.po_quantity,
+                grn_accepted_quantity=item_data.grn_accepted_quantity,
+                invoice_quantity=item_data.invoice_quantity,
+                unit_price=item_data.unit_price,
+                discount_percentage=item_data.discount_percentage,
+                discount_amount=item_data.discount_amount,
+                taxable_amount=item_data.taxable_amount,
+                gst_rate=item_data.gst_rate,
+                cgst_amount=item_data.cgst_amount,
+                sgst_amount=item_data.sgst_amount,
+                igst_amount=item_data.igst_amount,
+                cess_amount=item_data.cess_amount,
+                total_amount=item_data.total_amount,
+            )
+            db.add(invoice_item)
+
+            # Update GRN item's quantity_invoiced
+            grn_item.quantity_invoiced = (grn_item.quantity_invoiced or 0) + item_data.invoice_quantity
+
+    await db.flush()
+
     # Audit log
     await AuditService(db).log(
         action="CREATE",
@@ -596,6 +800,7 @@ async def create_vendor_invoice(
             "vendor_id": str(invoice.vendor_id) if invoice.vendor_id else None,
             "grand_total": str(invoice.grand_total),
             "invoice_type": invoice.invoice_type,
+            "line_items_count": len(data.line_items) if data.line_items else 0,
         },
         description=f"Created vendor invoice {invoice.invoice_number} ({invoice.our_reference}) for ₹{invoice.grand_total}",
     )
@@ -643,24 +848,93 @@ async def perform_three_way_match(
             detail="GRN is not linked to the specified PO"
         )
 
+    # Load invoice line items if they exist (new SAP MIRO style)
+    inv_items_result = await db.execute(
+        select(VendorInvoiceItem).where(VendorInvoiceItem.vendor_invoice_id == invoice.id)
+    )
+    inv_items = inv_items_result.scalars().all()
+
     # Calculate matching
     po_amount = po.grand_total
     grn_value = grn.total_value
     invoice_amount = invoice.grand_total
 
-    # Check PO match
-    po_variance = abs(invoice_amount - po_amount)
-    po_variance_pct = (po_variance / po_amount * 100) if po_amount > 0 else Decimal("0")
-    po_matched = po_variance_pct <= data.tolerance_percentage
+    item_match_results = []
 
-    # Check GRN match
-    grn_variance = abs(invoice_amount - grn_value)
-    grn_variance_pct = (grn_variance / grn_value * 100) if grn_value > 0 else Decimal("0")
-    grn_matched = grn_variance_pct <= data.tolerance_percentage
+    if inv_items:
+        # ===== ITEM-LEVEL MATCHING (SAP style) =====
+        all_items_matched = True
+        total_item_variance = Decimal("0")
 
-    # Overall match
-    is_fully_matched = po_matched and grn_matched
-    total_variance = max(po_variance, grn_variance)
+        for inv_item in inv_items:
+            # Load PO item for rate comparison
+            po_item = await db.get(PurchaseOrderItem, inv_item.po_item_id)
+            grn_item = await db.get(GRNItem, inv_item.grn_item_id)
+
+            # Quantity match: invoice qty should equal GRN accepted qty
+            qty_match = inv_item.invoice_quantity <= (grn_item.quantity_accepted if grn_item else 0)
+
+            # Rate match: invoice rate vs PO rate (within tolerance)
+            po_rate = po_item.unit_price if po_item else Decimal("0")
+            rate_diff = abs(inv_item.unit_price - po_rate)
+            rate_variance_pct = (rate_diff / po_rate * 100) if po_rate > 0 else Decimal("0")
+            rate_match = rate_variance_pct <= data.tolerance_percentage
+
+            # Amount match
+            expected_amount = (Decimal(str(inv_item.invoice_quantity)) * po_rate).quantize(Decimal("0.01"))
+            amt_diff = abs(inv_item.taxable_amount - expected_amount)
+            amt_variance_pct = (amt_diff / expected_amount * 100) if expected_amount > 0 else Decimal("0")
+            amt_match = amt_variance_pct <= data.tolerance_percentage
+
+            item_matched = qty_match and rate_match and amt_match
+            if not item_matched:
+                all_items_matched = False
+
+            variance = inv_item.taxable_amount - expected_amount
+            total_item_variance += abs(variance)
+
+            # Update item-level match status
+            inv_item.quantity_match = qty_match
+            inv_item.rate_match = rate_match
+            inv_item.amount_match = amt_match
+            inv_item.match_status = "MATCHED" if item_matched else "MISMATCH"
+            inv_item.variance_amount = variance
+
+            item_match_results.append({
+                "line_number": inv_item.line_number,
+                "product_name": inv_item.product_name,
+                "sku": inv_item.sku,
+                "po_quantity": po_item.quantity_ordered if po_item else 0,
+                "po_rate": float(po_rate),
+                "grn_quantity": grn_item.quantity_accepted if grn_item else 0,
+                "invoice_quantity": inv_item.invoice_quantity,
+                "invoice_rate": float(inv_item.unit_price),
+                "quantity_match": qty_match,
+                "rate_match": rate_match,
+                "amount_match": amt_match,
+                "match_status": inv_item.match_status,
+                "variance_amount": float(variance),
+            })
+
+        po_matched = all_items_matched
+        grn_matched = all_items_matched
+        is_fully_matched = all_items_matched
+        total_variance = total_item_variance
+        po_variance_pct = Decimal("0")
+        grn_variance_pct = Decimal("0")
+
+    else:
+        # ===== LEGACY TOTAL-LEVEL MATCHING (backward compatibility) =====
+        po_variance = abs(invoice_amount - po_amount)
+        po_variance_pct = (po_variance / po_amount * 100) if po_amount > 0 else Decimal("0")
+        po_matched = po_variance_pct <= data.tolerance_percentage
+
+        grn_variance = abs(invoice_amount - grn_value)
+        grn_variance_pct = (grn_variance / grn_value * 100) if grn_value > 0 else Decimal("0")
+        grn_matched = grn_variance_pct <= data.tolerance_percentage
+
+        is_fully_matched = po_matched and grn_matched
+        total_variance = max(po_variance, grn_variance)
 
     # Update invoice
     invoice.purchase_order_id = po.id
@@ -674,10 +948,10 @@ async def perform_three_way_match(
         invoice.status = "MATCHED"
     elif po_matched or grn_matched:
         invoice.status = "PARTIALLY_MATCHED"
-        invoice.variance_reason = f"PO variance: {po_variance_pct:.2f}%, GRN variance: {grn_variance_pct:.2f}%"
+        invoice.variance_reason = f"PO variance: {float(po_variance_pct):.2f}%, GRN variance: {float(grn_variance_pct):.2f}%"
     else:
         invoice.status = "MISMATCH"
-        invoice.variance_reason = f"PO variance: {po_variance_pct:.2f}%, GRN variance: {grn_variance_pct:.2f}%"
+        invoice.variance_reason = f"PO variance: {float(po_variance_pct):.2f}%, GRN variance: {float(grn_variance_pct):.2f}%"
 
     invoice.verified_by = current_user.id
     invoice.verified_at = datetime.now(timezone.utc)
@@ -688,18 +962,17 @@ async def perform_three_way_match(
         "invoice_id": str(invoice.id),
         "po_id": str(po.id),
         "grn_id": str(grn.id),
+        "match_type": "ITEM_LEVEL" if inv_items else "TOTAL_LEVEL",
         "matching_result": {
             "po_matched": po_matched,
             "po_amount": float(po_amount),
-            "po_variance": float(po_variance),
-            "po_variance_pct": float(po_variance_pct),
             "grn_matched": grn_matched,
             "grn_value": float(grn_value),
-            "grn_variance": float(grn_variance),
-            "grn_variance_pct": float(grn_variance_pct),
             "invoice_amount": float(invoice_amount),
             "is_fully_matched": is_fully_matched,
             "status": invoice.status,
+            "total_variance": float(total_variance),
+            "items": item_match_results if inv_items else [],
         },
     }
 
