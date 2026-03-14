@@ -173,6 +173,9 @@ interface ExpenseLine {
   expense_category: string;
   description: string;
   amount: number;
+  gst_rate: number;
+  gst_amount: number;
+  line_total: number;
 }
 
 const vendorInvoicesApi = {
@@ -376,7 +379,7 @@ export default function VendorInvoicesPage() {
   // Edit form state
   const [editInvoiceType, setEditInvoiceType] = useState<'PO_INVOICE' | 'EXPENSE_INVOICE'>('EXPENSE_INVOICE');
   const [editExpenseLines, setEditExpenseLines] = useState<ExpenseLine[]>([
-    { gl_account_id: '', expense_category: '', description: '', amount: 0 }
+    { gl_account_id: '', expense_category: '', description: '', amount: 0, gst_rate: 18, gst_amount: 0, line_total: 0 }
   ]);
   const [editSubtotal, setEditSubtotal] = useState<number>(0);
   const [editGstType, setEditGstType] = useState<'INTRA_STATE' | 'INTER_STATE'>('INTRA_STATE');
@@ -404,7 +407,7 @@ export default function VendorInvoicesPage() {
 
   // For Expense Invoices - multiple GL lines
   const [expenseLines, setExpenseLines] = useState<ExpenseLine[]>([
-    { gl_account_id: '', expense_category: '', description: '', amount: 0 }
+    { gl_account_id: '', expense_category: '', description: '', amount: 0, gst_rate: 18, gst_amount: 0, line_total: 0 }
   ]);
 
   // Amount fields
@@ -502,7 +505,7 @@ export default function VendorInvoicesPage() {
       setSelectedVendorId('');
       setSelectedPOId('');
       setOurReference('');
-      setExpenseLines([{ gl_account_id: '', expense_category: '', description: '', amount: 0 }]);
+      setExpenseLines([{ gl_account_id: '', expense_category: '', description: '', amount: 0, gst_rate: 18, gst_amount: 0, line_total: 0 }]);
       setInvoiceNumber('');
       setInvoiceDate(new Date().toISOString().split('T')[0]);
       setInvoiceFile(null);
@@ -955,16 +958,23 @@ export default function VendorInvoicesPage() {
                       expense_category: l.expense_category || '',
                       description: l.description || '',
                       amount: l.amount || 0,
+                      gst_rate: 18,
+                      gst_amount: Math.round(l.amount * 0.18 * 100) / 100,
+                      line_total: Math.round(l.amount * 1.18 * 100) / 100,
                     })));
                   } else if (invoice.gl_account_id) {
+                    const amt = invoice.subtotal || 0;
                     setEditExpenseLines([{
                       gl_account_id: invoice.gl_account_id || '',
                       expense_category: invoice.expense_category || '',
                       description: invoice.expense_description || '',
-                      amount: invoice.subtotal || 0,
+                      amount: amt,
+                      gst_rate: 18,
+                      gst_amount: Math.round(amt * 0.18 * 100) / 100,
+                      line_total: Math.round(amt * 1.18 * 100) / 100,
                     }]);
                   } else {
-                    setEditExpenseLines([{ gl_account_id: '', expense_category: '', description: '', amount: 0 }]);
+                    setEditExpenseLines([{ gl_account_id: '', expense_category: '', description: '', amount: 0, gst_rate: 18, gst_amount: 0, line_total: 0 }]);
                   }
                   const sub = invoice.subtotal || invoice.taxable_amount || 0;
                   setEditSubtotal(sub);
@@ -1380,7 +1390,7 @@ export default function VendorInvoicesPage() {
                     </div>
                   )}
 
-                  {/* Expense Invoice: Multiple GL Lines */}
+                  {/* Expense Invoice: Multiple GL Lines with per-line GST */}
                   {invoiceType === 'EXPENSE_INVOICE' && (
                     <div className="space-y-4 border rounded-lg p-4 bg-blue-50/50">
                       <div className="flex items-center justify-between">
@@ -1389,112 +1399,157 @@ export default function VendorInvoicesPage() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => setExpenseLines([...expenseLines, { gl_account_id: '', expense_category: '', description: '', amount: 0 }])}
+                          onClick={() => setExpenseLines([...expenseLines, { gl_account_id: '', expense_category: '', description: '', amount: 0, gst_rate: 18, gst_amount: 0, line_total: 0 }])}
                         >
                           <Plus className="h-3 w-3 mr-1" /> Add Line
                         </Button>
                       </div>
-                      {expenseLines.map((line, idx) => (
+                      {expenseLines.map((line, idx) => {
+                        const recalcLine = (field: string, value: any) => {
+                          const updated = [...expenseLines];
+                          const updatedLine = { ...updated[idx], [field]: value };
+                          // Recalculate GST and total
+                          const amt = field === 'amount' ? (parseFloat(value) || 0) : updatedLine.amount;
+                          const rate = field === 'gst_rate' ? (parseFloat(value) || 0) : updatedLine.gst_rate;
+                          updatedLine.amount = amt;
+                          updatedLine.gst_rate = rate;
+                          updatedLine.gst_amount = Math.round(amt * rate / 100 * 100) / 100;
+                          updatedLine.line_total = Math.round((amt + updatedLine.gst_amount) * 100) / 100;
+                          updated[idx] = updatedLine;
+                          setExpenseLines(updated);
+                          // Auto-update invoice totals from all lines
+                          const totTaxable = updated.reduce((s, l) => s + l.amount, 0);
+                          const totGst = updated.reduce((s, l) => s + l.gst_amount, 0);
+                          const totGrand = updated.reduce((s, l) => s + l.line_total, 0);
+                          setSubtotal(Math.round(totTaxable * 100) / 100);
+                          // Split GST based on gst type
+                          if (gstType === 'INTER_STATE') {
+                            setIgstAmount(Math.round(totGst * 100) / 100);
+                            setCgstAmount(0);
+                            setSgstAmount(0);
+                          } else {
+                            setCgstAmount(Math.round(totGst / 2 * 100) / 100);
+                            setSgstAmount(Math.round(totGst / 2 * 100) / 100);
+                            setIgstAmount(0);
+                          }
+                          setGrandTotal(Math.round(totGrand * 100) / 100);
+                        };
+
+                        return (
                         <div key={idx} className="space-y-3 border rounded-md p-3 bg-white relative">
-                          {expenseLines.length > 1 && (
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-xs font-medium text-muted-foreground">Line {idx + 1}</span>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-medium text-muted-foreground">Line {idx + 1}</span>
+                            {expenseLines.length > 1 && (
                               <Button
                                 type="button"
                                 variant="ghost"
                                 size="sm"
                                 className="h-6 w-6 p-0 text-destructive hover:text-destructive"
-                                onClick={() => setExpenseLines(expenseLines.filter((_, i) => i !== idx))}
+                                onClick={() => {
+                                  const updated = expenseLines.filter((_, i) => i !== idx);
+                                  setExpenseLines(updated);
+                                  const totTaxable = updated.reduce((s, l) => s + l.amount, 0);
+                                  const totGst = updated.reduce((s, l) => s + l.gst_amount, 0);
+                                  const totGrand = updated.reduce((s, l) => s + l.line_total, 0);
+                                  setSubtotal(Math.round(totTaxable * 100) / 100);
+                                  if (gstType === 'INTER_STATE') { setIgstAmount(Math.round(totGst * 100) / 100); setCgstAmount(0); setSgstAmount(0); }
+                                  else { setCgstAmount(Math.round(totGst / 2 * 100) / 100); setSgstAmount(Math.round(totGst / 2 * 100) / 100); setIgstAmount(0); }
+                                  setGrandTotal(Math.round(totGrand * 100) / 100);
+                                }}
                               >
                                 <XCircle className="h-4 w-4" />
                               </Button>
-                            </div>
-                          )}
-                          <div className="space-y-2">
-                            <label className="text-sm font-medium">GL Account *</label>
-                            <Select
-                              value={line.gl_account_id}
-                              onValueChange={(v) => {
-                                const updated = [...expenseLines];
-                                updated[idx] = { ...updated[idx], gl_account_id: v };
-                                setExpenseLines(updated);
-                              }}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select GL Account" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {glAccounts.map((acc) => (
-                                  <SelectItem key={acc.id} value={acc.id}>
-                                    <div className="flex flex-col">
-                                      <span>{acc.account_code} - {acc.account_name}</span>
-                                      <span className="text-xs text-muted-foreground">{acc.account_type}</span>
-                                    </div>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            )}
                           </div>
                           <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-2">
-                              <label className="text-sm font-medium">Category *</label>
-                              <Select
-                                value={line.expense_category}
-                                onValueChange={(v) => {
-                                  const updated = [...expenseLines];
-                                  updated[idx] = { ...updated[idx], expense_category: v };
-                                  setExpenseLines(updated);
-                                }}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Category" />
+                              <label className="text-xs font-medium">GL Account *</label>
+                              <Select value={line.gl_account_id} onValueChange={(v) => recalcLine('gl_account_id', v)}>
+                                <SelectTrigger className="h-9">
+                                  <SelectValue placeholder="Select GL Account" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {expenseCategories.map((cat) => (
-                                    <SelectItem key={cat.value} value={cat.value}>
-                                      {cat.label}
+                                  {glAccounts.map((acc) => (
+                                    <SelectItem key={acc.id} value={acc.id}>
+                                      {acc.account_code} - {acc.account_name}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
                             </div>
                             <div className="space-y-2">
-                              <label className="text-sm font-medium">Amount *</label>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                placeholder="0.00"
-                                value={line.amount || ''}
-                                onChange={(e) => {
-                                  const updated = [...expenseLines];
-                                  updated[idx] = { ...updated[idx], amount: parseFloat(e.target.value) || 0 };
-                                  setExpenseLines(updated);
-                                }}
-                              />
+                              <label className="text-xs font-medium">Category *</label>
+                              <Select value={line.expense_category} onValueChange={(v) => recalcLine('expense_category', v)}>
+                                <SelectTrigger className="h-9">
+                                  <SelectValue placeholder="Category" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {expenseCategories.map((cat) => (
+                                    <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                             </div>
                           </div>
                           <div className="space-y-2">
-                            <label className="text-sm font-medium">Description</label>
+                            <label className="text-xs font-medium">Description</label>
                             <Input
                               placeholder="Brief description..."
+                              className="h-9"
                               value={line.description}
-                              onChange={(e) => {
-                                const updated = [...expenseLines];
-                                updated[idx] = { ...updated[idx], description: e.target.value };
-                                setExpenseLines(updated);
-                              }}
+                              onChange={(e) => recalcLine('description', e.target.value)}
                             />
                           </div>
+                          <div className="grid grid-cols-4 gap-3">
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium">Taxable Amt *</label>
+                              <Input
+                                type="number" step="0.01" min="0" placeholder="0.00" className="h-9"
+                                value={line.amount || ''}
+                                onChange={(e) => recalcLine('amount', e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium">GST %</label>
+                              <Select value={String(line.gst_rate)} onValueChange={(v) => recalcLine('gst_rate', v)}>
+                                <SelectTrigger className="h-9">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="0">0%</SelectItem>
+                                  <SelectItem value="5">5%</SelectItem>
+                                  <SelectItem value="12">12%</SelectItem>
+                                  <SelectItem value="18">18%</SelectItem>
+                                  <SelectItem value="28">28%</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium">GST Amt</label>
+                              <Input type="number" className="h-9 bg-muted" value={line.gst_amount.toFixed(2)} readOnly />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium">Line Total</label>
+                              <Input type="number" className="h-9 bg-muted font-medium" value={line.line_total.toFixed(2)} readOnly />
+                            </div>
+                          </div>
                         </div>
-                      ))}
+                        );
+                      })}
                       {expenseLines.length > 0 && (
-                        <div className="flex justify-between text-sm pt-2 border-t">
-                          <span className="font-medium text-blue-700">Lines Total:</span>
-                          <span className={`font-medium ${Math.abs(expenseLines.reduce((s, l) => s + l.amount, 0) - subtotal) > 0.01 ? 'text-destructive' : 'text-green-600'}`}>
-                            {formatCurrency(expenseLines.reduce((s, l) => s + l.amount, 0))}
-                            {subtotal > 0 && ` / ${formatCurrency(subtotal)}`}
-                          </span>
+                        <div className="space-y-1 pt-2 border-t text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Total Taxable:</span>
+                            <span className="font-medium">{formatCurrency(expenseLines.reduce((s, l) => s + l.amount, 0))}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Total GST:</span>
+                            <span className="font-medium">{formatCurrency(expenseLines.reduce((s, l) => s + l.gst_amount, 0))}</span>
+                          </div>
+                          <div className="flex justify-between font-bold text-blue-700">
+                            <span>Invoice Grand Total:</span>
+                            <span>{formatCurrency(expenseLines.reduce((s, l) => s + l.line_total, 0))}</span>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1920,7 +1975,7 @@ export default function VendorInvoicesPage() {
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => setEditExpenseLines([...editExpenseLines, { gl_account_id: '', expense_category: '', description: '', amount: 0 }])}
+                      onClick={() => setEditExpenseLines([...editExpenseLines, { gl_account_id: '', expense_category: '', description: '', amount: 0, gst_rate: 18, gst_amount: 0, line_total: 0 }])}
                     >
                       <Plus className="h-3 w-3 mr-1" /> Add Line
                     </Button>
