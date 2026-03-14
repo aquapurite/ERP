@@ -295,6 +295,7 @@ class ProductResponse(BaseResponseSchema):
     brand: Optional[BrandBrief] = None
 
     mrp: Decimal
+    cost_price: Optional[Decimal] = None
     selling_price: Optional[Decimal] = None
     dealer_price: Optional[Decimal] = None
     discount_percentage: float = 0.0

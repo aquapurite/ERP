@@ -915,12 +915,27 @@ export default function ProductDetailPage() {
                           </SelectContent>
                         </Select>
                       </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="cost_price">Initial Cost Price (COGS)</Label>
+                        <Input
+                          id="cost_price"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="Enter initial cost estimate"
+                          {...form.register('cost_price')}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Optional initial estimate. Replaced by Weighted Average Cost after first GRN.
+                        </p>
+                      </div>
                     </div>
 
                     <div className="bg-blue-50 dark:bg-blue-950 p-4 rounded-lg">
                       <p className="text-sm text-blue-700 dark:text-blue-300">
-                        <strong>Note:</strong> Cost price is auto-calculated from Purchase Orders (see Costing tab).
-                        Channel-specific selling prices (D2C, B2B, Marketplace) can be configured in Channel Pricing.
+                        <strong>Note:</strong> Initial cost price is used until first GRN. After that, Weighted Average Cost
+                        from Purchase Orders takes over (see Costing tab). Channel-specific selling prices can be configured in Channel Pricing.
                       </p>
                     </div>
                   </CardContent>
