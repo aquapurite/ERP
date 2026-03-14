@@ -30,6 +30,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { PageHeader } from '@/components/common';
 import { productsApi, categoriesApi, brandsApi, uploadsApi } from '@/lib/api';
+import { useAuth } from '@/providers';
 import { Category, Brand, Product, ProductImage, ProductVariant, ProductSpecification, ProductDocument } from '@/types';
 
 // Item type options
@@ -131,6 +132,17 @@ export default function ProductDetailPage() {
   const [docType, setDocType] = useState('OTHER');
   const [docFileUrl, setDocFileUrl] = useState('');
 
+  // Standard Cost edit state
+  const [isEditingStandardCost, setIsEditingStandardCost] = useState(false);
+  const [standardCostValue, setStandardCostValue] = useState('');
+
+  // Manual Cost Override state (SUPER_ADMIN only)
+  const [showOverrideDialog, setShowOverrideDialog] = useState(false);
+  const [overrideValue, setOverrideValue] = useState('');
+  const [overrideReason, setOverrideReason] = useState('');
+
+  const { permissions } = useAuth();
+
   // Cascading category state
   const [selectedParentCategoryId, setSelectedParentCategoryId] = useState<string>('');
 
@@ -170,6 +182,36 @@ export default function ProductDetailPage() {
     queryKey: ['product-cost-history', productId],
     queryFn: () => productsApi.getCostHistory(productId, { limit: 20 }),
     enabled: !!productId,
+  });
+
+  // Standard Cost mutation
+  const setStandardCostMutation = useMutation({
+    mutationFn: (cost: number) => productsApi.setStandardCost(productId, cost),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['product-cost', productId] });
+      toast.success('Standard cost updated');
+      setIsEditingStandardCost(false);
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.detail || 'Failed to update standard cost');
+    },
+  });
+
+  // Manual Cost Override mutation (SUPER_ADMIN)
+  const manualOverrideMutation = useMutation({
+    mutationFn: (data: { new_average_cost: number; reason: string }) =>
+      productsApi.manualCostOverride(productId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['product-cost', productId] });
+      queryClient.invalidateQueries({ queryKey: ['product-cost-history', productId] });
+      toast.success('Cost override applied successfully');
+      setShowOverrideDialog(false);
+      setOverrideValue('');
+      setOverrideReason('');
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.detail || 'Failed to override cost');
+    },
   });
 
   const form = useForm<ProductFormData>({
@@ -1019,14 +1061,22 @@ export default function ProductDetailPage() {
             <div className="lg:col-span-2 space-y-6">
               {/* COGS Overview */}
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <DollarSign className="h-5 w-5" />
-                    Cost of Goods Sold (COGS)
-                  </CardTitle>
-                  <CardDescription>
-                    Auto-calculated from Purchase Orders using Weighted Average Cost method
-                  </CardDescription>
+                <CardHeader className="flex flex-row items-start justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <DollarSign className="h-5 w-5" />
+                      Cost of Goods Sold (COGS)
+                    </CardTitle>
+                    <CardDescription>
+                      Auto-calculated from Purchase Orders using Weighted Average Cost method
+                    </CardDescription>
+                  </div>
+                  {permissions?.is_super_admin && (
+                    <Button variant="outline" size="sm" onClick={() => setShowOverrideDialog(true)}>
+                      <Edit2 className="mr-2 h-3 w-3" />
+                      Manual Override
+                    </Button>
+                  )}
                 </CardHeader>
                 <CardContent className="space-y-6">
                   {isLoadingCost ? (
@@ -1136,26 +1186,53 @@ export default function ProductDetailPage() {
                     </div>
                   ) : costHistory?.entries && costHistory.entries.length > 0 ? (
                     <div className="space-y-3">
-                      {costHistory.entries.map((entry, index) => (
-                        <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                      {costHistory.entries.map((entry: any, index: number) => (
+                        <div key={index} className={`flex items-center justify-between p-3 border rounded-lg ${entry.type === 'MANUAL_OVERRIDE' ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/30' : ''}`}>
                           <div>
-                            <p className="font-medium">
-                              +{entry.quantity} units @ {formatCurrency(entry.unit_cost)}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              {entry.grn_number || 'GRN'} • {new Date(entry.date).toLocaleDateString('en-IN', {
-                                day: '2-digit',
-                                month: 'short',
-                                year: 'numeric',
-                              })}
-                            </p>
+                            {entry.type === 'MANUAL_OVERRIDE' ? (
+                              <>
+                                <p className="font-medium flex items-center gap-2">
+                                  <Badge variant="outline" className="text-amber-700 border-amber-300">Manual Override</Badge>
+                                </p>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  {entry.reason}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  By {entry.overridden_by} • {new Date(entry.date).toLocaleDateString('en-IN', {
+                                    day: '2-digit', month: 'short', year: 'numeric',
+                                  })}
+                                </p>
+                              </>
+                            ) : (
+                              <>
+                                <p className="font-medium">
+                                  +{entry.quantity} units @ {formatCurrency(entry.unit_cost)}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  {entry.grn_number || 'GRN'} • {new Date(entry.date).toLocaleDateString('en-IN', {
+                                    day: '2-digit', month: 'short', year: 'numeric',
+                                  })}
+                                </p>
+                              </>
+                            )}
                           </div>
                           <div className="text-right">
-                            <p className="font-medium">Avg: {formatCurrency(entry.running_average)}</p>
-                            {entry.old_avg !== undefined && entry.old_avg > 0 && (
-                              <p className="text-xs text-muted-foreground">
-                                from {formatCurrency(entry.old_avg)}
-                              </p>
+                            {entry.type === 'MANUAL_OVERRIDE' ? (
+                              <>
+                                <p className="font-medium">New: {formatCurrency(entry.new_avg)}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  from {formatCurrency(entry.old_avg)}
+                                </p>
+                              </>
+                            ) : (
+                              <>
+                                <p className="font-medium">Avg: {formatCurrency(entry.running_average)}</p>
+                                {entry.old_avg !== undefined && entry.old_avg > 0 && (
+                                  <p className="text-xs text-muted-foreground">
+                                    from {formatCurrency(entry.old_avg)}
+                                  </p>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>
@@ -1259,13 +1336,58 @@ export default function ProductDetailPage() {
                   <CardTitle>Cost Variance</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2 text-sm">
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">Standard Cost</span>
-                    <span>
-                      {productCost?.standard_cost
-                        ? formatCurrency(productCost.standard_cost)
-                        : 'Not Set'}
-                    </span>
+                    {isEditingStandardCost ? (
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={standardCostValue}
+                          onChange={(e) => setStandardCostValue(e.target.value)}
+                          className="h-7 w-24 text-sm"
+                          placeholder="0.00"
+                          autoFocus
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          disabled={!standardCostValue || parseFloat(standardCostValue) < 0 || setStandardCostMutation.isPending}
+                          onClick={() => setStandardCostMutation.mutate(parseFloat(standardCostValue))}
+                        >
+                          <Check className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          onClick={() => setIsEditingStandardCost(false)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <span>
+                          {productCost?.standard_cost
+                            ? formatCurrency(productCost.standard_cost)
+                            : 'Not Set'}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          onClick={() => {
+                            setStandardCostValue(productCost?.standard_cost?.toString() || '');
+                            setIsEditingStandardCost(true);
+                          }}
+                        >
+                          <Edit2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Variance</span>
@@ -1285,12 +1407,77 @@ export default function ProductDetailPage() {
                   )}
                   <Separator className="my-3" />
                   <p className="text-xs text-muted-foreground">
-                    Set a standard cost to track variance for budgeting
+                    Click the edit icon to set standard cost for budgeting variance analysis
                   </p>
                 </CardContent>
               </Card>
             </div>
           </div>
+
+          {/* Manual Cost Override Dialog (SUPER_ADMIN only) */}
+          <Dialog open={showOverrideDialog} onOpenChange={setShowOverrideDialog}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Manual Cost Override</DialogTitle>
+                <DialogDescription>
+                  Override the weighted average cost for this product. This action is audited and recorded in cost history.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    Current Average Cost: <strong>{formatCurrency(productCost?.average_cost ?? 0)}</strong>
+                  </AlertDescription>
+                </Alert>
+                <div className="space-y-2">
+                  <Label htmlFor="override-cost">New Average Cost *</Label>
+                  <Input
+                    id="override-cost"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    placeholder="Enter new average cost"
+                    value={overrideValue}
+                    onChange={(e) => setOverrideValue(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="override-reason">Reason for Override *</Label>
+                  <Textarea
+                    id="override-reason"
+                    placeholder="e.g., Opening balance correction, vendor credit note adjustment, physical stock revaluation..."
+                    value={overrideReason}
+                    onChange={(e) => setOverrideReason(e.target.value)}
+                    rows={3}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Minimum 5 characters. This reason will be recorded in the audit trail.
+                  </p>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowOverrideDialog(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  disabled={
+                    !overrideValue ||
+                    parseFloat(overrideValue) <= 0 ||
+                    overrideReason.trim().length < 5 ||
+                    manualOverrideMutation.isPending
+                  }
+                  onClick={() => manualOverrideMutation.mutate({
+                    new_average_cost: parseFloat(overrideValue),
+                    reason: overrideReason.trim(),
+                  })}
+                >
+                  {manualOverrideMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Confirm Override
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="images" className="mt-6">

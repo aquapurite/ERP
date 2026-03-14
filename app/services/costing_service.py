@@ -572,6 +572,63 @@ class CostingService:
             "warehouse_id": str(warehouse_id) if warehouse_id else None,
         }
 
+    async def manual_cost_override(
+        self,
+        product_id: uuid.UUID,
+        new_average_cost: Decimal,
+        reason: str,
+        overridden_by: str,
+        variant_id: Optional[uuid.UUID] = None,
+        warehouse_id: Optional[uuid.UUID] = None,
+    ) -> ProductCost:
+        """
+        Manually override the average cost (SUPER_ADMIN only).
+
+        Creates an audit trail entry in cost_history with type=MANUAL_OVERRIDE.
+        SAP equivalent: MR21 (Material Revaluation).
+        """
+        product_cost = await self.get_or_create_product_cost(
+            product_id=product_id,
+            variant_id=variant_id,
+            warehouse_id=warehouse_id,
+        )
+
+        old_avg = product_cost.average_cost or Decimal("0")
+
+        # Update average cost
+        product_cost.average_cost = new_average_cost.quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+        product_cost.total_value = Decimal(str(product_cost.quantity_on_hand)) * product_cost.average_cost
+        product_cost.last_calculated_at = datetime.now(timezone.utc)
+
+        # Add audit trail entry
+        history_entry = {
+            "date": datetime.now(timezone.utc).isoformat(),
+            "type": "MANUAL_OVERRIDE",
+            "old_avg": float(old_avg),
+            "new_avg": float(new_average_cost),
+            "reason": reason,
+            "overridden_by": overridden_by,
+            "quantity": 0,
+            "unit_cost": float(new_average_cost),
+            "running_average": float(new_average_cost),
+        }
+
+        if product_cost.cost_history is None:
+            product_cost.cost_history = []
+        product_cost.cost_history = product_cost.cost_history + [history_entry]
+
+        await self.db.commit()
+        await self.db.refresh(product_cost)
+
+        logger.info(
+            f"Manual cost override for product {product_id}: "
+            f"old_avg={old_avg}, new_avg={new_average_cost}, reason='{reason}', by={overridden_by}"
+        )
+
+        return product_cost
+
     async def initialize_costs_from_products(self) -> Dict[str, Any]:
         """
         Initialize ProductCost records for all products that don't have one.

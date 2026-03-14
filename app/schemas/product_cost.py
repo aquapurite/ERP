@@ -168,3 +168,9 @@ class ProductCostListResponse(BaseModel):
     page: int
     size: int
     pages: int
+
+
+class ManualCostOverrideRequest(BaseModel):
+    """Request to manually override average cost (SUPER_ADMIN only)."""
+    new_average_cost: Decimal = Field(..., gt=0, description="New average cost to set")
+    reason: str = Field(..., min_length=5, max_length=500, description="Mandatory reason for override")

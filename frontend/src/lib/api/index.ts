@@ -296,6 +296,16 @@ export const productsApi = {
     }>(`/products/${productId}/standard-cost`, null, { params: { ...params, standard_cost: standardCost } });
     return data;
   },
+  manualCostOverride: async (productId: string, payload: { new_average_cost: number; reason: string }, params?: { variant_id?: string; warehouse_id?: string }) => {
+    const { data } = await apiClient.put<{
+      message: string;
+      product_id: string;
+      old_average_cost: number;
+      new_average_cost: number;
+      reason: string;
+    }>(`/products/${productId}/cost/manual-override`, payload, { params });
+    return data;
+  },
 };
 
 // Categories API

@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ArrowLeft, Save, Package, Loader2, Plus, X, Upload, ImagePlus, Trash2, Lock, Sparkles } from 'lucide-react';
+import { ArrowLeft, Save, Package, Loader2, Plus, X, Upload, ImagePlus, Trash2, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { toast } from 'sonner';
@@ -49,6 +49,7 @@ const productSchema = z.object({
   sub_item_code: z.string().max(50).optional(),
   model_code: z.string().min(1, 'Model name is required').max(5, 'Model name must be 5 characters or less').regex(/^[A-Za-z]+$/, 'Model name must contain only letters'),
   mrp: z.coerce.number().min(0, 'MRP must be positive'),
+  cost_price: z.coerce.number().min(0, 'Cost price must be positive').optional(),
   gst_rate: z.coerce.number().min(0).max(100, 'GST rate must be between 0 and 100').optional(),
   hsn_code: z.string().optional(),
   weight: z.coerce.number().min(0).optional(),
@@ -804,21 +805,17 @@ export default function NewProductPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="cost_price" className="flex items-center gap-2">
-                      Cost Price (COGS)
-                      <Lock className="h-3 w-3 text-muted-foreground" />
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        id="cost_price"
-                        type="text"
-                        value="****"
-                        disabled
-                        className="bg-muted cursor-not-allowed"
-                      />
-                    </div>
+                    <Label htmlFor="cost_price">Initial Cost Price (COGS)</Label>
+                    <Input
+                      id="cost_price"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="Enter initial cost estimate"
+                      {...form.register('cost_price')}
+                    />
                     <p className="text-xs text-muted-foreground">
-                      Auto-calculated from Purchase Orders
+                      Optional initial estimate. Will be replaced by Weighted Average Cost after first GRN.
                     </p>
                   </div>
                 </div>
@@ -827,7 +824,7 @@ export default function NewProductPage() {
                   <p className="text-sm text-blue-700 dark:text-blue-300">
                     <strong>Note:</strong> Selling prices for different channels (D2C, B2B, Marketplace)
                     can be configured in the Channel Pricing section after creating the product.
-                    Cost price is auto-calculated from Purchase Orders using weighted average method.
+                    Initial cost price is used until the first GRN is received, after which Weighted Average Cost from Purchase Orders takes over automatically.
                   </p>
                 </div>
               </CardContent>

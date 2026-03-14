@@ -5,7 +5,7 @@ from math import ceil
 
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 
-from app.api.deps import DB, CurrentUser, Permissions, require_permissions
+from app.api.deps import DB, CurrentUser, Permissions, require_permissions, require_role_level
 from app.services.cache_service import get_cache
 from app.models.product import ProductStatus
 from app.schemas.product import (
@@ -33,7 +33,9 @@ from app.schemas.product_cost import (
     ProductCostSummary,
     WeightedAverageCostRequest,
     WeightedAverageCostResponse,
+    ManualCostOverrideRequest,
 )
+from app.models.role import RoleLevel
 
 
 router = APIRouter(tags=["Products"])
@@ -1085,6 +1087,53 @@ async def set_standard_cost(
         "average_cost": float(product_cost.average_cost),
         "variance": float(product_cost.cost_variance) if product_cost.cost_variance else None,
         "variance_percentage": product_cost.cost_variance_percentage,
+    }
+
+
+@router.put(
+    "/{product_id}/cost/manual-override",
+    dependencies=[Depends(require_role_level(RoleLevel.SUPER_ADMIN))]
+)
+async def manual_cost_override(
+    product_id: uuid.UUID,
+    payload: ManualCostOverrideRequest,
+    db: DB,
+    current_user: CurrentUser,
+    variant_id: Optional[uuid.UUID] = Query(None),
+    warehouse_id: Optional[uuid.UUID] = Query(None),
+):
+    """
+    Manually override average cost for a product (SUPER_ADMIN only).
+
+    SAP equivalent: MR21 (Material Revaluation).
+    Creates an audit trail entry in cost_history.
+    """
+    from decimal import Decimal
+
+    costing_service = CostingService(db)
+
+    old_cost = await costing_service.get_product_cost(
+        product_id=product_id,
+        variant_id=variant_id,
+        warehouse_id=warehouse_id,
+    )
+    old_avg = float(old_cost.average_cost) if old_cost else 0
+
+    product_cost = await costing_service.manual_cost_override(
+        product_id=product_id,
+        new_average_cost=Decimal(str(payload.new_average_cost)),
+        reason=payload.reason,
+        overridden_by=current_user.email or str(current_user.id),
+        variant_id=variant_id,
+        warehouse_id=warehouse_id,
+    )
+
+    return {
+        "message": "Cost override applied successfully",
+        "product_id": str(product_id),
+        "old_average_cost": old_avg,
+        "new_average_cost": float(product_cost.average_cost),
+        "reason": payload.reason,
     }
 
 
