@@ -120,13 +120,30 @@ interface POItem {
 
 interface GRNItem {
   id: string;
+  po_item_id?: string;
   product_id: string;
   product_name: string;
   sku: string;
-  received_quantity: number;
-  rejected_quantity: number;
+  part_code?: string;
+  sub_item_code?: string;
+  hsn_code?: string;
+  quantity_expected?: number;
+  quantity_received?: number;
+  quantity_accepted?: number;
+  quantity_rejected?: number;
+  received_quantity?: number;
+  rejected_quantity?: number;
+  unit_price?: number;
+  accepted_value?: number;
+  batch_number?: string;
+  manufacturing_date?: string;
+  expiry_date?: string;
+  serial_numbers?: string[];
+  bin_location?: string;
+  qc_result?: string;
+  qc_status?: 'PENDING' | 'PASSED' | 'FAILED';
   rejection_reason?: string;
-  qc_status: 'PENDING' | 'PASSED' | 'FAILED';
+  remarks?: string;
   serials?: string[];
 }
 
@@ -279,6 +296,9 @@ export default function GRNPage() {
 
   // Item quantities state - maps po_item_id to received quantity
   const [itemQuantities, setItemQuantities] = useState<Record<string, number>>({});
+
+  // Full GRN details loading
+  const [isLoadingGRNDetails, setIsLoadingGRNDetails] = useState(false);
 
   // Serial scanning state
   const [serialInput, setSerialInput] = useState('');
@@ -559,9 +579,18 @@ export default function GRNPage() {
     }
   };
 
-  const handleView = (grn: GRN) => {
+  const handleView = async (grn: GRN) => {
     setSelectedGRN(grn);
     setIsDetailsOpen(true);
+    setIsLoadingGRNDetails(true);
+    try {
+      const fullGRN = await grnApi.getById(grn.id);
+      setSelectedGRN(fullGRN);
+    } catch {
+      // Keep list data if detail fetch fails
+    } finally {
+      setIsLoadingGRNDetails(false);
+    }
   };
 
   const handleEdit = (grn: GRN) => {
@@ -970,7 +999,7 @@ export default function GRNPage() {
 
       {/* GRN Details Sheet */}
       <Sheet open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <SheetContent className="w-[600px] sm:max-w-xl overflow-y-auto">
+        <SheetContent className="w-[700px] sm:max-w-2xl overflow-y-auto">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <Package className="h-5 w-5" />
@@ -981,9 +1010,16 @@ export default function GRNPage() {
             </SheetDescription>
           </SheetHeader>
 
+          {isLoadingGRNDetails && (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-sm text-muted-foreground">Loading details...</span>
+            </div>
+          )}
+
           {selectedGRN && (
             <div className="mt-6 space-y-6">
-              {/* GRN Info */}
+              {/* GRN Header Info */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Status</p>
@@ -991,36 +1027,138 @@ export default function GRNPage() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">PO Reference</p>
-                  <p className="font-mono text-sm">{selectedGRN.purchase_order?.po_number || selectedGRN.po_number}</p>
+                  <p className="font-mono text-sm font-medium">{selectedGRN.purchase_order?.po_number || selectedGRN.po_number}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Vendor</p>
-                  <p className="text-sm font-medium">{selectedGRN.vendor?.name || selectedGRN.vendor_name || selectedGRN.purchase_order?.vendor?.name || '-'}</p>
+                  <p className="text-sm font-medium">{selectedGRN.vendor?.name || selectedGRN.vendor_name || '-'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Warehouse</p>
                   <p className="text-sm font-medium">{selectedGRN.warehouse?.name || selectedGRN.warehouse_name || '-'}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Received Date</p>
+                  <p className="text-sm text-muted-foreground">GRN Date</p>
                   <p className="text-sm">{formatDate(selectedGRN.received_date || selectedGRN.grn_date)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Quantities</p>
-                  <div className="flex gap-2">
-                    <Badge variant="outline" className="text-green-600">
-                      <CheckCircle className="mr-1 h-3 w-3" />
-                      {selectedGRN.total_received || selectedGRN.total_quantity_received || 0} Received
-                    </Badge>
-                    {(selectedGRN.total_rejected || selectedGRN.total_quantity_rejected || 0) > 0 && (
-                      <Badge variant="outline" className="text-red-600">
-                        <XCircle className="mr-1 h-3 w-3" />
-                        {selectedGRN.total_rejected || selectedGRN.total_quantity_rejected} Rejected
-                      </Badge>
-                    )}
-                  </div>
+                  <p className="text-sm text-muted-foreground">GRN Type</p>
+                  <p className="text-sm">{selectedGRN.grn_type || 'INVENTORY'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Received By</p>
+                  <p className="text-sm">{(selectedGRN as any).received_by || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Value</p>
+                  <p className="text-sm font-medium">{formatCurrency(selectedGRN.total_value || 0)}</p>
                 </div>
               </div>
+
+              {/* Quantity Summary */}
+              <div className="bg-muted/50 rounded-lg p-4">
+                <p className="text-sm font-medium mb-3">Quantity Summary</p>
+                <div className="flex flex-wrap gap-3">
+                  <Badge variant="outline" className="text-blue-600 px-3 py-1">
+                    Expected: {(selectedGRN as any).total_items || 0} items
+                  </Badge>
+                  <Badge variant="outline" className="text-green-600 px-3 py-1">
+                    <CheckCircle className="mr-1 h-3 w-3" />
+                    Received: {selectedGRN.total_received || selectedGRN.total_quantity_received || 0}
+                  </Badge>
+                  <Badge variant="outline" className="text-emerald-600 px-3 py-1">
+                    Accepted: {selectedGRN.total_quantity_accepted || 0}
+                  </Badge>
+                  {(selectedGRN.total_rejected || selectedGRN.total_quantity_rejected || 0) > 0 && (
+                    <Badge variant="outline" className="text-red-600 px-3 py-1">
+                      <XCircle className="mr-1 h-3 w-3" />
+                      Rejected: {selectedGRN.total_rejected || selectedGRN.total_quantity_rejected}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              {/* Transport & Challan Details */}
+              {(selectedGRN.vendor_challan_number || selectedGRN.transporter_name || selectedGRN.vehicle_number || selectedGRN.lr_number || selectedGRN.e_way_bill_number) && (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="text-sm font-medium mb-3">Transport & Challan Details</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {selectedGRN.vendor_challan_number && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">Vendor Challan No.</p>
+                          <p className="text-sm">{selectedGRN.vendor_challan_number}</p>
+                        </div>
+                      )}
+                      {selectedGRN.vendor_challan_date && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">Challan Date</p>
+                          <p className="text-sm">{formatDate(selectedGRN.vendor_challan_date)}</p>
+                        </div>
+                      )}
+                      {selectedGRN.transporter_name && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">Transporter</p>
+                          <p className="text-sm">{selectedGRN.transporter_name}</p>
+                        </div>
+                      )}
+                      {selectedGRN.vehicle_number && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">Vehicle No.</p>
+                          <p className="text-sm">{selectedGRN.vehicle_number}</p>
+                        </div>
+                      )}
+                      {selectedGRN.lr_number && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">LR Number</p>
+                          <p className="text-sm">{selectedGRN.lr_number}</p>
+                        </div>
+                      )}
+                      {selectedGRN.e_way_bill_number && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">E-Way Bill No.</p>
+                          <p className="text-sm">{selectedGRN.e_way_bill_number}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* QC Details */}
+              {((selectedGRN as any).qc_status || (selectedGRN as any).qc_remarks) && (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="text-sm font-medium mb-3">Quality Check</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs text-muted-foreground">QC Status</p>
+                        <StatusBadge status={(selectedGRN as any).qc_status || 'PENDING'} />
+                      </div>
+                      {(selectedGRN as any).qc_done_by && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">QC Done By</p>
+                          <p className="text-sm">{(selectedGRN as any).qc_done_by}</p>
+                        </div>
+                      )}
+                      {(selectedGRN as any).qc_done_at && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">QC Date</p>
+                          <p className="text-sm">{formatDate((selectedGRN as any).qc_done_at)}</p>
+                        </div>
+                      )}
+                      {(selectedGRN as any).qc_remarks && (
+                        <div className="col-span-2">
+                          <p className="text-xs text-muted-foreground">QC Remarks</p>
+                          <p className="text-sm bg-muted p-2 rounded">{(selectedGRN as any).qc_remarks}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
 
               <Separator />
 
@@ -1068,12 +1206,12 @@ export default function GRNPage() {
                 </div>
               )}
 
-              {/* GRN Items */}
+              {/* GRN Items - Line-level details */}
               {selectedGRN.items && selectedGRN.items.length > 0 && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">
                     <ClipboardList className="h-5 w-5" />
-                    <h3 className="font-medium">Received Items</h3>
+                    <h3 className="font-medium">Received Items ({selectedGRN.items.length})</h3>
                   </div>
 
                   <div className="space-y-3">
@@ -1083,38 +1221,93 @@ export default function GRNPage() {
                           <div className="flex justify-between items-start">
                             <div>
                               <p className="font-medium">{item.product_name}</p>
-                              <p className="text-sm text-muted-foreground font-mono">{item.sku}</p>
-                              {(item as any).sub_item_code && (
-                                <p className="text-xs text-blue-600">Sub: {(item as any).sub_item_code}</p>
+                              <div className="flex gap-2 mt-1">
+                                <span className="text-xs text-muted-foreground font-mono">SKU: {item.sku}</span>
+                                {item.hsn_code && (
+                                  <span className="text-xs text-muted-foreground font-mono">HSN: {item.hsn_code}</span>
+                                )}
+                              </div>
+                              {item.sub_item_code && (
+                                <p className="text-xs text-blue-600 mt-0.5">Sub Item: {item.sub_item_code}</p>
+                              )}
+                              {item.part_code && (
+                                <p className="text-xs text-muted-foreground mt-0.5">Part: {item.part_code}</p>
                               )}
                             </div>
-                            <Badge
-                              variant={item.qc_status === 'PASSED' ? 'default' : item.qc_status === 'FAILED' ? 'destructive' : 'secondary'}
-                            >
-                              QC: {item.qc_status}
-                            </Badge>
-                          </div>
-                          <div className="mt-2 flex gap-4 text-sm">
-                            <span className="text-green-600">
-                              Received: {item.received_quantity}
-                            </span>
-                            {item.rejected_quantity > 0 && (
-                              <span className="text-red-600">
-                                Rejected: {item.rejected_quantity}
-                              </span>
+                            {item.qc_result && (
+                              <Badge
+                                variant={item.qc_result === 'PASSED' || item.qc_result === 'ACCEPTED' ? 'default' : item.qc_result === 'FAILED' || item.qc_result === 'REJECTED' ? 'destructive' : 'secondary'}
+                              >
+                                QC: {item.qc_result}
+                              </Badge>
                             )}
                           </div>
+
+                          {/* Quantity breakdown */}
+                          <div className="mt-3 bg-muted/50 rounded p-3">
+                            <div className="grid grid-cols-4 gap-2 text-sm">
+                              <div className="text-center">
+                                <p className="text-xs text-muted-foreground">Expected</p>
+                                <p className="font-semibold text-blue-600">{item.quantity_expected ?? '-'}</p>
+                              </div>
+                              <div className="text-center">
+                                <p className="text-xs text-muted-foreground">Received</p>
+                                <p className="font-semibold text-green-600">{item.quantity_received ?? item.received_quantity ?? 0}</p>
+                              </div>
+                              <div className="text-center">
+                                <p className="text-xs text-muted-foreground">Accepted</p>
+                                <p className="font-semibold text-emerald-600">{item.quantity_accepted ?? 0}</p>
+                              </div>
+                              <div className="text-center">
+                                <p className="text-xs text-muted-foreground">Rejected</p>
+                                <p className="font-semibold text-red-600">{item.quantity_rejected ?? item.rejected_quantity ?? 0}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Price info */}
+                          {(item.unit_price != null && item.unit_price > 0) && (
+                            <div className="mt-2 flex gap-4 text-sm">
+                              <span className="text-muted-foreground">Unit Price: {formatCurrency(item.unit_price)}</span>
+                              {item.accepted_value != null && item.accepted_value > 0 && (
+                                <span className="text-muted-foreground">Accepted Value: {formatCurrency(item.accepted_value)}</span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Batch & expiry info */}
+                          {(item.batch_number || item.manufacturing_date || item.expiry_date) && (
+                            <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                              {item.batch_number && <span>Batch: {item.batch_number}</span>}
+                              {item.manufacturing_date && <span>Mfg: {formatDate(item.manufacturing_date)}</span>}
+                              {item.expiry_date && <span>Exp: {formatDate(item.expiry_date)}</span>}
+                            </div>
+                          )}
+
+                          {/* Bin location */}
+                          {item.bin_location && (
+                            <p className="mt-1 text-xs text-muted-foreground">Bin: {item.bin_location}</p>
+                          )}
+
+                          {/* Rejection reason */}
                           {item.rejection_reason && (
                             <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
                               <AlertTriangle className="h-3 w-3" />
                               {item.rejection_reason}
                             </p>
                           )}
-                          {item.serials && item.serials.length > 0 && (
+
+                          {/* Remarks */}
+                          {item.remarks && (
+                            <p className="mt-1 text-xs text-muted-foreground italic">Remarks: {item.remarks}</p>
+                          )}
+
+                          {/* Serial Numbers */}
+                          {((item.serial_numbers && item.serial_numbers.length > 0) || (item.serials && item.serials.length > 0)) && (
                             <div className="mt-2">
-                              <p className="text-xs text-muted-foreground">Serials:</p>
+                              <p className="text-xs text-muted-foreground">Serial Numbers:</p>
                               <div className="flex flex-wrap gap-1 mt-1">
-                                {item.serials.map((serial, idx) => (
+                                {(item.serial_numbers || item.serials || []).map((serial: string, idx: number) => (
                                   <Badge key={idx} variant="outline" className="font-mono text-xs">
                                     {serial}
                                   </Badge>
@@ -1129,11 +1322,19 @@ export default function GRNPage() {
                 </div>
               )}
 
-              {/* Notes */}
-              {selectedGRN.notes && (
+              {/* No items message */}
+              {!isLoadingGRNDetails && (!selectedGRN.items || selectedGRN.items.length === 0) && (
+                <div className="text-center py-6 text-muted-foreground">
+                  <ClipboardList className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No item details available</p>
+                </div>
+              )}
+
+              {/* Receiving Remarks / Notes */}
+              {(selectedGRN.receiving_remarks || selectedGRN.notes) && (
                 <div>
-                  <p className="text-sm text-muted-foreground mb-1">Notes</p>
-                  <p className="text-sm bg-muted p-3 rounded-md">{selectedGRN.notes}</p>
+                  <p className="text-sm text-muted-foreground mb-1">Remarks / Notes</p>
+                  <p className="text-sm bg-muted p-3 rounded-md">{selectedGRN.receiving_remarks || selectedGRN.notes}</p>
                 </div>
               )}
 
