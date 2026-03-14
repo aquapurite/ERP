@@ -176,7 +176,7 @@ def can_send_to_vendor(status: str) -> bool:
 
 def can_receive_goods(status: str) -> bool:
     """Can goods be received against this PO?"""
-    return status in [POStatus.SENT_TO_VENDOR, POStatus.ACKNOWLEDGED, POStatus.PARTIALLY_RECEIVED]
+    return status in [POStatus.APPROVED, POStatus.SENT_TO_VENDOR, POStatus.ACKNOWLEDGED, POStatus.PARTIALLY_RECEIVED]
 
 
 def can_edit(status: str) -> bool:
