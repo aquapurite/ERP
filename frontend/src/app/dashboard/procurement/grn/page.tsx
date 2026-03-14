@@ -552,6 +552,13 @@ export default function GRNPage() {
     setIsLoadingPO(true);
     try {
       const fullPO = await purchaseOrdersApi.getById(poId);
+      // Block if PO is fully received or closed
+      if (fullPO?.status === 'FULLY_RECEIVED' || fullPO?.status === 'CLOSED' || fullPO?.status === 'CANCELLED') {
+        toast.error(`This PO is ${fullPO.status.replace('_', ' ')}. No more goods can be received.`);
+        setFormData(prev => ({ ...prev, po_id: '' }));
+        setIsLoadingPO(false);
+        return;
+      }
       setSelectedPODetails(fullPO);
       if (fullPO?.items) {
         const initialQuantities: Record<string, number> = {};
@@ -724,7 +731,9 @@ export default function GRNPage() {
   ];
 
   const warehouses: Warehouse[] = warehousesData?.items ?? (Array.isArray(warehousesData) ? warehousesData : []);
-  const pos = purchaseOrders?.items ?? [];
+  const pos = (purchaseOrders?.items ?? []).filter(
+    (po: PurchaseOrder) => po.status !== 'FULLY_RECEIVED' && po.status !== 'CLOSED' && po.status !== 'CANCELLED'
+  );
   const grnList = data?.items ?? [];
 
   return (
