@@ -626,12 +626,11 @@ class GoodsReceiptResponse(BaseResponseSchema):
     id: UUID
     grn_number: str
     grn_date: Optional[date] = None
-    grn_type: str = "INVENTORY"
+    grn_type: Optional[str] = "INVENTORY"
     status: str
+    purchase_order_id: Optional[UUID] = None
     vendor_id: Optional[UUID] = None
-    purchase_order: Optional[dict] = None
-    vendor: Optional[dict] = None
-    warehouse: Optional[dict] = None
+    warehouse_id: Optional[UUID] = None
     vendor_challan_number: Optional[str] = None
     vendor_challan_date: Optional[date] = None
     transporter_name: Optional[str] = None
@@ -645,11 +644,11 @@ class GoodsReceiptResponse(BaseResponseSchema):
     total_value: Optional[Decimal] = None
     qc_required: Optional[bool] = None
     qc_status: Optional[str] = None
-    qc_done_by: Optional[str] = None
+    qc_done_by: Optional[UUID] = None
     qc_done_at: Optional[datetime] = None
     qc_remarks: Optional[str] = None
     receiving_remarks: Optional[str] = None
-    received_by: Optional[str] = None
+    received_by: Optional[UUID] = None
     put_away_complete: Optional[bool] = False
     put_away_at: Optional[datetime] = None
     items: List[GRNItemResponse] = []
