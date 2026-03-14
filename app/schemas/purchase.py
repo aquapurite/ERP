@@ -568,9 +568,28 @@ class GRNItemCreate(GRNItemBase):
 class GRNItemResponse(BaseResponseSchema):
     """Response schema for GRN item."""
     id: UUID
+    po_item_id: Optional[UUID] = None
+    product_id: Optional[UUID] = None
+    product_name: Optional[str] = None
+    sku: Optional[str] = None
+    part_code: Optional[str] = None
+    sub_item_code: Optional[str] = None
+    hsn_code: Optional[str] = None
+    quantity_expected: Optional[int] = None
+    quantity_received: Optional[int] = None
+    quantity_accepted: Optional[int] = 0
+    quantity_rejected: Optional[int] = 0
+    uom: Optional[str] = "PCS"
     unit_price: Decimal
     accepted_value: Decimal
+    batch_number: Optional[str] = None
+    manufacturing_date: Optional[date] = None
+    expiry_date: Optional[date] = None
+    serial_numbers: Optional[List[str]] = None
+    bin_location: Optional[str] = None
     qc_result: Optional[QualityCheckResult] = None
+    rejection_reason: Optional[str] = None
+    remarks: Optional[str] = None
 
 
 class GoodsReceiptBase(BaseModel):
@@ -606,27 +625,38 @@ class GoodsReceiptResponse(BaseResponseSchema):
     """Response schema for GRN."""
     id: UUID
     grn_number: str
-    grn_date: date
+    grn_date: Optional[date] = None
     grn_type: str = "INVENTORY"
     status: str
-    vendor_id: UUID
-    total_items: int
-    total_quantity_received: int
-    total_quantity_accepted: int
-    total_quantity_rejected: int
-    total_value: Decimal
-    qc_status: Optional[QualityCheckResult] = None
-    qc_done_by: Optional[UUID] = None
+    vendor_id: Optional[UUID] = None
+    purchase_order: Optional[dict] = None
+    vendor: Optional[dict] = None
+    warehouse: Optional[dict] = None
+    vendor_challan_number: Optional[str] = None
+    vendor_challan_date: Optional[date] = None
+    transporter_name: Optional[str] = None
+    vehicle_number: Optional[str] = None
+    lr_number: Optional[str] = None
+    e_way_bill_number: Optional[str] = None
+    total_items: Optional[int] = 0
+    total_quantity_received: Optional[int] = 0
+    total_quantity_accepted: Optional[int] = 0
+    total_quantity_rejected: Optional[int] = 0
+    total_value: Optional[Decimal] = None
+    qc_required: Optional[bool] = None
+    qc_status: Optional[str] = None
+    qc_done_by: Optional[str] = None
     qc_done_at: Optional[datetime] = None
     qc_remarks: Optional[str] = None
-    received_by: UUID
-    put_away_complete: bool
+    receiving_remarks: Optional[str] = None
+    received_by: Optional[str] = None
+    put_away_complete: Optional[bool] = False
     put_away_at: Optional[datetime] = None
     items: List[GRNItemResponse] = []
     grn_pdf_url: Optional[str] = None
     photos_urls: Optional[List[str]] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 class GRNBrief(BaseResponseSchema):
