@@ -2831,7 +2831,7 @@ export const vendorInvoicesApi = {
     const { data } = await apiClient.get(`/purchase/vendor-invoices/${id}`);
     return data;
   },
-  create: async (invoice: { vendor_id: string; po_id: string; grn_id: string; invoice_number: string; invoice_date: string; due_date: string; items: { grn_item_id: string; quantity: number; unit_price: number; gst_rate: number }[]; notes?: string }) => {
+  create: async (invoice: Record<string, any>) => {
     const { data } = await apiClient.post('/purchase/vendor-invoices', invoice);
     return data;
   },

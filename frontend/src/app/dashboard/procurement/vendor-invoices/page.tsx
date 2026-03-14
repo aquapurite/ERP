@@ -259,6 +259,7 @@ const vendorInvoicesApi = {
     cgst_amount: number;
     sgst_amount: number;
     igst_amount?: number;
+    round_off?: number;
     grand_total: number;
     due_date: string;
     // TDS fields
@@ -418,6 +419,7 @@ export default function VendorInvoicesPage() {
   const [sgstAmount, setSgstAmount] = useState<number>(0);
   const [igstAmount, setIgstAmount] = useState<number>(0);
   const [grandTotal, setGrandTotal] = useState<number>(0);
+  const [roundOff, setRoundOff] = useState<number>(0);
 
   // TDS fields
   const [tdsApplicable, setTdsApplicable] = useState<boolean>(false);
@@ -515,6 +517,7 @@ export default function VendorInvoicesPage() {
       setCgstAmount(0);
       setSgstAmount(0);
       setIgstAmount(0);
+      setRoundOff(0);
       setGrandTotal(0);
       // Reset TDS
       setTdsApplicable(false);
@@ -534,6 +537,7 @@ export default function VendorInvoicesPage() {
     setCgstAmount(0);
     setSgstAmount(0);
     setIgstAmount(0);
+    setRoundOff(0);
     setGrandTotal(0);
     setTdsApplicable(false);
     setTdsSection('');
@@ -580,11 +584,14 @@ export default function VendorInvoicesPage() {
     rate: string,
     type: 'INTRA_STATE' | 'INTER_STATE',
     tdsAppl: boolean,
-    tdsRt: number
+    tdsRt: number,
+    rOff?: number
   ) => {
     const gst = calculateGstFromRate(taxable, rate, type);
     const totalGst = gst.cgst + gst.sgst + gst.igst;
-    const gross = taxable + totalGst;
+    const grossBeforeRound = taxable + totalGst;
+    const currentRoundOff = rOff !== undefined ? rOff : roundOff;
+    const gross = Math.round((grossBeforeRound + currentRoundOff) * 100) / 100;
     const { tdsAmt, netPay } = calculateTds(gross, tdsAppl, tdsRt);
 
     setCgstAmount(gst.cgst);
@@ -819,6 +826,7 @@ export default function VendorInvoicesPage() {
       cgst_amount: cgstAmount,
       sgst_amount: sgstAmount,
       igst_amount: igstAmount,
+      round_off: roundOff,
       grand_total: grandTotal,
       due_date: dueDate.toISOString().split('T')[0],
       // TDS fields
@@ -1632,8 +1640,8 @@ export default function VendorInvoicesPage() {
                             onChange={(e) => {
                               const val = parseFloat(e.target.value) || 0;
                               setCgstAmount(val);
-                              const gross = subtotal + val + sgstAmount;
-                              setGrandTotal(gross);
+                              const gross = subtotal + val + sgstAmount + roundOff;
+                              setGrandTotal(Math.round(gross * 100) / 100);
                               const { tdsAmt, netPay } = calculateTds(gross, tdsApplicable, tdsRate);
                               setTdsAmount(tdsAmt);
                               setNetPayable(netPay);
@@ -1651,8 +1659,8 @@ export default function VendorInvoicesPage() {
                             onChange={(e) => {
                               const val = parseFloat(e.target.value) || 0;
                               setSgstAmount(val);
-                              const gross = subtotal + cgstAmount + val;
-                              setGrandTotal(gross);
+                              const gross = subtotal + cgstAmount + val + roundOff;
+                              setGrandTotal(Math.round(gross * 100) / 100);
                               const { tdsAmt, netPay } = calculateTds(gross, tdsApplicable, tdsRate);
                               setTdsAmount(tdsAmt);
                               setNetPayable(netPay);
@@ -1672,8 +1680,8 @@ export default function VendorInvoicesPage() {
                           onChange={(e) => {
                             const val = parseFloat(e.target.value) || 0;
                             setIgstAmount(val);
-                            const gross = subtotal + val;
-                            setGrandTotal(gross);
+                            const gross = subtotal + val + roundOff;
+                            setGrandTotal(Math.round(gross * 100) / 100);
                             const { tdsAmt, netPay } = calculateTds(gross, tdsApplicable, tdsRate);
                             setTdsAmount(tdsAmt);
                             setNetPayable(netPay);
@@ -1682,13 +1690,38 @@ export default function VendorInvoicesPage() {
                       </div>
                     )}
 
-                    {/* Grand Total (before TDS) */}
+                    {/* Gross Total before round off */}
                     <div className="pt-2 border-t">
                       <div className="flex justify-between items-center">
                         <span className="text-sm font-medium">Gross Total (incl. GST)</span>
-                        <span className="text-lg font-semibold">{formatCurrency(grandTotal)}</span>
+                        <span className="text-lg font-semibold">{formatCurrency(grandTotal - roundOff)}</span>
                       </div>
                     </div>
+
+                    {/* Round Off */}
+                    <div className="flex justify-between items-center gap-4">
+                      <span className="text-sm text-muted-foreground">Round Off</span>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        className="w-32 text-right"
+                        value={roundOff || ''}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setRoundOff(val);
+                          recalculateAmounts(subtotal, gstRate, gstType, tdsApplicable, tdsRate, val);
+                        }}
+                      />
+                    </div>
+
+                    {/* Grand Total after round off */}
+                    {roundOff !== 0 && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-semibold">Rounded Total</span>
+                        <span className="text-lg font-bold">{formatCurrency(grandTotal)}</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* TDS Section */}
@@ -1782,6 +1815,12 @@ export default function VendorInvoicesPage() {
                       <span className="text-sm text-muted-foreground">Gross Total</span>
                       <span>{formatCurrency(grandTotal)}</span>
                     </div>
+                    {roundOff !== 0 && (
+                      <div className="flex justify-between items-center text-muted-foreground">
+                        <span className="text-sm">Round Off</span>
+                        <span>{roundOff > 0 ? '+' : ''}{formatCurrency(roundOff)}</span>
+                      </div>
+                    )}
                     {tdsApplicable && tdsAmount > 0 && (
                       <div className="flex justify-between items-center text-orange-700">
                         <span className="text-sm">Less: TDS ({tdsRate}%)</span>
