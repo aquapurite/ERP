@@ -349,7 +349,7 @@ async def get_grn(
     db: DB,
     current_user: User = Depends(get_current_user),
 ):
-    """Get GRN details."""
+    """Get full GRN details including items with quantities and pricing."""
     query = select(GoodsReceiptNote).options(
         selectinload(GoodsReceiptNote.vendor),
         selectinload(GoodsReceiptNote.warehouse),
