@@ -160,6 +160,7 @@ export interface Product {
   model_code?: string; // 3-letter code for barcode generation (e.g., IEL, ELZ)
   item_type?: 'FG' | 'SP' | 'CO' | 'CN' | 'AC'; // FG=Finished Goods, SP=Spare Part, etc.
   part_code?: string; // Vendor's part code
+  sub_item_code?: string; // Sub item code for spare parts only
   category_id?: string;
   brand_id?: string;
   mrp: number;
@@ -497,6 +498,7 @@ export interface POItem {
   product_id: string;
   product_name?: string;
   sku?: string;
+  sub_item_code?: string;
   asset_category_id?: string;
   quantity?: number;
   quantity_ordered?: number;

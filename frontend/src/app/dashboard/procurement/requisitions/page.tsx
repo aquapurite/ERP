@@ -90,6 +90,7 @@ interface PRFormItem {
   product_id: string;
   product_name: string;
   sku: string;
+  sub_item_code?: string;
   quantity_requested: number;
   estimated_unit_price: number;
   uom: string;
@@ -934,6 +935,7 @@ export default function PurchaseRequisitionsPage() {
         product_id: product.id,
         product_name: product.name,
         sku: product.sku,
+        sub_item_code: product.sub_item_code || undefined,
         quantity_requested: totalQty,
         estimated_unit_price: newItem.estimated_price || product.mrp || 0,
         uom: 'PCS',
@@ -1634,6 +1636,9 @@ export default function PurchaseRequisitionsPage() {
                             <td className="px-3 py-2">
                               <div className="font-medium">{item.product_name}</div>
                               <div className="text-xs text-muted-foreground">{item.sku}</div>
+                              {item.sub_item_code && (
+                                <div className="text-xs text-blue-600">Sub: {item.sub_item_code}</div>
+                              )}
                               {item.monthly_quantities && Object.keys(item.monthly_quantities).length > 0 && (
                                 <div className="mt-1 flex flex-wrap gap-1">
                                   {Object.entries(item.monthly_quantities).map(([month, qty]) => {
@@ -2186,6 +2191,9 @@ export default function PurchaseRequisitionsPage() {
                         <td className="px-3 py-2">
                           <div className="font-medium">{item.product_name}</div>
                           <div className="text-xs text-muted-foreground">{item.sku}</div>
+                          {item.sub_item_code && (
+                            <div className="text-xs text-blue-600">Sub: {item.sub_item_code}</div>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-right">{item.quantity_requested}</td>
                         <td className="px-3 py-2 text-right">{formatCurrency(item.estimated_unit_price)}</td>
@@ -2428,6 +2436,9 @@ export default function PurchaseRequisitionsPage() {
                             <td className="px-3 py-2">
                               <div className="font-medium">{item.product_name}</div>
                               <div className="text-xs text-muted-foreground">{item.sku}</div>
+                              {item.sub_item_code && (
+                                <div className="text-xs text-blue-600">Sub: {item.sub_item_code}</div>
+                              )}
                               {item.monthly_quantities && Object.keys(item.monthly_quantities).length > 0 && (
                                 <div className="mt-1 flex flex-wrap gap-1">
                                   {Object.entries(item.monthly_quantities).map(([month, qty]: [string, any]) => {

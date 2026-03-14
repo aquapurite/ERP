@@ -1123,6 +1123,7 @@ export interface PurchaseRequisition {
     product_id: string;
     product_name: string;
     sku: string;
+    sub_item_code?: string;
     quantity_requested: number;
     estimated_unit_price?: number;
     uom?: string;

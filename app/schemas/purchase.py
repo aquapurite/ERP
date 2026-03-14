@@ -21,6 +21,7 @@ class PRItemBase(BaseModel):
     variant_id: Optional[UUID] = None
     product_name: str
     sku: str
+    sub_item_code: Optional[str] = Field(None, max_length=50, description="Sub item code for spare parts only")
     quantity_requested: int = Field(..., gt=0)
     uom: str = "PCS"
     estimated_unit_price: Decimal = Field(Decimal("0"), ge=0)
@@ -46,6 +47,7 @@ class PRItemUpdate(BaseModel):
     variant_id: Optional[UUID] = None
     product_name: Optional[str] = None
     sku: Optional[str] = None
+    sub_item_code: Optional[str] = None
     quantity_requested: Optional[int] = Field(None, gt=0)
     uom: Optional[str] = None
     estimated_unit_price: Optional[Decimal] = Field(None, ge=0)
@@ -61,6 +63,7 @@ class PRItemResponse(BaseResponseSchema):
     variant_id: Optional[UUID] = None
     product_name: str
     sku: str
+    sub_item_code: Optional[str] = None
     quantity_requested: int
     uom: str = "PCS"
     estimated_unit_price: Decimal
@@ -164,6 +167,7 @@ class POItemBase(BaseModel):
     asset_category_id: Optional[UUID] = None  # Required for ASSET type PO items
     product_name: str
     sku: str
+    sub_item_code: Optional[str] = Field(None, max_length=50, description="Sub item code for spare parts only")
     hsn_code: Optional[str] = None
     quantity_ordered: int = Field(..., gt=0)
     uom: str = "PCS"
@@ -194,6 +198,7 @@ class POItemResponse(BaseResponseSchema):
     asset_category_id: Optional[UUID] = None
     product_name: str
     sku: str
+    sub_item_code: Optional[str] = None
     hsn_code: Optional[str] = None
     # Quantity
     line_number: int
@@ -539,6 +544,7 @@ class GRNItemBase(BaseModel):
     variant_id: Optional[UUID] = None
     product_name: str
     sku: str
+    sub_item_code: Optional[str] = Field(None, max_length=50, description="Sub item code for spare parts only")
     quantity_expected: int
     quantity_received: int = Field(..., ge=0)
     quantity_accepted: int = Field(0, ge=0)

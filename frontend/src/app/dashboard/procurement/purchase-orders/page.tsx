@@ -68,6 +68,7 @@ interface POItem {
   product_id: string;
   product_name?: string;
   sku?: string;
+  sub_item_code?: string;
   asset_category_id?: string;
   quantity?: number;
   quantity_ordered?: number;
@@ -489,6 +490,7 @@ export default function PurchaseOrdersPage() {
           product_id: item.product_id || '',
           product_name: item.product_name || '',
           sku: item.sku || '',
+          sub_item_code: item.sub_item_code || '',
           quantity: item.quantity_ordered || item.quantity || 0,
           quantity_ordered: item.quantity_ordered || item.quantity || 0,
           unit_price: Number(item.unit_price) || 0,
@@ -603,6 +605,7 @@ export default function PurchaseOrdersPage() {
           product_id: item.product_id,
           product_name: item.product_name || '',
           sku: item.sku || '',
+          sub_item_code: item.sub_item_code || undefined,
           quantity_ordered: Number(item.quantity_ordered) || Number(item.quantity) || 0,
           unit_price: Number(item.unit_price) || 0,
           gst_rate: Number(item.gst_rate) || 18,
@@ -855,6 +858,7 @@ export default function PurchaseOrdersPage() {
         product_id: newItem.product_id,
         product_name: prItem.product_name,
         sku: prItem.sku,
+        sub_item_code: prItem.sub_item_code || undefined,
         quantity: totalQty,
         unit_price: newItem.unit_price,
         gst_rate: newItem.gst_rate,
@@ -935,6 +939,7 @@ export default function PurchaseOrdersPage() {
         product_id: item.product_id || undefined,
         product_name: item.product_name || 'Unknown Product',
         sku: item.sku || 'N/A',
+        sub_item_code: item.sub_item_code || undefined,
         asset_category_id: item.asset_category_id || undefined,
         quantity_ordered: item.quantity || 1,
         unit_price: item.unit_price || 0,
@@ -1013,6 +1018,7 @@ export default function PurchaseOrdersPage() {
         product_id: item.product_id,
         product_name: item.product_name,
         sku: item.sku,
+        sub_item_code: item.sub_item_code || undefined,
         quantity: item.quantity_requested,
         unit_price: item.estimated_unit_price || 0,
         gst_rate: 18, // Default GST rate
@@ -1754,6 +1760,9 @@ export default function PurchaseOrdersPage() {
                                   <td className="px-3 py-2">
                                     <div className="font-medium">{item.product_name}</div>
                                     <div className="text-xs text-muted-foreground">{item.sku}</div>
+                                    {item.sub_item_code && (
+                                      <div className="text-xs text-blue-600">Sub: {item.sub_item_code}</div>
+                                    )}
                                   </td>
                                   <td className="px-3 py-2 text-center">
                                     <Badge variant="outline" className="text-xs">
@@ -2130,6 +2139,9 @@ export default function PurchaseOrdersPage() {
                             <div className="text-xs text-muted-foreground">
                               {item.quantity ?? item.quantity_ordered ?? 0} x {formatCurrency(item.unit_price)}
                             </div>
+                            {item.sub_item_code && (
+                              <div className="text-xs text-blue-600">Sub Item: {item.sub_item_code}</div>
+                            )}
                           </div>
                           <div className="text-right font-medium">
                             {formatCurrency((item.quantity ?? item.quantity_ordered ?? 0) * item.unit_price)}
@@ -2607,6 +2619,9 @@ export default function PurchaseOrdersPage() {
                             <td className="p-2">
                               <div className="font-medium">{item.product_name || 'Unknown'}</div>
                               <div className="text-xs text-muted-foreground">{item.sku}</div>
+                              {item.sub_item_code && (
+                                <div className="text-xs text-blue-600">Sub: {item.sub_item_code}</div>
+                              )}
                             </td>
                             <td className="p-2">
                               <Input

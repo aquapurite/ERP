@@ -332,6 +332,11 @@ class PurchaseRequisitionItem(Base):
     # Snapshot
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     sku: Mapped[str] = mapped_column(String(50), nullable=False)
+    sub_item_code: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Sub item code for spare parts only"
+    )
 
     # Quantity
     quantity_requested: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -727,6 +732,11 @@ class PurchaseOrderItem(Base):
         String(20),
         nullable=True,
         comment="Vendor's part code e.g., AFGPSW2001"
+    )
+    sub_item_code: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Sub item code for spare parts only"
     )
     hsn_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
 
@@ -1345,6 +1355,11 @@ class GRNItem(Base):
         String(20),
         nullable=True,
         comment="Vendor's part code e.g., AFGPSW2001"
+    )
+    sub_item_code: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Sub item code for spare parts only"
     )
     hsn_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
 

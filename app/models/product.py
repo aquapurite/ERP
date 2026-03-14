@@ -80,6 +80,14 @@ class Product(Base):
         index=True,
         comment="Vendor's part code e.g., AFGPSW2001"
     )
+
+    # Sub Item Code (only for Spare Parts category)
+    sub_item_code: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Sub item code for spare parts only"
+    )
+
     item_type: Mapped[str] = mapped_column(
         String(50),
         default="FG",

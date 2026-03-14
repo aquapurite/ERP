@@ -46,6 +46,7 @@ interface ProductFormData {
   brand_id?: string;
   category_id?: string;
   item_type?: 'FG' | 'SP';
+  sub_item_code?: string;
   mrp: number;
   cost_price?: number;    // Legacy - auto-calculated from GRNs
   gst_rate?: number;
@@ -70,6 +71,7 @@ const productSchema = z.object({
   brand_id: z.string().optional(),
   category_id: z.string().optional(),
   item_type: z.enum(['FG', 'SP']).optional(),
+  sub_item_code: z.string().max(50).optional(),
   mrp: z.coerce.number().min(0, 'MRP must be positive'),
   cost_price: z.coerce.number().min(0).optional(),    // Legacy - auto-calculated from GRNs
   gst_rate: z.coerce.number().min(0).max(100).optional(),
@@ -181,6 +183,7 @@ export default function ProductDetailPage() {
       brand_id: product.brand_id || product.brand?.id || '',
       category_id: product.category_id || product.category?.id || '',
       item_type: (product.item_type as 'FG' | 'SP') || 'FG',
+      sub_item_code: product.sub_item_code || '',
       mrp: product.mrp || 0,
       cost_price: product.cost_price || 0,
       gst_rate: product.gst_rate || 18,
@@ -364,6 +367,7 @@ export default function ProductDetailPage() {
       brand_id: data.brand_id || undefined,
       category_id: data.category_id || undefined,
       item_type: data.item_type || undefined,
+      sub_item_code: data.item_type === 'SP' ? (data.sub_item_code || undefined) : undefined,
       mrp: data.mrp,
       cost_price: data.cost_price || undefined,
       gst_rate: data.gst_rate || undefined,
@@ -805,6 +809,22 @@ export default function ProductDetailPage() {
                         ))}
                       </div>
                     </div>
+
+                    {/* Sub Item Code - only for Spare Parts */}
+                    {form.watch('item_type') === 'SP' && (
+                      <div className="space-y-2">
+                        <Label htmlFor="sub_item_code">Sub Item Code</Label>
+                        <Input
+                          id="sub_item_code"
+                          placeholder="Enter sub item code (optional)"
+                          maxLength={50}
+                          {...form.register('sub_item_code')}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Optional code to identify spare part sub-items
+                        </p>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 

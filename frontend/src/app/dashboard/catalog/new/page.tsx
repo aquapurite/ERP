@@ -46,6 +46,7 @@ const productSchema = z.object({
   brand_id: z.string().min(1, 'Brand is required'),
   category_id: z.string().min(1, 'Category is required'),
   item_type: z.enum(['FG', 'SP']).default('FG'),
+  sub_item_code: z.string().max(50).optional(),
   model_code: z.string().min(1, 'Model name is required').max(5, 'Model name must be 5 characters or less').regex(/^[A-Za-z]+$/, 'Model name must contain only letters'),
   mrp: z.coerce.number().min(0, 'MRP must be positive'),
   gst_rate: z.coerce.number().min(0).max(100, 'GST rate must be between 0 and 100').optional(),
@@ -525,6 +526,22 @@ export default function NewProductPage() {
                     ))}
                   </div>
                 </div>
+
+                {/* Sub Item Code - only for Spare Parts */}
+                {form.watch('item_type') === 'SP' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="sub_item_code">Sub Item Code</Label>
+                    <Input
+                      id="sub_item_code"
+                      placeholder="Enter sub item code (optional)"
+                      maxLength={50}
+                      {...form.register('sub_item_code')}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Optional code to identify spare part sub-items
+                    </p>
+                  </div>
+                )}
 
                 {/* Step 5: Model Name */}
                 <div className="space-y-2">

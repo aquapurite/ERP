@@ -120,6 +120,7 @@ class ProductBase(BaseModel):
     fg_code: Optional[str] = Field(None, max_length=20, description="Formal product code e.g., WPRAIEL001")
     model_code: Optional[str] = Field(None, min_length=3, max_length=3, description="3-letter model code for SKU e.g., IEL, HMR, OPT")
     item_type: ProductItemType = Field(default=ProductItemType.FINISHED_GOODS, description="FG, SP, CO, CN, AC")
+    sub_item_code: Optional[str] = Field(None, max_length=50, description="Sub item code for spare parts only")
 
     short_description: Optional[str] = Field(None, max_length=500)
     description: Optional[str] = None
@@ -196,6 +197,7 @@ class ProductUpdate(BaseModel):
     fg_code: Optional[str] = Field(None, max_length=20)
     model_code: Optional[str] = Field(None, min_length=3, max_length=3, description="3-letter model code")
     item_type: Optional[ProductItemType] = None
+    sub_item_code: Optional[str] = Field(None, max_length=50, description="Sub item code for spare parts only")
 
     short_description: Optional[str] = Field(None, max_length=500)
     description: Optional[str] = None
@@ -283,6 +285,7 @@ class ProductResponse(BaseResponseSchema):
     fg_code: Optional[str] = None
     model_code: Optional[str] = None
     item_type: str = "FG"  # VARCHAR in DB
+    sub_item_code: Optional[str] = None
 
     short_description: Optional[str] = None
     description: Optional[str] = None
