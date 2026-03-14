@@ -74,12 +74,14 @@ interface GRN {
   po_id: string;
   po_number?: string;
   warehouse_id: string;
-  status: 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  status: 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'PUT_AWAY_PENDING' | 'PENDING_QC';
   grn_date?: string;
   received_date?: string;
   total_received: number;
   total_rejected: number;
   total_quantity_received?: number;
+  total_quantity_accepted?: number;
+  total_quantity_rejected?: number;
   total_value?: number;
   notes?: string;
   vendor_challan_number?: string;
@@ -456,6 +458,7 @@ export default function GRNPage() {
       variant_id?: string;
       product_name: string;
       sku: string;
+      sub_item_code?: string;
       quantity_expected: number;
       quantity_received: number;
       quantity_accepted: number;
@@ -490,6 +493,7 @@ export default function GRNPage() {
         product_id: poItem.product_id,
         product_name: poItem.product_name || 'Unknown Product',
         sku: poItem.sku || '',
+        sub_item_code: (poItem as any).sub_item_code || undefined,
         quantity_expected: pending,
         quantity_received: receivedQty,
         quantity_accepted: receivedQty, // Default: all received are accepted
@@ -801,7 +805,7 @@ export default function GRNPage() {
                                     <div className="flex-1 min-w-0">
                                       <div className="font-medium text-sm truncate">{item.product_name}</div>
                                       <div className="text-xs text-muted-foreground">
-                                        {item.sku} | Ordered: {ordered} | Received: {alreadyReceived} | <span className="text-green-600 font-medium">Pending: {pending}</span>
+                                        {item.sku}{(item as any).sub_item_code ? ` | Sub: ${(item as any).sub_item_code}` : ''} | Ordered: {ordered} | Received: {alreadyReceived} | <span className="text-green-600 font-medium">Pending: {pending}</span>
                                       </div>
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -991,27 +995,27 @@ export default function GRNPage() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Vendor</p>
-                  <p className="text-sm font-medium">{selectedGRN.vendor?.name || selectedGRN.purchase_order?.vendor?.name}</p>
+                  <p className="text-sm font-medium">{selectedGRN.vendor?.name || selectedGRN.vendor_name || selectedGRN.purchase_order?.vendor?.name || '-'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Warehouse</p>
-                  <p className="text-sm font-medium">{selectedGRN.warehouse?.name}</p>
+                  <p className="text-sm font-medium">{selectedGRN.warehouse?.name || selectedGRN.warehouse_name || '-'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Received Date</p>
-                  <p className="text-sm">{formatDate(selectedGRN.received_date)}</p>
+                  <p className="text-sm">{formatDate(selectedGRN.received_date || selectedGRN.grn_date)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Quantities</p>
                   <div className="flex gap-2">
                     <Badge variant="outline" className="text-green-600">
                       <CheckCircle className="mr-1 h-3 w-3" />
-                      {selectedGRN.total_received} Received
+                      {selectedGRN.total_received || selectedGRN.total_quantity_received || 0} Received
                     </Badge>
-                    {selectedGRN.total_rejected > 0 && (
+                    {(selectedGRN.total_rejected || selectedGRN.total_quantity_rejected || 0) > 0 && (
                       <Badge variant="outline" className="text-red-600">
                         <XCircle className="mr-1 h-3 w-3" />
-                        {selectedGRN.total_rejected} Rejected
+                        {selectedGRN.total_rejected || selectedGRN.total_quantity_rejected} Rejected
                       </Badge>
                     )}
                   </div>
@@ -1080,6 +1084,9 @@ export default function GRNPage() {
                             <div>
                               <p className="font-medium">{item.product_name}</p>
                               <p className="text-sm text-muted-foreground font-mono">{item.sku}</p>
+                              {(item as any).sub_item_code && (
+                                <p className="text-xs text-blue-600">Sub: {(item as any).sub_item_code}</p>
+                              )}
                             </div>
                             <Badge
                               variant={item.qc_status === 'PASSED' ? 'default' : item.qc_status === 'FAILED' ? 'destructive' : 'secondary'}
