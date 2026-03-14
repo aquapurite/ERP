@@ -1209,11 +1209,12 @@ async def download_purchase_requisition(
     total_items = 0
     for idx, item in enumerate(pr.items, 1):
         total_items += item.quantity_requested
+        sub_code_line = f"<br><small style='color: #0066cc;'>Sub Item: {item.sub_item_code}</small>" if item.sub_item_code else ""
         items_html += f"""
             <tr>
                 <td class="text-center">{idx}</td>
                 <td class="item-code">{item.sku or '-'}</td>
-                <td><strong>{item.product_name or '-'}</strong></td>
+                <td><strong>{item.product_name or '-'}</strong>{sub_code_line}</td>
                 <td class="text-center"><strong>{item.quantity_requested}</strong></td>
                 <td class="text-center">{item.uom or 'PCS'}</td>
                 <td>{getattr(item, 'notes', '') or '-'}</td>
@@ -2520,10 +2521,11 @@ def _generate_po_html(po, vendor) -> bytes:
 
     items_html = ""
     for idx, item in enumerate(po.items, 1):
+        sub_code_line = f"<br><small style='color: #0066cc;'>Sub Item: {item.sub_item_code}</small>" if item.sub_item_code else ""
         items_html += f"""
         <tr>
             <td style="text-align: center;">{idx}</td>
-            <td>{item.product_name or ''}<br><small style="color: #666;">SKU: {item.sku or 'N/A'} | HSN: {item.hsn_code or 'N/A'}</small></td>
+            <td>{item.product_name or ''}{sub_code_line}<br><small style="color: #666;">SKU: {item.sku or 'N/A'} | HSN: {item.hsn_code or 'N/A'}</small></td>
             <td style="text-align: center;">{item.quantity_ordered}</td>
             <td style="text-align: center;">{item.uom or 'NOS'}</td>
             <td style="text-align: right;">&#8377;{float(item.unit_price):,.2f}</td>
@@ -5194,12 +5196,13 @@ async def download_purchase_order(
                 month_totals[month] += qty
                 month_cells += f'<td class="text-center">{qty if qty > 0 else "-"}</td>'
 
+        sub_code_line = f"<br><small style='color: #0066cc;'>Sub Item: {item.sub_item_code}</small>" if item.sub_item_code else ""
         items_html += f"""
                 <tr>
                     <td class="text-center">{idx}</td>
                     <td class="item-code">{item_code}</td>
                     <td>
-                        <strong>{item.product_name or '-'}</strong>
+                        <strong>{item.product_name or '-'}</strong>{sub_code_line}
                     </td>
                     <td class="text-center">{item.hsn_code or '84212190'}</td>
                     {month_cells}
@@ -6014,10 +6017,11 @@ async def download_grn(
         unit_price = float(item.unit_price) if item.unit_price else 0.0
         accepted_value = float(item.accepted_value) if item.accepted_value else 0.0
 
+        sub_code_str = f" <small style='color:#0066cc'>[Sub: {item.sub_item_code}]</small>" if item.sub_item_code else ""
         items_html += f"""
         <tr>
             <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{idx}</td>
-            <td style="border: 1px solid #ddd; padding: 8px;">{item.product_name or '-'}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">{item.product_name or '-'}{sub_code_str}</td>
             <td style="border: 1px solid #ddd; padding: 8px;">{item.sku or '-'}</td>
             <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{item.quantity_expected}</td>
             <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{item.quantity_received}</td>
