@@ -427,13 +427,26 @@ export default function VendorInvoicesPage() {
   const expenseCategories = Array.isArray(expenseCategoriesData) ? expenseCategoriesData : [];
 
   // Fetch POs - filtered by selected vendor
+  // Include all post-approval statuses (APPROVED, SENT_TO_VENDOR, ACKNOWLEDGED, PARTIALLY_RECEIVED)
   const { data: posData, isLoading: posLoading } = useQuery({
     queryKey: ['purchase-orders-dropdown', selectedVendorId],
-    queryFn: () => purchaseOrdersApi.list({
-      vendor_id: selectedVendorId || undefined,
-      status: 'APPROVED', // Only show approved POs for linking
-    }),
-    enabled: true, // Always fetch, but filter by vendor if selected
+    queryFn: async () => {
+      const params = { vendor_id: selectedVendorId || undefined, size: 100 };
+      const results = await Promise.all([
+        purchaseOrdersApi.list({ ...params, status: 'APPROVED' }),
+        purchaseOrdersApi.list({ ...params, status: 'SENT_TO_VENDOR' }),
+        purchaseOrdersApi.list({ ...params, status: 'ACKNOWLEDGED' }),
+        purchaseOrdersApi.list({ ...params, status: 'PARTIALLY_RECEIVED' }),
+      ]);
+      const allItems = [
+        ...(results[0]?.items || []),
+        ...(results[1]?.items || []),
+        ...(results[2]?.items || []),
+        ...(results[3]?.items || []),
+      ];
+      return { items: allItems };
+    },
+    enabled: true,
   });
 
   // Filter POs by selected vendor (if any)
