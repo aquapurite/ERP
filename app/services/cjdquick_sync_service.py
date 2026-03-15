@@ -782,6 +782,21 @@ class CJDQuickSyncService:
             logger.info("PO %s synced to CJDQuick OMS: %s", po.po_number, oms_id)
             return log
         except CJDQuickAPIError as e:
+            # Handle duplicate PO (already synced) — treat as success
+            err_msg = (e.message or "").lower()
+            if "already exists" in err_msg or "duplicate" in err_msg or "unique" in err_msg:
+                logger.info("PO %s already exists in CJDQuick, treating as success", po.po_number)
+                log = await self._write_sync_log(
+                    entity_type="PO",
+                    entity_id=po_id,
+                    operation="CREATE",
+                    status="SUCCESS",
+                    request_payload=payload,
+                    response_payload={"message": f"PO already exists in CJDQuick OMS"},
+                    oms_id=po.po_number,
+                )
+                return log
+
             log = await self._write_sync_log(
                 entity_type="PO",
                 entity_id=po_id,
