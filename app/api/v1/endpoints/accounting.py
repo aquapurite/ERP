@@ -3173,6 +3173,49 @@ async def post_journal_entry(
             running_balance = running_balance + (gl.debit_amount or Decimal("0")) - (gl.credit_amount or Decimal("0"))
             gl.running_balance = running_balance
 
+    # Budget alert check for cost centers
+    budget_warnings = []
+    affected_cost_centers = set(
+        line.cost_center_id for line in journal.lines if line.cost_center_id
+    )
+    for cc_id in affected_cost_centers:
+        try:
+            cc_result = await db.execute(select(CostCenter).where(CostCenter.id == cc_id))
+            cc = cc_result.scalar_one_or_none()
+            if cc and cc.annual_budget and cc.annual_budget > 0:
+                # Calculate total spend for this CC from GL
+                spend_result = await db.execute(
+                    select(func.coalesce(
+                        func.sum(GeneralLedger.debit_amount - GeneralLedger.credit_amount), 0
+                    ))
+                    .join(ChartOfAccount, GeneralLedger.account_id == ChartOfAccount.id)
+                    .where(GeneralLedger.cost_center_id == cc_id)
+                    .where(ChartOfAccount.account_type == "EXPENSE")
+                )
+                total_spend = spend_result.scalar() or Decimal("0")
+                utilization = (total_spend / cc.annual_budget * 100) if cc.annual_budget > 0 else Decimal("0")
+
+                if utilization >= 100:
+                    budget_warnings.append({
+                        "cost_center": cc.name,
+                        "code": cc.code,
+                        "level": "OVER_BUDGET",
+                        "utilization_pct": float(utilization),
+                        "budget": float(cc.annual_budget),
+                        "spend": float(total_spend),
+                    })
+                elif utilization >= 80:
+                    budget_warnings.append({
+                        "cost_center": cc.name,
+                        "code": cc.code,
+                        "level": "WARNING",
+                        "utilization_pct": float(utilization),
+                        "budget": float(cc.annual_budget),
+                        "spend": float(total_spend),
+                    })
+        except Exception:
+            pass  # Non-blocking
+
     # Update journal status
     journal.status = JournalStatus.POSTED.value
     journal.posted_by = current_user.id
@@ -3201,6 +3244,16 @@ async def post_journal_entry(
 
     await db.commit()
     await db.refresh(journal)
+
+    # If there are budget warnings, log them
+    if budget_warnings:
+        import logging
+        for w in budget_warnings:
+            logging.warning(
+                f"BUDGET ALERT: Cost Center {w['code']} ({w['cost_center']}) "
+                f"at {w['utilization_pct']:.1f}% utilization "
+                f"(Budget: ₹{w['budget']:,.2f}, Spend: ₹{w['spend']:,.2f}) - {w['level']}"
+            )
 
     return journal
 
@@ -5310,6 +5363,48 @@ class AllocationRuleUpdate(BaseModel):
 class RunAllocationRequest(BaseModel):
     period_key: str  # e.g. "2026-03"
     fiscal_year: str  # e.g. "2025-26"
+
+
+@router.get("/cost-centers/budget-alerts")
+async def get_budget_alerts(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get budget alerts for all cost centers exceeding 80% utilization."""
+    ccs_result = await db.execute(
+        select(CostCenter)
+        .where(CostCenter.is_active == True)
+        .where(CostCenter.annual_budget > 0)
+    )
+    cost_centers = ccs_result.scalars().all()
+
+    alerts = []
+    for cc in cost_centers:
+        spend_result = await db.execute(
+            select(func.coalesce(
+                func.sum(GeneralLedger.debit_amount - GeneralLedger.credit_amount), 0
+            ))
+            .join(ChartOfAccount, GeneralLedger.account_id == ChartOfAccount.id)
+            .where(GeneralLedger.cost_center_id == cc.id)
+            .where(ChartOfAccount.account_type == "EXPENSE")
+        )
+        total_spend = spend_result.scalar() or Decimal("0")
+        utilization = (total_spend / cc.annual_budget * 100) if cc.annual_budget > 0 else Decimal("0")
+
+        if utilization >= 80:
+            alerts.append({
+                "cost_center_id": str(cc.id),
+                "code": cc.code,
+                "name": cc.name,
+                "level": "OVER_BUDGET" if utilization >= 100 else "WARNING",
+                "utilization_pct": round(float(utilization), 1),
+                "annual_budget": float(cc.annual_budget),
+                "total_spend": float(total_spend),
+                "remaining": float(cc.annual_budget - total_spend),
+            })
+
+    alerts.sort(key=lambda x: x["utilization_pct"], reverse=True)
+    return {"alerts": alerts, "total": len(alerts)}
 
 
 @router.get("/cost-allocations/rules")

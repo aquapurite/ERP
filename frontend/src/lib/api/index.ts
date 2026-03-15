@@ -2297,6 +2297,10 @@ export const costCentersApi = {
     const { data } = await apiClient.get('/accounting/cost-centers/user-assignments', { params: userId ? { user_id: userId } : {} });
     return data;
   },
+  getBudgetAlerts: async () => {
+    const { data } = await apiClient.get('/accounting/cost-centers/budget-alerts');
+    return data;
+  },
 };
 
 // Internal Orders API (Gap 9)

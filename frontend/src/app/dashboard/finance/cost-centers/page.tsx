@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Pencil, Trash2, Building2, Loader2, TrendingUp, Wallet, Users, Calendar, FileBarChart, FolderKanban, ChevronDown, ChevronRight, UserPlus, X } from 'lucide-react';
+import { MoreHorizontal, Plus, Pencil, Trash2, Building2, Loader2, TrendingUp, Wallet, Users, Calendar, FileBarChart, FolderKanban, ChevronDown, ChevronRight, UserPlus, X, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -90,6 +90,16 @@ interface ExpenseReportItem {
   budget_utilization_pct: number;
   status: string;
   gl_breakdown: { account_code: string; account_name: string; total_amount: number }[];
+}
+
+interface BudgetAlert {
+  code: string;
+  name: string;
+  level: string;
+  utilization_pct: number;
+  annual_budget: number;
+  total_spend: number;
+  remaining: number;
 }
 
 const costCenterTypes = [
@@ -204,6 +214,14 @@ export default function CostCentersPage() {
     queryFn: () => usersApi.list({ page: 1, size: 200, is_active: true }),
     enabled: isUserDialogOpen,
   });
+
+  const { data: budgetAlertsData } = useQuery({
+    queryKey: ['cc-budget-alerts'],
+    queryFn: () => costCentersApi.getBudgetAlerts(),
+  });
+
+  const budgetAlerts: BudgetAlert[] = budgetAlertsData?.alerts || [];
+  const budgetAlertTotal: number = budgetAlertsData?.total || 0;
 
   // ---- Mutations ----
 
@@ -526,6 +544,51 @@ export default function CostCentersPage() {
           </Dialog>
         }
       />
+
+      {budgetAlertTotal > 0 && (
+        <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/20">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+              <CardTitle className="text-lg">Budget Alerts</CardTitle>
+              <Badge variant="destructive" className="ml-1">{budgetAlertTotal}</Badge>
+            </div>
+            <CardDescription>Cost centers approaching or exceeding their budget limits</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {budgetAlerts.map((alert) => {
+                const isOverBudget = alert.level === 'OVER_BUDGET';
+                const barColor = isOverBudget ? 'bg-red-500' : 'bg-amber-500';
+                const pct = Math.min(alert.utilization_pct, 100);
+                return (
+                  <div key={alert.code} className="rounded-lg border p-3 bg-white dark:bg-gray-950">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm">{alert.name}</span>
+                        <Badge variant={isOverBudget ? 'destructive' : 'outline'} className={isOverBudget ? '' : 'border-amber-500 text-amber-700 dark:text-amber-400'}>
+                          {isOverBudget ? 'Over Budget' : 'Warning'}
+                        </Badge>
+                      </div>
+                      <span className="text-sm font-semibold">{alert.utilization_pct.toFixed(1)}%</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-gray-200 dark:bg-gray-800 mb-2">
+                      <div className={`h-2 rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+                    </div>
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Budget: {formatCurrency(alert.annual_budget)}</span>
+                      <span>Spent: {formatCurrency(alert.total_spend)}</span>
+                      <span className={alert.remaining < 0 ? 'text-red-600 font-medium' : ''}>
+                        Remaining: {formatCurrency(alert.remaining)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
