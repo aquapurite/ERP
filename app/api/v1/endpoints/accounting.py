@@ -1272,10 +1272,7 @@ async def create_cost_center(
     cc_data = cc_in.model_dump(exclude_unset=True)
     # Remove fields not on CostCenter model
     cc_data.pop('department', None)
-    cost_center = CostCenter(
-        **cc_data,
-        created_by=current_user.id,
-    )
+    cost_center = CostCenter(**cc_data)
 
     db.add(cost_center)
     await db.commit()
