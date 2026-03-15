@@ -49,6 +49,12 @@ class Warehouse(Base, TimestampMixin):
     contact_phone = Column(String(20))
     contact_email = Column(String(100))
 
+    # Fulfillment partner (3PL support)
+    fulfillment_partner_id = Column(UUID(as_uuid=True), ForeignKey("fulfillment_partners.id"), nullable=True)
+    partner_warehouse_code = Column(String(100), nullable=True, comment="Code in 3PL's system (e.g. CJDQ-WH-DEL)")
+    partner_location_id = Column(String(100), nullable=True, comment="LocationId UUID in 3PL's system")
+    fulfillment_type = Column(String(50), nullable=False, default="SELF", comment="SELF or 3PL")
+
     # Region association
     region_id = Column(UUID(as_uuid=True), ForeignKey("regions.id"))
 
@@ -72,6 +78,7 @@ class Warehouse(Base, TimestampMixin):
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationships
+    fulfillment_partner = relationship("FulfillmentPartner", back_populates="warehouses")
     region = relationship("Region", back_populates="warehouses")
     manager = relationship("User", foreign_keys=[manager_id])
     stock_items = relationship("StockItem", back_populates="warehouse", cascade="all, delete-orphan")

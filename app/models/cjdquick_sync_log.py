@@ -76,6 +76,14 @@ class CJDQuickSyncLog(Base):
         comment="What OMS returned",
     )
 
+    # Fulfillment provider
+    provider_code: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="CJDQUICK",
+        comment="Fulfillment partner code (CJDQUICK, SELF, etc.)",
+    )
+
     # Error tracking
     error_message: Mapped[Optional[str]] = mapped_column(
         Text,

@@ -32,6 +32,11 @@ class WarehouseBase(BaseModel):
     can_fulfill_orders: bool = True
     can_receive_transfers: bool = True
     notes: Optional[str] = None
+    # Fulfillment partner fields
+    fulfillment_partner_id: Optional[uuid.UUID] = None
+    partner_warehouse_code: Optional[str] = Field(None, max_length=100)
+    partner_location_id: Optional[str] = Field(None, max_length=100)
+    fulfillment_type: str = Field(default="SELF", max_length=50)
 
 
 class WarehouseCreate(WarehouseBase):
@@ -64,6 +69,11 @@ class WarehouseUpdate(BaseModel):
     is_active: Optional[bool] = None
     is_default: Optional[bool] = None
     notes: Optional[str] = None
+    # Fulfillment partner fields
+    fulfillment_partner_id: Optional[uuid.UUID] = None
+    partner_warehouse_code: Optional[str] = None
+    partner_location_id: Optional[str] = None
+    fulfillment_type: Optional[str] = None
 
 
 class WarehouseResponse(BaseResponseSchema):
@@ -95,6 +105,11 @@ class WarehouseResponse(BaseResponseSchema):
     can_receive_transfers: bool
     full_address: str
     notes: Optional[str] = None
+    # Fulfillment partner fields
+    fulfillment_partner_id: Optional[uuid.UUID] = None
+    partner_warehouse_code: Optional[str] = None
+    partner_location_id: Optional[str] = None
+    fulfillment_type: str = "SELF"
     created_at: datetime
     updated_at: datetime
 

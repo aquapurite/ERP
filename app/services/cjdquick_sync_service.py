@@ -22,6 +22,7 @@ from app.models.purchase import PurchaseOrder, PurchaseOrderItem
 from app.models.return_order import ReturnOrder, ReturnItem
 from app.models.cjdquick_sync_log import CJDQuickSyncLog
 from app.services.cjdquick_service import CJDQuickService, CJDQuickAPIError
+from app.services.fulfillment_dispatcher import resolve_partner_config, get_service_for_config, PartnerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,14 @@ class CJDQuickSyncService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.client = CJDQuickService()
+
+    async def _resolve_partner_config(self, warehouse_id: Optional[str] = None) -> PartnerConfig:
+        """Resolve fulfillment partner config from warehouse. Falls back to settings."""
+        return await resolve_partner_config(self.db, warehouse_id)
+
+    def _get_client_for_config(self, config: PartnerConfig) -> CJDQuickService:
+        """Get a CJDQuickService instance with dynamic credentials."""
+        return get_service_for_config(config)
 
     # ==================== Non-Blocking Auto-Sync ====================
 
@@ -111,7 +120,7 @@ class CJDQuickSyncService:
         )
         return payload
 
-    def _build_order_payload(self, order: Order, customer: Customer) -> Dict[str, Any]:
+    async def _build_order_payload(self, order: Order, customer: Customer) -> Dict[str, Any]:
         """Map Aquapurite Order + Customer to CJDQuick OMS order format.
 
         Uses the direct /orders endpoint (JWT auth) since the integration endpoint's
@@ -148,13 +157,17 @@ class CJDQuickSyncService:
         shipping = order.shipping_address or {}
         customer_name = f"{customer.first_name} {customer.last_name or ''}".strip()
 
+        # Resolve partner config from warehouse
+        wh_id = str(order.warehouse_id) if getattr(order, "warehouse_id", None) else None
+        partner_cfg = await self._resolve_partner_config(wh_id)
+
         return {
-            "companyId": settings.CJDQUICK_COMPANY_ID,
+            "companyId": partner_cfg.company_id,
             "externalOrderNo": order.order_number,
             "channel": channel,
             "paymentMode": payment_mode,
             "orderDate": order.created_at.isoformat() if order.created_at else None,
-            "locationId": settings.CJDQUICK_LOCATION_ID,
+            "locationId": partner_cfg.location_id,
             "customerName": customer_name,
             "customerPhone": customer.phone or "",
             "customerEmail": customer.email or "",
@@ -176,12 +189,16 @@ class CJDQuickSyncService:
             "totalAmount": _decimal_to_float(order.total_amount) or 0,
         }
 
-    def _build_integration_order_payload(self, order: Order, customer: Customer) -> Dict[str, Any]:
+    async def _build_integration_order_payload(self, order: Order, customer: Customer) -> Dict[str, Any]:
         """Build order payload for POST /api/v1/orders/external.
 
         Per v3 guide: Uses X-API-Key auth. Complete payload reference with all
         required and optional fields. CJDQuick resolves SKU automatically.
         """
+        # Resolve partner config from warehouse
+        wh_id = str(order.warehouse_id) if getattr(order, "warehouse_id", None) else None
+        partner_cfg = await self._resolve_partner_config(wh_id)
+
         customer_name = f"{customer.first_name} {customer.last_name or ''}".strip()
         shipping = order.shipping_address or {}
 
@@ -235,7 +252,7 @@ class CJDQuickSyncService:
             "notes": getattr(order, "notes", "") or "",
             "tags": [],
             "isPriority": False,
-            "preferredWarehouse": settings.CJDQUICK_WAREHOUSE_CODE,
+            "preferredWarehouse": partner_cfg.warehouse_code,
         }
         return payload
 
@@ -285,7 +302,7 @@ class CJDQuickSyncService:
             "billingAddress": billing_address,
         }
 
-    def _build_po_payload(self, po: PurchaseOrder) -> Dict[str, Any]:
+    async def _build_po_payload(self, po: PurchaseOrder) -> Dict[str, Any]:
         """Map Aquapurite PurchaseOrder to CJDQuick OMS external-PO format.
 
         API endpoint: POST /external-pos
@@ -334,10 +351,14 @@ class CJDQuickSyncService:
                 po.po_number, len(skipped), skipped,
             )
 
+        # Resolve partner config from warehouse
+        wh_id = str(po.warehouse_id) if getattr(po, "warehouse_id", None) else None
+        partner_cfg = await self._resolve_partner_config(wh_id)
+
         payload: Dict[str, Any] = {
-            "companyId": settings.CJDQUICK_COMPANY_ID,
+            "companyId": partner_cfg.company_id,
             "externalPoNumber": po.po_number or str(po.id),
-            "locationId": settings.CJDQUICK_DELHI_LOCATION_ID,
+            "locationId": partner_cfg.location_id,
             "items": items,
         }
         # Add vendor info if available
@@ -368,7 +389,7 @@ class CJDQuickSyncService:
                     f"PO {po_number}: Item {i} has no externalSkuCode"
                 )
 
-    def _build_goods_receipt_payload(self, po: PurchaseOrder) -> Dict[str, Any]:
+    async def _build_goods_receipt_payload(self, po: PurchaseOrder) -> Dict[str, Any]:
         """Build GRN creation payload per v3 guide.
 
         POST /api/v1/goods-receipts — creates DRAFT GRN.
@@ -385,9 +406,13 @@ class CJDQuickSyncService:
         if expected_date:
             notes += f" Expected delivery: {expected_date}."
 
+        # Resolve partner config from warehouse
+        wh_id = str(po.warehouse_id) if getattr(po, "warehouse_id", None) else None
+        partner_cfg = await self._resolve_partner_config(wh_id)
+
         return {
-            "companyId": settings.CJDQUICK_COMPANY_ID,
-            "locationId": settings.CJDQUICK_DELHI_LOCATION_ID,
+            "companyId": partner_cfg.company_id,
+            "locationId": partner_cfg.location_id,
             "movementType": "101",
             "inboundSource": "PURCHASE",
             "source": "API",
@@ -426,7 +451,7 @@ class CJDQuickSyncService:
             item_payloads.append(item_data)
         return item_payloads
 
-    def _build_return_payload(self, return_order: ReturnOrder) -> Dict[str, Any]:
+    async def _build_return_payload(self, return_order: ReturnOrder) -> Dict[str, Any]:
         """Map Aquapurite ReturnOrder to CJDQuick OMS return format.
 
         API spec requires: type (RTO/REPLACEMENT/REFUND/DAMAGE), orderId, reason, items[].skuId
@@ -456,8 +481,11 @@ class CJDQuickSyncService:
             }
             return_type = type_mapping.get(return_order.return_type, "RTO")
 
+        # Resolve partner config (returns don't have warehouse_id directly)
+        partner_cfg = await self._resolve_partner_config(None)
+
         return {
-            "companyId": settings.CJDQUICK_COMPANY_ID,
+            "companyId": partner_cfg.company_id,
             "type": return_type,
             "orderId": str(return_order.order_id),
             "reason": getattr(return_order, "reason", "") or "Customer return",
@@ -539,6 +567,7 @@ class CJDQuickSyncService:
         response_payload: Optional[Dict] = None,
         error_message: Optional[str] = None,
         oms_id: Optional[str] = None,
+        provider_code: str = "CJDQUICK",
     ) -> CJDQuickSyncLog:
         """Write a sync log entry."""
         log = CJDQuickSyncLog(
@@ -550,6 +579,7 @@ class CJDQuickSyncService:
             response_payload=response_payload,
             error_message=error_message,
             oms_id=oms_id,
+            provider_code=provider_code,
             synced_at=datetime.now(timezone.utc) if status != "PENDING" else None,
         )
         self.db.add(log)
@@ -649,7 +679,7 @@ class CJDQuickSyncService:
         if not customer:
             raise ValueError(f"Customer {order.customer_id} not found for order {order_id}")
 
-        payload = self._build_integration_order_payload(order, customer)
+        payload = await self._build_integration_order_payload(order, customer)
 
         try:
             response = await self.client.push_integration_order(payload)
@@ -750,7 +780,7 @@ class CJDQuickSyncService:
         if not po:
             raise ValueError(f"PurchaseOrder {po_id} not found")
 
-        payload = self._build_po_payload(po)
+        payload = await self._build_po_payload(po)
 
         # Validate payload before sending — fail fast with clear error
         try:
@@ -831,7 +861,7 @@ class CJDQuickSyncService:
         if not po:
             raise ValueError(f"PurchaseOrder {po_id} not found")
 
-        gr_payload = self._build_goods_receipt_payload(po)
+        gr_payload = await self._build_goods_receipt_payload(po)
 
         try:
             # Step 1: Create DRAFT GRN
@@ -897,7 +927,7 @@ class CJDQuickSyncService:
         if not return_order:
             raise ValueError(f"ReturnOrder {return_id} not found")
 
-        payload = self._build_return_payload(return_order)
+        payload = await self._build_return_payload(return_order)
 
         try:
             response = await self.client.create_return(payload)
@@ -1087,7 +1117,7 @@ class CJDQuickSyncService:
             if not customer:
                 logger.warning("Skipping order %s — customer not found", order.order_number)
                 continue
-            payload = self._build_integration_order_payload(order, customer)
+            payload = await self._build_integration_order_payload(order, customer)
             payloads.append(payload)
             order_map[len(payloads) - 1] = order
 

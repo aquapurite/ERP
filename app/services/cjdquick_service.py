@@ -40,40 +40,56 @@ class CJDQuickAPIError(Exception):
 class CJDQuickService:
     """HTTP client for CJDQuick OMS API with JWT auto-refresh."""
 
-    # Class-level token cache (shared across all instances)
-    _cached_token: Optional[str] = None
-    _token_expires_at: float = 0
+    # Class-level token cache keyed by base_url (supports multiple 3PL instances)
+    _token_cache: Dict[str, Dict[str, Any]] = {}
 
-    def __init__(self):
-        self.base_url = settings.CJDQUICK_BASE_URL.rstrip("/")
-        self.email = settings.CJDQUICK_EMAIL
-        self.password = settings.CJDQUICK_PASSWORD
+    def __init__(
+        self,
+        base_url: Optional[str] = None,
+        email: Optional[str] = None,
+        password: Optional[str] = None,
+        api_key: Optional[str] = None,
+    ):
+        self.base_url = (base_url or settings.CJDQUICK_BASE_URL).rstrip("/")
+        self.email = email or settings.CJDQUICK_EMAIL
+        self.password = password or settings.CJDQUICK_PASSWORD
+        self._api_key = api_key or settings.CJDQUICK_API_KEY
+
+    def _get_cache_key(self) -> str:
+        """Cache key based on base_url + email for multi-tenant support."""
+        return f"{self.base_url}|{self.email}"
 
     async def _get_token(self) -> str:
         """Get a valid JWT token, logging in or refreshing as needed."""
         now = time.time()
+        cache_key = self._get_cache_key()
+        cached = CJDQuickService._token_cache.get(cache_key, {})
 
         # Return cached token if still valid (with 60s buffer)
-        if CJDQuickService._cached_token and now < (CJDQuickService._token_expires_at - 60):
-            return CJDQuickService._cached_token
+        if cached.get("token") and now < (cached.get("expires_at", 0) - 60):
+            return cached["token"]
 
         # Try refresh if we have an existing token
-        if CJDQuickService._cached_token:
+        if cached.get("token"):
             try:
-                token_data = await self._refresh_token()
-                CJDQuickService._cached_token = token_data["token"]
-                CJDQuickService._token_expires_at = now + token_data.get("expiresIn", 3600)
-                logger.info("CJDQuick JWT token refreshed successfully")
-                return CJDQuickService._cached_token
+                token_data = await self._refresh_token(cached["token"])
+                CJDQuickService._token_cache[cache_key] = {
+                    "token": token_data["token"],
+                    "expires_at": now + token_data.get("expiresIn", 3600),
+                }
+                logger.info("CJDQuick JWT token refreshed successfully (%s)", self.base_url)
+                return token_data["token"]
             except Exception:
                 logger.warning("CJDQuick token refresh failed, re-logging in")
 
         # Login with email/password
         token_data = await self._login()
-        CJDQuickService._cached_token = token_data["token"]
-        CJDQuickService._token_expires_at = now + token_data.get("expiresIn", 3600)
-        logger.info("CJDQuick JWT login successful")
-        return CJDQuickService._cached_token
+        CJDQuickService._token_cache[cache_key] = {
+            "token": token_data["token"],
+            "expires_at": now + token_data.get("expiresIn", 3600),
+        }
+        logger.info("CJDQuick JWT login successful (%s)", self.base_url)
+        return token_data["token"]
 
     async def _login(self) -> Dict[str, Any]:
         """Login to CJDQuick OMS and get JWT token."""
@@ -103,14 +119,15 @@ class CJDQuickService:
                 message=f"CJDQuick login connection error: {exc}",
             )
 
-    async def _refresh_token(self) -> Dict[str, Any]:
+    async def _refresh_token(self, current_token: Optional[str] = None) -> Dict[str, Any]:
         """Refresh the JWT token."""
+        token = current_token or CJDQuickService._token_cache.get(self._get_cache_key(), {}).get("token")
         url = f"{self.base_url}/auth/refresh"
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
                 url,
                 headers={
-                    "Authorization": f"Bearer {CJDQuickService._cached_token}",
+                    "Authorization": f"Bearer {token}",
                     "Content-Type": "application/json",
                 },
             )
@@ -153,8 +170,7 @@ class CJDQuickService:
             # If 401, clear cached token and retry once
             if response.status_code == 401:
                 logger.warning("CJDQuick API 401 - clearing token cache and retrying")
-                CJDQuickService._cached_token = None
-                CJDQuickService._token_expires_at = 0
+                CJDQuickService._token_cache.pop(self._get_cache_key(), None)
                 token = await self._get_token()
                 headers["Authorization"] = f"Bearer {token}"
                 async with httpx.AsyncClient(timeout=30.0) as client:
@@ -216,15 +232,16 @@ class CJDQuickService:
         Uses X-API-Key header (not JWT Bearer).
         Per updated integration guide: POST /api/v1/integration/orders
         """
-        if not settings.CJDQUICK_API_KEY:
+        api_key = self._api_key
+        if not api_key:
             raise CJDQuickAPIError(
                 status_code=401,
-                message="CJDQUICK_API_KEY not configured. Get it from CJDQuick admin.",
+                message="API key not configured for this fulfillment partner.",
             )
 
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         headers = {
-            "X-API-Key": settings.CJDQUICK_API_KEY,
+            "X-API-Key": api_key,
             "Content-Type": "application/json",
             "Accept": "application/json",
         }

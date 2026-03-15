@@ -72,6 +72,8 @@ from app.models.service_request import (
     ServiceSource,
     ServiceStatusHistory,
     PartsRequest,
+    SLARule,
+    SLABreach,
 )
 from app.models.amc import (
     AMCContract,
@@ -147,6 +149,12 @@ from app.models.accounting import (
     JournalEntryStatus as JournalStatus,
     GeneralLedger,
     TaxConfiguration,
+    ProfitCenter,
+)
+# Bill of Materials (BOM)
+from app.models.bom import (
+    BillOfMaterials,
+    BOMItem,
 )
 # Enhanced Billing (E-Invoice)
 from app.models.billing import (
@@ -500,6 +508,8 @@ from app.models.cms import (
 )
 # CJDQuick OMS Sync Log
 from app.models.cjdquick_sync_log import CJDQuickSyncLog
+# Fulfillment Partners (multi-3PL)
+from app.models.fulfillment_partner import FulfillmentPartner
 # Community Sales Channel (Meesho-style)
 from app.models.community_partner import (
     CommunityPartner,
@@ -587,6 +597,8 @@ __all__ = [
     "ServiceSource",
     "ServiceStatusHistory",
     "PartsRequest",
+    "SLARule",
+    "SLABreach",
     "AMCContract",
     "AMCType",
     "AMCStatus",
@@ -646,6 +658,10 @@ __all__ = [
     "JournalStatus",
     "GeneralLedger",
     "TaxConfiguration",
+    "ProfitCenter",
+    # Bill of Materials (BOM)
+    "BillOfMaterials",
+    "BOMItem",
     # Enhanced Billing (E-Invoice)
     "TaxInvoice",
     "InvoiceItem",
@@ -917,6 +933,8 @@ __all__ = [
     "CMSAnnouncementType",
     # CJDQuick OMS Sync Log
     "CJDQuickSyncLog",
+    # Fulfillment Partners (multi-3PL)
+    "FulfillmentPartner",
     # Community Sales Channel (Meesho-style)
     "CommunityPartner",
     "PartnerTier",

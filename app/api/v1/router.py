@@ -119,6 +119,8 @@ from app.api.v1.endpoints import (
     shipping,
     # CJDQuick OMS Integration
     cjdquick,
+    # Fulfillment Partners (multi-3PL)
+    fulfillment_partners,
     # AMC/Warranty Management
     amc,
     # Audit Logs
@@ -531,6 +533,13 @@ api_router.include_router(
     cjdquick.router,
     prefix="/cjdquick",
     tags=["CJDQuick OMS Integration"]
+)
+
+# ==================== Fulfillment Partners (Multi-3PL) ====================
+api_router.include_router(
+    fulfillment_partners.router,
+    prefix="/fulfillment-partners",
+    tags=["Fulfillment Partners"]
 )
 
 # ==================== File Uploads ====================
