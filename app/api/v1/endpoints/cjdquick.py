@@ -945,7 +945,7 @@ async def cjdquick_webhook(
         await db.execute(
             text("""
                 INSERT INTO webhook_events (event_id, event_type, source, payload, status, received_at)
-                VALUES (:event_id, :event_type, 'cjdquick', :payload::jsonb, 'RECEIVED', NOW())
+                VALUES (:event_id, :event_type, 'cjdquick', CAST(:payload AS jsonb), 'RECEIVED', NOW())
             """),
             {"event_id": event_id, "event_type": event_type, "payload": json.dumps(event)},
         )
