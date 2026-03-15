@@ -209,7 +209,15 @@ class CostCenterUpdate(BaseModel):
 class CostCenterResponse(BaseResponseSchema):
     """Response schema for CostCenter."""
     id: UUID
+    code: str
+    name: str
+    cost_center_type: str
+    description: Optional[str] = None
+    parent_id: Optional[UUID] = None
+    manager_id: Optional[UUID] = None
+    annual_budget: Decimal = Decimal("0")
     current_spend: Decimal = Decimal("0")
+    is_active: bool = True
     created_at: datetime
     updated_at: datetime
 
