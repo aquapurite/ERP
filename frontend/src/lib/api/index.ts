@@ -7579,4 +7579,80 @@ export const atpApi = {
   },
 };
 
+// ==================== Batch Management (SAP MSC1N) ====================
+export const batchApi = {
+  list: async (params?: {
+    product_id?: string;
+    warehouse_id?: string;
+    batch_status?: string;
+    is_expired?: boolean;
+    search?: string;
+    page?: number;
+    size?: number;
+  }) => {
+    const { data } = await apiClient.get('/batch', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/batch/${id}`);
+    return data;
+  },
+  create: async (payload: {
+    product_id: string;
+    warehouse_id: string;
+    batch_number: string;
+    manufacturing_date?: string;
+    expiry_date?: string;
+    vendor_batch_number?: string;
+    vendor_id?: string;
+    quality_grade?: string;
+    quantity_received?: number;
+    unit_cost?: number;
+    notes?: string;
+  }) => {
+    const { data } = await apiClient.post('/batch', payload);
+    return data;
+  },
+  updateStatus: async (id: string, new_status: string) => {
+    const { data } = await apiClient.put(`/batch/${id}/status`, { new_status });
+    return data;
+  },
+  getExpiryAlerts: async (params?: { days_ahead?: number; warehouse_id?: string }) => {
+    const { data } = await apiClient.get('/batch/expiry-alerts', { params });
+    return data;
+  },
+  getStockOverview: async (product_id: string, warehouse_id?: string) => {
+    const { data } = await apiClient.get('/batch/stock-overview', {
+      params: { product_id, warehouse_id },
+    });
+    return data;
+  },
+  autoCreateFromGRN: async (grn_id: string) => {
+    const { data } = await apiClient.post(`/batch/auto-create-from-grn/${grn_id}`);
+    return data;
+  },
+  pick: async (payload: {
+    product_id: string;
+    warehouse_id: string;
+    quantity_needed: number;
+    strategy?: string;
+  }) => {
+    const { data } = await apiClient.post('/batch/pick', payload);
+    return data;
+  },
+  reserve: async (reservations: { batch_id: string; quantity: number }[]) => {
+    const { data } = await apiClient.post('/batch/reserve', { reservations });
+    return data;
+  },
+  issue: async (issues: {
+    batch_id: string;
+    quantity: number;
+    reference_type?: string;
+    reference_id?: string;
+  }[]) => {
+    const { data } = await apiClient.post('/batch/issue', { issues });
+    return data;
+  },
+};
+
 export default apiClient;

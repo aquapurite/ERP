@@ -259,6 +259,7 @@ export const navigation: NavItem[] = [
       { title: 'Stock Transfers', href: '/dashboard/inventory/transfers', icon: ArrowRightLeft, permissions: ['INVENTORY_VIEW'] },
       { title: 'Stock Adjustments', href: '/dashboard/inventory/adjustments', icon: Calculator, permissions: ['INVENTORY_VIEW'] },
       { title: 'Physical Count', href: '/dashboard/inventory/physical-count', icon: ClipboardCheck, permissions: ['INVENTORY_VIEW'] },
+      { title: 'Batch Management', href: '/dashboard/inventory/batch', icon: Layers, permissions: ['INVENTORY_VIEW'] },
       { title: 'ATP (Available to Promise)', href: '/dashboard/inventory/atp', icon: PackageSearch, permissions: ['INVENTORY_VIEW'] },
     ],
   },

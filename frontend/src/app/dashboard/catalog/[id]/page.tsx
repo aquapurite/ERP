@@ -58,6 +58,7 @@ interface ProductFormData {
   height?: number;
   is_active: boolean;
   is_featured: boolean;
+  is_batch_managed: boolean;
   requires_installation: boolean;
   warranty_months?: number;
   meta_title?: string;
@@ -83,6 +84,7 @@ const productSchema = z.object({
   height: z.coerce.number().min(0).optional(),
   is_active: z.boolean().default(true),
   is_featured: z.boolean().default(false),
+  is_batch_managed: z.boolean().default(false),
   requires_installation: z.boolean().default(false),
   warranty_months: z.coerce.number().min(0).optional(),
   meta_title: z.string().optional(),
@@ -236,6 +238,7 @@ export default function ProductDetailPage() {
       height: product.height || (product as any).height_cm || 0,
       is_active: product.is_active ?? true,
       is_featured: product.is_featured ?? false,
+      is_batch_managed: (product as any).is_batch_managed ?? false,
       requires_installation: product.requires_installation ?? false,
       warranty_months: product.warranty_months || 12,
       meta_title: product.meta_title || '',
@@ -421,6 +424,7 @@ export default function ProductDetailPage() {
       height_cm: data.height || undefined,
       is_active: data.is_active,
       is_featured: data.is_featured,
+      is_batch_managed: data.is_batch_managed,
       warranty_months: data.warranty_months || undefined,
       meta_title: data.meta_title || undefined,
       meta_description: data.meta_description || undefined,
@@ -865,6 +869,27 @@ export default function ProductDetailPage() {
                         <p className="text-xs text-muted-foreground">
                           Optional code to identify spare part sub-items
                         </p>
+                      </div>
+                    )}
+
+                    {/* Batch Managed toggle - for SP and CN item types */}
+                    {(form.watch('item_type') === 'SP' || form.watch('item_type') === 'FG') && (
+                      <div className="flex items-center justify-between rounded-lg border p-3 shadow-sm">
+                        <div className="space-y-0.5">
+                          <Label>Batch Managed</Label>
+                          <p className="text-xs text-muted-foreground">
+                            Enable batch/lot tracking with expiry dates and FEFO/FIFO picking
+                          </p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="sr-only peer"
+                            checked={form.watch('is_batch_managed')}
+                            onChange={(e) => form.setValue('is_batch_managed', e.target.checked)}
+                          />
+                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600" />
+                        </label>
                       </div>
                     )}
                   </CardContent>

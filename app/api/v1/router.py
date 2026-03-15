@@ -137,6 +137,8 @@ from app.api.v1.endpoints import (
     sla,
     # Vendor Portal (SAP SRM)
     vendor_portal,
+    # Batch Management (SAP MSC1N)
+    batch,
 )
 
 
@@ -671,4 +673,11 @@ api_router.include_router(
     vendor_portal.router,
     prefix="/vendor-portal",
     tags=["Vendor Portal"]
+)
+
+# ==================== Batch Management (SAP MSC1N) ====================
+api_router.include_router(
+    batch.router,
+    prefix="/batch",
+    tags=["Batch Management"]
 )

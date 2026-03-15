@@ -923,6 +923,63 @@ async def accept_grn(
             logging.getLogger(__name__).error(f"Failed to create stock items for GRN {grn_id}: {e}")
             stock_result = {"error": str(e)}
 
+    # Auto-create batch records for batch-managed products
+    batch_result = None
+    if grn_type != "ASSET":
+        try:
+            from app.models.batch import BatchMaster
+            from sqlalchemy import and_
+            for item in items:
+                if not item.batch_number:
+                    continue
+                product = await db.get(Product, item.product_id)
+                if not product or not getattr(product, 'is_batch_managed', False):
+                    continue
+                qty_accepted = getattr(item, 'quantity_accepted', None) or item.quantity_received
+                unit_price = float(getattr(item, 'unit_price', 0) or 0)
+                # Check existing batch
+                existing_q = select(BatchMaster).where(
+                    and_(
+                        BatchMaster.batch_number == item.batch_number,
+                        BatchMaster.product_id == item.product_id,
+                        BatchMaster.warehouse_id == grn.warehouse_id,
+                    )
+                )
+                existing_r = await db.execute(existing_q)
+                batch_rec = existing_r.scalar_one_or_none()
+                if batch_rec:
+                    batch_rec.quantity_received += qty_accepted
+                    batch_rec.quantity_available += qty_accepted
+                    batch_rec.total_value = batch_rec.quantity_available * float(batch_rec.unit_cost or 0)
+                else:
+                    shelf_life = None
+                    mfg = getattr(item, 'manufacturing_date', None)
+                    exp = getattr(item, 'expiry_date', None)
+                    if mfg and exp:
+                        shelf_life = (exp - mfg).days
+                    batch_rec = BatchMaster(
+                        batch_number=item.batch_number,
+                        product_id=item.product_id,
+                        warehouse_id=grn.warehouse_id,
+                        manufacturing_date=mfg,
+                        expiry_date=exp,
+                        vendor_id=grn.vendor_id,
+                        grn_id=grn.id,
+                        grn_item_id=item.id,
+                        quantity_received=qty_accepted,
+                        quantity_available=qty_accepted,
+                        unit_cost=unit_price,
+                        total_value=unit_price * qty_accepted,
+                        shelf_life_days=shelf_life,
+                    )
+                    db.add(batch_rec)
+                await db.flush()
+            batch_result = "Batch records auto-created for batch-managed products"
+        except Exception as batch_err:
+            import logging
+            logging.getLogger(__name__).error(f"Failed to auto-create batch records for GRN {grn_id}: {batch_err}")
+            batch_result = f"Batch creation error: {str(batch_err)}"
+
     message = "GRN accepted"
     if grn_type == "ASSET":
         message += ", fixed assets created"
@@ -937,6 +994,7 @@ async def accept_grn(
         "cost_update": costing_result,
         "stock_items": stock_result,
         "assets_created": asset_result,
+        "batch_result": batch_result,
         "serial_validation_status": grn.serial_validation_status,
     }
 

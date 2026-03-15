@@ -154,6 +154,7 @@ class ProductBase(BaseModel):
     is_featured: bool = False
     is_bestseller: bool = False
     is_new_arrival: bool = False
+    is_batch_managed: bool = False
     sort_order: int = 0
 
     meta_title: Optional[str] = Field(None, max_length=200)
@@ -232,6 +233,7 @@ class ProductUpdate(BaseModel):
     is_featured: Optional[bool] = None
     is_bestseller: Optional[bool] = None
     is_new_arrival: Optional[bool] = None
+    is_batch_managed: Optional[bool] = None
     sort_order: Optional[int] = None
 
     meta_title: Optional[str] = None
@@ -322,6 +324,7 @@ class ProductResponse(BaseResponseSchema):
     is_featured: bool
     is_bestseller: bool
     is_new_arrival: bool
+    is_batch_managed: bool = False
     sort_order: int
 
     meta_title: Optional[str] = None

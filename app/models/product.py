@@ -193,6 +193,10 @@ class Product(Base):
     is_featured: Mapped[bool] = mapped_column(Boolean, default=False)
     is_bestseller: Mapped[bool] = mapped_column(Boolean, default=False)
     is_new_arrival: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_batch_managed: Mapped[bool] = mapped_column(
+        Boolean, default=False,
+        comment="Enable batch/lot tracking for this product (SAP batch management)"
+    )
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     # SEO

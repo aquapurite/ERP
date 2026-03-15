@@ -49,6 +49,9 @@ class StockItem(Base, TimestampMixin):
     batch_number = Column(String(50), index=True)  # Batch/Lot number
     barcode = Column(String(100), index=True)
 
+    # Batch Management (SAP MSC1N linkage)
+    batch_id = Column(UUID(as_uuid=True), ForeignKey("batch_master.id", ondelete="SET NULL"), nullable=True, index=True)
+
     # Status
     status = Column(
         String(50), default="AVAILABLE", index=True,
@@ -217,6 +220,10 @@ class StockMovement(Base, TimestampMixin):
     reference_type = Column(String(50))  # order, transfer, adjustment, grn, etc.
     reference_id = Column(UUID(as_uuid=True))
     reference_number = Column(String(100))
+
+    # Batch Management (SAP MSC1N linkage)
+    batch_id = Column(UUID(as_uuid=True), ForeignKey("batch_master.id", ondelete="SET NULL"), nullable=True)
+    batch_number = Column(String(50), nullable=True)
 
     # Cost
     unit_cost = Column(Float, default=0)

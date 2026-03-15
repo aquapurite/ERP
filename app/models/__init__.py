@@ -510,6 +510,11 @@ from app.models.cms import (
 from app.models.cjdquick_sync_log import CJDQuickSyncLog
 # Fulfillment Partners (multi-3PL)
 from app.models.fulfillment_partner import FulfillmentPartner
+# Batch Management (SAP MSC1N)
+from app.models.batch import (
+    BatchMaster,
+    BatchStatus,
+)
 # Community Sales Channel (Meesho-style)
 from app.models.community_partner import (
     CommunityPartner,
@@ -948,4 +953,7 @@ __all__ = [
     "PartnerCommissionStatus",
     "PartnerPayoutStatus",
     "PayoutMethod",
+    # Batch Management (SAP MSC1N)
+    "BatchMaster",
+    "BatchStatus",
 ]
