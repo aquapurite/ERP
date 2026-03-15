@@ -331,6 +331,7 @@ export const navigation: NavItem[] = [
       { title: 'Auto Journal', href: '/dashboard/finance/auto-journal', icon: Cog, permissions: ['JOURNALS_VIEW'] },
       { title: 'General Ledger', href: '/dashboard/finance/general-ledger', icon: ScrollText, permissions: ['ACCOUNTS_VIEW'] },
       { title: 'Cost Centers', href: '/dashboard/finance/cost-centers', icon: Building, permissions: ['COST_CENTERS_VIEW'] },
+      { title: 'Cost Allocations', href: '/dashboard/finance/cost-allocations', icon: ArrowRightLeft, permissions: ['COST_CENTERS_VIEW'] },
       { title: 'Financial Periods', href: '/dashboard/finance/periods', icon: Calendar, permissions: ['PERIODS_VIEW'] },
 
       // -------- FINANCIAL REPORTS --------

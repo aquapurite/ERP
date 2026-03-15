@@ -5287,3 +5287,339 @@ async def fix_assets_data(
         "message": "Fixed assets data fix completed",
         "details": results,
     }
+
+
+# ==================== Cost Allocation Rules ====================
+
+class AllocationTargetCreate(BaseModel):
+    target_cost_center_id: UUID
+    percentage: Decimal
+
+class AllocationRuleCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    source_cost_center_id: UUID
+    targets: List[AllocationTargetCreate]
+
+class AllocationRuleUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+    targets: Optional[List[AllocationTargetCreate]] = None
+
+class RunAllocationRequest(BaseModel):
+    period_key: str  # e.g. "2026-03"
+    fiscal_year: str  # e.g. "2025-26"
+
+
+@router.get("/cost-allocations/rules")
+async def list_allocation_rules(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """List all cost allocation rules."""
+    from app.models.accounting import CostAllocationRule, CostAllocationTarget
+    result = await db.execute(
+        select(CostAllocationRule)
+        .options(
+            selectinload(CostAllocationRule.source_cost_center),
+            selectinload(CostAllocationRule.targets).selectinload(CostAllocationTarget.target_cost_center),
+        )
+        .order_by(CostAllocationRule.name)
+    )
+    rules = result.scalars().all()
+
+    items = []
+    for rule in rules:
+        items.append({
+            "id": str(rule.id),
+            "name": rule.name,
+            "description": rule.description,
+            "source_cost_center_id": str(rule.source_cost_center_id),
+            "source_cost_center_name": rule.source_cost_center.name if rule.source_cost_center else None,
+            "allocation_basis": rule.allocation_basis,
+            "is_active": rule.is_active,
+            "targets": [
+                {
+                    "id": str(t.id),
+                    "target_cost_center_id": str(t.target_cost_center_id),
+                    "target_cost_center_name": t.target_cost_center.name if t.target_cost_center else None,
+                    "percentage": float(t.percentage),
+                }
+                for t in rule.targets
+            ],
+            "total_percentage": float(sum(t.percentage for t in rule.targets)),
+            "created_at": rule.created_at.isoformat() if rule.created_at else None,
+        })
+
+    return {"items": items, "total": len(items)}
+
+
+@router.post("/cost-allocations/rules", status_code=status.HTTP_201_CREATED)
+async def create_allocation_rule(
+    data: AllocationRuleCreate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Create a cost allocation rule."""
+    from app.models.accounting import CostAllocationRule, CostAllocationTarget
+
+    # Validate percentages sum to 100
+    total_pct = sum(t.percentage for t in data.targets)
+    if total_pct != 100:
+        raise HTTPException(status_code=400, detail=f"Target percentages must sum to 100%. Current: {total_pct}%")
+
+    # Validate source != target
+    for t in data.targets:
+        if t.target_cost_center_id == data.source_cost_center_id:
+            raise HTTPException(status_code=400, detail="Source and target cost centers cannot be the same")
+
+    rule = CostAllocationRule(
+        name=data.name,
+        description=data.description,
+        source_cost_center_id=data.source_cost_center_id,
+    )
+    db.add(rule)
+    await db.flush()
+
+    for t in data.targets:
+        target = CostAllocationTarget(
+            rule_id=rule.id,
+            target_cost_center_id=t.target_cost_center_id,
+            percentage=t.percentage,
+        )
+        db.add(target)
+
+    await db.commit()
+    return {"id": str(rule.id), "message": "Allocation rule created successfully"}
+
+
+@router.put("/cost-allocations/rules/{rule_id}")
+async def update_allocation_rule(
+    rule_id: UUID,
+    data: AllocationRuleUpdate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Update a cost allocation rule."""
+    from app.models.accounting import CostAllocationRule, CostAllocationTarget
+
+    result = await db.execute(
+        select(CostAllocationRule).where(CostAllocationRule.id == rule_id)
+    )
+    rule = result.scalar_one_or_none()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Allocation rule not found")
+
+    if data.name is not None:
+        rule.name = data.name
+    if data.description is not None:
+        rule.description = data.description
+    if data.is_active is not None:
+        rule.is_active = data.is_active
+
+    if data.targets is not None:
+        total_pct = sum(t.percentage for t in data.targets)
+        if total_pct != 100:
+            raise HTTPException(status_code=400, detail=f"Target percentages must sum to 100%. Current: {total_pct}%")
+
+        # Delete existing targets and recreate
+        await db.execute(
+            select(CostAllocationTarget).where(CostAllocationTarget.rule_id == rule_id)
+        )
+        from sqlalchemy import delete
+        await db.execute(delete(CostAllocationTarget).where(CostAllocationTarget.rule_id == rule_id))
+
+        for t in data.targets:
+            target = CostAllocationTarget(
+                rule_id=rule.id,
+                target_cost_center_id=t.target_cost_center_id,
+                percentage=t.percentage,
+            )
+            db.add(target)
+
+    await db.commit()
+    return {"message": "Allocation rule updated"}
+
+
+@router.delete("/cost-allocations/rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_allocation_rule(
+    rule_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a cost allocation rule."""
+    from app.models.accounting import CostAllocationRule
+    result = await db.execute(select(CostAllocationRule).where(CostAllocationRule.id == rule_id))
+    rule = result.scalar_one_or_none()
+    if not rule:
+        raise HTTPException(status_code=404, detail="Allocation rule not found")
+    await db.delete(rule)
+    await db.commit()
+
+
+@router.post("/cost-allocations/run")
+async def run_cost_allocation(
+    data: RunAllocationRequest,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Run monthly cost allocation.
+
+    For each active rule:
+    1. Sums all EXPENSE GL entries for the source cost center in the given period
+    2. Distributes that amount to target cost centers by percentage
+    3. Creates a journal entry: Dr Target CCs, Cr Source CC (using a secondary cost element)
+    """
+    from app.models.accounting import (
+        CostAllocationRule, CostAllocationTarget, CostAllocationRun,
+        GeneralLedger, JournalEntry as JE, JournalEntryLine, JournalEntryStatus,
+        ChartOfAccount
+    )
+    from app.services.auto_journal_service import AutoJournalService
+
+    # Get active rules with targets
+    rules_result = await db.execute(
+        select(CostAllocationRule)
+        .options(
+            selectinload(CostAllocationRule.targets),
+            selectinload(CostAllocationRule.source_cost_center),
+        )
+        .where(CostAllocationRule.is_active == True)
+    )
+    rules = rules_result.scalars().all()
+
+    if not rules:
+        raise HTTPException(status_code=400, detail="No active allocation rules found")
+
+    # Parse period
+    try:
+        year, month = data.period_key.split("-")
+        period_start = date(int(year), int(month), 1)
+        if int(month) == 12:
+            period_end = date(int(year) + 1, 1, 1)
+        else:
+            period_end = date(int(year), int(month) + 1, 1)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid period_key format. Use YYYY-MM")
+
+    auto_journal = AutoJournalService(db)
+    period = await auto_journal._get_or_create_period()
+    entry_number = await auto_journal._generate_entry_number()
+
+    # Create a single journal entry for all allocations
+    journal = JE(
+        entry_type="ALLOCATION",
+        entry_number=entry_number,
+        entry_date=date.today(),
+        period_id=period.id,
+        source_type="CostAllocation",
+        narration=f"Cost allocation for {data.period_key}",
+        status=JournalEntryStatus.POSTED.value,
+        created_by=current_user.id,
+        posted_by=current_user.id,
+        posted_at=datetime.now(timezone.utc),
+    )
+    db.add(journal)
+    await db.flush()
+
+    total_allocated = Decimal("0")
+    rules_applied = 0
+
+    for rule in rules:
+        # Get total expense for source CC in the period
+        gl_result = await db.execute(
+            select(func.coalesce(func.sum(GeneralLedger.debit_amount - GeneralLedger.credit_amount), 0))
+            .join(ChartOfAccount, GeneralLedger.account_id == ChartOfAccount.id)
+            .where(GeneralLedger.cost_center_id == rule.source_cost_center_id)
+            .where(ChartOfAccount.account_type == "EXPENSE")
+            .where(GeneralLedger.transaction_date >= period_start)
+            .where(GeneralLedger.transaction_date < period_end)
+        )
+        source_amount = gl_result.scalar() or Decimal("0")
+
+        if source_amount <= 0:
+            continue
+
+        rules_applied += 1
+
+        # Create journal lines: Cr Source CC, Dr each Target CC
+        # Credit source (reduce expense from source CC)
+        cr_line = JournalEntryLine(
+            journal_entry_id=journal.id,
+            account_id=(await auto_journal.get_or_create_account("6100", "Cost Allocation - Distributed", "EXPENSE", "OPERATING_EXPENSE")).id,
+            debit_amount=Decimal("0"),
+            credit_amount=source_amount,
+            description=f"Distributed from {rule.source_cost_center.name}",
+            cost_center_id=rule.source_cost_center_id,
+        )
+        db.add(cr_line)
+
+        # Debit targets
+        for target in rule.targets:
+            alloc_amount = (source_amount * target.percentage / 100).quantize(Decimal("0.01"))
+            dr_line = JournalEntryLine(
+                journal_entry_id=journal.id,
+                account_id=cr_line.account_id,
+                debit_amount=alloc_amount,
+                credit_amount=Decimal("0"),
+                description=f"Allocated from {rule.source_cost_center.name} ({target.percentage}%)",
+                cost_center_id=target.target_cost_center_id,
+            )
+            db.add(dr_line)
+            total_allocated += alloc_amount
+
+    journal.total_debit = total_allocated
+    journal.total_credit = total_allocated
+
+    # Log the run
+    run_log = CostAllocationRun(
+        run_date=date.today(),
+        fiscal_year=data.fiscal_year,
+        period_key=data.period_key,
+        total_rules_applied=rules_applied,
+        total_amount_allocated=total_allocated,
+        journal_entry_id=journal.id,
+        run_by=current_user.id,
+    )
+    db.add(run_log)
+
+    await db.commit()
+
+    return {
+        "message": f"Cost allocation completed for {data.period_key}",
+        "rules_applied": rules_applied,
+        "total_allocated": float(total_allocated),
+        "journal_entry_id": str(journal.id),
+    }
+
+
+@router.get("/cost-allocations/runs")
+async def list_allocation_runs(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """List past allocation runs."""
+    from app.models.accounting import CostAllocationRun
+    result = await db.execute(
+        select(CostAllocationRun).order_by(CostAllocationRun.created_at.desc()).limit(50)
+    )
+    runs = result.scalars().all()
+    return {
+        "items": [
+            {
+                "id": str(r.id),
+                "run_date": r.run_date.isoformat(),
+                "fiscal_year": r.fiscal_year,
+                "period_key": r.period_key,
+                "status": r.status,
+                "total_rules_applied": r.total_rules_applied,
+                "total_amount_allocated": float(r.total_amount_allocated),
+                "journal_entry_id": str(r.journal_entry_id) if r.journal_entry_id else None,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in runs
+        ],
+        "total": len(runs),
+    }

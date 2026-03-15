@@ -292,6 +292,7 @@ class CJDQuickSyncService:
         Required fields: externalPoNumber, locationId, items[].externalSkuCode, items[].orderedQty
         """
         items = []
+        skipped = []
         for item in (po.items or []):
             # Use PO item's snapshot fields first, fall back to product relationship
             sku_code = item.sku or ""
@@ -302,20 +303,36 @@ class CJDQuickSyncService:
                 sku_name = item.product.name or ""
 
             qty = item.quantity_ordered or 0
-            if qty == 0:
-                logger.warning(
-                    "PO %s item SKU=%s has quantity_ordered=0, check PO data",
-                    po.po_number, sku_code,
+
+            # Validate: skip items with invalid data
+            if qty <= 0:
+                logger.error(
+                    "PO %s: SKIPPING item SKU=%s — quantity_ordered=%s is invalid",
+                    po.po_number, sku_code, item.quantity_ordered,
                 )
+                skipped.append(sku_code)
+                continue
+            if not sku_code:
+                logger.error(
+                    "PO %s: SKIPPING item — no SKU code found (product_id=%s)",
+                    po.po_number, item.product_id,
+                )
+                skipped.append(f"product:{item.product_id}")
+                continue
 
             item_data: Dict[str, Any] = {
                 "externalSkuCode": sku_code,
                 "externalSkuName": sku_name,
                 "orderedQty": qty,
+                "unitPrice": _decimal_to_float(item.unit_price) or 0,
             }
-            if item.unit_price:
-                item_data["unitPrice"] = _decimal_to_float(item.unit_price)
             items.append(item_data)
+
+        if skipped:
+            logger.warning(
+                "PO %s: %d items skipped due to invalid data: %s",
+                po.po_number, len(skipped), skipped,
+            )
 
         payload: Dict[str, Any] = {
             "companyId": settings.CJDQUICK_COMPANY_ID,
@@ -335,6 +352,22 @@ class CJDQuickSyncService:
 
         return payload
 
+    def _validate_po_payload(self, payload: Dict[str, Any], po_number: str) -> None:
+        """Validate PO payload before sending to CJDQuick. Raises ValueError on failure."""
+        if not payload.get("items"):
+            raise ValueError(
+                f"PO {po_number}: Cannot sync — no valid items (all skipped or PO has no items)"
+            )
+        for i, item in enumerate(payload["items"]):
+            if not item.get("orderedQty") or item["orderedQty"] <= 0:
+                raise ValueError(
+                    f"PO {po_number}: Item {i} ({item.get('externalSkuCode')}) has invalid orderedQty={item.get('orderedQty')}"
+                )
+            if not item.get("externalSkuCode"):
+                raise ValueError(
+                    f"PO {po_number}: Item {i} has no externalSkuCode"
+                )
+
     def _build_goods_receipt_payload(self, po: PurchaseOrder) -> Dict[str, Any]:
         """Build GRN creation payload per v3 guide.
 
@@ -343,12 +376,9 @@ class CJDQuickSyncService:
         externalReferenceType, externalReferenceNo, notes.
         Items are added separately via POST /goods-receipts/{id}/items.
         """
-        vendor_name = ""
-        if hasattr(po, "vendor") and po.vendor:
-            vendor_name = getattr(po.vendor, "name", "") or ""
-
+        vendor_name = getattr(po.vendor, "name", "") if po.vendor else ""
         expected_date = ""
-        if hasattr(po, "expected_delivery_date") and po.expected_delivery_date:
+        if getattr(po, "expected_delivery_date", None):
             expected_date = po.expected_delivery_date.strftime("%Y-%m-%d")
 
         notes = f"PO from Aquapurite ERP. Vendor: {vendor_name}."
@@ -362,7 +392,7 @@ class CJDQuickSyncService:
             "inboundSource": "PURCHASE",
             "source": "API",
             "externalReferenceType": "EXTERNAL_PO",
-            "externalReferenceNo": po.po_number if hasattr(po, "po_number") else str(po.id),
+            "externalReferenceNo": po.po_number or str(po.id),
             "notes": notes,
         }
 
@@ -379,6 +409,10 @@ class CJDQuickSyncService:
                 sku_code = item.product.sku or ""
 
             qty = item.quantity_ordered or 0
+            if qty <= 0:
+                logger.warning("GR build: skipping item SKU=%s with qty=%s", sku_code, qty)
+                continue
+
             item_data: Dict[str, Any] = {
                 "goodsReceiptId": gr_id,
                 "expectedQty": qty,
@@ -389,7 +423,7 @@ class CJDQuickSyncService:
                 item_data["costPrice"] = _decimal_to_float(item.unit_price)
             if item.product and getattr(item.product, "mrp", None):
                 item_data["mrp"] = _decimal_to_float(item.product.mrp)
-                item_payloads.append(item_data)
+            item_payloads.append(item_data)
         return item_payloads
 
     def _build_return_payload(self, return_order: ReturnOrder) -> Dict[str, Any]:
@@ -697,12 +731,19 @@ class CJDQuickSyncService:
             raise
 
     async def sync_purchase_order(self, po_id: uuid.UUID) -> CJDQuickSyncLog:
-        """Push a Purchase Order to CJDQuick OMS."""
+        """Push a Purchase Order to CJDQuick OMS.
+
+        Loads PO with all items, products, and vendor eagerly to avoid
+        detached-session issues during payload construction.
+        """
         from sqlalchemy.orm import selectinload
 
         result = await self.db.execute(
             select(PurchaseOrder)
-            .options(selectinload(PurchaseOrder.items).selectinload(PurchaseOrderItem.product))
+            .options(
+                selectinload(PurchaseOrder.items).selectinload(PurchaseOrderItem.product),
+                selectinload(PurchaseOrder.vendor),
+            )
             .where(PurchaseOrder.id == po_id)
         )
         po = result.scalar_one_or_none()
@@ -710,6 +751,21 @@ class CJDQuickSyncService:
             raise ValueError(f"PurchaseOrder {po_id} not found")
 
         payload = self._build_po_payload(po)
+
+        # Validate payload before sending — fail fast with clear error
+        try:
+            self._validate_po_payload(payload, po.po_number)
+        except ValueError as ve:
+            log = await self._write_sync_log(
+                entity_type="PO",
+                entity_id=po_id,
+                operation="CREATE",
+                status="FAILED",
+                request_payload=payload,
+                error_message=f"Payload validation failed: {ve}",
+            )
+            logger.error("PO %s payload validation failed: %s", po.po_number, ve)
+            raise
 
         try:
             response = await self.client.create_po(payload)
@@ -723,7 +779,7 @@ class CJDQuickSyncService:
                 response_payload=response,
                 oms_id=str(oms_id) if oms_id else None,
             )
-            logger.info("PO %s synced to CJDQuick OMS: %s", po_id, oms_id)
+            logger.info("PO %s synced to CJDQuick OMS: %s", po.po_number, oms_id)
             return log
         except CJDQuickAPIError as e:
             log = await self._write_sync_log(
@@ -734,7 +790,7 @@ class CJDQuickSyncService:
                 request_payload=payload,
                 error_message=e.message,
             )
-            logger.error("Failed to sync PO %s: %s", po_id, e.message)
+            logger.error("Failed to sync PO %s: %s", po.po_number, e.message)
             raise
 
     async def sync_goods_receipt_for_po(self, po_id: uuid.UUID) -> CJDQuickSyncLog:

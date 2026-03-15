@@ -542,6 +542,69 @@ class UserCostCenter(Base):
         return f"<UserCostCenter(user={self.user_id}, cc={self.cost_center_id})>"
 
 
+class CostAllocationRule(Base):
+    """
+    Defines how to distribute costs from a source cost center to target cost centers.
+    Example: Admin dept (source) → 40% Production, 30% Sales, 30% Service.
+    """
+    __tablename__ = "cost_allocation_rules"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_cost_center_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cost_centers.id", ondelete="CASCADE"), nullable=False
+    )
+    allocation_basis: Mapped[str] = mapped_column(String(50), default="PERCENTAGE")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+    )
+
+    source_cost_center: Mapped["CostCenter"] = relationship("CostCenter", foreign_keys=[source_cost_center_id])
+    targets: Mapped[List["CostAllocationTarget"]] = relationship("CostAllocationTarget", back_populates="rule", cascade="all, delete-orphan")
+
+
+class CostAllocationTarget(Base):
+    """Individual target in an allocation rule with percentage weight."""
+    __tablename__ = "cost_allocation_targets"
+    __table_args__ = (UniqueConstraint("rule_id", "target_cost_center_id", name="uq_alloc_rule_target"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    rule_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cost_allocation_rules.id", ondelete="CASCADE"), nullable=False
+    )
+    target_cost_center_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cost_centers.id", ondelete="CASCADE"), nullable=False
+    )
+    percentage: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    rule: Mapped["CostAllocationRule"] = relationship("CostAllocationRule", back_populates="targets")
+    target_cost_center: Mapped["CostCenter"] = relationship("CostCenter", foreign_keys=[target_cost_center_id])
+
+
+class CostAllocationRun(Base):
+    """Log of monthly allocation runs."""
+    __tablename__ = "cost_allocation_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_date: Mapped[date] = mapped_column(Date, nullable=False)
+    fiscal_year: Mapped[str] = mapped_column(String(10), nullable=False)
+    period_key: Mapped[str] = mapped_column(String(10), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="COMPLETED")
+    total_rules_applied: Mapped[int] = mapped_column(Integer, default=0)
+    total_amount_allocated: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"))
+    journal_entry_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("journal_entries.id", ondelete="SET NULL"), nullable=True
+    )
+    run_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class JournalEntry(Base):
     """
     Journal entry header for double-entry bookkeeping.

@@ -7271,4 +7271,45 @@ export const cjdquickApi = {
   },
 };
 
+// Cost Allocations API
+export const costAllocationsApi = {
+  // Rules
+  listRules: async (params?: { page?: number; size?: number }) => {
+    const { data } = await apiClient.get('/accounting/cost-allocations/rules', { params });
+    return data;
+  },
+  createRule: async (rule: {
+    name: string;
+    description?: string;
+    source_cost_center_id: string;
+    targets: { target_cost_center_id: string; percentage: number }[];
+  }) => {
+    const { data } = await apiClient.post('/accounting/cost-allocations/rules', rule);
+    return data;
+  },
+  updateRule: async (id: string, rule: {
+    name?: string;
+    description?: string;
+    source_cost_center_id?: string;
+    targets?: { target_cost_center_id: string; percentage: number }[];
+    is_active?: boolean;
+  }) => {
+    const { data } = await apiClient.put(`/accounting/cost-allocations/rules/${id}`, rule);
+    return data;
+  },
+  deleteRule: async (id: string) => {
+    await apiClient.delete(`/accounting/cost-allocations/rules/${id}`);
+  },
+  // Run allocation
+  runAllocation: async (params: { period_key: string; fiscal_year: string }) => {
+    const { data } = await apiClient.post('/accounting/cost-allocations/run', params);
+    return data;
+  },
+  // Past runs
+  listRuns: async (params?: { page?: number; size?: number }) => {
+    const { data } = await apiClient.get('/accounting/cost-allocations/runs', { params });
+    return data;
+  },
+};
+
 export default apiClient;
