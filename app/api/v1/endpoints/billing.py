@@ -3667,7 +3667,7 @@ async def get_aging_report(
 
     # Get all unpaid/partially paid invoices
     query = select(TaxInvoice).where(
-        TaxInvoice.payment_status.in_(["PENDING", "PARTIALLY_PAID", "OVERDUE"])
+        TaxInvoice.status.in_(["GENERATED", "IRN_GENERATED", "SENT", "PARTIALLY_PAID", "OVERDUE", "PENDING_APPROVAL", "APPROVED"])
     )
     result = await db.execute(query)
     invoices = result.scalars().all()
@@ -3763,7 +3763,7 @@ async def create_dunning_run(
     await db.flush()
 
     query = select(TaxInvoice).where(
-        TaxInvoice.payment_status.in_(["PENDING", "PARTIALLY_PAID", "OVERDUE"])
+        TaxInvoice.status.in_(["GENERATED", "IRN_GENERATED", "SENT", "PARTIALLY_PAID", "OVERDUE", "PENDING_APPROVAL", "APPROVED"])
     )
     result = await db.execute(query)
     invoices = result.scalars().all()
