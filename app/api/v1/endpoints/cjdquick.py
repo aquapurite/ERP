@@ -6,6 +6,7 @@ Two parts:
   (b) Webhook receiver for OMS events (HMAC signature verification)
 """
 
+import json
 import uuid
 import hmac
 import hashlib
@@ -926,7 +927,8 @@ async def cjdquick_webhook(
 
     logger.info("CJDQuick webhook received: %s", event_type)
 
-    # Log the webhook event
+    # Log the webhook event (dual logging: CJDQuickSyncLog + webhook_events)
+    event_id = event.get("id") or request.headers.get("X-OMS-Event-Id")
     try:
         log = CJDQuickSyncLog(
             entity_type="WEBHOOK",
@@ -937,35 +939,77 @@ async def cjdquick_webhook(
             synced_at=datetime.now(timezone.utc),
         )
         db.add(log)
+
+        # Also log to webhook_events table for structured debugging
+        from sqlalchemy import text
+        await db.execute(
+            text("""
+                INSERT INTO webhook_events (event_id, event_type, source, payload, status, received_at)
+                VALUES (:event_id, :event_type, 'cjdquick', :payload::jsonb, 'RECEIVED', NOW())
+            """),
+            {"event_id": event_id, "event_type": event_type, "payload": json.dumps(event)},
+        )
     except Exception as e:
         logger.error("Failed to log webhook event: %s", e)
 
     # Process event by type
     try:
+        # --- Order lifecycle ---
         if event_type in ("order.confirmed", "order.status_changed", "order.shipped"):
             await _handle_order_status_event(db, event_data, event_type)
-        elif event_type == "shipment.tracking_updated":
-            await _handle_tracking_event(db, event_data)
-        elif event_type == "shipment.delivered":
-            await _handle_delivery_event(db, event_data)
         elif event_type == "order.cancelled":
             await _handle_order_cancelled_event(db, event_data)
-        elif event_type in ("return.received", "return.processed", "return.qc_completed"):
-            await _handle_return_event(db, event_type, event_data)
-        elif event_type in ("ndr.raised", "ndr.resolved"):
-            await _handle_ndr_event(db, event_type, event_data)
-        elif event_type in ("gr.posted", "gr.completed", "gr.status_changed"):
-            await _handle_gr_event(db, event_type, event_data)
-        elif event_type == "inventory.updated":
-            await _handle_inventory_updated_event(db, event_data)
-        elif event_type == "inventory.level_changed":
-            await _handle_inventory_level_changed_event(db, event_data)
-        elif event_type in ("invoice.created", "invoice.paid"):
-            logger.info("Invoice event received: %s %s", event_type, event_data.get("invoiceNo"))
         elif event_type == "order.created":
             logger.info("Order created in CJDQuick: %s", event_data.get("orderNo"))
         elif event_type == "order.invoiced":
             logger.info("Order invoiced in CJDQuick: %s %s", event_data.get("orderId"), event_data.get("invoiceNo"))
+
+        # --- Shipment & Delivery lifecycle (CJDQuick v2 event names) ---
+        elif event_type == "shipment.status_changed":
+            await _handle_shipment_status_changed(db, event_data)
+        elif event_type == "shipment.tracking_updated":
+            await _handle_tracking_event(db, event_data)
+        elif event_type == "shipment.delivered":
+            await _handle_delivery_event(db, event_data)
+        elif event_type == "delivery.shipped":
+            await _handle_order_status_event(db, event_data, "order.shipped")
+        elif event_type == "delivery.in_transit":
+            await _handle_delivery_status_event(db, event_data, "IN_TRANSIT")
+        elif event_type == "delivery.out_for_delivery":
+            await _handle_delivery_status_event(db, event_data, "OUT_FOR_DELIVERY")
+        elif event_type == "delivery.delivered":
+            await _handle_delivery_event(db, event_data)
+        elif event_type == "delivery.attempt_failed":
+            await _handle_delivery_status_event(db, event_data, "NDR")
+        elif event_type == "delivery.rto_initiated":
+            await _handle_delivery_status_event(db, event_data, "RTO_INITIATED")
+        elif event_type == "delivery.rto_delivered":
+            await _handle_delivery_status_event(db, event_data, "RTO_DELIVERED")
+
+        # --- Returns ---
+        elif event_type in ("return.received", "return.processed", "return.qc_completed"):
+            await _handle_return_event(db, event_type, event_data)
+
+        # --- NDR ---
+        elif event_type in ("ndr.raised", "ndr.resolved"):
+            await _handle_ndr_event(db, event_type, event_data)
+
+        # --- Goods Receipt (both old gr.* and new goods_receipt.* event names) ---
+        elif event_type in ("gr.posted", "gr.completed", "gr.status_changed",
+                            "goods_receipt.posted", "goods_receipt.completed"):
+            await _handle_gr_event(db, event_type, event_data)
+
+        # --- Inventory ---
+        elif event_type == "inventory.updated":
+            await _handle_inventory_updated_event(db, event_data)
+        elif event_type == "inventory.level_changed":
+            await _handle_inventory_level_changed_event(db, event_data)
+
+        # --- Invoices ---
+        elif event_type in ("invoice.created", "invoice.paid"):
+            logger.info("Invoice event received: %s %s", event_type, event_data.get("invoiceNo"))
+
+        # --- Test ---
         elif event_type == "webhook.test":
             logger.info("Webhook test ping received successfully")
         else:
@@ -1524,6 +1568,108 @@ async def _handle_ndr_event(db: DB, event_type: str, data: dict) -> None:
         else:
             order.status = "OUT_FOR_DELIVERY"
         logger.info("NDR resolved for order %s: %s", order_number, resolution)
+
+
+async def _handle_shipment_status_changed(db: DB, data: dict) -> None:
+    """Handle shipment.status_changed — the primary tracking event from CJDQuick.
+
+    Payload: awbNo, orderId, deliveryId, carrierCode, fromStatus, toStatus,
+             statusBucket, statusLabel, location, carrierRemark, timestamp
+    """
+    order_number = _find_order_number(data)
+    awb_code = data.get("awbNo") or data.get("awbCode")
+    to_status = data.get("toStatus", "")
+    status_label = data.get("statusLabel", "")
+    location = data.get("location", "")
+    carrier_remark = data.get("carrierRemark", "")
+    status_bucket = data.get("statusBucket", "")
+
+    logger.info(
+        "shipment.status_changed: order=%s, AWB=%s, %s → %s (%s) at %s",
+        order_number, awb_code, data.get("fromStatus"), to_status, status_label, location,
+    )
+
+    # Find order by order number or AWB
+    order = None
+    if order_number:
+        result = await db.execute(select(Order).where(Order.order_number == order_number))
+        order = result.scalar_one_or_none()
+    if not order and awb_code:
+        result = await db.execute(select(Order).where(Order.awb_code == awb_code))
+        order = result.scalar_one_or_none()
+
+    if not order:
+        logger.warning("Order not found for shipment.status_changed: order=%s, AWB=%s", order_number, awb_code)
+        return
+
+    # Update tracking fields
+    if hasattr(order, "tracking_status") and status_label:
+        order.tracking_status = status_label
+    if hasattr(order, "last_tracking_location") and location:
+        order.last_tracking_location = location
+    if hasattr(order, "last_tracking_activity") and carrier_remark:
+        order.last_tracking_activity = carrier_remark
+    if hasattr(order, "last_tracking_update"):
+        order.last_tracking_update = datetime.now(timezone.utc)
+
+    # Map status_bucket to ERP order status
+    bucket_to_erp = {
+        "shipped": "SHIPPED",
+        "in_transit": "IN_TRANSIT",
+        "out_for_delivery": "OUT_FOR_DELIVERY",
+        "delivered": "DELIVERED",
+        "ndr": "NDR",
+        "rto_initiated": "RTO_INITIATED",
+        "rto_in_transit": "RTO_IN_TRANSIT",
+        "rto_delivered": "RTO_DELIVERED",
+    }
+    erp_status = bucket_to_erp.get(status_bucket)
+    if erp_status:
+        order.status = erp_status
+        if erp_status == "DELIVERED" and hasattr(order, "delivered_at"):
+            order.delivered_at = datetime.now(timezone.utc)
+
+    logger.info("Order %s tracking updated: %s (%s)", order.order_number, status_label, erp_status or to_status)
+
+
+async def _handle_delivery_status_event(db: DB, data: dict, erp_status: str) -> None:
+    """Handle delivery.* events (in_transit, out_for_delivery, attempt_failed, rto_initiated, rto_delivered).
+
+    Simple status update handler for the delivery lifecycle events.
+    """
+    order_number = _find_order_number(data)
+    awb_code = data.get("awbNo") or data.get("awbCode")
+
+    order = None
+    if order_number:
+        result = await db.execute(select(Order).where(Order.order_number == order_number))
+        order = result.scalar_one_or_none()
+    if not order and awb_code:
+        result = await db.execute(select(Order).where(Order.awb_code == awb_code))
+        order = result.scalar_one_or_none()
+
+    if not order:
+        logger.warning("Order not found for delivery event (status=%s): order=%s, AWB=%s", erp_status, order_number, awb_code)
+        return
+
+    order.status = erp_status
+
+    # Update tracking fields
+    location = data.get("location", "")
+    if hasattr(order, "last_tracking_location") and location:
+        order.last_tracking_location = location
+    if hasattr(order, "last_tracking_update"):
+        order.last_tracking_update = datetime.now(timezone.utc)
+    if hasattr(order, "tracking_status"):
+        order.tracking_status = data.get("statusLabel", erp_status)
+
+    # RTO_DELIVERED: flag for refund + inventory update
+    if erp_status == "RTO_DELIVERED":
+        if hasattr(order, "rto_delivered_at"):
+            order.rto_delivered_at = datetime.now(timezone.utc)
+        logger.info("Order %s RTO delivered — flag for refund & inventory restock", order.order_number)
+
+    logger.info("Order %s status updated to %s via delivery event", order.order_number, erp_status)
 
 
 async def _handle_return_event(db: DB, event_type: str, data: dict) -> None:
