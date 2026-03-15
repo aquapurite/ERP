@@ -1221,7 +1221,7 @@ async def list_physical_counts(
         count_query = count_query.where(PhysicalInventoryCount.warehouse_id == warehouse_id)
 
     total = (await db.execute(count_query)).scalar() or 0
-    query = query.order_by(PhysicalInventoryCount.created_at.desc())
+    query = query.order_by(PhysicalInventoryCount.planned_date.desc())
     query = query.offset((page - 1) * size).limit(size)
 
     result = await db.execute(query)
@@ -1240,7 +1240,6 @@ async def list_physical_counts(
                 "total_items_counted": c.total_items_counted or 0,
                 "total_variances": c.total_variances or 0,
                 "variance_value": float(c.variance_value or 0),
-                "created_at": c.created_at.isoformat() if c.created_at else None,
             }
             for c in counts
         ],
