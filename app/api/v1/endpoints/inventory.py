@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, status, Query, Depends, Body
 from sqlalchemy import select, func, and_
 from sqlalchemy.orm import selectinload
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import DB, CurrentUser, require_permissions
 from app.models.inventory import StockItemStatus, StockMovementType
@@ -1101,4 +1102,359 @@ async def preview_stock_alerts(
         "out_of_stock_count": len([a for a in alerts if a["alert_type"] == "out_of_stock"]),
         "low_stock_count": len([a for a in alerts if a["alert_type"] == "low_stock"]),
         "items": alerts,
+    }
+
+
+# ==================== PHYSICAL INVENTORY / CYCLE COUNT (SAP MI01/MI04/MI07) ====================
+
+from app.models.inventory import PhysicalInventoryCount, PhysicalInventoryItem, InventorySummary, StockMovement
+from app.models.product import Product
+from app.models.warehouse import Warehouse
+
+
+async def _generate_count_number(db) -> str:
+    """Generate unique physical count number."""
+    from datetime import date as date_type
+    today = date_type.today()
+    prefix = f"PC-{today.strftime('%Y%m')}-"
+    result = await db.execute(
+        select(func.count(PhysicalInventoryCount.id)).where(
+            PhysicalInventoryCount.count_number.like(f"{prefix}%")
+        )
+    )
+    count = result.scalar() or 0
+    return f"{prefix}{str(count + 1).zfill(4)}"
+
+
+@router.post(
+    "/physical-counts",
+    summary="Create physical inventory count",
+    description="Create a new physical count. Auto-populates items from inventory summary for the selected warehouse."
+)
+async def create_physical_count(
+    db: DB,
+    current_user: CurrentUser,
+    warehouse_id: uuid.UUID = Body(..., embed=True),
+    count_type: str = Body("FULL", embed=True),
+    planned_date: str = Body(..., embed=True),
+    notes: Optional[str] = Body(None, embed=True),
+):
+    from datetime import date as date_type
+
+    # Validate warehouse exists
+    wh = await db.get(Warehouse, warehouse_id)
+    if not wh:
+        raise HTTPException(status_code=404, detail="Warehouse not found")
+
+    count_number = await _generate_count_number(db)
+    parsed_date = date_type.fromisoformat(planned_date)
+
+    count = PhysicalInventoryCount(
+        count_number=count_number,
+        count_type=count_type,
+        status="PLANNED",
+        warehouse_id=warehouse_id,
+        planned_date=parsed_date,
+        notes=notes,
+        created_by=current_user.id,
+    )
+    db.add(count)
+    await db.flush()
+
+    # Auto-populate items from InventorySummary
+    inv_query = select(InventorySummary).options(
+        selectinload(InventorySummary.product)
+    ).where(InventorySummary.warehouse_id == warehouse_id)
+    inv_result = await db.execute(inv_query)
+    summaries = inv_result.scalars().unique().all()
+
+    for s in summaries:
+        item = PhysicalInventoryItem(
+            count_id=count.id,
+            product_id=s.product_id,
+            variant_id=s.variant_id,
+            sku=s.product.sku if s.product else "N/A",
+            product_name=s.product.name if s.product else "Unknown",
+            system_quantity=s.total_quantity or 0,
+            unit_cost=float(s.average_cost or 0),
+            count_status="PENDING",
+        )
+        db.add(item)
+
+    await db.commit()
+    await db.refresh(count)
+
+    return {
+        "id": str(count.id),
+        "count_number": count.count_number,
+        "count_type": count.count_type,
+        "status": count.status,
+        "warehouse_id": str(count.warehouse_id),
+        "planned_date": str(count.planned_date),
+        "total_items": len(summaries),
+        "message": f"Physical count {count.count_number} created with {len(summaries)} items"
+    }
+
+
+@router.get(
+    "/physical-counts",
+    summary="List physical inventory counts"
+)
+async def list_physical_counts(
+    db: DB,
+    current_user: CurrentUser,
+    status_filter: Optional[str] = Query(None, alias="status"),
+    warehouse_id: Optional[uuid.UUID] = Query(None),
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+):
+    query = select(PhysicalInventoryCount).options(
+        selectinload(PhysicalInventoryCount.warehouse)
+    )
+    count_query = select(func.count(PhysicalInventoryCount.id))
+
+    if status_filter:
+        query = query.where(PhysicalInventoryCount.status == status_filter.upper())
+        count_query = count_query.where(PhysicalInventoryCount.status == status_filter.upper())
+    if warehouse_id:
+        query = query.where(PhysicalInventoryCount.warehouse_id == warehouse_id)
+        count_query = count_query.where(PhysicalInventoryCount.warehouse_id == warehouse_id)
+
+    total = (await db.execute(count_query)).scalar() or 0
+    query = query.order_by(PhysicalInventoryCount.created_at.desc())
+    query = query.offset((page - 1) * size).limit(size)
+
+    result = await db.execute(query)
+    counts = result.scalars().unique().all()
+
+    return {
+        "items": [
+            {
+                "id": str(c.id),
+                "count_number": c.count_number,
+                "count_type": c.count_type,
+                "status": c.status,
+                "warehouse_id": str(c.warehouse_id),
+                "warehouse_name": c.warehouse.name if c.warehouse else None,
+                "planned_date": str(c.planned_date),
+                "total_items_counted": c.total_items_counted or 0,
+                "total_variances": c.total_variances or 0,
+                "variance_value": float(c.variance_value or 0),
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+            }
+            for c in counts
+        ],
+        "total": total,
+        "page": page,
+        "size": size,
+        "pages": ceil(total / size) if size > 0 else 0,
+    }
+
+
+@router.get(
+    "/physical-counts/{count_id}",
+    summary="Get physical count detail with items"
+)
+async def get_physical_count(
+    count_id: uuid.UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    query = select(PhysicalInventoryCount).options(
+        selectinload(PhysicalInventoryCount.items),
+        selectinload(PhysicalInventoryCount.warehouse),
+    ).where(PhysicalInventoryCount.id == count_id)
+
+    result = await db.execute(query)
+    count = result.scalars().unique().first()
+    if not count:
+        raise HTTPException(status_code=404, detail="Physical count not found")
+
+    return {
+        "id": str(count.id),
+        "count_number": count.count_number,
+        "count_type": count.count_type,
+        "status": count.status,
+        "warehouse_id": str(count.warehouse_id),
+        "warehouse_name": count.warehouse.name if count.warehouse else None,
+        "planned_date": str(count.planned_date),
+        "started_at": count.started_at.isoformat() if count.started_at else None,
+        "completed_at": count.completed_at.isoformat() if count.completed_at else None,
+        "total_items_counted": count.total_items_counted or 0,
+        "total_variances": count.total_variances or 0,
+        "variance_value": float(count.variance_value or 0),
+        "notes": count.notes,
+        "items": [
+            {
+                "id": str(item.id),
+                "product_id": str(item.product_id),
+                "sku": item.sku,
+                "product_name": item.product_name,
+                "bin_location": item.bin_location,
+                "system_quantity": item.system_quantity,
+                "counted_quantity": item.counted_quantity,
+                "variance": item.variance,
+                "variance_value": float(item.variance_value or 0),
+                "unit_cost": float(item.unit_cost or 0),
+                "count_status": item.count_status,
+                "recount_required": item.recount_required,
+                "remarks": item.remarks,
+                "counted_at": item.counted_at.isoformat() if item.counted_at else None,
+            }
+            for item in (count.items or [])
+        ],
+    }
+
+
+@router.put(
+    "/physical-counts/{count_id}/items/{item_id}",
+    summary="Record counted quantity for an item"
+)
+async def update_physical_count_item(
+    count_id: uuid.UUID,
+    item_id: uuid.UUID,
+    db: DB,
+    current_user: CurrentUser,
+    counted_quantity: int = Body(..., embed=True),
+    remarks: Optional[str] = Body(None, embed=True),
+):
+    # Verify count exists and is in correct status
+    count = await db.get(PhysicalInventoryCount, count_id)
+    if not count:
+        raise HTTPException(status_code=404, detail="Physical count not found")
+    if count.status not in ("PLANNED", "IN_PROGRESS", "COUNTING"):
+        raise HTTPException(status_code=400, detail=f"Cannot update items when count status is {count.status}")
+
+    item = await db.get(PhysicalInventoryItem, item_id)
+    if not item or item.count_id != count_id:
+        raise HTTPException(status_code=404, detail="Item not found in this count")
+
+    # Update the item
+    item.counted_quantity = counted_quantity
+    item.variance = counted_quantity - item.system_quantity
+    item.variance_value = round(item.variance * float(item.unit_cost or 0), 2)
+    item.count_status = "VARIANCE" if item.variance != 0 else "COUNTED"
+    item.counted_by = current_user.id
+    item.counted_at = datetime.now(timezone.utc)
+    item.remarks = remarks
+
+    # Update count status to IN_PROGRESS if still PLANNED
+    if count.status == "PLANNED":
+        count.status = "IN_PROGRESS"
+        count.started_at = datetime.now(timezone.utc)
+
+    await db.commit()
+
+    return {
+        "id": str(item.id),
+        "sku": item.sku,
+        "system_quantity": item.system_quantity,
+        "counted_quantity": item.counted_quantity,
+        "variance": item.variance,
+        "variance_value": float(item.variance_value or 0),
+        "count_status": item.count_status,
+        "message": "Item updated successfully"
+    }
+
+
+@router.post(
+    "/physical-counts/{count_id}/approve",
+    summary="Approve physical count and create stock adjustments"
+)
+async def approve_physical_count(
+    count_id: uuid.UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    query = select(PhysicalInventoryCount).options(
+        selectinload(PhysicalInventoryCount.items)
+    ).where(PhysicalInventoryCount.id == count_id)
+
+    result = await db.execute(query)
+    count = result.scalars().unique().first()
+    if not count:
+        raise HTTPException(status_code=404, detail="Physical count not found")
+    if count.status == "APPROVED":
+        raise HTTPException(status_code=400, detail="Count already approved")
+    if count.status == "CANCELLED":
+        raise HTTPException(status_code=400, detail="Cannot approve a cancelled count")
+
+    # Calculate totals
+    items_counted = 0
+    variance_items = 0
+    total_variance_value = 0.0
+    movements_created = 0
+
+    for item in count.items:
+        if item.counted_quantity is not None:
+            items_counted += 1
+            if item.variance != 0:
+                variance_items += 1
+                total_variance_value += float(item.variance_value or 0)
+                item.count_status = "APPROVED"
+
+                # Create StockMovement for variance
+                movement_type = "ADJUSTMENT_PLUS" if item.variance > 0 else "ADJUSTMENT_MINUS"
+                # Generate movement number
+                from datetime import date as date_type
+                today = date_type.today()
+                mv_prefix = f"CC-{today.strftime('%Y%m%d')}-"
+                mv_count_result = await db.execute(
+                    select(func.count(StockMovement.id)).where(
+                        StockMovement.movement_number.like(f"{mv_prefix}%")
+                    )
+                )
+                mv_seq = (mv_count_result.scalar() or 0) + 1
+
+                movement = StockMovement(
+                    movement_number=f"{mv_prefix}{str(mv_seq).zfill(4)}",
+                    movement_type="CYCLE_COUNT",
+                    warehouse_id=count.warehouse_id,
+                    product_id=item.product_id,
+                    variant_id=item.variant_id,
+                    quantity=item.variance,
+                    reference_type="physical_count",
+                    reference_id=count.id,
+                    reference_number=count.count_number,
+                    unit_cost=float(item.unit_cost or 0),
+                    total_cost=float(item.variance_value or 0),
+                    created_by=current_user.id,
+                    notes=f"Cycle count adjustment: system={item.system_quantity}, counted={item.counted_quantity}",
+                )
+                db.add(movement)
+                movements_created += 1
+
+                # Update InventorySummary
+                inv_query = select(InventorySummary).where(
+                    and_(
+                        InventorySummary.warehouse_id == count.warehouse_id,
+                        InventorySummary.product_id == item.product_id,
+                    )
+                )
+                inv_result = await db.execute(inv_query)
+                inv_summary = inv_result.scalars().first()
+                if inv_summary:
+                    inv_summary.total_quantity = (inv_summary.total_quantity or 0) + item.variance
+                    inv_summary.available_quantity = (inv_summary.available_quantity or 0) + item.variance
+                    inv_summary.last_audit_date = datetime.now(timezone.utc)
+
+    # Update count
+    count.status = "APPROVED"
+    count.completed_at = datetime.now(timezone.utc)
+    count.approved_by = current_user.id
+    count.total_items_counted = items_counted
+    count.total_variances = variance_items
+    count.variance_value = round(total_variance_value, 2)
+
+    await db.commit()
+
+    return {
+        "id": str(count.id),
+        "count_number": count.count_number,
+        "status": "APPROVED",
+        "total_items_counted": items_counted,
+        "total_variances": variance_items,
+        "variance_value": round(total_variance_value, 2),
+        "movements_created": movements_created,
+        "message": f"Count approved. {movements_created} stock adjustments created."
     }

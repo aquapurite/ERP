@@ -2387,3 +2387,266 @@ async def get_capex_dashboard(
         category_wise=category_wise,
         monthly_trend=monthly_trend,
     )
+
+
+# ==================== DEPRECIATION RUNS (SAP AFAB) ====================
+
+from app.models.fixed_assets import DepreciationRun, DepreciationRunEntry
+from math import ceil as math_ceil
+
+
+async def _generate_dep_run_number(db: AsyncSession) -> str:
+    """Generate unique depreciation run number."""
+    today = date.today()
+    prefix = f"DEP-{today.strftime('%Y%m')}-"
+    result = await db.execute(
+        select(func.count(DepreciationRun.id)).where(DepreciationRun.run_number.like(f"{prefix}%"))
+    )
+    count = result.scalar() or 0
+    return f"{prefix}{str(count + 1).zfill(4)}"
+
+
+@router.post(
+    "/depreciation-runs",
+    summary="Create depreciation run (SAP AFAB)",
+    description="Create a batch depreciation run. Calculates SLM depreciation for each active asset."
+)
+async def create_depreciation_run(
+    db: DB,
+    current_user: CurrentUser,
+    period: str = Query(..., description="Period e.g. 2026-03"),
+    fiscal_year: str = Query(..., description="Fiscal year e.g. 2025-26"),
+):
+    run_number = await _generate_dep_run_number(db)
+    today = date.today()
+
+    dep_run = DepreciationRun(
+        run_number=run_number,
+        run_date=today,
+        period=period,
+        fiscal_year=fiscal_year,
+        status="DRAFT",
+        created_by=current_user.id,
+    )
+    db.add(dep_run)
+    await db.flush()
+
+    # Get all active assets
+    assets_query = select(Asset).options(
+        selectinload(Asset.category)
+    ).where(Asset.status == "ACTIVE")
+    assets_result = await db.execute(assets_query)
+    assets = assets_result.scalars().unique().all()
+
+    total_dep = Decimal("0")
+    asset_count = 0
+
+    for asset in assets:
+        # Get depreciation params (asset overrides > category defaults)
+        method = asset.depreciation_method or (asset.category.depreciation_method if asset.category else "SLM")
+        useful_life_years = asset.useful_life_years or (asset.category.useful_life_years if asset.category else 5)
+        useful_life_months = useful_life_years * 12
+        salvage = asset.salvage_value or Decimal("0")
+        capitalized = asset.capitalized_value or Decimal("0")
+        accum_dep = asset.accumulated_depreciation or Decimal("0")
+        nbv = capitalized - accum_dep
+
+        if nbv <= salvage:
+            continue  # Fully depreciated
+
+        # SLM: monthly = (capitalized - salvage) / useful_life_months
+        if method == "SLM" or method is None:
+            monthly_dep = (capitalized - salvage) / useful_life_months if useful_life_months > 0 else Decimal("0")
+        else:
+            # WDV: annual_rate from category, monthly = NBV * rate / 12
+            rate = asset.depreciation_rate or (asset.category.depreciation_rate if asset.category else Decimal("15"))
+            monthly_dep = nbv * rate / Decimal("1200")
+
+        # Cap depreciation so NBV doesn't go below salvage
+        if nbv - monthly_dep < salvage:
+            monthly_dep = nbv - salvage
+
+        monthly_dep = round(monthly_dep, 2)
+        if monthly_dep <= 0:
+            continue
+
+        entry = DepreciationRunEntry(
+            depreciation_run_id=dep_run.id,
+            asset_id=asset.id,
+            asset_code=asset.asset_code,
+            asset_name=asset.name,
+            acquisition_cost=capitalized,
+            accumulated_depreciation=accum_dep,
+            net_book_value=nbv,
+            depreciation_amount=monthly_dep,
+            depreciation_method=method or "SLM",
+            useful_life_months=useful_life_months,
+        )
+        db.add(entry)
+        total_dep += monthly_dep
+        asset_count += 1
+
+    dep_run.total_assets = asset_count
+    dep_run.total_depreciation = round(total_dep, 2)
+    dep_run.status = "COMPLETED"
+
+    await db.commit()
+    await db.refresh(dep_run)
+
+    return {
+        "id": str(dep_run.id),
+        "run_number": dep_run.run_number,
+        "run_date": str(dep_run.run_date),
+        "period": dep_run.period,
+        "fiscal_year": dep_run.fiscal_year,
+        "status": dep_run.status,
+        "total_assets": dep_run.total_assets,
+        "total_depreciation": float(dep_run.total_depreciation or 0),
+        "message": f"Depreciation run created for {asset_count} assets, total: {float(total_dep)}"
+    }
+
+
+@router.get(
+    "/depreciation-runs",
+    summary="List depreciation runs"
+)
+async def list_depreciation_runs(
+    db: DB,
+    current_user: CurrentUser,
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+):
+    count_query = select(func.count(DepreciationRun.id))
+    total = (await db.execute(count_query)).scalar() or 0
+
+    query = select(DepreciationRun).order_by(DepreciationRun.created_at.desc()).offset((page - 1) * size).limit(size)
+    result = await db.execute(query)
+    runs = result.scalars().all()
+
+    return {
+        "items": [
+            {
+                "id": str(r.id),
+                "run_number": r.run_number,
+                "run_date": str(r.run_date),
+                "period": r.period,
+                "fiscal_year": r.fiscal_year,
+                "status": r.status,
+                "total_assets": r.total_assets or 0,
+                "total_depreciation": float(r.total_depreciation or 0),
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in runs
+        ],
+        "total": total,
+        "page": page,
+        "size": size,
+        "pages": math_ceil(total / size) if size > 0 else 0,
+    }
+
+
+@router.get(
+    "/depreciation-runs/{run_id}",
+    summary="Get depreciation run detail with entries"
+)
+async def get_depreciation_run(
+    run_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    query = select(DepreciationRun).options(
+        selectinload(DepreciationRun.entries)
+    ).where(DepreciationRun.id == run_id)
+
+    result = await db.execute(query)
+    run = result.scalars().unique().first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Depreciation run not found")
+
+    return {
+        "id": str(run.id),
+        "run_number": run.run_number,
+        "run_date": str(run.run_date),
+        "period": run.period,
+        "fiscal_year": run.fiscal_year,
+        "status": run.status,
+        "total_assets": run.total_assets or 0,
+        "total_depreciation": float(run.total_depreciation or 0),
+        "entries": [
+            {
+                "id": str(e.id),
+                "asset_id": str(e.asset_id),
+                "asset_code": e.asset_code,
+                "asset_name": e.asset_name,
+                "acquisition_cost": float(e.acquisition_cost or 0),
+                "accumulated_depreciation": float(e.accumulated_depreciation or 0),
+                "net_book_value": float(e.net_book_value or 0),
+                "depreciation_amount": float(e.depreciation_amount or 0),
+                "depreciation_method": e.depreciation_method,
+                "useful_life_months": e.useful_life_months,
+            }
+            for e in (run.entries or [])
+        ],
+    }
+
+
+@router.post(
+    "/depreciation-runs/{run_id}/approve",
+    summary="Approve depreciation run and update asset values"
+)
+async def approve_depreciation_run(
+    run_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    query = select(DepreciationRun).options(
+        selectinload(DepreciationRun.entries)
+    ).where(DepreciationRun.id == run_id)
+
+    result = await db.execute(query)
+    run = result.scalars().unique().first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Depreciation run not found")
+    if run.status == "APPROVED":
+        raise HTTPException(status_code=400, detail="Run already approved")
+
+    # Update each asset's accumulated depreciation and book value
+    for entry in (run.entries or []):
+        asset = await db.get(Asset, entry.asset_id)
+        if asset:
+            dep_amount = entry.depreciation_amount or Decimal("0")
+            asset.accumulated_depreciation = (asset.accumulated_depreciation or Decimal("0")) + dep_amount
+            asset.current_book_value = (asset.capitalized_value or Decimal("0")) - asset.accumulated_depreciation
+            asset.last_depreciation_date = run.run_date
+
+            # Also create individual DepreciationEntry record (the existing per-asset ledger)
+            period_date = date(int(run.period[:4]), int(run.period[5:7]), 1) if len(run.period) >= 7 else run.run_date
+            dep_entry = DepreciationEntry(
+                asset_id=asset.id,
+                period_date=period_date,
+                financial_year=run.fiscal_year,
+                opening_book_value=entry.net_book_value or Decimal("0"),
+                depreciation_method=entry.depreciation_method or "SLM",
+                depreciation_rate=asset.depreciation_rate or (asset.category.depreciation_rate if hasattr(asset, 'category') and asset.category else Decimal("0")),
+                depreciation_amount=dep_amount,
+                closing_book_value=asset.current_book_value,
+                accumulated_depreciation=asset.accumulated_depreciation,
+                processed_by=current_user.id,
+                processed_at=datetime.now(timezone.utc),
+                is_posted=True,
+            )
+            db.add(dep_entry)
+
+    run.status = "APPROVED"
+    run.approved_by = current_user.id
+
+    await db.commit()
+
+    return {
+        "id": str(run.id),
+        "run_number": run.run_number,
+        "status": "APPROVED",
+        "total_assets": run.total_assets,
+        "total_depreciation": float(run.total_depreciation or 0),
+        "message": f"Depreciation run approved. {run.total_assets} assets updated."
+    }

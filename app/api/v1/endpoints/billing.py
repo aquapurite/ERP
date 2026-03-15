@@ -4,7 +4,7 @@ from uuid import UUID
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -3635,3 +3635,269 @@ async def download_tax_invoice(
     """
 
     return HTMLResponse(content=html_content)
+
+
+# ==================== AR AGING REPORT & DUNNING (SAP F150) ====================
+
+from app.models.billing import DunningRun, DunningItem
+from math import ceil as math_ceil
+
+
+async def _generate_dunning_number(db) -> str:
+    """Generate unique dunning run number."""
+    today = date.today()
+    prefix = f"DN-{today.strftime('%Y%m')}-"
+    result = await db.execute(
+        select(func.count(DunningRun.id)).where(DunningRun.run_number.like(f"{prefix}%"))
+    )
+    count = result.scalar() or 0
+    return f"{prefix}{str(count + 1).zfill(4)}"
+
+
+@router.get(
+    "/aging-report",
+    summary="AR Aging Report",
+    description="Accounts receivable aging analysis with day buckets."
+)
+async def get_aging_report(
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Get AR aging report grouped by customer/dealer with day buckets."""
+
+    # Get all unpaid/partially paid invoices
+    query = select(TaxInvoice).where(
+        TaxInvoice.payment_status.in_(["PENDING", "PARTIALLY_PAID", "OVERDUE"])
+    )
+    result = await db.execute(query)
+    invoices = result.scalars().all()
+
+    today = date.today()
+    aging_data = {}
+
+    for inv in invoices:
+        entity_name = inv.customer_name or "Unknown"
+
+        if entity_name not in aging_data:
+            aging_data[entity_name] = {
+                "entity_name": entity_name,
+                "current": 0,
+                "days_1_30": 0,
+                "days_31_60": 0,
+                "days_61_90": 0,
+                "days_90_plus": 0,
+                "total": 0,
+                "invoice_count": 0,
+            }
+
+        outstanding = float(inv.grand_total or 0) - float(inv.amount_paid or 0)
+        if outstanding <= 0:
+            continue
+
+        due_date = inv.due_date or inv.invoice_date
+        if due_date:
+            days_overdue = (today - due_date).days
+        else:
+            days_overdue = 0
+
+        bucket = aging_data[entity_name]
+        bucket["invoice_count"] += 1
+        bucket["total"] += outstanding
+
+        if days_overdue <= 0:
+            bucket["current"] += outstanding
+        elif days_overdue <= 30:
+            bucket["days_1_30"] += outstanding
+        elif days_overdue <= 60:
+            bucket["days_31_60"] += outstanding
+        elif days_overdue <= 90:
+            bucket["days_61_90"] += outstanding
+        else:
+            bucket["days_90_plus"] += outstanding
+
+    items = []
+    for entry in aging_data.values():
+        for key in ["current", "days_1_30", "days_31_60", "days_61_90", "days_90_plus", "total"]:
+            entry[key] = round(entry[key], 2)
+        items.append(entry)
+
+    items.sort(key=lambda x: x["total"], reverse=True)
+
+    summary = {
+        "current": round(sum(i["current"] for i in items), 2),
+        "days_1_30": round(sum(i["days_1_30"] for i in items), 2),
+        "days_31_60": round(sum(i["days_31_60"] for i in items), 2),
+        "days_61_90": round(sum(i["days_61_90"] for i in items), 2),
+        "days_90_plus": round(sum(i["days_90_plus"] for i in items), 2),
+        "total": round(sum(i["total"] for i in items), 2),
+        "total_customers": len(items),
+    }
+
+    return {"summary": summary, "items": items}
+
+
+@router.post(
+    "/dunning-runs",
+    summary="Create dunning run",
+    description="Create a new dunning run with auto-populated overdue invoices."
+)
+async def create_dunning_run(
+    db: DB,
+    current_user: CurrentUser,
+    dunning_level: int = Body(1, embed=True),
+    min_days_overdue: int = Body(30, embed=True),
+    notes: Optional[str] = Body(None, embed=True),
+):
+    run_number = await _generate_dunning_number(db)
+    today = date.today()
+
+    dunning_run = DunningRun(
+        run_number=run_number,
+        run_date=today,
+        status="DRAFT",
+        dunning_level=dunning_level,
+        notes=notes,
+        created_by=current_user.id,
+    )
+    db.add(dunning_run)
+    await db.flush()
+
+    query = select(TaxInvoice).where(
+        TaxInvoice.payment_status.in_(["PENDING", "PARTIALLY_PAID", "OVERDUE"])
+    )
+    result = await db.execute(query)
+    invoices = result.scalars().all()
+
+    total_amount = 0
+    customer_set = set()
+    items_added = 0
+
+    for inv in invoices:
+        due_date = inv.due_date or inv.invoice_date
+        if not due_date:
+            continue
+        days_overdue = (today - due_date).days
+        if days_overdue < min_days_overdue:
+            continue
+        outstanding = float(inv.grand_total or 0) - float(inv.amount_paid or 0)
+        if outstanding <= 0:
+            continue
+
+        item_level = 4 if days_overdue > 90 else (3 if days_overdue > 60 else (2 if days_overdue > 30 else 1))
+
+        item = DunningItem(
+            dunning_run_id=dunning_run.id,
+            invoice_id=inv.id,
+            invoice_number=inv.invoice_number,
+            invoice_date=inv.invoice_date,
+            due_date=due_date,
+            invoice_amount=float(inv.grand_total or 0),
+            outstanding_amount=outstanding,
+            days_overdue=days_overdue,
+            dunning_level=item_level,
+        )
+        db.add(item)
+        total_amount += outstanding
+        customer_set.add(inv.customer_name or "Unknown")
+        items_added += 1
+
+    dunning_run.total_customers = len(customer_set)
+    dunning_run.total_amount = round(total_amount, 2)
+    dunning_run.status = "COMPLETED"
+
+    await db.commit()
+    await db.refresh(dunning_run)
+
+    return {
+        "id": str(dunning_run.id),
+        "run_number": dunning_run.run_number,
+        "run_date": str(dunning_run.run_date),
+        "status": dunning_run.status,
+        "dunning_level": dunning_run.dunning_level,
+        "total_customers": dunning_run.total_customers,
+        "total_amount": float(dunning_run.total_amount or 0),
+        "items_count": items_added,
+        "message": f"Dunning run created with {items_added} overdue invoices"
+    }
+
+
+@router.get(
+    "/dunning-runs",
+    summary="List dunning runs"
+)
+async def list_dunning_runs(
+    db: DB,
+    current_user: CurrentUser,
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+):
+    count_query = select(func.count(DunningRun.id))
+    total = (await db.execute(count_query)).scalar() or 0
+
+    query = select(DunningRun).order_by(DunningRun.created_at.desc()).offset((page - 1) * size).limit(size)
+    result = await db.execute(query)
+    runs = result.scalars().all()
+
+    return {
+        "items": [
+            {
+                "id": str(r.id),
+                "run_number": r.run_number,
+                "run_date": str(r.run_date),
+                "status": r.status,
+                "dunning_level": r.dunning_level,
+                "total_customers": r.total_customers or 0,
+                "total_amount": float(r.total_amount or 0),
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in runs
+        ],
+        "total": total,
+        "page": page,
+        "size": size,
+        "pages": math_ceil(total / size) if size > 0 else 0,
+    }
+
+
+@router.get(
+    "/dunning-runs/{run_id}",
+    summary="Get dunning run detail with items"
+)
+async def get_dunning_run(
+    run_id: UUID,
+    db: DB,
+    current_user: CurrentUser,
+):
+    query = select(DunningRun).options(
+        selectinload(DunningRun.items)
+    ).where(DunningRun.id == run_id)
+
+    result = await db.execute(query)
+    run = result.scalars().unique().first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Dunning run not found")
+
+    return {
+        "id": str(run.id),
+        "run_number": run.run_number,
+        "run_date": str(run.run_date),
+        "status": run.status,
+        "dunning_level": run.dunning_level,
+        "total_customers": run.total_customers or 0,
+        "total_amount": float(run.total_amount or 0),
+        "notes": run.notes,
+        "items": [
+            {
+                "id": str(item.id),
+                "invoice_number": item.invoice_number,
+                "invoice_date": str(item.invoice_date) if item.invoice_date else None,
+                "due_date": str(item.due_date) if item.due_date else None,
+                "invoice_amount": float(item.invoice_amount or 0),
+                "outstanding_amount": float(item.outstanding_amount or 0),
+                "days_overdue": item.days_overdue or 0,
+                "dunning_level": item.dunning_level,
+                "action_taken": item.action_taken,
+            }
+            for item in (run.items or [])
+        ],
+    }

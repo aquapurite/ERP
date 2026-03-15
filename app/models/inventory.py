@@ -235,3 +235,72 @@ class StockMovement(Base, TimestampMixin):
 
     def __repr__(self):
         return f"<StockMovement {self.movement_number}>"
+
+
+# ==================== Physical Inventory Count (SAP MI01/MI04/MI07) ====================
+
+class PhysicalInventoryCount(Base, TimestampMixin):
+    """Physical inventory count document for cycle counting."""
+
+    __tablename__ = "physical_inventory_counts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    count_number = Column(String(30), unique=True, nullable=False)
+    count_type = Column(String(20), nullable=False, default="FULL",
+                        comment="FULL, CYCLE, SPOT")
+    status = Column(String(20), nullable=False, default="PLANNED",
+                    comment="PLANNED, IN_PROGRESS, COUNTING, COMPLETED, APPROVED, CANCELLED")
+    warehouse_id = Column(UUID(as_uuid=True), ForeignKey("warehouses.id"), nullable=False, index=True)
+    planned_date = Column(Date, nullable=False)
+    started_at = Column(DateTime(timezone=True))
+    completed_at = Column(DateTime(timezone=True))
+    total_items_counted = Column(Integer, default=0)
+    total_variances = Column(Integer, default=0)
+    variance_value = Column(Numeric(14, 2), default=0)
+    notes = Column(Text)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+    # Relationships
+    warehouse = relationship("Warehouse")
+    items = relationship("PhysicalInventoryItem", back_populates="count", cascade="all, delete-orphan")
+    creator = relationship("User", foreign_keys=[created_by])
+    approver = relationship("User", foreign_keys=[approved_by])
+
+    def __repr__(self):
+        return f"<PhysicalInventoryCount {self.count_number}>"
+
+
+class PhysicalInventoryItem(Base):
+    """Individual item line in a physical inventory count."""
+
+    __tablename__ = "physical_inventory_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    count_id = Column(UUID(as_uuid=True), ForeignKey("physical_inventory_counts.id", ondelete="CASCADE"),
+                      nullable=False, index=True)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
+    variant_id = Column(UUID(as_uuid=True), ForeignKey("product_variants.id"))
+    sku = Column(String(50), nullable=False)
+    product_name = Column(String(255), nullable=False)
+    bin_location = Column(String(50))
+    system_quantity = Column(Integer, nullable=False, default=0)
+    counted_quantity = Column(Integer)
+    variance = Column(Integer, default=0)
+    variance_value = Column(Numeric(12, 2), default=0)
+    unit_cost = Column(Numeric(12, 2), default=0)
+    count_status = Column(String(20), default="PENDING",
+                          comment="PENDING, COUNTED, VARIANCE, APPROVED")
+    counted_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    counted_at = Column(DateTime(timezone=True))
+    recount_required = Column(Boolean, default=False)
+    remarks = Column(Text)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    count = relationship("PhysicalInventoryCount", back_populates="items")
+    product = relationship("Product")
+    counter = relationship("User", foreign_keys=[counted_by])
+
+    def __repr__(self):
+        return f"<PhysicalInventoryItem {self.sku}>"

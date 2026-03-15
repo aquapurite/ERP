@@ -902,3 +902,76 @@ class CapexRequest(Base):
 
     def __repr__(self) -> str:
         return f"<CapexRequest(number='{self.request_number}', status='{self.status}')>"
+
+
+# ==================== Depreciation Run (SAP AFAB) ====================
+
+class DepreciationRun(Base):
+    """Batch depreciation run for all active assets."""
+
+    __tablename__ = "depreciation_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_number: Mapped[str] = mapped_column(String(30), unique=True, nullable=False)
+    run_date: Mapped[date] = mapped_column(Date, nullable=False)
+    period: Mapped[str] = mapped_column(String(10), nullable=False, comment="e.g., 2026-03")
+    fiscal_year: Mapped[str] = mapped_column(String(10), nullable=False, comment="e.g., 2025-26")
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="DRAFT",
+        comment="DRAFT, PROCESSING, COMPLETED, APPROVED, CANCELLED"
+    )
+    total_assets: Mapped[int] = mapped_column(Integer, default=0)
+    total_depreciation: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
+    journal_entry_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    # Relationships
+    entries: Mapped[List["DepreciationRunEntry"]] = relationship(
+        "DepreciationRunEntry", back_populates="depreciation_run", cascade="all, delete-orphan"
+    )
+    creator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[created_by])
+    approver: Mapped[Optional["User"]] = relationship("User", foreign_keys=[approved_by])
+
+    def __repr__(self) -> str:
+        return f"<DepreciationRun(number='{self.run_number}', period='{self.period}')>"
+
+
+class DepreciationRunEntry(Base):
+    """Per-asset depreciation entry within a depreciation run."""
+
+    __tablename__ = "depreciation_run_entries"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    depreciation_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("depreciation_runs.id", ondelete="CASCADE"),
+        nullable=False, index=True
+    )
+    asset_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("assets.id"), nullable=False, index=True
+    )
+    asset_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    asset_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    acquisition_cost: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2), nullable=True)
+    accumulated_depreciation: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2), nullable=True)
+    net_book_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2), nullable=True)
+    depreciation_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2), nullable=True)
+    depreciation_method: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    useful_life_months: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    # Relationships
+    depreciation_run: Mapped["DepreciationRun"] = relationship("DepreciationRun", back_populates="entries")
+    asset: Mapped["Asset"] = relationship("Asset")
+
+    def __repr__(self) -> str:
+        return f"<DepreciationRunEntry(asset='{self.asset_code}', amount={self.depreciation_amount})>"

@@ -81,6 +81,8 @@ import {
   HelpCircle,
   Video,
   Zap,
+  ClipboardCheck,
+  TrendingDown,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -247,6 +249,7 @@ export const navigation: NavItem[] = [
       { title: 'Warehouses', href: '/dashboard/inventory/warehouses', icon: Warehouse, permissions: ['INVENTORY_VIEW'] },
       { title: 'Stock Transfers', href: '/dashboard/inventory/transfers', icon: ArrowRightLeft, permissions: ['INVENTORY_VIEW'] },
       { title: 'Stock Adjustments', href: '/dashboard/inventory/adjustments', icon: Calculator, permissions: ['INVENTORY_VIEW'] },
+      { title: 'Physical Count', href: '/dashboard/inventory/physical-count', icon: ClipboardCheck, permissions: ['INVENTORY_VIEW'] },
     ],
   },
 
@@ -281,6 +284,7 @@ export const navigation: NavItem[] = [
       { title: 'Serviceability', href: '/dashboard/logistics/serviceability', icon: MapPin, permissions: ['LOGISTICS_VIEW'] },
       { title: 'SLA Dashboard', href: '/dashboard/logistics/sla-dashboard', icon: Gauge, permissions: ['LOGISTICS_VIEW'] },
       { title: 'OMS Sync', href: '/dashboard/logistics/oms-sync', icon: Zap, permissions: ['LOGISTICS_VIEW'] },
+      { title: 'Fulfillment Partners', href: '/dashboard/logistics/fulfillment-partners', icon: Handshake, permissions: ['LOGISTICS_VIEW'] },
     ],
   },
 
@@ -358,9 +362,14 @@ export const navigation: NavItem[] = [
       { title: '── Expenses ──', href: '#', permissions: ['EXPENSE_VIEW'] },
       { title: 'Expense Vouchers', href: '/dashboard/finance/expenses', icon: Receipt, permissions: ['EXPENSE_VIEW'] },
 
+      // -------- RECEIVABLES ANALYSIS --------
+      { title: '── Receivables Analysis ──', href: '#', permissions: ['FINANCE_VIEW'] },
+      { title: 'AR Aging & Dunning', href: '/dashboard/finance/aging-report', icon: TrendingDown, permissions: ['FINANCE_VIEW'] },
+
       // -------- ASSETS --------
       { title: '── Assets ──', href: '#', permissions: ['ASSETS_VIEW'] },
       { title: 'Fixed Assets', href: '/dashboard/finance/fixed-assets', icon: Building2, permissions: ['ASSETS_VIEW'] },
+      { title: 'Depreciation Runs', href: '/dashboard/finance/depreciation', icon: TrendingDown, permissions: ['ASSETS_VIEW'] },
     ],
   },
 

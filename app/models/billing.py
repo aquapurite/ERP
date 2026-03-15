@@ -1289,3 +1289,71 @@ class InvoiceNumberSequence(Base):
 
     def __repr__(self) -> str:
         return f"<InvoiceNumberSequence(series='{self.series_code}', year='{self.financial_year}')>"
+
+
+# ==================== Dunning Runs (SAP F150) ====================
+
+class DunningRun(Base):
+    """AR Dunning run for overdue invoice collection."""
+
+    __tablename__ = "dunning_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_number: Mapped[str] = mapped_column(String(30), unique=True, nullable=False)
+    run_date: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT",
+                                         comment="DRAFT, PROCESSING, COMPLETED, CANCELLED")
+    dunning_level: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    total_customers: Mapped[int] = mapped_column(Integer, default=0)
+    total_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    # Relationships
+    items: Mapped[List["DunningItem"]] = relationship("DunningItem", back_populates="dunning_run", cascade="all, delete-orphan")
+    creator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[created_by])
+
+    def __repr__(self) -> str:
+        return f"<DunningRun(number='{self.run_number}', status='{self.status}')>"
+
+
+class DunningItem(Base):
+    """Individual overdue invoice in a dunning run."""
+
+    __tablename__ = "dunning_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    dunning_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dunning_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customers.id"), nullable=True
+    )
+    dealer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dealers.id"), nullable=True
+    )
+    invoice_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tax_invoices.id"), nullable=True
+    )
+    invoice_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    invoice_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    invoice_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2), nullable=True)
+    outstanding_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 2), nullable=True)
+    days_overdue: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    dunning_level: Mapped[int] = mapped_column(Integer, default=1)
+    action_taken: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    # Relationships
+    dunning_run: Mapped["DunningRun"] = relationship("DunningRun", back_populates="items")
+
+    def __repr__(self) -> str:
+        return f"<DunningItem(invoice='{self.invoice_number}', days_overdue={self.days_overdue})>"

@@ -7171,6 +7171,49 @@ export const dmsAiApi = {
   },
 };
 
+// ==================== Fulfillment Partners (Multi-3PL) ====================
+export const fulfillmentPartnersApi = {
+  list: async (params?: { is_active?: boolean; provider_type?: string; skip?: number; limit?: number }) => {
+    const { data } = await apiClient.get('/fulfillment-partners', { params });
+    return data;
+  },
+  get: async (id: string) => {
+    const { data } = await apiClient.get(`/fulfillment-partners/${id}`);
+    return data;
+  },
+  create: async (payload: {
+    code: string;
+    name: string;
+    provider_type?: string;
+    api_base_url?: string;
+    api_key?: string;
+    auth_config?: Record<string, string>;
+    webhook_secret?: string;
+    is_active?: boolean;
+    config?: Record<string, unknown>;
+  }) => {
+    const { data } = await apiClient.post('/fulfillment-partners', payload);
+    return data;
+  },
+  update: async (id: string, payload: {
+    name?: string;
+    provider_type?: string;
+    api_base_url?: string;
+    api_key?: string;
+    auth_config?: Record<string, string>;
+    webhook_secret?: string;
+    is_active?: boolean;
+    config?: Record<string, unknown>;
+  }) => {
+    const { data } = await apiClient.patch(`/fulfillment-partners/${id}`, payload);
+    return data;
+  },
+  delete: async (id: string) => {
+    const { data } = await apiClient.delete(`/fulfillment-partners/${id}`);
+    return data;
+  },
+};
+
 // ==================== CJDQuick OMS Integration ====================
 export const cjdquickApi = {
   // Manual sync (push to CJDQuick via integration endpoint)
@@ -7316,6 +7359,73 @@ export const costAllocationsApi = {
   // Past runs
   listRuns: async (params?: { page?: number; size?: number }) => {
     const { data } = await apiClient.get('/accounting/cost-allocations/runs', { params });
+    return data;
+  },
+};
+
+// Physical Inventory / Cycle Count API (SAP MI01/MI04/MI07)
+export const physicalCountApi = {
+  create: async (data: { warehouse_id: string; count_type: string; planned_date: string; notes?: string }) => {
+    const { data: res } = await apiClient.post('/inventory/physical-counts', data);
+    return res;
+  },
+  list: async (params?: { status?: string; warehouse_id?: string; page?: number; size?: number }) => {
+    const { data } = await apiClient.get('/inventory/physical-counts', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/inventory/physical-counts/${id}`);
+    return data;
+  },
+  updateItem: async (countId: string, itemId: string, body: { counted_quantity: number; remarks?: string }) => {
+    const { data } = await apiClient.put(`/inventory/physical-counts/${countId}/items/${itemId}`, body);
+    return data;
+  },
+  approve: async (id: string) => {
+    const { data } = await apiClient.post(`/inventory/physical-counts/${id}/approve`);
+    return data;
+  },
+};
+
+// AR Aging Report & Dunning API (SAP F150)
+export const agingApi = {
+  getReport: async () => {
+    const { data } = await apiClient.get('/billing/aging-report');
+    return data;
+  },
+};
+
+export const dunningApi = {
+  create: async (data: { dunning_level?: number; min_days_overdue?: number; notes?: string }) => {
+    const { data: res } = await apiClient.post('/billing/dunning-runs', data);
+    return res;
+  },
+  list: async (params?: { page?: number; size?: number }) => {
+    const { data } = await apiClient.get('/billing/dunning-runs', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/billing/dunning-runs/${id}`);
+    return data;
+  },
+};
+
+// Depreciation Runs API (SAP AFAB)
+export const depreciationRunApi = {
+  create: async (params: { period: string; fiscal_year: string }) => {
+    const { data } = await apiClient.post('/fixed-assets/depreciation-runs', null, { params });
+    return data;
+  },
+  list: async (params?: { page?: number; size?: number }) => {
+    const { data } = await apiClient.get('/fixed-assets/depreciation-runs', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/fixed-assets/depreciation-runs/${id}`);
+    return data;
+  },
+  approve: async (id: string) => {
+    const { data } = await apiClient.post(`/fixed-assets/depreciation-runs/${id}/approve`);
     return data;
   },
 };
