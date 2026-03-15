@@ -1303,6 +1303,37 @@ async def list_cost_centers(
     return [CostCenterResponse.model_validate(cc) for cc in cost_centers]
 
 
+# NOTE: These specific path routes MUST come BEFORE the /{cost_center_id} parametric route
+# to avoid FastAPI matching "expense-report" or "user-assignments" as a UUID
+
+@router.get(
+    "/cost-centers/expense-report",
+    dependencies=[Depends(require_permissions("cost_centers:view"))]
+)
+async def cost_center_expense_report_redirect(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    fiscal_year: Optional[str] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+):
+    """Expense report - delegated to main implementation."""
+    return await cost_center_expense_report(db, current_user, fiscal_year, start_date, end_date)
+
+
+@router.get(
+    "/cost-centers/user-assignments",
+    dependencies=[Depends(require_permissions("cost_centers:view"))]
+)
+async def user_cc_assignments_redirect(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    user_id: Optional[UUID] = None,
+):
+    """User CC assignments - delegated to main implementation."""
+    return await get_user_cost_center_assignments(db, current_user, user_id)
+
+
 @router.get(
     "/cost-centers/{cost_center_id}",
     response_model=CostCenterResponse,
@@ -1527,11 +1558,8 @@ async def get_cost_center_budgets(
 
 
 # ==================== Cost Center Expense Report (Gap 8) ====================
+# Route registered above (before {cost_center_id}) to avoid path conflicts
 
-@router.get(
-    "/cost-centers/expense-report",
-    dependencies=[Depends(require_permissions("cost_centers:view"))]
-)
 async def cost_center_expense_report(
     db: DB,
     current_user: User = Depends(get_current_user),
@@ -1948,10 +1976,8 @@ async def remove_user_from_cost_center(
     return None
 
 
-@router.get(
-    "/cost-centers/user-assignments",
-    dependencies=[Depends(require_permissions("cost_centers:view"))]
-)
+# Route registered above (before {cost_center_id}) to avoid path conflicts
+
 async def get_user_cost_center_assignments(
     db: DB,
     current_user: User = Depends(get_current_user),
