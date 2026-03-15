@@ -292,37 +292,45 @@ class CJDQuickSyncService:
         Required fields: externalPoNumber, locationId, items[].externalSkuCode, items[].orderedQty
         """
         items = []
-        if hasattr(po, "items") and po.items:
-            for item in po.items:
-                sku_code = ""
-                sku_name = ""
-                if hasattr(item, "product") and item.product:
-                    sku_code = item.product.sku or ""
-                    sku_name = item.product.name or ""
+        for item in (po.items or []):
+            # Use PO item's snapshot fields first, fall back to product relationship
+            sku_code = item.sku or ""
+            sku_name = item.product_name or ""
+            if not sku_code and item.product:
+                sku_code = item.product.sku or ""
+            if not sku_name and item.product:
+                sku_name = item.product.name or ""
 
-                item_data: Dict[str, Any] = {
-                    "externalSkuCode": sku_code,
-                    "externalSkuName": sku_name,
-                    "orderedQty": item.quantity_ordered if hasattr(item, "quantity_ordered") else 0,
-                }
-                if hasattr(item, "unit_price") and item.unit_price:
-                    item_data["unitPrice"] = _decimal_to_float(item.unit_price)
-                items.append(item_data)
+            qty = item.quantity_ordered or 0
+            if qty == 0:
+                logger.warning(
+                    "PO %s item SKU=%s has quantity_ordered=0, check PO data",
+                    po.po_number, sku_code,
+                )
+
+            item_data: Dict[str, Any] = {
+                "externalSkuCode": sku_code,
+                "externalSkuName": sku_name,
+                "orderedQty": qty,
+            }
+            if item.unit_price:
+                item_data["unitPrice"] = _decimal_to_float(item.unit_price)
+            items.append(item_data)
 
         payload: Dict[str, Any] = {
             "companyId": settings.CJDQUICK_COMPANY_ID,
-            "externalPoNumber": po.po_number if hasattr(po, "po_number") else str(po.id),
+            "externalPoNumber": po.po_number or str(po.id),
             "locationId": settings.CJDQUICK_DELHI_LOCATION_ID,
             "items": items,
         }
         # Add vendor info if available
-        if hasattr(po, "vendor") and po.vendor:
+        if po.vendor:
             payload["externalVendorCode"] = getattr(po.vendor, "vendor_code", "") or ""
             payload["externalVendorName"] = getattr(po.vendor, "name", "") or ""
         # Add dates
-        if hasattr(po, "created_at") and po.created_at:
+        if po.created_at:
             payload["poDate"] = po.created_at.strftime("%Y-%m-%d")
-        if hasattr(po, "expected_delivery_date") and po.expected_delivery_date:
+        if getattr(po, "expected_delivery_date", None):
             payload["expectedDeliveryDate"] = po.expected_delivery_date.strftime("%Y-%m-%d")
 
         return payload
@@ -365,25 +373,22 @@ class CJDQuickSyncService:
         Fields: goodsReceiptId, skuId (UUID from SKU sync), expectedQty, costPrice, mrp.
         """
         item_payloads = []
-        if hasattr(po, "items") and po.items:
-            for item in po.items:
-                sku_code = ""
-                if hasattr(item, "product") and item.product:
-                    sku_code = item.product.sku or ""
+        for item in (po.items or []):
+            sku_code = item.sku or ""
+            if not sku_code and item.product:
+                sku_code = item.product.sku or ""
 
-                qty = item.quantity_ordered if hasattr(item, "quantity_ordered") else 0
-                item_data: Dict[str, Any] = {
-                    "goodsReceiptId": gr_id,
-                    "expectedQty": qty,
-                }
-                # skuId needs to be the CJDQuick UUID — we pass code for resolution
-                # The API resolves by code when skuId is not a UUID
-                if sku_code:
-                    item_data["skuCode"] = sku_code
-                if hasattr(item, "unit_price") and item.unit_price:
-                    item_data["costPrice"] = _decimal_to_float(item.unit_price)
-                if hasattr(item, "product") and item.product:
-                    item_data["mrp"] = _decimal_to_float(item.product.mrp)
+            qty = item.quantity_ordered or 0
+            item_data: Dict[str, Any] = {
+                "goodsReceiptId": gr_id,
+                "expectedQty": qty,
+            }
+            if sku_code:
+                item_data["skuCode"] = sku_code
+            if item.unit_price:
+                item_data["costPrice"] = _decimal_to_float(item.unit_price)
+            if item.product and getattr(item.product, "mrp", None):
+                item_data["mrp"] = _decimal_to_float(item.product.mrp)
                 item_payloads.append(item_data)
         return item_payloads
 
