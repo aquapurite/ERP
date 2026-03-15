@@ -1334,6 +1334,25 @@ async def user_cc_assignments_redirect(
     return await get_user_cost_center_assignments(db, current_user, user_id)
 
 
+@router.get("/cost-centers/budget-alerts")
+async def budget_alerts_redirect(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Budget alerts - delegated to main implementation."""
+    return await get_budget_alerts(db, current_user)
+
+
+@router.get("/cost-centers/hierarchy-rollup")
+async def hierarchy_rollup_redirect(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    fiscal_year: Optional[str] = None,
+):
+    """Hierarchy rollup - delegated to main implementation."""
+    return await get_cost_center_hierarchy_rollup(db, current_user, fiscal_year)
+
+
 @router.get(
     "/cost-centers/{cost_center_id}",
     response_model=CostCenterResponse,
@@ -1642,7 +1661,6 @@ async def cost_center_expense_report(
 
 # ==================== Cost Center Hierarchy Rollup ====================
 
-@router.get("/cost-centers/hierarchy-rollup")
 async def get_cost_center_hierarchy_rollup(
     db: DB,
     current_user: User = Depends(get_current_user),
@@ -5466,7 +5484,6 @@ class RunAllocationRequest(BaseModel):
     fiscal_year: str  # e.g. "2025-26"
 
 
-@router.get("/cost-centers/budget-alerts")
 async def get_budget_alerts(
     db: DB,
     current_user: User = Depends(get_current_user),
