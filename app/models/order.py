@@ -374,6 +374,14 @@ class Order(Base):
         comment="Package weight in kg"
     )
 
+    # RTO Risk (CJDQuick v3)
+    rto_risk_score: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, comment="RTO risk score 0-100 from CJDQuick"
+    )
+    rto_risk_level: Mapped[Optional[str]] = mapped_column(
+        String(20), nullable=True, comment="LOW/MEDIUM/HIGH from CJDQuick"
+    )
+
     # Relationships
     customer: Mapped["Customer"] = relationship("Customer", back_populates="orders")
     region: Mapped[Optional["Region"]] = relationship("Region")

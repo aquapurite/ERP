@@ -991,8 +991,10 @@ async def cjdquick_webhook(
             await _handle_return_event(db, event_type, event_data)
 
         # --- NDR ---
-        elif event_type in ("ndr.raised", "ndr.resolved"):
+        elif event_type in ("ndr.raised", "ndr.resolved", "ndr.created"):
             await _handle_ndr_event(db, event_type, event_data)
+        elif event_type == "order.rto":
+            await _handle_delivery_status_event(db, event_data, "RTO_INITIATED")
 
         # --- Goods Receipt (both old gr.* and new goods_receipt.* event names) ---
         elif event_type in ("gr.posted", "gr.completed", "gr.status_changed",
@@ -1058,6 +1060,14 @@ async def _handle_order_status_event(db: DB, data: dict, event_type: str = "") -
 
     erp_status = CJDQuickSyncService._map_oms_status_to_erp(new_status)
     order.status = erp_status
+
+    # Capture RTO risk score from CJDQuick (v3 feature)
+    rto_score = data.get("rtoRiskScore")
+    rto_level = data.get("rtoRiskLevel")
+    if rto_score is not None and hasattr(order, "rto_risk_score"):
+        order.rto_risk_score = rto_score
+    if rto_level and hasattr(order, "rto_risk_level"):
+        order.rto_risk_level = rto_level
 
     # Store AWB/tracking info if shipped
     if event_type == "order.shipped":
@@ -1558,7 +1568,7 @@ async def _handle_ndr_event(db: DB, event_type: str, data: dict) -> None:
         logger.warning("Order not found for NDR event: %s", order_number)
         return
 
-    if event_type == "ndr.raised":
+    if event_type in ("ndr.raised", "ndr.created"):
         order.status = "NDR"
         logger.info("NDR raised for order %s: %s", order_number, data.get("reason", ""))
     elif event_type == "ndr.resolved":
