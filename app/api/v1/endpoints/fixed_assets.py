@@ -413,6 +413,7 @@ async def create_asset(
         location_details=asset_in.location_details,
         custodian_employee_id=asset_in.custodian_employee_id,
         department_id=asset_in.department_id,
+        cost_center_id=asset_in.cost_center_id,
         purchase_date=asset_in.purchase_date,
         purchase_price=asset_in.purchase_price,
         purchase_invoice_no=asset_in.purchase_invoice_no,
@@ -914,7 +915,7 @@ async def run_depreciation(
             db.add(journal)
             await db.flush()
 
-            # Debit: Depreciation Expense (6700)
+            # Debit: Depreciation Expense (6700) - with cost center from asset
             line_dr = JournalEntryLine(
                 id=uuid_module.uuid4(),
                 journal_entry_id=journal.id,
@@ -923,6 +924,7 @@ async def run_depreciation(
                 debit_amount=dep_entry.depreciation_amount,
                 credit_amount=Decimal("0"),
                 description=f"Depreciation expense - {asset.name}",
+                cost_center_id=getattr(asset, 'cost_center_id', None),
             )
             db.add(line_dr)
 
@@ -952,6 +954,7 @@ async def run_depreciation(
                     credit_amount=line.credit_amount,
                     running_balance=Decimal("0"),  # Will be recalculated
                     narration=line.description,
+                    cost_center_id=line.cost_center_id,
                 )
                 db.add(gl_entry)
                 gl_affected_accounts.add(line.account_id)

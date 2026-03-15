@@ -92,6 +92,7 @@ class AssetBase(BaseModel):
     location_details: Optional[str] = Field(None, max_length=200)
     custodian_employee_id: Optional[UUID] = None
     department_id: Optional[UUID] = None
+    cost_center_id: Optional[UUID] = None
 
     # Purchase
     purchase_date: date
@@ -145,6 +146,7 @@ class AssetUpdate(BaseModel):
     location_details: Optional[str] = Field(None, max_length=200)
     custodian_employee_id: Optional[UUID] = None
     department_id: Optional[UUID] = None
+    cost_center_id: Optional[UUID] = None
 
     depreciation_method: Optional[DepreciationMethod] = None
     depreciation_rate: Optional[Decimal] = Field(None, ge=0, le=100)
@@ -200,6 +202,8 @@ class AssetDetailResponse(AssetResponse):
     location_details: Optional[str] = None
     custodian_employee_id: Optional[UUID] = None
     department_id: Optional[UUID] = None
+    cost_center_id: Optional[UUID] = None
+    cost_center_name: Optional[str] = None
 
     purchase_invoice_no: Optional[str] = None
     vendor_id: Optional[UUID] = None

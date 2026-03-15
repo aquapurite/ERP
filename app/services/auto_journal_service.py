@@ -1899,13 +1899,14 @@ class AutoJournalService:
         self.db.add(journal)
         await self.db.flush()
 
-        # Dr: Depreciation Expense
+        # Dr: Depreciation Expense (with cost center from asset)
         dr_line = JournalEntryLine(
             journal_entry_id=journal.id,
             account_id=expense_account.id,
             debit_amount=depreciation_amount,
             credit_amount=Decimal("0"),
-            description=f"Depreciation - {asset.name} ({month_str})"
+            description=f"Depreciation - {asset.name} ({month_str})",
+            cost_center_id=getattr(asset, 'cost_center_id', None),
         )
         self.db.add(dr_line)
 

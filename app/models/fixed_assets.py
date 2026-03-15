@@ -217,6 +217,12 @@ class Asset(Base):
         nullable=True,
         comment="Department using the asset"
     )
+    cost_center_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cost_centers.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Cost center for depreciation allocation"
+    )
 
     # Purchase Details
     purchase_date: Mapped[date] = mapped_column(Date, nullable=False)
