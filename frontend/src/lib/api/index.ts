@@ -7505,4 +7505,78 @@ export const slaApi = {
   },
 };
 
+// ==================== Payroll Engine API (SAP PA03) ====================
+export const payrollEngineApi = {
+  // Salary Structure Templates
+  listStructures: async () => {
+    const { data } = await apiClient.get('/hr/salary-structures-template');
+    return data;
+  },
+  getStructure: async (id: string) => {
+    const { data } = await apiClient.get(`/hr/salary-structures-template/${id}`);
+    return data;
+  },
+  createStructure: async (payload: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/hr/salary-structures-template', payload);
+    return data;
+  },
+  // Payroll Runs
+  listRuns: async (params?: { page?: number; size?: number }) => {
+    const { data } = await apiClient.get('/hr/payroll-runs', { params });
+    return data;
+  },
+  getRun: async (id: string) => {
+    const { data } = await apiClient.get(`/hr/payroll-runs/${id}`);
+    return data;
+  },
+  createRun: async (payload: { period: string; fiscal_year: string }) => {
+    const { data } = await apiClient.post('/hr/payroll-runs', payload);
+    return data;
+  },
+  approveRun: async (id: string) => {
+    const { data } = await apiClient.post(`/hr/payroll-runs/${id}/approve`);
+    return data;
+  },
+};
+
+// ==================== Vendor Portal API (SAP SRM) ====================
+export const vendorPortalApi = {
+  getDashboard: async (vendorCode: string) => {
+    const { data } = await apiClient.get('/vendor-portal/dashboard', { params: { vendor_code: vendorCode } });
+    return data;
+  },
+  listPOs: async (vendorCode: string, params?: { page?: number; size?: number; status?: string }) => {
+    const { data } = await apiClient.get('/vendor-portal/purchase-orders', { params: { vendor_code: vendorCode, ...params } });
+    return data;
+  },
+  listInvoices: async (vendorCode: string, params?: { page?: number; size?: number }) => {
+    const { data } = await apiClient.get('/vendor-portal/invoices', { params: { vendor_code: vendorCode, ...params } });
+    return data;
+  },
+  listPayments: async (vendorCode: string, params?: { page?: number; size?: number }) => {
+    const { data } = await apiClient.get('/vendor-portal/payments', { params: { vendor_code: vendorCode, ...params } });
+    return data;
+  },
+  listGRNs: async (vendorCode: string, params?: { page?: number; size?: number }) => {
+    const { data } = await apiClient.get('/vendor-portal/grns', { params: { vendor_code: vendorCode, ...params } });
+    return data;
+  },
+};
+
+// ==================== ATP API (SAP CO09) ====================
+export const atpApi = {
+  getATP: async (productId: string) => {
+    const { data } = await apiClient.get(`/inventory/atp/${productId}`);
+    return data;
+  },
+  getATPBulk: async (productIds: string[]) => {
+    const { data } = await apiClient.get('/inventory/atp-bulk', { params: { product_ids: productIds.join(',') } });
+    return data;
+  },
+  checkATP: async (payload: { product_id: string; quantity_required: number; warehouse_id?: string }) => {
+    const { data } = await apiClient.post('/inventory/atp-check', payload);
+    return data;
+  },
+};
+
 export default apiClient;

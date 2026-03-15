@@ -234,6 +234,7 @@ export const navigation: NavItem[] = [
       { title: 'Vendor Proformas', href: '/dashboard/procurement/vendor-proformas', icon: FileCheck, permissions: ['PROCUREMENT_VIEW'] },
       { title: 'Sales Returns (SRN)', href: '/dashboard/procurement/sales-returns', icon: FileOutput, permissions: ['PROCUREMENT_VIEW'] },
       { title: '3-Way Matching', href: '/dashboard/procurement/three-way-match', icon: Scale, permissions: ['PROCUREMENT_VIEW'] },
+      { title: 'Vendor Portal', href: '/dashboard/procurement/vendor-portal', icon: Handshake, permissions: ['PROCUREMENT_VIEW'] },
     ],
   },
 
@@ -250,6 +251,7 @@ export const navigation: NavItem[] = [
       { title: 'Stock Transfers', href: '/dashboard/inventory/transfers', icon: ArrowRightLeft, permissions: ['INVENTORY_VIEW'] },
       { title: 'Stock Adjustments', href: '/dashboard/inventory/adjustments', icon: Calculator, permissions: ['INVENTORY_VIEW'] },
       { title: 'Physical Count', href: '/dashboard/inventory/physical-count', icon: ClipboardCheck, permissions: ['INVENTORY_VIEW'] },
+      { title: 'ATP (Available to Promise)', href: '/dashboard/inventory/atp', icon: PackageSearch, permissions: ['INVENTORY_VIEW'] },
     ],
   },
 
@@ -285,6 +287,7 @@ export const navigation: NavItem[] = [
       { title: 'SLA Dashboard', href: '/dashboard/logistics/sla-dashboard', icon: Gauge, permissions: ['LOGISTICS_VIEW'] },
       { title: 'OMS Sync', href: '/dashboard/logistics/oms-sync', icon: Zap, permissions: ['LOGISTICS_VIEW'] },
       { title: 'Fulfillment Partners', href: '/dashboard/logistics/fulfillment-partners', icon: Handshake, permissions: ['LOGISTICS_VIEW'] },
+      { title: 'CJDQuick Settings', href: '/dashboard/logistics/cjdquick-settings', icon: Settings, permissions: ['LOGISTICS_VIEW'] },
     ],
   },
 
@@ -405,6 +408,7 @@ export const navigation: NavItem[] = [
       { title: 'Attendance', href: '/dashboard/hr/attendance', icon: CalendarCheck, permissions: ['HR_VIEW'] },
       { title: 'Leave Management', href: '/dashboard/hr/leaves', icon: Calendar, permissions: ['HR_VIEW'] },
       { title: 'Payroll', href: '/dashboard/hr/payroll', icon: CreditCard, permissions: ['HR_VIEW'] },
+      { title: 'Payroll Engine', href: '/dashboard/hr/payroll-engine', icon: Calculator, permissions: ['HR_VIEW'] },
       { title: 'Performance', href: '/dashboard/hr/performance', icon: Award, permissions: ['HR_VIEW'] },
       { title: 'HR Reports', href: '/dashboard/hr/reports', icon: BarChart3, permissions: ['HR_VIEW'] },
     ],

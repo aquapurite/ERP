@@ -1458,3 +1458,209 @@ async def approve_physical_count(
         "movements_created": movements_created,
         "message": f"Count approved. {movements_created} stock adjustments created."
     }
+
+
+# ==================== ATP - Available to Promise (SAP CO09) ====================
+
+from app.models.purchase import PurchaseOrder, PurchaseOrderItem
+from app.models.product import Product
+
+
+class ATPWarehouseDetail(BaseModel):
+    """ATP detail per warehouse."""
+    warehouse_id: str
+    warehouse_name: str
+    on_hand: int = 0
+    reserved: int = 0
+    allocated: int = 0
+    available: int = 0
+
+
+class ATPResponse(BaseModel):
+    """ATP response for a single product."""
+    product_id: str
+    sku: Optional[str] = None
+    product_name: Optional[str] = None
+    current_stock: int = 0
+    reserved: int = 0
+    allocated: int = 0
+    incoming_po: int = 0
+    atp_quantity: int = 0
+    by_warehouse: List[ATPWarehouseDetail] = []
+
+
+class ATPCheckRequest(BaseModel):
+    """Request to check if specific quantity is available."""
+    product_id: str
+    quantity_required: int
+    warehouse_id: Optional[str] = None
+
+
+class ATPCheckResponse(BaseModel):
+    """Response for ATP quantity check."""
+    available: bool
+    atp_quantity: int = 0
+    shortfall: int = 0
+    product_id: str
+    quantity_required: int
+
+
+async def _calculate_atp(db: AsyncSession, product_id_str: str) -> ATPResponse:
+    """Calculate ATP for a single product."""
+    from app.models.inventory import InventorySummary
+    try:
+        product_uuid = uuid.UUID(product_id_str)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid product_id format")
+
+    # Get product info
+    prod_result = await db.execute(
+        select(Product).where(Product.id == product_uuid)
+    )
+    product = prod_result.scalars().first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    # Get inventory summaries across warehouses
+    from app.models.warehouse import Warehouse
+    inv_result = await db.execute(
+        select(InventorySummary, Warehouse.name.label("wh_name"))
+        .join(Warehouse, Warehouse.id == InventorySummary.warehouse_id)
+        .where(InventorySummary.product_id == product_uuid)
+    )
+    rows = inv_result.all()
+
+    total_on_hand = 0
+    total_reserved = 0
+    total_allocated = 0
+    by_warehouse = []
+
+    for row in rows:
+        inv = row[0]
+        wh_name = row[1]
+        on_hand = inv.available_quantity or 0
+        reserved = inv.reserved_quantity or 0
+        allocated = inv.allocated_quantity or 0
+        avail = on_hand - reserved - allocated
+        total_on_hand += on_hand
+        total_reserved += reserved
+        total_allocated += allocated
+        by_warehouse.append(ATPWarehouseDetail(
+            warehouse_id=str(inv.warehouse_id),
+            warehouse_name=wh_name or "",
+            on_hand=on_hand,
+            reserved=reserved,
+            allocated=allocated,
+            available=max(avail, 0),
+        ))
+
+    # Get incoming PO quantity (pending POs)
+    po_statuses = ["APPROVED", "SENT_TO_VENDOR", "ACKNOWLEDGED", "PARTIALLY_RECEIVED"]
+    po_result = await db.execute(
+        select(func.coalesce(func.sum(PurchaseOrderItem.quantity_pending), 0))
+        .join(PurchaseOrder, PurchaseOrder.id == PurchaseOrderItem.purchase_order_id)
+        .where(
+            and_(
+                PurchaseOrderItem.product_id == product_uuid,
+                PurchaseOrder.status.in_(po_statuses),
+            )
+        )
+    )
+    incoming_po = int(po_result.scalar() or 0)
+
+    atp_qty = total_on_hand - total_reserved - total_allocated + incoming_po
+
+    return ATPResponse(
+        product_id=str(product_uuid),
+        sku=getattr(product, 'sku', None),
+        product_name=getattr(product, 'name', None),
+        current_stock=total_on_hand,
+        reserved=total_reserved,
+        allocated=total_allocated,
+        incoming_po=incoming_po,
+        atp_quantity=max(atp_qty, 0),
+        by_warehouse=by_warehouse,
+    )
+
+
+@router.get(
+    "/atp/{product_id}",
+    response_model=ATPResponse,
+    summary="ATP check for a single product (SAP CO09)",
+)
+async def get_atp(
+    product_id: str,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """
+    Available-to-Promise calculation for a product.
+    ATP = Current Stock - Reserved - Allocated + Incoming PO.
+    """
+    return await _calculate_atp(db, product_id)
+
+
+@router.get(
+    "/atp-bulk",
+    response_model=List[ATPResponse],
+    summary="ATP for multiple products",
+)
+async def get_atp_bulk(
+    product_ids: str = Query(..., description="Comma-separated product UUIDs"),
+    db: DB = None,
+    current_user: CurrentUser = None,
+):
+    """Bulk ATP check for multiple products."""
+    ids = [pid.strip() for pid in product_ids.split(",") if pid.strip()]
+    results = []
+    for pid in ids:
+        try:
+            result = await _calculate_atp(db, pid)
+            results.append(result)
+        except HTTPException:
+            continue
+    return results
+
+
+@router.post(
+    "/atp-check",
+    response_model=ATPCheckResponse,
+    summary="Check if specific quantity is available",
+)
+async def check_atp_quantity(
+    data: ATPCheckRequest,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """
+    Check if a specific quantity is available to promise.
+    Returns availability status and any shortfall.
+    """
+    atp = await _calculate_atp(db, data.product_id)
+
+    # If warehouse specified, filter
+    if data.warehouse_id:
+        wh_atp = 0
+        for wh in atp.by_warehouse:
+            if wh.warehouse_id == data.warehouse_id:
+                wh_atp = wh.available
+                break
+        available = wh_atp >= data.quantity_required
+        shortfall = max(data.quantity_required - wh_atp, 0)
+        return ATPCheckResponse(
+            available=available,
+            atp_quantity=wh_atp,
+            shortfall=shortfall,
+            product_id=data.product_id,
+            quantity_required=data.quantity_required,
+        )
+
+    available = atp.atp_quantity >= data.quantity_required
+    shortfall = max(data.quantity_required - atp.atp_quantity, 0)
+    return ATPCheckResponse(
+        available=available,
+        atp_quantity=atp.atp_quantity,
+        shortfall=shortfall,
+        product_id=data.product_id,
+        quantity_required=data.quantity_required,
+    )

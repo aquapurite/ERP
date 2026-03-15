@@ -135,6 +135,8 @@ from app.api.v1.endpoints import (
     bom,
     # SLA Automation
     sla,
+    # Vendor Portal (SAP SRM)
+    vendor_portal,
 )
 
 
@@ -662,4 +664,11 @@ api_router.include_router(
     sla.router,
     prefix="/service",
     tags=["SLA Automation"]
+)
+
+# ==================== Vendor Portal (SAP SRM) ====================
+api_router.include_router(
+    vendor_portal.router,
+    prefix="/vendor-portal",
+    tags=["Vendor Portal"]
 )

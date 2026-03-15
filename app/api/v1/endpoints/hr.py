@@ -2969,3 +2969,492 @@ async def get_performance_dashboard(
         rating_distribution=rating_distribution,
         recent_feedback_count=recent_feedback_count,
     )
+
+
+# ==================== Advanced Payroll Engine (SAP PA03) ====================
+# Uses new tables: payroll_runs, payroll_slips, salary_components
+# Works alongside existing Payroll/Payslip models
+
+from app.models.hr import SalaryStructure
+from sqlalchemy import text as sa_text
+import json as json_lib
+import uuid as uuid_mod
+from pydantic import BaseModel as PydanticBaseModel
+
+
+# --- Pydantic schemas for payroll engine ---
+
+class SalaryComponentCreate(PydanticBaseModel):
+    name: str
+    code: str
+    component_type: str = "EARNING"  # EARNING or DEDUCTION
+    calculation_type: str = "FIXED"  # FIXED or PERCENTAGE
+    percentage_of: Optional[str] = None
+    percentage: float = 0
+    fixed_amount: float = 0
+    is_taxable: bool = True
+    sort_order: int = 0
+
+
+class SalaryComponentResponse(PydanticBaseModel):
+    id: str
+    structure_id: str
+    name: str
+    code: str
+    component_type: str
+    calculation_type: str
+    percentage_of: Optional[str] = None
+    percentage: float = 0
+    fixed_amount: float = 0
+    is_taxable: bool = True
+    sort_order: int = 0
+
+
+class SalaryStructureTemplateCreate(PydanticBaseModel):
+    name: str
+    code: str
+    description: Optional[str] = None
+    components: List[SalaryComponentCreate] = []
+
+
+class SalaryStructureTemplateResponse(PydanticBaseModel):
+    id: str
+    name: Optional[str] = None
+    code: Optional[str] = None
+    description: Optional[str] = None
+    is_active: bool = True
+    components: List[SalaryComponentResponse] = []
+    created_at: Optional[datetime] = None
+
+
+class PayrollRunCreate(PydanticBaseModel):
+    period: str  # e.g. "2026-03"
+    fiscal_year: str  # e.g. "2025-26"
+
+
+class PayrollSlipResponse(PydanticBaseModel):
+    id: str
+    employee_name: Optional[str] = None
+    employee_code: Optional[str] = None
+    basic_salary: float = 0
+    gross_salary: float = 0
+    total_deductions: float = 0
+    net_salary: float = 0
+    earnings_breakdown: dict = {}
+    deductions_breakdown: dict = {}
+    working_days: int = 0
+    present_days: int = 0
+    leave_days: int = 0
+    lop_days: int = 0
+    status: str = "CALCULATED"
+
+
+class PayrollRunResponse(PydanticBaseModel):
+    id: str
+    run_number: str
+    period: str
+    fiscal_year: str
+    run_date: str
+    status: str = "DRAFT"
+    total_employees: int = 0
+    total_gross: float = 0
+    total_deductions: float = 0
+    total_net: float = 0
+    slips: List[PayrollSlipResponse] = []
+    created_at: Optional[str] = None
+
+
+# --- Salary Structure Template Endpoints ---
+
+@router.post("/salary-structures-template", response_model=SalaryStructureTemplateResponse,
+             summary="Create a salary structure template with components")
+async def create_salary_structure_template(
+    data: SalaryStructureTemplateCreate,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Create a salary structure template (not employee-specific) with salary components."""
+    # Create structure using raw SQL (new columns: name, code, description)
+    struct_id = str(uuid_mod.uuid4())
+
+    await db.execute(sa_text("""
+        INSERT INTO salary_structures (id, name, code, description, is_active, employee_id, effective_from, basic_salary, hra, conveyance, medical_allowance, special_allowance, other_allowances, gross_salary, annual_ctc, monthly_ctc, created_at, updated_at)
+        VALUES (:id, :name, :code, :desc, true,
+                (SELECT id FROM employees LIMIT 1),
+                CURRENT_DATE, 0, 0, 0, 0, 0, 0, 0, 0, 0, NOW(), NOW())
+    """), {"id": struct_id, "name": data.name, "code": data.code, "desc": data.description})
+
+    # Insert components
+    components = []
+    for comp in data.components:
+        comp_id = str(uuid_mod.uuid4())
+        await db.execute(sa_text("""
+            INSERT INTO salary_components (id, structure_id, name, code, component_type, calculation_type, percentage_of, percentage, fixed_amount, is_taxable, sort_order)
+            VALUES (:id, :sid, :name, :code, :ctype, :calc_type, :pof, :pct, :amt, :taxable, :sort)
+        """), {
+            "id": comp_id, "sid": struct_id, "name": comp.name, "code": comp.code,
+            "ctype": comp.component_type, "calc_type": comp.calculation_type,
+            "pof": comp.percentage_of, "pct": comp.percentage, "amt": comp.fixed_amount,
+            "taxable": comp.is_taxable, "sort": comp.sort_order,
+        })
+        components.append(SalaryComponentResponse(
+            id=comp_id, structure_id=struct_id, name=comp.name, code=comp.code,
+            component_type=comp.component_type, calculation_type=comp.calculation_type,
+            percentage_of=comp.percentage_of, percentage=comp.percentage,
+            fixed_amount=comp.fixed_amount, is_taxable=comp.is_taxable, sort_order=comp.sort_order,
+        ))
+
+    await db.commit()
+
+    return SalaryStructureTemplateResponse(
+        id=struct_id, name=data.name, code=data.code, description=data.description,
+        is_active=True, components=components,
+    )
+
+
+@router.get("/salary-structures-template", summary="List salary structure templates")
+async def list_salary_structure_templates(
+    db: DB,
+    current_user: CurrentUser,
+):
+    """List all salary structure templates (those with code set)."""
+    result = await db.execute(sa_text("""
+        SELECT id, name, code, description, is_active, created_at
+        FROM salary_structures
+        WHERE code IS NOT NULL
+        ORDER BY created_at DESC
+    """))
+    rows = result.fetchall()
+    items = []
+    for r in rows:
+        # Get components
+        comp_result = await db.execute(sa_text("""
+            SELECT id, structure_id, name, code, component_type, calculation_type,
+                   percentage_of, percentage, fixed_amount, is_taxable, sort_order
+            FROM salary_components WHERE structure_id = :sid ORDER BY sort_order
+        """), {"sid": str(r[0])})
+        comps = [SalaryComponentResponse(
+            id=str(c[0]), structure_id=str(c[1]), name=c[2], code=c[3],
+            component_type=c[4], calculation_type=c[5], percentage_of=c[6],
+            percentage=float(c[7] or 0), fixed_amount=float(c[8] or 0),
+            is_taxable=c[9], sort_order=c[10] or 0,
+        ) for c in comp_result.fetchall()]
+        items.append(SalaryStructureTemplateResponse(
+            id=str(r[0]), name=r[1], code=r[2], description=r[3],
+            is_active=r[4], components=comps, created_at=r[5],
+        ))
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/salary-structures-template/{structure_id}", response_model=SalaryStructureTemplateResponse,
+            summary="Get salary structure template detail")
+async def get_salary_structure_template(
+    structure_id: str,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Get a salary structure template with its components."""
+    result = await db.execute(sa_text("""
+        SELECT id, name, code, description, is_active, created_at
+        FROM salary_structures WHERE id = :sid
+    """), {"sid": structure_id})
+    r = result.fetchone()
+    if not r:
+        raise HTTPException(status_code=404, detail="Salary structure not found")
+
+    comp_result = await db.execute(sa_text("""
+        SELECT id, structure_id, name, code, component_type, calculation_type,
+               percentage_of, percentage, fixed_amount, is_taxable, sort_order
+        FROM salary_components WHERE structure_id = :sid ORDER BY sort_order
+    """), {"sid": structure_id})
+    comps = [SalaryComponentResponse(
+        id=str(c[0]), structure_id=str(c[1]), name=c[2], code=c[3],
+        component_type=c[4], calculation_type=c[5], percentage_of=c[6],
+        percentage=float(c[7] or 0), fixed_amount=float(c[8] or 0),
+        is_taxable=c[9], sort_order=c[10] or 0,
+    ) for c in comp_result.fetchall()]
+
+    return SalaryStructureTemplateResponse(
+        id=str(r[0]), name=r[1], code=r[2], description=r[3],
+        is_active=r[4], components=comps, created_at=r[5],
+    )
+
+
+# --- Payroll Run Endpoints ---
+
+@router.post("/payroll-runs", response_model=PayrollRunResponse,
+             summary="Create and process a payroll run")
+async def create_payroll_run(
+    data: PayrollRunCreate,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """
+    Create a payroll run for a given month.
+    For each active employee with a salary structure, calculate pay based on attendance.
+    Applies: PF (12% of basic), ESIC (0.75% if gross < 21000), PT (Rs 200), TDS.
+    """
+    import calendar
+
+    # Parse period
+    try:
+        year, month = data.period.split("-")
+        year = int(year)
+        month = int(month)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Period must be in YYYY-MM format")
+
+    run_number = f"PR-{data.period}-{str(uuid_mod.uuid4())[:6].upper()}"
+    run_id = str(uuid_mod.uuid4())
+    run_date = date.today().isoformat()
+
+    # Get active employees with salary structures
+    emp_result = await db.execute(sa_text("""
+        SELECT e.id, e.employee_code,
+               COALESCE(u.full_name, u.email) as full_name,
+               ss.basic_salary, ss.hra, ss.conveyance, ss.medical_allowance,
+               ss.special_allowance, ss.other_allowances, ss.gross_salary,
+               ss.pf_applicable, ss.esic_applicable, ss.pt_applicable
+        FROM employees e
+        JOIN users u ON e.user_id = u.id
+        JOIN salary_structures ss ON ss.employee_id = e.id AND ss.is_active = true
+        WHERE e.status = 'ACTIVE'
+        ORDER BY e.employee_code
+    """))
+    employees = emp_result.fetchall()
+
+    if not employees:
+        raise HTTPException(status_code=400, detail="No active employees with salary structures found")
+
+    # Working days in month
+    total_working_days = 26  # Standard Indian payroll assumption
+    _, days_in_month = calendar.monthrange(year, month)
+
+    total_gross = Decimal("0")
+    total_deductions = Decimal("0")
+    total_net = Decimal("0")
+    slips = []
+
+    for emp in employees:
+        emp_id = str(emp[0])
+        emp_code = emp[1]
+        emp_name = emp[2]
+        basic = Decimal(str(emp[3] or 0))
+        hra = Decimal(str(emp[4] or 0))
+        conv = Decimal(str(emp[5] or 0))
+        medical = Decimal(str(emp[6] or 0))
+        special = Decimal(str(emp[7] or 0))
+        other = Decimal(str(emp[8] or 0))
+        gross = Decimal(str(emp[9] or 0))
+        pf_applicable = emp[10]
+        esic_applicable = emp[11]
+        pt_applicable = emp[12]
+
+        # Get attendance for the month
+        att_result = await db.execute(sa_text("""
+            SELECT
+                COUNT(*) FILTER (WHERE status IN ('PRESENT', 'HALF_DAY')) as present,
+                COUNT(*) FILTER (WHERE status = 'HALF_DAY') as half_days,
+                COUNT(*) FILTER (WHERE status = 'ON_LEAVE') as leaves,
+                COUNT(*) FILTER (WHERE status = 'ABSENT') as absent
+            FROM attendance
+            WHERE employee_id = :eid
+              AND EXTRACT(YEAR FROM attendance_date) = :yr
+              AND EXTRACT(MONTH FROM attendance_date) = :mn
+        """), {"eid": emp_id, "yr": year, "mn": month})
+        att = att_result.fetchone()
+        present_full = int(att[0] or 0)
+        half_days = int(att[1] or 0)
+        leaves = int(att[2] or 0)
+        absent = int(att[3] or 0)
+        present_days = present_full - (half_days * 0.5)  # Half days count as 0.5
+        lop_days = absent  # Loss of Pay days
+
+        # Pro-rate salary based on attendance
+        effective_days = max(present_days + leaves, 1)
+        ratio = Decimal(str(min(effective_days / total_working_days, 1)))
+
+        earned_basic = round(basic * ratio, 2)
+        earned_hra = round(hra * ratio, 2)
+        earned_conv = round(conv * ratio, 2)
+        earned_medical = round(medical * ratio, 2)
+        earned_special = round(special * ratio, 2)
+        earned_other = round(other * ratio, 2)
+        earned_gross = earned_basic + earned_hra + earned_conv + earned_medical + earned_special + earned_other
+
+        # Deductions
+        emp_pf, _ = calculate_pf(earned_basic, pf_applicable)
+        emp_esic, _ = calculate_esic(earned_gross, esic_applicable)
+        pt = calculate_professional_tax(earned_gross, month) if pt_applicable else Decimal("0")
+        # Simple TDS estimate: 10% of (gross - 50000/12 exemption) if applicable
+        monthly_exemption = Decimal("50000") / Decimal("12")
+        taxable = max(earned_gross - monthly_exemption, Decimal("0"))
+        tds = round(taxable * Decimal("0.10"), 2) if taxable > 0 else Decimal("0")
+
+        ded_total = emp_pf + emp_esic + pt + tds
+        net = earned_gross - ded_total
+
+        earnings_bd = {
+            "Basic": float(earned_basic),
+            "HRA": float(earned_hra),
+            "Conveyance": float(earned_conv),
+            "Medical": float(earned_medical),
+            "Special Allowance": float(earned_special),
+            "Other": float(earned_other),
+        }
+        deductions_bd = {
+            "PF": float(emp_pf),
+            "ESIC": float(emp_esic),
+            "Professional Tax": float(pt),
+            "TDS": float(tds),
+        }
+
+        slip_id = str(uuid_mod.uuid4())
+        await db.execute(sa_text("""
+            INSERT INTO payroll_slips (id, payroll_run_id, employee_id, employee_name, employee_code,
+                basic_salary, gross_salary, total_deductions, net_salary,
+                earnings_breakdown, deductions_breakdown,
+                working_days, present_days, leave_days, lop_days, status)
+            VALUES (:id, :rid, :eid, :ename, :ecode,
+                :basic, :gross, :ded, :net,
+                :earn_bd, :ded_bd,
+                :wd, :pd, :ld, :lop, 'CALCULATED')
+        """), {
+            "id": slip_id, "rid": run_id, "eid": emp_id, "ename": emp_name, "ecode": emp_code,
+            "basic": float(earned_basic), "gross": float(earned_gross),
+            "ded": float(ded_total), "net": float(net),
+            "earn_bd": json_lib.dumps(earnings_bd), "ded_bd": json_lib.dumps(deductions_bd),
+            "wd": total_working_days, "pd": int(present_days), "ld": leaves, "lop": lop_days,
+        })
+
+        total_gross += earned_gross
+        total_deductions += ded_total
+        total_net += net
+
+        slips.append(PayrollSlipResponse(
+            id=slip_id, employee_name=emp_name, employee_code=emp_code,
+            basic_salary=float(earned_basic), gross_salary=float(earned_gross),
+            total_deductions=float(ded_total), net_salary=float(net),
+            earnings_breakdown=earnings_bd, deductions_breakdown=deductions_bd,
+            working_days=total_working_days, present_days=int(present_days),
+            leave_days=leaves, lop_days=lop_days, status="CALCULATED",
+        ))
+
+    # Insert the payroll run
+    await db.execute(sa_text("""
+        INSERT INTO payroll_runs (id, run_number, period, fiscal_year, run_date, status,
+            total_employees, total_gross, total_deductions, total_net, created_by)
+        VALUES (:id, :rn, :period, :fy, :rd, 'DRAFT',
+            :te, :tg, :td, :tn, :cb)
+    """), {
+        "id": run_id, "rn": run_number, "period": data.period, "fy": data.fiscal_year,
+        "rd": date.today().isoformat(), "te": len(slips),
+        "tg": float(total_gross), "td": float(total_deductions), "tn": float(total_net),
+        "cb": str(current_user.id),
+    })
+
+    await db.commit()
+
+    return PayrollRunResponse(
+        id=run_id, run_number=run_number, period=data.period, fiscal_year=data.fiscal_year,
+        run_date=run_date, status="DRAFT", total_employees=len(slips),
+        total_gross=float(total_gross), total_deductions=float(total_deductions),
+        total_net=float(total_net), slips=slips,
+    )
+
+
+@router.get("/payroll-runs", summary="List payroll runs")
+async def list_payroll_runs(
+    db: DB,
+    current_user: CurrentUser,
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+):
+    """List all payroll runs with pagination."""
+    offset = (page - 1) * size
+    count_result = await db.execute(sa_text("SELECT COUNT(*) FROM payroll_runs"))
+    total = count_result.scalar() or 0
+
+    result = await db.execute(sa_text("""
+        SELECT id, run_number, period, fiscal_year, run_date, status,
+               total_employees, total_gross, total_deductions, total_net, created_at
+        FROM payroll_runs ORDER BY created_at DESC LIMIT :lim OFFSET :off
+    """), {"lim": size, "off": offset})
+    rows = result.fetchall()
+
+    items = [PayrollRunResponse(
+        id=str(r[0]), run_number=r[1], period=r[2], fiscal_year=r[3],
+        run_date=str(r[4]), status=r[5], total_employees=r[6] or 0,
+        total_gross=float(r[7] or 0), total_deductions=float(r[8] or 0),
+        total_net=float(r[9] or 0), created_at=str(r[10]) if r[10] else None,
+    ) for r in rows]
+
+    return {"items": items, "total": total, "page": page, "size": size}
+
+
+@router.get("/payroll-runs/{run_id}", response_model=PayrollRunResponse,
+            summary="Get payroll run detail with slips")
+async def get_payroll_run(
+    run_id: str,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Get payroll run with employee-wise breakdown."""
+    result = await db.execute(sa_text("""
+        SELECT id, run_number, period, fiscal_year, run_date, status,
+               total_employees, total_gross, total_deductions, total_net, created_at
+        FROM payroll_runs WHERE id = :rid
+    """), {"rid": run_id})
+    r = result.fetchone()
+    if not r:
+        raise HTTPException(status_code=404, detail="Payroll run not found")
+
+    slips_result = await db.execute(sa_text("""
+        SELECT id, employee_name, employee_code, basic_salary, gross_salary,
+               total_deductions, net_salary, earnings_breakdown, deductions_breakdown,
+               working_days, present_days, leave_days, lop_days, status
+        FROM payroll_slips WHERE payroll_run_id = :rid ORDER BY employee_code
+    """), {"rid": run_id})
+    slips = [PayrollSlipResponse(
+        id=str(s[0]), employee_name=s[1], employee_code=s[2],
+        basic_salary=float(s[3] or 0), gross_salary=float(s[4] or 0),
+        total_deductions=float(s[5] or 0), net_salary=float(s[6] or 0),
+        earnings_breakdown=s[7] or {}, deductions_breakdown=s[8] or {},
+        working_days=s[9] or 0, present_days=s[10] or 0,
+        leave_days=s[11] or 0, lop_days=s[12] or 0, status=s[13] or "CALCULATED",
+    ) for s in slips_result.fetchall()]
+
+    return PayrollRunResponse(
+        id=str(r[0]), run_number=r[1], period=r[2], fiscal_year=r[3],
+        run_date=str(r[4]), status=r[5], total_employees=r[6] or 0,
+        total_gross=float(r[7] or 0), total_deductions=float(r[8] or 0),
+        total_net=float(r[9] or 0), slips=slips, created_at=str(r[10]) if r[10] else None,
+    )
+
+
+@router.post("/payroll-runs/{run_id}/approve", summary="Approve a payroll run")
+async def approve_payroll_run(
+    run_id: str,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """Approve a payroll run. Changes status from DRAFT to APPROVED."""
+    result = await db.execute(sa_text("""
+        SELECT id, status FROM payroll_runs WHERE id = :rid
+    """), {"rid": run_id})
+    r = result.fetchone()
+    if not r:
+        raise HTTPException(status_code=404, detail="Payroll run not found")
+    if r[1] == "APPROVED":
+        raise HTTPException(status_code=400, detail="Already approved")
+
+    await db.execute(sa_text("""
+        UPDATE payroll_runs SET status = 'APPROVED', approved_by = :uid WHERE id = :rid
+    """), {"uid": str(current_user.id), "rid": run_id})
+
+    await db.execute(sa_text("""
+        UPDATE payroll_slips SET status = 'APPROVED' WHERE payroll_run_id = :rid
+    """), {"rid": run_id})
+
+    await db.commit()
+    return {"message": "Payroll run approved", "id": run_id, "status": "APPROVED"}
