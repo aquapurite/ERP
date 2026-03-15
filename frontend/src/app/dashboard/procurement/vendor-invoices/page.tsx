@@ -34,6 +34,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { DataTable } from '@/components/data-table/data-table';
 import { PageHeader } from '@/components/common';
+import { useAuth } from '@/providers';
 import apiClient from '@/lib/api/client';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
@@ -258,6 +259,7 @@ const vendorInvoicesApi = {
     invoice_number: string;
     invoice_date: string;
     invoice_type?: string;
+    force_budget_override?: boolean;
     // PO Invoice fields
     purchase_order_id?: string;
     grn_id?: string;
@@ -388,6 +390,8 @@ const paymentStatusColors: Record<string, string> = {
 };
 
 export default function VendorInvoicesPage() {
+  const { permissions } = useAuth();
+  const isSuperAdmin = permissions?.is_super_admin || false;
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -434,6 +438,7 @@ export default function VendorInvoicesPage() {
   const [selectedPOId, setSelectedPOId] = useState<string>('');
   const [selectedGRNId, setSelectedGRNId] = useState<string>('');
   const [invoiceLineItems, setInvoiceLineItems] = useState<any[]>([]);
+  const [forceOverride, setForceOverride] = useState<boolean>(false);
   const [ourReference, setOurReference] = useState<string>('');
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
   const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -715,14 +720,32 @@ export default function VendorInvoicesPage() {
       queryClient.invalidateQueries({ queryKey: ['vendor-invoices'] });
       queryClient.invalidateQueries({ queryKey: ['vendor-invoices-stats'] });
       setIsUploadDialogOpen(false);
+      setForceOverride(false);
       toast.success('Vendor invoice created successfully');
       // Show budget warnings if any
       if (data?.budget_warnings && data.budget_warnings.length > 0) {
         data.budget_warnings.forEach((w: string) => toast.warning(w, { duration: 8000 }));
       }
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to create vendor invoice');
+    onError: (error: any) => {
+      // Check if budget exceeded — offer force override for super admin
+      const detail = error?.response?.data?.detail;
+      if (detail?.requires_override) {
+        if (isSuperAdmin) {
+          // Show warnings and confirm override
+          const warnings = detail.budget_warnings || [];
+          warnings.forEach((w: string) => toast.warning(w, { duration: 10000 }));
+          toast.error('Budget exceeded. Click "Create" again to force override (Super Admin).', { duration: 10000 });
+          // Set flag so next submit forces override
+          setForceOverride(true);
+        } else {
+          toast.error('Budget exceeded. Contact Super Admin to override.', { duration: 8000 });
+          const warnings = detail.budget_warnings || [];
+          warnings.forEach((w: string) => toast.warning(w, { duration: 8000 }));
+        }
+      } else {
+        toast.error(detail?.message || error.message || 'Failed to create vendor invoice');
+      }
     },
   });
 
@@ -809,13 +832,20 @@ export default function VendorInvoicesPage() {
           return;
         }
       }
-      // Priority 2: Cost center mandatory for EXPENSE GL accounts
+      // SAP Rule: Cost center mandatory for P&L accounts (EXPENSE/REVENUE), forbidden for BS accounts
       for (let i = 0; i < validLines.length; i++) {
         const line = validLines[i];
         const glAcc = glAccounts.find(a => a.id === line.gl_account_id);
-        if (glAcc && glAcc.account_type === 'EXPENSE' && !line.cost_center_id) {
-          toast.error(`Line ${i + 1}: Cost Center is required for expense GL accounts`);
-          return;
+        if (glAcc) {
+          const isPnL = glAcc.account_type === 'EXPENSE' || glAcc.account_type === 'REVENUE';
+          if (isPnL && !line.cost_center_id) {
+            toast.error(`Line ${i + 1}: Cost Center is required for ${glAcc.account_type} GL accounts`);
+            return;
+          }
+          if (!isPnL && line.cost_center_id) {
+            toast.error(`Line ${i + 1}: Cost Center should not be assigned to ${glAcc.account_type} (Balance Sheet) GL accounts`);
+            return;
+          }
         }
       }
       // Validate total of expense lines equals subtotal
@@ -835,6 +865,7 @@ export default function VendorInvoicesPage() {
       invoice_number: invoiceNumber,
       invoice_date: invoiceDate,
       invoice_type: invoiceType,
+      force_budget_override: forceOverride,
       // PO Invoice fields
       purchase_order_id: invoiceType === 'PO_INVOICE' ? selectedPOId || undefined : undefined,
       grn_id: invoiceType === 'PO_INVOICE' ? selectedGRNId || undefined : undefined,
@@ -1476,6 +1507,14 @@ export default function VendorInvoicesPage() {
                         const recalcLine = (field: string, value: any) => {
                           const updated = [...expenseLines];
                           const updatedLine = { ...updated[idx], [field]: value };
+                          // Auto-clear cost center when switching to Balance Sheet GL
+                          if (field === 'gl_account_id') {
+                            const glAcc = glAccounts.find(a => a.id === value);
+                            const isPnL = glAcc?.account_type === 'EXPENSE' || glAcc?.account_type === 'REVENUE';
+                            if (!isPnL) {
+                              updatedLine.cost_center_id = '';
+                            }
+                          }
                           // Recalculate GST and total
                           const amt = field === 'amount' ? (parseFloat(value) || 0) : updatedLine.amount;
                           const rate = field === 'gst_rate' ? (parseFloat(value) || 0) : updatedLine.gst_rate;
@@ -1563,23 +1602,41 @@ export default function VendorInvoicesPage() {
                                 </SelectContent>
                               </Select>
                             </div>
-                            <div className="space-y-2">
-                              <label className="text-xs font-medium">
-                                Cost Center {(() => { const glAcc = glAccounts.find(a => a.id === line.gl_account_id); return glAcc?.account_type === 'EXPENSE' ? '*' : ''; })()}
-                              </label>
-                              <Select value={line.cost_center_id} onValueChange={(v) => recalcLine('cost_center_id', v)}>
-                                <SelectTrigger className="h-9">
-                                  <SelectValue placeholder="Select Cost Center" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {costCenters.map((cc) => (
-                                    <SelectItem key={cc.id} value={cc.id}>
-                                      {cc.code} - {cc.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
+                            {(() => {
+                              const glAcc = glAccounts.find(a => a.id === line.gl_account_id);
+                              const isPnL = glAcc?.account_type === 'EXPENSE' || glAcc?.account_type === 'REVENUE';
+                              // SAP Rule: CC only for P&L accounts, hidden for BS accounts
+                              if (!line.gl_account_id || isPnL) {
+                                return (
+                                  <div className="space-y-2">
+                                    <label className="text-xs font-medium">
+                                      Cost Center {isPnL ? '*' : ''}
+                                    </label>
+                                    <Select value={line.cost_center_id} onValueChange={(v) => recalcLine('cost_center_id', v)}>
+                                      <SelectTrigger className="h-9">
+                                        <SelectValue placeholder="Select Cost Center" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {costCenters.map((cc) => (
+                                          <SelectItem key={cc.id} value={cc.id}>
+                                            {cc.code} - {cc.name}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                );
+                              }
+                              // Balance Sheet GL — no cost center allowed
+                              return (
+                                <div className="space-y-2">
+                                  <label className="text-xs font-medium text-muted-foreground">Cost Center</label>
+                                  <div className="h-9 flex items-center px-3 border rounded-md bg-muted text-xs text-muted-foreground">
+                                    N/A for {glAcc?.account_type} accounts
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
                           <div className="space-y-2">
                             <label className="text-xs font-medium">Description</label>
@@ -2163,30 +2220,44 @@ export default function VendorInvoicesPage() {
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">
-                            Cost Center {(() => { const glAcc = glAccounts.find(a => a.id === line.gl_account_id); return glAcc?.account_type === 'EXPENSE' ? '*' : ''; })()}
-                          </label>
-                          <Select
-                            value={line.cost_center_id}
-                            onValueChange={(v) => {
-                              const updated = [...editExpenseLines];
-                              updated[idx] = { ...updated[idx], cost_center_id: v };
-                              setEditExpenseLines(updated);
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select Cost Center" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {costCenters.map((cc) => (
-                                <SelectItem key={cc.id} value={cc.id}>
-                                  {cc.code} - {cc.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
+                        {(() => {
+                          const glAcc = glAccounts.find(a => a.id === line.gl_account_id);
+                          const isPnL = glAcc?.account_type === 'EXPENSE' || glAcc?.account_type === 'REVENUE';
+                          if (!line.gl_account_id || isPnL) {
+                            return (
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium">Cost Center {isPnL ? '*' : ''}</label>
+                                <Select
+                                  value={line.cost_center_id}
+                                  onValueChange={(v) => {
+                                    const updated = [...editExpenseLines];
+                                    updated[idx] = { ...updated[idx], cost_center_id: v };
+                                    setEditExpenseLines(updated);
+                                  }}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select Cost Center" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {costCenters.map((cc) => (
+                                      <SelectItem key={cc.id} value={cc.id}>
+                                        {cc.code} - {cc.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium text-muted-foreground">Cost Center</label>
+                              <div className="h-10 flex items-center px-3 border rounded-md bg-muted text-xs text-muted-foreground">
+                                N/A for {glAcc?.account_type} accounts
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-2">

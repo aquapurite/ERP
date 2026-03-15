@@ -104,6 +104,7 @@ class VendorInvoiceCreate(BaseModel):
     vendor_irn: Optional[str] = None
     invoice_pdf_url: Optional[str] = None
     internal_notes: Optional[str] = None
+    force_budget_override: bool = False  # Super admin can force post even if budget exceeded
 
 
 class ThreeWayMatchRequest(BaseModel):
@@ -757,8 +758,9 @@ async def create_vendor_invoice(
 
     await db.flush()
 
-    # --- Priority 3: Budget enforcement (warning only) ---
+    # --- Budget enforcement: block if exceeded (unless force_budget_override) ---
     budget_warnings = []
+    budget_exceeded = False
     if data.expense_lines and len(data.expense_lines) > 0:
         for idx, line_data in enumerate(data.expense_lines, start=1):
             if line_data.cost_center_id:
@@ -767,13 +769,26 @@ async def create_vendor_invoice(
                 if cc and cc.annual_budget and cc.annual_budget > 0:
                     projected = (cc.current_spend or Decimal("0")) + line_data.amount
                     if projected > cc.annual_budget:
+                        budget_exceeded = True
+                        utilization = round(float(projected / cc.annual_budget * 100), 1)
                         budget_warnings.append(
-                            f"Line {idx}: Cost center '{cc.name}' budget exceeded. "
-                            f"Budget: {cc.annual_budget}, Current spend: {cc.current_spend}, "
-                            f"This line: {line_data.amount}, Projected: {projected}"
+                            f"Line {idx}: Cost center '{cc.name}' budget exceeded ({utilization}% utilization). "
+                            f"Budget: ₹{cc.annual_budget:,.0f}, Projected: ₹{projected:,.0f}"
                         )
                     # Update current_spend
                     cc.current_spend = (cc.current_spend or Decimal("0")) + line_data.amount
+
+    # Block if budget exceeded and no override
+    if budget_exceeded and not data.force_budget_override:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "message": "Budget exceeded. Use 'Force Override' (Super Admin) to proceed.",
+                "budget_warnings": budget_warnings,
+                "requires_override": True,
+            }
+        )
 
     await db.flush()
 
