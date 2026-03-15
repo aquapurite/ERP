@@ -260,3 +260,51 @@ class PartsRequest(Base, TimestampMixin):
 
     def __repr__(self):
         return f"<PartsRequest {self.request_number}>"
+
+
+class SLARule(Base):
+    """SLA automation rules for service requests."""
+    __tablename__ = "sla_rules"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    service_type = Column(String(50), nullable=True)
+    priority = Column(String(20), nullable=True)
+    response_hours = Column(Integer, nullable=False, default=24)
+    resolution_hours = Column(Integer, nullable=False, default=72)
+    escalation_level_1_hours = Column(Integer, default=48)
+    escalation_level_2_hours = Column(Integer, default=72)
+    escalation_level_1_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    escalation_level_2_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    escalation_level_1_user = relationship("User", foreign_keys=[escalation_level_1_user_id])
+    escalation_level_2_user = relationship("User", foreign_keys=[escalation_level_2_user_id])
+
+    def __repr__(self):
+        return f"<SLARule {self.name}>"
+
+
+class SLABreach(Base):
+    """SLA breach records for service requests."""
+    __tablename__ = "sla_breaches"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    service_request_id = Column(UUID(as_uuid=True), ForeignKey("service_requests.id"), nullable=False, index=True)
+    sla_rule_id = Column(UUID(as_uuid=True), ForeignKey("sla_rules.id"), nullable=True)
+    breach_type = Column(String(20), nullable=False)  # RESPONSE, RESOLUTION
+    breached_at = Column(DateTime(timezone=True), nullable=False)
+    escalation_level = Column(Integer, default=0)
+    escalated_to = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    resolution_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    service_request = relationship("ServiceRequest")
+    sla_rule = relationship("SLARule")
+    escalated_user = relationship("User", foreign_keys=[escalated_to])
+
+    def __repr__(self):
+        return f"<SLABreach sr={self.service_request_id} type={self.breach_type}>"

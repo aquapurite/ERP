@@ -200,6 +200,13 @@ class Product(Base):
     meta_description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     meta_keywords: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
+    # Profit Center link
+    profit_center_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("profit_centers.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
     # Additional Data (flexible JSONB storage)
     extra_data: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 

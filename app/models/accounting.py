@@ -357,6 +357,13 @@ class CostCenter(Base):
         nullable=True
     )
 
+    # Profit Center link
+    profit_center_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("profit_centers.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -1162,6 +1169,47 @@ class BankStatementLine(Base):
 
     def __repr__(self) -> str:
         return f"<BankStatementLine(date={self.statement_date}, amount={self.debit_amount or self.credit_amount})>"
+
+
+class ProfitCenter(Base):
+    """
+    Profit center for P&L responsibility accounting (SAP KE51 equivalent).
+    Links cost centers and products for revenue/expense tracking.
+    """
+    __tablename__ = "profit_centers"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profit_centers.id", ondelete="RESTRICT"), nullable=True
+    )
+    profit_center_type: Mapped[str] = mapped_column(String(20), default="BUSINESS_UNIT")
+    responsible_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    # Relationships
+    parent: Mapped[Optional["ProfitCenter"]] = relationship(
+        "ProfitCenter", remote_side=[id]
+    )
+    responsible_user: Mapped[Optional["User"]] = relationship("User")
+
+    def __repr__(self) -> str:
+        return f"<ProfitCenter(code='{self.code}', name='{self.name}')>"
 
 
 # Note: BankReconciliation class moved to app/models/banking.py to avoid duplicate table definition

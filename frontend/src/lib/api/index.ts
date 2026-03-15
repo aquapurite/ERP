@@ -7430,4 +7430,79 @@ export const depreciationRunApi = {
   },
 };
 
+// Bill of Materials (BOM) API - SAP CS01/CS02
+export const bomApi = {
+  list: async (params?: { product_id?: string; status?: string; page?: number; size?: number }) => {
+    const { data } = await apiClient.get('/bom', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/bom/${id}`);
+    return data;
+  },
+  create: async (payload: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/bom', payload);
+    return data;
+  },
+  update: async (id: string, payload: Record<string, unknown>) => {
+    const { data } = await apiClient.put(`/bom/${id}`, payload);
+    return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/bom/${id}`);
+  },
+  calculateCost: async (id: string) => {
+    const { data } = await apiClient.post(`/bom/${id}/calculate-cost`);
+    return data;
+  },
+};
+
+// Profit Center API - SAP KE51
+export const profitCenterApi = {
+  list: async (params?: { is_active?: boolean; page?: number; size?: number }) => {
+    const { data } = await apiClient.get('/accounting/profit-centers', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/accounting/profit-centers/${id}`);
+    return data;
+  },
+  create: async (payload: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/accounting/profit-centers', payload);
+    return data;
+  },
+  update: async (id: string, payload: Record<string, unknown>) => {
+    const { data } = await apiClient.put(`/accounting/profit-centers/${id}`, payload);
+    return data;
+  },
+  getPnl: async (id: string, params?: { start_date?: string; end_date?: string }) => {
+    const { data } = await apiClient.get(`/accounting/profit-centers/${id}/pnl`, { params });
+    return data;
+  },
+};
+
+// SLA Automation API
+export const slaApi = {
+  listRules: async () => {
+    const { data } = await apiClient.get('/service/sla-rules');
+    return data;
+  },
+  createRule: async (payload: Record<string, unknown>) => {
+    const { data } = await apiClient.post('/service/sla-rules', payload);
+    return data;
+  },
+  updateRule: async (id: string, payload: Record<string, unknown>) => {
+    const { data } = await apiClient.put(`/service/sla-rules/${id}`, payload);
+    return data;
+  },
+  listBreaches: async (params?: { page?: number; size?: number }) => {
+    const { data } = await apiClient.get('/service/sla-breaches', { params });
+    return data;
+  },
+  checkSla: async () => {
+    const { data } = await apiClient.post('/service/check-sla');
+    return data;
+  },
+};
+
 export default apiClient;

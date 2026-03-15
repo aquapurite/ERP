@@ -131,6 +131,10 @@ from app.api.v1.endpoints import (
     partners,
     # DMS AI Intelligence
     dms_ai,
+    # Bill of Materials (BOM)
+    bom,
+    # SLA Automation
+    sla,
 )
 
 
@@ -644,4 +648,18 @@ api_router.include_router(
     dms_ai.router,
     prefix="/dms-ai",
     tags=["DMS AI Intelligence"]
+)
+
+# ==================== Bill of Materials (BOM) ====================
+api_router.include_router(
+    bom.router,
+    prefix="/bom",
+    tags=["Bill of Materials"]
+)
+
+# ==================== SLA Automation ====================
+api_router.include_router(
+    sla.router,
+    prefix="/service",
+    tags=["SLA Automation"]
 )

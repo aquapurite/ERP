@@ -336,6 +336,7 @@ export const navigation: NavItem[] = [
       { title: 'General Ledger', href: '/dashboard/finance/general-ledger', icon: ScrollText, permissions: ['ACCOUNTS_VIEW'] },
       { title: 'Cost Centers', href: '/dashboard/finance/cost-centers', icon: Building, permissions: ['COST_CENTERS_VIEW'] },
       { title: 'Cost Allocations', href: '/dashboard/finance/cost-allocations', icon: ArrowRightLeft, permissions: ['COST_CENTERS_VIEW'] },
+      { title: 'Profit Centers', href: '/dashboard/finance/profit-centers', icon: Target, permissions: ['COST_CENTERS_VIEW'] },
       { title: 'Financial Periods', href: '/dashboard/finance/periods', icon: Calendar, permissions: ['PERIODS_VIEW'] },
 
       // -------- FINANCIAL REPORTS --------
@@ -388,6 +389,7 @@ export const navigation: NavItem[] = [
       { title: 'AMC Analytics', href: '/dashboard/service/amc-analytics', icon: BarChart3, permissions: ['SERVICE_VIEW'] },
       { title: 'Technicians', href: '/dashboard/service/technicians', icon: HardHat, permissions: ['SERVICE_VIEW'] },
       { title: 'Escalations', href: '/dashboard/crm/escalations', icon: AlertTriangle, permissions: ['SERVICE_VIEW'] },
+      { title: 'SLA Management', href: '/dashboard/service/sla', icon: Gauge, permissions: ['SERVICE_VIEW'] },
     ],
   },
 
@@ -419,6 +421,7 @@ export const navigation: NavItem[] = [
       { title: 'Categories', href: '/dashboard/catalog/categories', icon: FolderTree, permissions: ['PRODUCTS_VIEW'] },
       { title: 'Brands', href: '/dashboard/catalog/brands', icon: Tag, permissions: ['PRODUCTS_VIEW'] },
       { title: 'Serialization', href: '/dashboard/serialization', icon: Barcode, permissions: ['PRODUCTS_VIEW'] },
+      { title: 'Bill of Materials', href: '/dashboard/catalog/bom', icon: Layers, permissions: ['PRODUCTS_VIEW'] },
     ],
   },
 

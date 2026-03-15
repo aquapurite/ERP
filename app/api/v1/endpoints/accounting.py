@@ -5836,3 +5836,255 @@ async def list_allocation_runs(
         ],
         "total": len(runs),
     }
+
+
+# ==================== Profit Center Accounting (SAP KE51) ====================
+
+@router.post("/profit-centers", status_code=status.HTTP_201_CREATED)
+async def create_profit_center(
+    payload: dict,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Create a new profit center."""
+    from app.models.accounting import ProfitCenter
+
+    # Check code uniqueness
+    existing = await db.execute(
+        select(ProfitCenter).where(ProfitCenter.code == payload.get("code"))
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Profit center code already exists")
+
+    pc = ProfitCenter(
+        code=payload["code"],
+        name=payload["name"],
+        description=payload.get("description"),
+        parent_id=payload.get("parent_id"),
+        profit_center_type=payload.get("profit_center_type", "BUSINESS_UNIT"),
+        responsible_user_id=payload.get("responsible_user_id"),
+        is_active=payload.get("is_active", True),
+    )
+    db.add(pc)
+    await db.flush()
+
+    return {
+        "id": str(pc.id),
+        "code": pc.code,
+        "name": pc.name,
+        "description": pc.description,
+        "parent_id": str(pc.parent_id) if pc.parent_id else None,
+        "profit_center_type": pc.profit_center_type,
+        "responsible_user_id": str(pc.responsible_user_id) if pc.responsible_user_id else None,
+        "is_active": pc.is_active,
+        "created_at": pc.created_at.isoformat() if pc.created_at else None,
+    }
+
+
+@router.get("/profit-centers")
+async def list_profit_centers(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    is_active: Optional[bool] = Query(None),
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=200),
+):
+    """List profit centers."""
+    from app.models.accounting import ProfitCenter
+
+    query = select(ProfitCenter)
+    count_query = select(func.count(ProfitCenter.id))
+
+    if is_active is not None:
+        query = query.where(ProfitCenter.is_active == is_active)
+        count_query = count_query.where(ProfitCenter.is_active == is_active)
+
+    total = (await db.execute(count_query)).scalar() or 0
+    query = query.order_by(ProfitCenter.code).offset((page - 1) * size).limit(size)
+    result = await db.execute(query)
+    pcs = result.scalars().all()
+
+    return {
+        "items": [
+            {
+                "id": str(pc.id),
+                "code": pc.code,
+                "name": pc.name,
+                "description": pc.description,
+                "parent_id": str(pc.parent_id) if pc.parent_id else None,
+                "profit_center_type": pc.profit_center_type,
+                "responsible_user_id": str(pc.responsible_user_id) if pc.responsible_user_id else None,
+                "is_active": pc.is_active,
+                "created_at": pc.created_at.isoformat() if pc.created_at else None,
+                "updated_at": pc.updated_at.isoformat() if pc.updated_at else None,
+            }
+            for pc in pcs
+        ],
+        "total": total,
+        "page": page,
+        "size": size,
+    }
+
+
+@router.get("/profit-centers/{pc_id}")
+async def get_profit_center(
+    pc_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get profit center detail."""
+    from app.models.accounting import ProfitCenter
+
+    pc = await db.get(ProfitCenter, pc_id)
+    if not pc:
+        raise HTTPException(status_code=404, detail="Profit center not found")
+
+    return {
+        "id": str(pc.id),
+        "code": pc.code,
+        "name": pc.name,
+        "description": pc.description,
+        "parent_id": str(pc.parent_id) if pc.parent_id else None,
+        "profit_center_type": pc.profit_center_type,
+        "responsible_user_id": str(pc.responsible_user_id) if pc.responsible_user_id else None,
+        "is_active": pc.is_active,
+        "created_at": pc.created_at.isoformat() if pc.created_at else None,
+        "updated_at": pc.updated_at.isoformat() if pc.updated_at else None,
+    }
+
+
+@router.put("/profit-centers/{pc_id}")
+async def update_profit_center(
+    pc_id: UUID,
+    payload: dict,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Update a profit center."""
+    from app.models.accounting import ProfitCenter
+    from datetime import timezone as tz
+
+    pc = await db.get(ProfitCenter, pc_id)
+    if not pc:
+        raise HTTPException(status_code=404, detail="Profit center not found")
+
+    for field in ["name", "description", "profit_center_type", "is_active"]:
+        if field in payload:
+            setattr(pc, field, payload[field])
+    if "parent_id" in payload:
+        pc.parent_id = payload["parent_id"]
+    if "responsible_user_id" in payload:
+        pc.responsible_user_id = payload["responsible_user_id"]
+
+    pc.updated_at = datetime.now(tz.utc)
+    await db.flush()
+
+    return {
+        "id": str(pc.id),
+        "code": pc.code,
+        "name": pc.name,
+        "description": pc.description,
+        "parent_id": str(pc.parent_id) if pc.parent_id else None,
+        "profit_center_type": pc.profit_center_type,
+        "responsible_user_id": str(pc.responsible_user_id) if pc.responsible_user_id else None,
+        "is_active": pc.is_active,
+        "created_at": pc.created_at.isoformat() if pc.created_at else None,
+        "updated_at": pc.updated_at.isoformat() if pc.updated_at else None,
+    }
+
+
+@router.get("/profit-centers/{pc_id}/pnl")
+async def get_profit_center_pnl(
+    pc_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+):
+    """Get P&L report for a profit center.
+
+    Aggregates:
+    - Revenue from products linked to this profit center (via GL REVENUE entries)
+    - Expenses from cost centers linked to this profit center (via GL EXPENSE entries)
+    """
+    from app.models.accounting import ProfitCenter
+    from app.models.product import Product
+
+    pc = await db.get(ProfitCenter, pc_id)
+    if not pc:
+        raise HTTPException(status_code=404, detail="Profit center not found")
+
+    # Default to last 12 months
+    if not end_date:
+        end_date = date.today()
+    if not start_date:
+        start_date = date(end_date.year - 1, end_date.month, end_date.day)
+
+    # Revenue: sum GL credit amounts for REVENUE accounts linked to cost centers in this profit center
+    revenue_query = (
+        select(func.coalesce(func.sum(GeneralLedger.credit_amount), 0))
+        .join(ChartOfAccount, GeneralLedger.account_id == ChartOfAccount.id)
+        .where(
+            and_(
+                ChartOfAccount.account_type == "REVENUE",
+                GeneralLedger.transaction_date >= start_date,
+                GeneralLedger.transaction_date <= end_date,
+                GeneralLedger.cost_center_id.in_(
+                    select(CostCenter.id).where(CostCenter.profit_center_id == pc_id)
+                ),
+            )
+        )
+    )
+    total_revenue = (await db.execute(revenue_query)).scalar() or Decimal("0")
+
+    # Expenses: sum GL debit amounts for EXPENSE accounts linked to cost centers in this profit center
+    expense_query = (
+        select(func.coalesce(func.sum(GeneralLedger.debit_amount), 0))
+        .join(ChartOfAccount, GeneralLedger.account_id == ChartOfAccount.id)
+        .where(
+            and_(
+                ChartOfAccount.account_type == "EXPENSE",
+                GeneralLedger.transaction_date >= start_date,
+                GeneralLedger.transaction_date <= end_date,
+                GeneralLedger.cost_center_id.in_(
+                    select(CostCenter.id).where(CostCenter.profit_center_id == pc_id)
+                ),
+            )
+        )
+    )
+    total_expenses = (await db.execute(expense_query)).scalar() or Decimal("0")
+
+    # Linked cost centers
+    cc_result = await db.execute(
+        select(CostCenter).where(CostCenter.profit_center_id == pc_id)
+    )
+    cost_centers = cc_result.scalars().all()
+
+    # Linked products count
+    product_count_result = await db.execute(
+        select(func.count(Product.id)).where(Product.profit_center_id == pc_id)
+    )
+    product_count = product_count_result.scalar() or 0
+
+    net_profit = float(total_revenue) - float(total_expenses)
+
+    return {
+        "profit_center": {
+            "id": str(pc.id),
+            "code": pc.code,
+            "name": pc.name,
+        },
+        "period": {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+        },
+        "total_revenue": float(total_revenue),
+        "total_expenses": float(total_expenses),
+        "net_profit": net_profit,
+        "margin_percentage": round((net_profit / float(total_revenue) * 100), 2) if total_revenue > 0 else 0,
+        "linked_cost_centers": [
+            {"id": str(cc.id), "code": cc.code, "name": cc.name}
+            for cc in cost_centers
+        ],
+        "linked_products_count": product_count,
+    }
