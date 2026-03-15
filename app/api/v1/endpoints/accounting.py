@@ -1269,8 +1269,11 @@ async def create_cost_center(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new cost center."""
+    cc_data = cc_in.model_dump(exclude_unset=True)
+    # Remove fields not on CostCenter model
+    cc_data.pop('department', None)
     cost_center = CostCenter(
-        **cc_in.model_dump(),
+        **cc_data,
         created_by=current_user.id,
     )
 
