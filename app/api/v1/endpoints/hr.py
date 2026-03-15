@@ -174,6 +174,17 @@ async def list_departments(
             if parent:
                 parent_name = parent.name
 
+        # Get cost center name
+        cost_center_name = None
+        if dept.cost_center_id:
+            from app.models.accounting import CostCenter
+            cc_result = await db.execute(
+                select(CostCenter).where(CostCenter.id == dept.cost_center_id)
+            )
+            cc = cc_result.scalar_one_or_none()
+            if cc:
+                cost_center_name = cc.name
+
         items.append(DepartmentResponse(
             id=dept.id,
             code=dept.code,
@@ -183,6 +194,8 @@ async def list_departments(
             parent_name=parent_name,
             head_id=dept.head_id,
             head_name=head_name,
+            cost_center_id=dept.cost_center_id,
+            cost_center_name=cost_center_name,
             is_active=dept.is_active,
             employee_count=emp_count,
             created_at=dept.created_at,
@@ -1367,8 +1380,12 @@ async def process_payroll(
             detail=f"Payroll for {payroll_in.payroll_month} is already processed"
         )
 
-    # Get active employees
-    emp_query = select(Employee).where(Employee.status == EmployeeStatus.ACTIVE)
+    # Get active employees with department (for cost center resolution)
+    emp_query = (
+        select(Employee)
+        .options(selectinload(Employee.department))
+        .where(Employee.status == EmployeeStatus.ACTIVE)
+    )
     if payroll_in.employee_ids:
         emp_query = emp_query.where(Employee.id.in_(payroll_in.employee_ids))
 
@@ -1459,10 +1476,14 @@ async def process_payroll(
         payslip_count += 1
         payslip_number = f"PS-{payroll_in.payroll_month.strftime('%Y%m')}-{str(payslip_count).zfill(4)}"
 
+        # Resolve cost center: employee-level override > department default
+        resolved_cc_id = emp.cost_center_id or (emp.department.cost_center_id if emp.department else None)
+
         # Create payslip
         payslip = Payslip(
             payroll_id=payroll.id,
             employee_id=emp.id,
+            cost_center_id=resolved_cc_id,
             payslip_number=payslip_number,
             working_days=working_days,
             days_present=days_present,
@@ -1542,6 +1563,20 @@ async def approve_payroll(
     payroll.status = PayrollStatus.APPROVED.value
     payroll.approved_by = current_user.id
     payroll.approved_at = datetime.now(timezone.utc)
+
+    # Auto-generate GL journal entry for payroll
+    try:
+        from app.services.auto_journal_service import AutoJournalService
+        auto_journal = AutoJournalService(db)
+        journal = await auto_journal.generate_for_payroll(
+            payroll_id=payroll.id,
+            user_id=current_user.id,
+            auto_post=True
+        )
+        payroll.journal_entry_id = journal.id
+    except Exception as e:
+        import logging
+        logging.warning(f"Payroll GL posting failed (non-blocking): {e}")
 
     await db.commit()
     await db.refresh(payroll)

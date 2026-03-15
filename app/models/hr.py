@@ -137,6 +137,14 @@ class Department(Base):
         nullable=True
     )
 
+    # Cost Center (for salary allocation)
+    cost_center_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cost_centers.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Default cost center for this department"
+    )
+
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -164,6 +172,7 @@ class Department(Base):
         back_populates="parent"
     )
     head: Mapped[Optional["User"]] = relationship("User", foreign_keys=[head_id])
+    cost_center: Mapped[Optional["CostCenter"]] = relationship("CostCenter", foreign_keys=[cost_center_id])
     employees: Mapped[List["Employee"]] = relationship("Employee", back_populates="department")
 
     def __repr__(self) -> str:
@@ -235,6 +244,12 @@ class Employee(Base):
         UUID(as_uuid=True),
         ForeignKey("departments.id", ondelete="SET NULL"),
         nullable=True
+    )
+    cost_center_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cost_centers.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Employee-level cost center override; falls back to department cost center"
     )
     designation: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     employment_type: Mapped[str] = mapped_column(
@@ -770,6 +785,14 @@ class Payroll(Base):
     )
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Journal Entry (GL posting on approval)
+    journal_entry_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("journal_entries.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Auto-generated GL entry on payroll approval"
+    )
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -816,6 +839,12 @@ class Payslip(Base):
         UUID(as_uuid=True),
         ForeignKey("employees.id", ondelete="CASCADE"),
         nullable=False
+    )
+    cost_center_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cost_centers.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Resolved cost center for this payslip (employee or department level)"
     )
     payslip_number: Mapped[str] = mapped_column(
         String(30),

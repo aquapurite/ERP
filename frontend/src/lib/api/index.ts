@@ -3485,6 +3485,8 @@ export interface Department {
   parent_name?: string;
   head_id?: string;
   head_name?: string;
+  cost_center_id?: string;
+  cost_center_name?: string;
   is_active: boolean;
   employee_count: number;
   created_at: string;
@@ -3503,6 +3505,8 @@ export interface Employee {
   avatar_url?: string;
   department_id?: string;
   department_name?: string;
+  cost_center_id?: string;
+  cost_center_name?: string;
   designation?: string;
   employment_type: string;
   status: string;
@@ -3915,11 +3919,11 @@ export const hrApi = {
       const { data } = await apiClient.get<Department>(`/hr/departments/${id}`);
       return data;
     },
-    create: async (dept: { code: string; name: string; description?: string; parent_id?: string; head_id?: string; is_active?: boolean }) => {
+    create: async (dept: { code: string; name: string; description?: string; parent_id?: string; head_id?: string; cost_center_id?: string; is_active?: boolean }) => {
       const { data } = await apiClient.post<Department>('/hr/departments', dept);
       return data;
     },
-    update: async (id: string, dept: Partial<{ name: string; description: string; parent_id: string; head_id: string; is_active: boolean }>) => {
+    update: async (id: string, dept: Partial<{ name: string; description: string; parent_id: string; head_id: string; cost_center_id: string; is_active: boolean }>) => {
       const { data } = await apiClient.put<Department>(`/hr/departments/${id}`, dept);
       return data;
     },
@@ -3958,6 +3962,7 @@ export const hrApi = {
       current_address?: Record<string, unknown>;
       permanent_address?: Record<string, unknown>;
       department_id?: string;
+      cost_center_id?: string;
       designation?: string;
       employment_type?: string;
       joining_date: string;

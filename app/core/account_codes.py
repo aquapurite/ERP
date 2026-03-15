@@ -102,7 +102,7 @@ class AccountCode(str, Enum):
     TDS_PAYABLE_194C = "2400"
     ADVANCE_CUSTOMERS = "2500"
     UNEARNED_AMC_REVENUE = "2550"  # Deferred revenue from AMC contracts
-    PROVISION_WARRANTY = "2610"
+    PROVISION_WARRANTY = "2700"
 
     # ==================== EQUITY (3XXX) ====================
 
@@ -131,6 +131,19 @@ class AccountCode(str, Enum):
     COGS_PURIFIERS = "5100"
     COGS_SPARES = "5200"
     FREIGHT_INWARD = "5300"
+
+    # Salary & Payroll Expenses (62XX)
+    SALARY_EXPENSE = "6200"
+    PF_EMPLOYER_EXPENSE = "6210"
+    ESIC_EMPLOYER_EXPENSE = "6220"
+    BONUS_EXPENSE = "6230"
+
+    # Payroll Liabilities (26XX)
+    PF_PAYABLE = "2610"
+    ESIC_PAYABLE = "2620"
+    PT_PAYABLE = "2630"
+    TDS_SALARY_PAYABLE = "2640"
+    SALARY_PAYABLE = "2650"
 
     # Operating Expenses (6XXX)
     DISCOUNT_ALLOWED = "6100"
@@ -296,4 +309,17 @@ COA_STRUCTURE = {
 
     # Deferred Revenue
     "2550": AccountInfo("2550", "Unearned AMC Revenue", "LIABILITY", "CURRENT_LIABILITY", parent_code="2000"),
+
+    # Payroll Liabilities
+    "2610": AccountInfo("2610", "PF Payable", "LIABILITY", "CURRENT_LIABILITY", parent_code="2000"),
+    "2620": AccountInfo("2620", "ESIC Payable", "LIABILITY", "CURRENT_LIABILITY", parent_code="2000"),
+    "2630": AccountInfo("2630", "Professional Tax Payable", "LIABILITY", "CURRENT_LIABILITY", parent_code="2000"),
+    "2640": AccountInfo("2640", "TDS on Salary Payable", "LIABILITY", "CURRENT_LIABILITY", parent_code="2000"),
+    "2650": AccountInfo("2650", "Net Salary Payable", "LIABILITY", "CURRENT_LIABILITY", parent_code="2000"),
+
+    # Salary Expenses
+    "6200": AccountInfo("6200", "Salary & Wages", "EXPENSE", "OPERATING_EXPENSE"),
+    "6210": AccountInfo("6210", "PF Employer Contribution", "EXPENSE", "OPERATING_EXPENSE"),
+    "6220": AccountInfo("6220", "ESIC Employer Contribution", "EXPENSE", "OPERATING_EXPENSE"),
+    "6230": AccountInfo("6230", "Bonus Expense", "EXPENSE", "OPERATING_EXPENSE"),
 }

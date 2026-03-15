@@ -23,6 +23,7 @@ class DepartmentBase(BaseModel):
     description: Optional[str] = None
     parent_id: Optional[UUID] = None
     head_id: Optional[UUID] = None
+    cost_center_id: Optional[UUID] = None
     is_active: bool = True
 
 
@@ -37,12 +38,15 @@ class DepartmentUpdate(BaseModel):
     description: Optional[str] = None
     parent_id: Optional[UUID] = None
     head_id: Optional[UUID] = None
+    cost_center_id: Optional[UUID] = None
     is_active: Optional[bool] = None
 
 
 class DepartmentResponse(BaseResponseSchema):
     """Response schema for Department."""
     id: UUID
+    cost_center_id: Optional[UUID] = None
+    cost_center_name: Optional[str] = None
     parent_name: Optional[str] = None
     head_name: Optional[str] = None
     employee_count: int = 0
@@ -102,6 +106,7 @@ class EmployeeBase(BaseModel):
 
     # Employment
     department_id: Optional[UUID] = None
+    cost_center_id: Optional[UUID] = None
     designation: Optional[str] = Field(None, max_length=100)
     employment_type: EmploymentType = EmploymentType.FULL_TIME
     joining_date: date
@@ -222,6 +227,8 @@ class EmployeeResponse(BaseResponseSchema):
     # Employment
     department_id: Optional[UUID] = None
     department_name: Optional[str] = None
+    cost_center_id: Optional[UUID] = None
+    cost_center_name: Optional[str] = None
     designation: Optional[str] = None
     employment_type: EmploymentType
     status: str
@@ -580,6 +587,8 @@ class PayslipResponse(BaseResponseSchema):
     employee_name: Optional[str] = None
     department_name: Optional[str] = None
     designation: Optional[str] = None
+    cost_center_id: Optional[UUID] = None
+    cost_center_name: Optional[str] = None
 
     # Attendance
     working_days: int

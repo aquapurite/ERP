@@ -42,8 +42,15 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
-import { hrApi, Department } from '@/lib/api';
+import { hrApi, costCentersApi, Department } from '@/lib/api';
 
 export default function DepartmentsPage() {
   const [search, setSearch] = useState('');
@@ -53,6 +60,7 @@ export default function DepartmentsPage() {
     code: '',
     name: '',
     description: '',
+    cost_center_id: '',
     is_active: true,
   });
 
@@ -62,6 +70,13 @@ export default function DepartmentsPage() {
     queryKey: ['departments', search],
     queryFn: () => hrApi.departments.list({ search: search || undefined }),
   });
+
+  const { data: costCentersData } = useQuery({
+    queryKey: ['cost-centers-dropdown'],
+    queryFn: () => costCentersApi.list({ is_active: true }),
+  });
+
+  const costCenters = costCentersData?.items || costCentersData || [];
 
   const createMutation = useMutation({
     mutationFn: hrApi.departments.create,
@@ -91,11 +106,15 @@ export default function DepartmentsPage() {
   });
 
   const resetForm = () => {
-    setFormData({ code: '', name: '', description: '', is_active: true });
+    setFormData({ code: '', name: '', description: '', cost_center_id: '', is_active: true });
   };
 
   const handleCreate = () => {
-    createMutation.mutate(formData);
+    const payload = {
+      ...formData,
+      cost_center_id: formData.cost_center_id || undefined,
+    };
+    createMutation.mutate(payload);
   };
 
   const handleUpdate = () => {
@@ -105,6 +124,7 @@ export default function DepartmentsPage() {
       data: {
         name: formData.name,
         description: formData.description,
+        cost_center_id: formData.cost_center_id || undefined,
         is_active: formData.is_active,
       },
     });
@@ -116,6 +136,7 @@ export default function DepartmentsPage() {
       code: dept.code,
       name: dept.name,
       description: dept.description || '',
+      cost_center_id: dept.cost_center_id || '',
       is_active: dept.is_active,
     });
   };
@@ -168,6 +189,24 @@ export default function DepartmentsPage() {
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 />
               </div>
+              <div className="grid gap-2">
+                <Label>Cost Center</Label>
+                <Select
+                  value={formData.cost_center_id}
+                  onValueChange={(v) => setFormData({ ...formData, cost_center_id: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select cost center (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(costCenters as Array<{ id: string; code: string; name: string }>).map((cc) => (
+                      <SelectItem key={cc.id} value={cc.id}>
+                        {cc.code} - {cc.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex items-center gap-2">
                 <Switch
                   checked={formData.is_active}
@@ -210,6 +249,7 @@ export default function DepartmentsPage() {
                 <TableHead>Code</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Description</TableHead>
+                <TableHead>Cost Center</TableHead>
                 <TableHead>Employees</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-[80px]">Actions</TableHead>
@@ -222,6 +262,7 @@ export default function DepartmentsPage() {
                     <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-48" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-12" /></TableCell>
                     <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                     <TableCell><Skeleton className="h-8 w-8" /></TableCell>
@@ -229,7 +270,7 @@ export default function DepartmentsPage() {
                 ))
               ) : items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
+                  <TableCell colSpan={7} className="text-center py-8">
                     <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                     <h3 className="font-medium">No departments found</h3>
                     <p className="text-sm text-muted-foreground">Create your first department</p>
@@ -242,6 +283,9 @@ export default function DepartmentsPage() {
                     <TableCell>{dept.name}</TableCell>
                     <TableCell className="max-w-[300px] truncate">
                       {dept.description || <span className="text-muted-foreground">-</span>}
+                    </TableCell>
+                    <TableCell>
+                      {dept.cost_center_name || <span className="text-muted-foreground">-</span>}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -302,6 +346,24 @@ export default function DepartmentsPage() {
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               />
+            </div>
+            <div className="grid gap-2">
+              <Label>Cost Center</Label>
+              <Select
+                value={formData.cost_center_id}
+                onValueChange={(v) => setFormData({ ...formData, cost_center_id: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select cost center (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(costCenters as Array<{ id: string; code: string; name: string }>).map((cc) => (
+                    <SelectItem key={cc.id} value={cc.id}>
+                      {cc.code} - {cc.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex items-center gap-2">
               <Switch

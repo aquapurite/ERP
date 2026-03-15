@@ -1924,3 +1924,256 @@ class AutoJournalService:
 
         await self.db.flush()
         return journal
+
+    # ==================== PAYROLL JOURNAL ====================
+
+    async def generate_for_payroll(
+        self,
+        payroll_id: UUID,
+        user_id: Optional[UUID] = None,
+        auto_post: bool = True
+    ) -> "JournalEntry":
+        """
+        Generate journal entry for approved payroll.
+
+        Groups salary expense lines by cost center for accurate departmental costing.
+
+        Accounting entries:
+            DEBIT:  Salary & Wages (6200)           = gross_earnings  [per cost center]
+            DEBIT:  PF Employer Contribution (6210)  = employer_pf     [per cost center]
+            DEBIT:  ESIC Employer Contribution (6220)= employer_esic   [per cost center]
+            DEBIT:  Bonus Expense (6230)             = bonus           [per cost center]
+            CREDIT: PF Payable (2610)                = employee_pf + employer_pf
+            CREDIT: ESIC Payable (2620)              = employee_esic + employer_esic
+            CREDIT: Professional Tax Payable (2630)  = professional_tax
+            CREDIT: TDS on Salary Payable (2640)     = tds
+            CREDIT: Net Salary Payable (2650)        = net_salary
+        """
+        from app.models.hr import Payroll, Payslip
+        from app.core.account_codes import AccountCode
+
+        result = await self.db.execute(
+            select(Payroll)
+            .options(selectinload(Payroll.payslips))
+            .where(Payroll.id == payroll_id)
+        )
+        payroll = result.scalar_one_or_none()
+        if not payroll:
+            raise AutoJournalError("Payroll not found")
+
+        # Check if journal entry already exists
+        existing = await self.db.execute(
+            select(JournalEntry).where(
+                and_(
+                    JournalEntry.source_type == "Payroll",
+                    JournalEntry.source_id == payroll_id
+                )
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise AutoJournalError("Journal entry already exists for this payroll")
+
+        payslips = payroll.payslips
+        if not payslips:
+            raise AutoJournalError("Payroll has no payslips")
+
+        # Get financial period
+        period = await self._get_or_create_period()
+
+        # Aggregate amounts by cost center for expense lines
+        cc_aggregates: Dict[Optional[UUID], Dict[str, Decimal]] = {}
+        # Aggregate totals for liability lines (no cost center needed)
+        total_employee_pf = Decimal("0")
+        total_employer_pf = Decimal("0")
+        total_employee_esic = Decimal("0")
+        total_employer_esic = Decimal("0")
+        total_pt = Decimal("0")
+        total_tds = Decimal("0")
+        total_net_salary = Decimal("0")
+        total_bonus = Decimal("0")
+
+        for slip in payslips:
+            cc_id = slip.cost_center_id  # Already resolved during payroll processing
+
+            if cc_id not in cc_aggregates:
+                cc_aggregates[cc_id] = {
+                    "gross_earnings": Decimal("0"),
+                    "employer_pf": Decimal("0"),
+                    "employer_esic": Decimal("0"),
+                    "bonus": Decimal("0"),
+                }
+
+            cc_aggregates[cc_id]["gross_earnings"] += slip.gross_earnings - slip.bonus
+            cc_aggregates[cc_id]["employer_pf"] += slip.employer_pf
+            cc_aggregates[cc_id]["employer_esic"] += slip.employer_esic
+            cc_aggregates[cc_id]["bonus"] += slip.bonus
+
+            total_employee_pf += slip.employee_pf
+            total_employer_pf += slip.employer_pf
+            total_employee_esic += slip.employee_esic
+            total_employer_esic += slip.employer_esic
+            total_pt += slip.professional_tax
+            total_tds += slip.tds
+            total_net_salary += slip.net_salary
+            total_bonus += slip.bonus
+
+        # Get GL accounts
+        salary_account = await self.get_or_create_account(
+            AccountCode.SALARY_EXPENSE.value, "Salary & Wages", "EXPENSE", "OPERATING_EXPENSE"
+        )
+        pf_exp_account = await self.get_or_create_account(
+            AccountCode.PF_EMPLOYER_EXPENSE.value, "PF Employer Contribution", "EXPENSE", "OPERATING_EXPENSE"
+        )
+        esic_exp_account = await self.get_or_create_account(
+            AccountCode.ESIC_EMPLOYER_EXPENSE.value, "ESIC Employer Contribution", "EXPENSE", "OPERATING_EXPENSE"
+        )
+        bonus_account = await self.get_or_create_account(
+            AccountCode.BONUS_EXPENSE.value, "Bonus Expense", "EXPENSE", "OPERATING_EXPENSE"
+        )
+        pf_payable = await self.get_or_create_account(
+            AccountCode.PF_PAYABLE.value, "PF Payable", "LIABILITY", "CURRENT_LIABILITY"
+        )
+        esic_payable = await self.get_or_create_account(
+            AccountCode.ESIC_PAYABLE.value, "ESIC Payable", "LIABILITY", "CURRENT_LIABILITY"
+        )
+        pt_payable = await self.get_or_create_account(
+            AccountCode.PT_PAYABLE.value, "Professional Tax Payable", "LIABILITY", "CURRENT_LIABILITY"
+        )
+        tds_payable = await self.get_or_create_account(
+            AccountCode.TDS_SALARY_PAYABLE.value, "TDS on Salary Payable", "LIABILITY", "CURRENT_LIABILITY"
+        )
+        salary_payable = await self.get_or_create_account(
+            AccountCode.SALARY_PAYABLE.value, "Net Salary Payable", "LIABILITY", "CURRENT_LIABILITY"
+        )
+
+        # Calculate totals
+        month_str = payroll.payroll_month.strftime("%B %Y")
+        total_debit = Decimal("0")
+        total_credit = Decimal("0")
+
+        entry_number = await self._generate_entry_number()
+        journal = JournalEntry(
+            entry_type="PAYROLL",
+            entry_number=entry_number,
+            entry_date=payroll.payroll_month,
+            period_id=period.id,
+            source_type="Payroll",
+            source_id=payroll_id,
+            source_number=f"PAYROLL-{month_str}",
+            narration=f"Payroll for {month_str} - {len(payslips)} employees",
+            status=JournalEntryStatus.POSTED.value if auto_post else JournalEntryStatus.DRAFT.value,
+            created_by=user_id,
+            posted_by=user_id if auto_post else None,
+            posted_at=datetime.now(timezone.utc) if auto_post else None,
+        )
+        self.db.add(journal)
+        await self.db.flush()
+
+        # DEBIT lines: Salary expenses grouped by cost center
+        for cc_id, amounts in cc_aggregates.items():
+            if amounts["gross_earnings"] > 0:
+                line = JournalEntryLine(
+                    journal_entry_id=journal.id,
+                    account_id=salary_account.id,
+                    debit_amount=amounts["gross_earnings"],
+                    credit_amount=Decimal("0"),
+                    description=f"Salary & Wages - {month_str}",
+                    cost_center_id=cc_id,
+                )
+                self.db.add(line)
+                total_debit += amounts["gross_earnings"]
+
+            if amounts["employer_pf"] > 0:
+                line = JournalEntryLine(
+                    journal_entry_id=journal.id,
+                    account_id=pf_exp_account.id,
+                    debit_amount=amounts["employer_pf"],
+                    credit_amount=Decimal("0"),
+                    description=f"PF Employer Contribution - {month_str}",
+                    cost_center_id=cc_id,
+                )
+                self.db.add(line)
+                total_debit += amounts["employer_pf"]
+
+            if amounts["employer_esic"] > 0:
+                line = JournalEntryLine(
+                    journal_entry_id=journal.id,
+                    account_id=esic_exp_account.id,
+                    debit_amount=amounts["employer_esic"],
+                    credit_amount=Decimal("0"),
+                    description=f"ESIC Employer Contribution - {month_str}",
+                    cost_center_id=cc_id,
+                )
+                self.db.add(line)
+                total_debit += amounts["employer_esic"]
+
+            if amounts["bonus"] > 0:
+                line = JournalEntryLine(
+                    journal_entry_id=journal.id,
+                    account_id=bonus_account.id,
+                    debit_amount=amounts["bonus"],
+                    credit_amount=Decimal("0"),
+                    description=f"Bonus - {month_str}",
+                    cost_center_id=cc_id,
+                )
+                self.db.add(line)
+                total_debit += amounts["bonus"]
+
+        # CREDIT lines: Liability accounts (no cost center needed)
+        total_pf = total_employee_pf + total_employer_pf
+        if total_pf > 0:
+            self.db.add(JournalEntryLine(
+                journal_entry_id=journal.id,
+                account_id=pf_payable.id,
+                debit_amount=Decimal("0"),
+                credit_amount=total_pf,
+                description=f"PF Payable (Employee + Employer) - {month_str}",
+            ))
+            total_credit += total_pf
+
+        total_esic = total_employee_esic + total_employer_esic
+        if total_esic > 0:
+            self.db.add(JournalEntryLine(
+                journal_entry_id=journal.id,
+                account_id=esic_payable.id,
+                debit_amount=Decimal("0"),
+                credit_amount=total_esic,
+                description=f"ESIC Payable (Employee + Employer) - {month_str}",
+            ))
+            total_credit += total_esic
+
+        if total_pt > 0:
+            self.db.add(JournalEntryLine(
+                journal_entry_id=journal.id,
+                account_id=pt_payable.id,
+                debit_amount=Decimal("0"),
+                credit_amount=total_pt,
+                description=f"Professional Tax Payable - {month_str}",
+            ))
+            total_credit += total_pt
+
+        if total_tds > 0:
+            self.db.add(JournalEntryLine(
+                journal_entry_id=journal.id,
+                account_id=tds_payable.id,
+                debit_amount=Decimal("0"),
+                credit_amount=total_tds,
+                description=f"TDS on Salary Payable - {month_str}",
+            ))
+            total_credit += total_tds
+
+        if total_net_salary > 0:
+            self.db.add(JournalEntryLine(
+                journal_entry_id=journal.id,
+                account_id=salary_payable.id,
+                debit_amount=Decimal("0"),
+                credit_amount=total_net_salary,
+                description=f"Net Salary Payable - {month_str}",
+            ))
+            total_credit += total_net_salary
+
+        journal.total_debit = total_debit
+        journal.total_credit = total_credit
+
+        await self.db.flush()
+        return journal

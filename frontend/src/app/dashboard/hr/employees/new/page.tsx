@@ -26,7 +26,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { hrApi, rolesApi } from '@/lib/api';
+import { hrApi, rolesApi, costCentersApi } from '@/lib/api';
 
 const employmentTypes = [
   { value: 'FULL_TIME', label: 'Full Time' },
@@ -97,6 +97,7 @@ export default function NewEmployeePage() {
 
     // Employment
     department_id: '',
+    cost_center_id: '',
     designation: '',
     employment_type: 'FULL_TIME',
     joining_date: '',
@@ -123,6 +124,13 @@ export default function NewEmployeePage() {
     queryKey: ['departments-dropdown'],
     queryFn: hrApi.departments.dropdown,
   });
+
+  const { data: costCentersData } = useQuery({
+    queryKey: ['cost-centers-dropdown'],
+    queryFn: () => costCentersApi.list({ is_active: true }),
+  });
+
+  const costCenters = (costCentersData?.items || costCentersData || []) as Array<{ id: string; code: string; name: string }>;
 
   const { data: employees } = useQuery({
     queryKey: ['employees-dropdown'],
@@ -157,6 +165,7 @@ export default function NewEmployeePage() {
 
     createMutation.mutate({
       ...formData,
+      cost_center_id: formData.cost_center_id || undefined,
       current_address: currentAddress as unknown as Record<string, unknown>,
       permanent_address: finalPermanentAddress as unknown as Record<string, unknown>,
     });
@@ -523,6 +532,21 @@ export default function NewEmployeePage() {
                     <SelectContent>
                       {departments?.map((dept) => (
                         <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="cost_center_id">Cost Center (optional - overrides department default)</Label>
+                  <Select value={formData.cost_center_id} onValueChange={(v) => updateField('cost_center_id', v)}>
+                    <SelectTrigger id="cost_center_id">
+                      <SelectValue placeholder="Select cost center" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {costCenters.map((cc) => (
+                        <SelectItem key={cc.id} value={cc.id}>
+                          {cc.code} - {cc.name}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

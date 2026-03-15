@@ -46,7 +46,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { hrApi, Employee, SalaryStructure, AttendanceRecord, LeaveRequest, Payslip } from '@/lib/api';
+import { hrApi, costCentersApi, Employee, SalaryStructure, AttendanceRecord, LeaveRequest, Payslip } from '@/lib/api';
 
 const employmentTypes = [
   { value: 'FULL_TIME', label: 'Full Time' },
@@ -120,6 +120,13 @@ export default function EmployeeDetailPage() {
     queryKey: ['departments-dropdown'],
     queryFn: hrApi.departments.dropdown,
   });
+
+  const { data: costCentersData } = useQuery({
+    queryKey: ['cost-centers-dropdown'],
+    queryFn: () => costCentersApi.list({ is_active: true }),
+  });
+
+  const costCenters = (costCentersData?.items || costCentersData || []) as Array<{ id: string; code: string; name: string }>;
 
   const { data: employeesDropdown } = useQuery({
     queryKey: ['employees-dropdown'],
@@ -460,6 +467,24 @@ export default function EmployeeDetailPage() {
                     </Select>
                   </div>
                   <div className="grid gap-2">
+                    <Label>Cost Center (optional - overrides department default)</Label>
+                    <Select
+                      value={formData.cost_center_id || ''}
+                      onValueChange={(v) => setFormData({ ...formData, cost_center_id: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select cost center" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {costCenters.map((cc) => (
+                          <SelectItem key={cc.id} value={cc.id}>
+                            {cc.code} - {cc.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
                     <Label>Designation</Label>
                     <Input
                       value={formData.designation || ''}
@@ -540,6 +565,10 @@ export default function EmployeeDetailPage() {
                   <div>
                     <div className="text-sm text-muted-foreground">Reporting Manager</div>
                     <div>{employee.reporting_manager_name || '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Cost Center</div>
+                    <div>{employee.cost_center_name || '-'}</div>
                   </div>
                 </>
               )}
