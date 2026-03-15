@@ -1726,6 +1726,30 @@ class VendorInvoiceExpenseLine(Base):
         default=1,
         comment="Line sequence number"
     )
+    cost_center_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cost_centers.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Cost center for this expense line (SAP-style per-line CC)"
+    )
+    gst_rate: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2),
+        default=Decimal("18"),
+        nullable=False,
+        comment="GST rate percentage for this line"
+    )
+    gst_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        default=Decimal("0"),
+        nullable=False,
+        comment="GST amount for this line"
+    )
+    line_total: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        default=Decimal("0"),
+        nullable=False,
+        comment="Line total (amount + GST)"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -1738,6 +1762,7 @@ class VendorInvoiceExpenseLine(Base):
         back_populates="expense_lines"
     )
     gl_account: Mapped["ChartOfAccount"] = relationship("ChartOfAccount")
+    cost_center: Mapped[Optional["CostCenter"]] = relationship("CostCenter")
 
     def __repr__(self) -> str:
         return f"<VendorInvoiceExpenseLine(id={self.id}, amount={self.amount})>"

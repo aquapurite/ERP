@@ -59,9 +59,15 @@ interface VendorInvoice {
     gl_account_id: string;
     gl_account_name?: string;
     gl_account_code?: string;
+    gl_account_type?: string;
     expense_category?: string;
     description?: string;
     amount: number;
+    cost_center_id?: string;
+    cost_center_name?: string;
+    gst_rate?: number;
+    gst_amount?: number;
+    line_total?: number;
     line_number: number;
   }[];
   // Common fields
@@ -167,12 +173,21 @@ interface ExpenseCategory {
   label: string;
 }
 
+// Cost Center for dropdown
+interface CostCenterBrief {
+  id: string;
+  code: string;
+  name: string;
+}
+
 // Expense line item for multi-GL coding
 interface ExpenseLine {
   gl_account_id: string;
+  gl_account_type?: string;
   expense_category: string;
   description: string;
   amount: number;
+  cost_center_id: string;
   gst_rate: number;
   gst_amount: number;
   line_total: number;
@@ -247,8 +262,8 @@ const vendorInvoicesApi = {
     purchase_order_id?: string;
     grn_id?: string;
     line_items?: any[];
-    // Expense Invoice fields - multiple GL lines
-    expense_lines?: { gl_account_id: string; expense_category?: string; description?: string; amount: number }[];
+    // Expense Invoice fields - multiple GL lines with per-line cost center
+    expense_lines?: { gl_account_id: string; expense_category?: string; description?: string; amount: number; cost_center_id?: string; gst_rate?: number; gst_amount?: number; line_total?: number }[];
     gl_account_id?: string;
     cost_center_id?: string;
     expense_category?: string;
@@ -287,8 +302,8 @@ const vendorInvoicesApi = {
     invoice_date?: string;
     invoice_type?: string;
     purchase_order_id?: string;
-    // Expense invoice fields - multiple GL lines
-    expense_lines?: { gl_account_id: string; expense_category?: string; description?: string; amount: number }[];
+    // Expense invoice fields - multiple GL lines with per-line cost center
+    expense_lines?: { gl_account_id: string; expense_category?: string; description?: string; amount: number; cost_center_id?: string; gst_rate?: number; gst_amount?: number; line_total?: number }[];
     gl_account_id?: string;
     cost_center_id?: string;
     expense_category?: string;
@@ -327,6 +342,24 @@ const vendorInvoicesApi = {
   }) => {
     const { data } = await apiClient.post(`/vendor-invoices/${id}/record-payment`, payload);
     return data;
+  },
+};
+
+// Cost Centers API
+const costCentersApi = {
+  list: async (): Promise<CostCenterBrief[]> => {
+    try {
+      const { data } = await apiClient.get('/accounting/cost-centers');
+      // API may return { items: [...] } or [...]
+      const items = Array.isArray(data) ? data : (data?.items || data?.cost_centers || []);
+      return items.map((cc: any) => ({
+        id: cc.id,
+        code: cc.code || cc.cost_center_code || '',
+        name: cc.name || cc.cost_center_name || '',
+      }));
+    } catch {
+      return [];
+    }
   },
 };
 
@@ -380,7 +413,7 @@ export default function VendorInvoicesPage() {
   // Edit form state
   const [editInvoiceType, setEditInvoiceType] = useState<'PO_INVOICE' | 'EXPENSE_INVOICE'>('EXPENSE_INVOICE');
   const [editExpenseLines, setEditExpenseLines] = useState<ExpenseLine[]>([
-    { gl_account_id: '', expense_category: '', description: '', amount: 0, gst_rate: 18, gst_amount: 0, line_total: 0 }
+    { gl_account_id: '', expense_category: '', description: '', amount: 0, cost_center_id: '', gst_rate: 18, gst_amount: 0, line_total: 0 }
   ]);
   const [editSubtotal, setEditSubtotal] = useState<number>(0);
   const [editGstType, setEditGstType] = useState<'INTRA_STATE' | 'INTER_STATE'>('INTRA_STATE');
@@ -408,7 +441,7 @@ export default function VendorInvoicesPage() {
 
   // For Expense Invoices - multiple GL lines
   const [expenseLines, setExpenseLines] = useState<ExpenseLine[]>([
-    { gl_account_id: '', expense_category: '', description: '', amount: 0, gst_rate: 18, gst_amount: 0, line_total: 0 }
+    { gl_account_id: '', expense_category: '', description: '', amount: 0, cost_center_id: '', gst_rate: 18, gst_amount: 0, line_total: 0 }
   ]);
 
   // Amount fields
@@ -450,6 +483,13 @@ export default function VendorInvoicesPage() {
     queryFn: vendorInvoicesApi.getExpenseCategories,
   });
   const expenseCategories = Array.isArray(expenseCategoriesData) ? expenseCategoriesData : [];
+
+  // Fetch cost centers for expense line dropdowns
+  const { data: costCentersData } = useQuery({
+    queryKey: ['cost-centers-dropdown'],
+    queryFn: costCentersApi.list,
+  });
+  const costCenters = Array.isArray(costCentersData) ? costCentersData : [];
 
   // Fetch POs - filtered by selected vendor
   // Include all post-approval statuses (APPROVED, SENT_TO_VENDOR, ACKNOWLEDGED, PARTIALLY_RECEIVED)
@@ -507,7 +547,7 @@ export default function VendorInvoicesPage() {
       setSelectedVendorId('');
       setSelectedPOId('');
       setOurReference('');
-      setExpenseLines([{ gl_account_id: '', expense_category: '', description: '', amount: 0, gst_rate: 18, gst_amount: 0, line_total: 0 }]);
+      setExpenseLines([{ gl_account_id: '', expense_category: '', description: '', amount: 0, cost_center_id: '', gst_rate: 18, gst_amount: 0, line_total: 0 }]);
       setInvoiceNumber('');
       setInvoiceDate(new Date().toISOString().split('T')[0]);
       setInvoiceFile(null);
@@ -671,11 +711,15 @@ export default function VendorInvoicesPage() {
 
   const createInvoiceMutation = useMutation({
     mutationFn: vendorInvoicesApi.create,
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['vendor-invoices'] });
       queryClient.invalidateQueries({ queryKey: ['vendor-invoices-stats'] });
       setIsUploadDialogOpen(false);
       toast.success('Vendor invoice created successfully');
+      // Show budget warnings if any
+      if (data?.budget_warnings && data.budget_warnings.length > 0) {
+        data.budget_warnings.forEach((w: string) => toast.warning(w, { duration: 8000 }));
+      }
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to create vendor invoice');
@@ -765,6 +809,15 @@ export default function VendorInvoicesPage() {
           return;
         }
       }
+      // Priority 2: Cost center mandatory for EXPENSE GL accounts
+      for (let i = 0; i < validLines.length; i++) {
+        const line = validLines[i];
+        const glAcc = glAccounts.find(a => a.id === line.gl_account_id);
+        if (glAcc && glAcc.account_type === 'EXPENSE' && !line.cost_center_id) {
+          toast.error(`Line ${i + 1}: Cost Center is required for expense GL accounts`);
+          return;
+        }
+      }
       // Validate total of expense lines equals subtotal
       const linesTotal = validLines.reduce((sum, l) => sum + l.amount, 0);
       if (Math.abs(linesTotal - subtotal) > 0.01) {
@@ -811,13 +864,17 @@ export default function VendorInvoicesPage() {
             total_amount: item.total_amount,
           }))
         : undefined,
-      // Expense Invoice fields - multiple GL lines
+      // Expense Invoice fields - multiple GL lines with per-line cost center
       expense_lines: invoiceType === 'EXPENSE_INVOICE'
         ? expenseLines.filter(l => l.gl_account_id).map(l => ({
             gl_account_id: l.gl_account_id,
             expense_category: l.expense_category || undefined,
             description: l.description || undefined,
             amount: l.amount,
+            cost_center_id: l.cost_center_id || undefined,
+            gst_rate: l.gst_rate,
+            gst_amount: l.gst_amount,
+            line_total: l.line_total,
           }))
         : undefined,
       // Amount fields
@@ -961,14 +1018,16 @@ export default function VendorInvoicesPage() {
                   setEditInvoiceType(invoice.invoice_type || 'EXPENSE_INVOICE');
                   // Load expense lines or fall back to single GL
                   if (invoice.expense_lines && invoice.expense_lines.length > 0) {
-                    setEditExpenseLines(invoice.expense_lines.map((l: { gl_account_id: string; expense_category?: string; description?: string; amount: number }) => ({
+                    setEditExpenseLines(invoice.expense_lines.map((l: any) => ({
                       gl_account_id: l.gl_account_id || '',
+                      gl_account_type: l.gl_account_type || '',
                       expense_category: l.expense_category || '',
                       description: l.description || '',
                       amount: l.amount || 0,
-                      gst_rate: 18,
-                      gst_amount: Math.round(l.amount * 0.18 * 100) / 100,
-                      line_total: Math.round(l.amount * 1.18 * 100) / 100,
+                      cost_center_id: l.cost_center_id || '',
+                      gst_rate: l.gst_rate || 18,
+                      gst_amount: l.gst_amount || Math.round(l.amount * 0.18 * 100) / 100,
+                      line_total: l.line_total || Math.round(l.amount * 1.18 * 100) / 100,
                     })));
                   } else if (invoice.gl_account_id) {
                     const amt = invoice.subtotal || 0;
@@ -977,12 +1036,13 @@ export default function VendorInvoicesPage() {
                       expense_category: invoice.expense_category || '',
                       description: invoice.expense_description || '',
                       amount: amt,
+                      cost_center_id: '',
                       gst_rate: 18,
                       gst_amount: Math.round(amt * 0.18 * 100) / 100,
                       line_total: Math.round(amt * 1.18 * 100) / 100,
                     }]);
                   } else {
-                    setEditExpenseLines([{ gl_account_id: '', expense_category: '', description: '', amount: 0, gst_rate: 18, gst_amount: 0, line_total: 0 }]);
+                    setEditExpenseLines([{ gl_account_id: '', expense_category: '', description: '', amount: 0, cost_center_id: '', gst_rate: 18, gst_amount: 0, line_total: 0 }]);
                   }
                   const sub = invoice.subtotal || invoice.taxable_amount || 0;
                   setEditSubtotal(sub);
@@ -1407,7 +1467,7 @@ export default function VendorInvoicesPage() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => setExpenseLines([...expenseLines, { gl_account_id: '', expense_category: '', description: '', amount: 0, gst_rate: 18, gst_amount: 0, line_total: 0 }])}
+                          onClick={() => setExpenseLines([...expenseLines, { gl_account_id: '', expense_category: '', description: '', amount: 0, cost_center_id: '', gst_rate: 18, gst_amount: 0, line_total: 0 }])}
                         >
                           <Plus className="h-3 w-3 mr-1" /> Add Line
                         </Button>
@@ -1469,10 +1529,15 @@ export default function VendorInvoicesPage() {
                               </Button>
                             )}
                           </div>
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-3 gap-3">
                             <div className="space-y-2">
                               <label className="text-xs font-medium">GL Account *</label>
-                              <Select value={line.gl_account_id} onValueChange={(v) => recalcLine('gl_account_id', v)}>
+                              <Select value={line.gl_account_id} onValueChange={(v) => {
+                                const glAcc = glAccounts.find(a => a.id === v);
+                                const updated = [...expenseLines];
+                                updated[idx] = { ...updated[idx], gl_account_id: v, gl_account_type: glAcc?.account_type || '' };
+                                setExpenseLines(updated);
+                              }}>
                                 <SelectTrigger className="h-9">
                                   <SelectValue placeholder="Select GL Account" />
                                 </SelectTrigger>
@@ -1494,6 +1559,23 @@ export default function VendorInvoicesPage() {
                                 <SelectContent>
                                   {expenseCategories.map((cat) => (
                                     <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-xs font-medium">
+                                Cost Center {(() => { const glAcc = glAccounts.find(a => a.id === line.gl_account_id); return glAcc?.account_type === 'EXPENSE' ? '*' : ''; })()}
+                              </label>
+                              <Select value={line.cost_center_id} onValueChange={(v) => recalcLine('cost_center_id', v)}>
+                                <SelectTrigger className="h-9">
+                                  <SelectValue placeholder="Select Cost Center" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {costCenters.map((cc) => (
+                                    <SelectItem key={cc.id} value={cc.id}>
+                                      {cc.code} - {cc.name}
+                                    </SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
@@ -2014,7 +2096,7 @@ export default function VendorInvoicesPage() {
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => setEditExpenseLines([...editExpenseLines, { gl_account_id: '', expense_category: '', description: '', amount: 0, gst_rate: 18, gst_amount: 0, line_total: 0 }])}
+                      onClick={() => setEditExpenseLines([...editExpenseLines, { gl_account_id: '', expense_category: '', description: '', amount: 0, cost_center_id: '', gst_rate: 18, gst_amount: 0, line_total: 0 }])}
                     >
                       <Plus className="h-3 w-3 mr-1" /> Add Line
                     </Button>
@@ -2035,29 +2117,30 @@ export default function VendorInvoicesPage() {
                           </Button>
                         </div>
                       )}
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">GL Account *</label>
-                        <Select
-                          value={line.gl_account_id}
-                          onValueChange={(v) => {
-                            const updated = [...editExpenseLines];
-                            updated[idx] = { ...updated[idx], gl_account_id: v };
-                            setEditExpenseLines(updated);
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select GL Account" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {glAccounts.map((acc) => (
-                              <SelectItem key={acc.id} value={acc.id}>
-                                {acc.account_code} - {acc.account_name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">GL Account *</label>
+                          <Select
+                            value={line.gl_account_id}
+                            onValueChange={(v) => {
+                              const glAcc = glAccounts.find(a => a.id === v);
+                              const updated = [...editExpenseLines];
+                              updated[idx] = { ...updated[idx], gl_account_id: v, gl_account_type: glAcc?.account_type || '' };
+                              setEditExpenseLines(updated);
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select GL Account" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {glAccounts.map((acc) => (
+                                <SelectItem key={acc.id} value={acc.id}>
+                                  {acc.account_code} - {acc.account_name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                         <div className="space-y-2">
                           <label className="text-sm font-medium">Category *</label>
                           <Select
@@ -2080,6 +2163,32 @@ export default function VendorInvoicesPage() {
                             </SelectContent>
                           </Select>
                         </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">
+                            Cost Center {(() => { const glAcc = glAccounts.find(a => a.id === line.gl_account_id); return glAcc?.account_type === 'EXPENSE' ? '*' : ''; })()}
+                          </label>
+                          <Select
+                            value={line.cost_center_id}
+                            onValueChange={(v) => {
+                              const updated = [...editExpenseLines];
+                              updated[idx] = { ...updated[idx], cost_center_id: v };
+                              setEditExpenseLines(updated);
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select Cost Center" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {costCenters.map((cc) => (
+                                <SelectItem key={cc.id} value={cc.id}>
+                                  {cc.code} - {cc.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-2">
                           <label className="text-sm font-medium">Amount *</label>
                           <Input
@@ -2426,13 +2535,17 @@ export default function VendorInvoicesPage() {
                   id: editingInvoice.id,
                   data: {
                     invoice_type: editInvoiceType,
-                    // Expense coding fields - multiple GL lines
+                    // Expense coding fields - multiple GL lines with per-line cost center
                     expense_lines: editInvoiceType === 'EXPENSE_INVOICE'
                       ? editExpenseLines.filter(l => l.gl_account_id).map(l => ({
                           gl_account_id: l.gl_account_id,
                           expense_category: l.expense_category || undefined,
                           description: l.description || undefined,
                           amount: l.amount,
+                          cost_center_id: l.cost_center_id || undefined,
+                          gst_rate: l.gst_rate,
+                          gst_amount: l.gst_amount,
+                          line_total: l.line_total,
                         }))
                       : undefined,
                     // Amount fields

@@ -36,6 +36,10 @@ class ExpenseLineItem(BaseModel):
     expense_category: Optional[str] = None
     description: Optional[str] = None
     amount: Decimal
+    cost_center_id: Optional[UUID] = None
+    gst_rate: Optional[Decimal] = Decimal("18")
+    gst_amount: Optional[Decimal] = Decimal("0")
+    line_total: Optional[Decimal] = Decimal("0")
 
 
 class InvoiceLineItemCreate(BaseModel):
@@ -330,6 +334,7 @@ async def list_vendor_invoices(
         selectinload(VendorInvoice.gl_account),
         selectinload(VendorInvoice.cost_center),
         selectinload(VendorInvoice.expense_lines).selectinload(VendorInvoiceExpenseLine.gl_account),
+        selectinload(VendorInvoice.expense_lines).selectinload(VendorInvoiceExpenseLine.cost_center),
     )
 
     conditions = []
@@ -412,9 +417,15 @@ async def list_vendor_invoices(
                         "gl_account_id": str(line.gl_account_id),
                         "gl_account_name": line.gl_account.account_name if line.gl_account else None,
                         "gl_account_code": line.gl_account.account_code if line.gl_account else None,
+                        "gl_account_type": line.gl_account.account_type if line.gl_account else None,
                         "expense_category": line.expense_category,
                         "description": line.description,
                         "amount": float(line.amount),
+                        "cost_center_id": str(line.cost_center_id) if line.cost_center_id else None,
+                        "cost_center_name": line.cost_center.name if line.cost_center else None,
+                        "gst_rate": float(line.gst_rate) if line.gst_rate else 18,
+                        "gst_amount": float(line.gst_amount) if line.gst_amount else 0,
+                        "line_total": float(line.line_total) if line.line_total else 0,
                         "line_number": line.line_number,
                     }
                     for line in (inv.expense_lines or [])
@@ -541,6 +552,7 @@ async def get_vendor_invoice(
         selectinload(VendorInvoice.verified_by_user),
         selectinload(VendorInvoice.approved_by_user),
         selectinload(VendorInvoice.expense_lines).selectinload(VendorInvoiceExpenseLine.gl_account),
+        selectinload(VendorInvoice.expense_lines).selectinload(VendorInvoiceExpenseLine.cost_center),
     ).where(VendorInvoice.id == invoice_id)
 
     result = await db.execute(query)
@@ -735,9 +747,33 @@ async def create_vendor_invoice(
                 expense_category=line_data.expense_category,
                 description=line_data.description,
                 amount=line_data.amount,
+                cost_center_id=line_data.cost_center_id,
+                gst_rate=line_data.gst_rate or Decimal("18"),
+                gst_amount=line_data.gst_amount or Decimal("0"),
+                line_total=line_data.line_total or Decimal("0"),
                 line_number=idx,
             )
             db.add(expense_line)
+
+    await db.flush()
+
+    # --- Priority 3: Budget enforcement (warning only) ---
+    budget_warnings = []
+    if data.expense_lines and len(data.expense_lines) > 0:
+        for idx, line_data in enumerate(data.expense_lines, start=1):
+            if line_data.cost_center_id:
+                from app.models.accounting import CostCenter as CostCenterModel
+                cc = await db.get(CostCenterModel, line_data.cost_center_id)
+                if cc and cc.annual_budget and cc.annual_budget > 0:
+                    projected = (cc.current_spend or Decimal("0")) + line_data.amount
+                    if projected > cc.annual_budget:
+                        budget_warnings.append(
+                            f"Line {idx}: Cost center '{cc.name}' budget exceeded. "
+                            f"Budget: {cc.annual_budget}, Current spend: {cc.current_spend}, "
+                            f"This line: {line_data.amount}, Projected: {projected}"
+                        )
+                    # Update current_spend
+                    cc.current_spend = (cc.current_spend or Decimal("0")) + line_data.amount
 
     await db.flush()
 
@@ -808,11 +844,15 @@ async def create_vendor_invoice(
     await db.commit()
     await db.refresh(invoice)
 
-    return {
+    response = {
         "id": str(invoice.id),
         "our_reference": invoice.our_reference,
         "message": "Vendor invoice created successfully",
     }
+    if budget_warnings:
+        response["budget_warnings"] = budget_warnings
+
+    return response
 
 
 @router.post("/three-way-match")
@@ -1166,6 +1206,10 @@ async def update_vendor_invoice(
                 expense_category=line_data.expense_category,
                 description=line_data.description,
                 amount=line_data.amount,
+                cost_center_id=line_data.cost_center_id,
+                gst_rate=line_data.gst_rate or Decimal("18"),
+                gst_amount=line_data.gst_amount or Decimal("0"),
+                line_total=line_data.line_total or Decimal("0"),
                 line_number=idx,
             )
             db.add(expense_line)

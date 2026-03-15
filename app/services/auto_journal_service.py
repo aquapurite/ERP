@@ -1053,14 +1053,18 @@ class AutoJournalService:
         # Debit: Expense/Purchase lines
         if has_expense_lines:
             # Multiple GL lines - create a debit for each expense line
+            # SAP-style: use per-line cost_center_id instead of invoice-level
             for exp_line in invoice.expense_lines:
                 desc_text = exp_line.description or f"{entry_type.title()} from {vendor_name}"
+                # Use per-line cost center if available, else fall back to invoice-level
+                line_cc_id = exp_line.cost_center_id or invoice.cost_center_id
                 journal_line = JournalEntryLine(
                     journal_entry_id=journal.id,
                     account_id=exp_line.gl_account_id,
                     debit_amount=exp_line.amount,
                     credit_amount=Decimal("0"),
-                    description=desc_text
+                    description=desc_text,
+                    cost_center_id=line_cc_id,
                 )
                 journal_lines.append(journal_line)
         else:
