@@ -2301,6 +2301,10 @@ export const costCentersApi = {
     const { data } = await apiClient.get('/accounting/cost-centers/budget-alerts');
     return data;
   },
+  getHierarchyRollup: async () => {
+    const { data } = await apiClient.get('/accounting/cost-centers/hierarchy-rollup');
+    return data;
+  },
 };
 
 // Internal Orders API (Gap 9)

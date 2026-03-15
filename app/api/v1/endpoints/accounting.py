@@ -1640,6 +1640,107 @@ async def cost_center_expense_report(
     return {"items": report, "total": len(report)}
 
 
+# ==================== Cost Center Hierarchy Rollup ====================
+
+@router.get("/cost-centers/hierarchy-rollup")
+async def get_cost_center_hierarchy_rollup(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    fiscal_year: Optional[str] = None,
+):
+    """
+    Get cost center hierarchy with rolled-up spend.
+    Parent CCs include their own spend PLUS all children's spend.
+    """
+    # Get all active cost centers
+    cc_result = await db.execute(
+        select(CostCenter).where(CostCenter.is_active == True).order_by(CostCenter.code)
+    )
+    all_ccs = cc_result.scalars().all()
+
+    # Get direct spend for each CC from GL
+    cc_spend = {}
+    for cc in all_ccs:
+        spend_result = await db.execute(
+            select(func.coalesce(
+                func.sum(GeneralLedger.debit_amount - GeneralLedger.credit_amount), 0
+            ))
+            .join(ChartOfAccount, GeneralLedger.account_id == ChartOfAccount.id)
+            .where(GeneralLedger.cost_center_id == cc.id)
+            .where(ChartOfAccount.account_type == "EXPENSE")
+        )
+        cc_spend[cc.id] = spend_result.scalar() or Decimal("0")
+
+    # Build tree structure
+    cc_map = {cc.id: cc for cc in all_ccs}
+    children_map: dict = {}
+    for cc in all_ccs:
+        if cc.parent_id:
+            children_map.setdefault(cc.parent_id, []).append(cc.id)
+
+    # Recursive rollup: calculate total spend including all descendants
+    def get_rolled_up_spend(cc_id):
+        own_spend = cc_spend.get(cc_id, Decimal("0"))
+        child_spend = Decimal("0")
+        for child_id in children_map.get(cc_id, []):
+            child_spend += get_rolled_up_spend(child_id)
+        return own_spend + child_spend
+
+    # Build response
+    def build_node(cc_id):
+        cc = cc_map[cc_id]
+        own = cc_spend.get(cc_id, Decimal("0"))
+        rolled_up = get_rolled_up_spend(cc_id)
+        budget = cc.annual_budget or Decimal("0")
+        utilization = float(rolled_up / budget * 100) if budget > 0 else 0
+
+        child_nodes = []
+        for child_id in children_map.get(cc_id, []):
+            child_nodes.append(build_node(child_id))
+
+        return {
+            "id": str(cc.id),
+            "code": cc.code,
+            "name": cc.name,
+            "cost_center_type": cc.cost_center_type,
+            "annual_budget": float(budget),
+            "own_spend": float(own),
+            "rolled_up_spend": float(rolled_up),
+            "utilization_pct": round(utilization, 1),
+            "status": "OVER_BUDGET" if utilization >= 100 else ("WARNING" if utilization >= 80 else "WITHIN_BUDGET"),
+            "children": child_nodes,
+        }
+
+    # Get root nodes (no parent)
+    roots = [cc for cc in all_ccs if not cc.parent_id]
+    # Also include orphan CCs that have parents not in the active set
+    parent_ids = {cc.parent_id for cc in all_ccs if cc.parent_id}
+    active_ids = {cc.id for cc in all_ccs}
+
+    tree = []
+    for root in roots:
+        tree.append(build_node(root.id))
+
+    # Add any CCs whose parent is not in the active set (orphans)
+    for cc in all_ccs:
+        if cc.parent_id and cc.parent_id not in active_ids:
+            tree.append(build_node(cc.id))
+
+    # Calculate grand totals
+    grand_own = sum(float(cc_spend.get(cc.id, 0)) for cc in all_ccs)
+    grand_budget = sum(float(cc.annual_budget or 0) for cc in roots)
+
+    return {
+        "tree": tree,
+        "summary": {
+            "total_cost_centers": len(all_ccs),
+            "total_own_spend": round(grand_own, 2),
+            "total_budget": round(grand_budget, 2),
+            "total_utilization_pct": round(grand_own / grand_budget * 100, 1) if grand_budget > 0 else 0,
+        }
+    }
+
+
 # ==================== Internal Orders (Gap 9) ====================
 
 class InternalOrderCreate(BaseModel):

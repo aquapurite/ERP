@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Plus, Pencil, Trash2, Building2, Loader2, TrendingUp, Wallet, Users, Calendar, FileBarChart, FolderKanban, ChevronDown, ChevronRight, UserPlus, X, AlertTriangle } from 'lucide-react';
+import { MoreHorizontal, Plus, Pencil, Trash2, Building2, Loader2, TrendingUp, Wallet, Users, Calendar, FileBarChart, FolderKanban, ChevronDown, ChevronRight, UserPlus, X, AlertTriangle, GitBranch } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -100,6 +100,31 @@ interface BudgetAlert {
   annual_budget: number;
   total_spend: number;
   remaining: number;
+}
+
+interface HierarchyNode {
+  id: string;
+  code: string;
+  name: string;
+  cost_center_type: string;
+  annual_budget: number;
+  own_spend: number;
+  rolled_up_spend: number;
+  utilization_pct: number;
+  status: string;
+  children: HierarchyNode[];
+}
+
+interface HierarchySummary {
+  total_cost_centers: number;
+  total_own_spend: number;
+  total_budget: number;
+  total_utilization_pct: number;
+}
+
+interface HierarchyRollupResponse {
+  tree: HierarchyNode[];
+  summary: HierarchySummary;
 }
 
 const costCenterTypes = [
@@ -222,6 +247,54 @@ export default function CostCentersPage() {
 
   const budgetAlerts: BudgetAlert[] = budgetAlertsData?.alerts || [];
   const budgetAlertTotal: number = budgetAlertsData?.total || 0;
+
+  // Hierarchy rollup query
+  const { data: hierarchyData, isLoading: hierarchyLoading } = useQuery({
+    queryKey: ['cc-hierarchy-rollup'],
+    queryFn: () => costCentersApi.getHierarchyRollup(),
+    enabled: activeTab === 'hierarchy',
+  });
+
+  const hierarchyTree: HierarchyNode[] = (hierarchyData as HierarchyRollupResponse)?.tree || [];
+  const hierarchySummary: HierarchySummary = (hierarchyData as HierarchyRollupResponse)?.summary || {
+    total_cost_centers: 0,
+    total_own_spend: 0,
+    total_budget: 0,
+    total_utilization_pct: 0,
+  };
+
+  // Hierarchy expand/collapse state
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+
+  const toggleNode = (nodeId: string) => {
+    setExpandedNodes(prev => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
+      }
+      return next;
+    });
+  };
+
+  const expandAll = () => {
+    const allIds = new Set<string>();
+    const collect = (nodes: HierarchyNode[]) => {
+      for (const n of nodes) {
+        if (n.children.length > 0) {
+          allIds.add(n.id);
+          collect(n.children);
+        }
+      }
+    };
+    collect(hierarchyTree);
+    setExpandedNodes(allIds);
+  };
+
+  const collapseAll = () => {
+    setExpandedNodes(new Set());
+  };
 
   // ---- Mutations ----
 
@@ -597,6 +670,7 @@ export default function CostCentersPage() {
           <TabsTrigger value="expense-report"><FileBarChart className="mr-1 h-4 w-4" />Expense Report</TabsTrigger>
           <TabsTrigger value="internal-orders"><FolderKanban className="mr-1 h-4 w-4" />Internal Orders</TabsTrigger>
           <TabsTrigger value="access-control"><Users className="mr-1 h-4 w-4" />Access Control</TabsTrigger>
+          <TabsTrigger value="hierarchy"><GitBranch className="mr-1 h-4 w-4" />Hierarchy</TabsTrigger>
         </TabsList>
 
         {/* ===== Tab 1: Cost Centers ===== */}
@@ -1075,7 +1149,192 @@ export default function CostCentersPage() {
             </DialogContent>
           </Dialog>
         </TabsContent>
+
+        {/* ===== Tab 6: Hierarchy Rollup ===== */}
+        <TabsContent value="hierarchy">
+          {hierarchyLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Summary Cards */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardDescription>Total Cost Centers</CardDescription>
+                    <CardTitle className="text-2xl">{hierarchySummary.total_cost_centers}</CardTitle>
+                  </CardHeader>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardDescription>Total Budget</CardDescription>
+                    <CardTitle className="text-2xl">{formatCurrency(hierarchySummary.total_budget)}</CardTitle>
+                  </CardHeader>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardDescription>Total Spend</CardDescription>
+                    <CardTitle className="text-2xl">{formatCurrency(hierarchySummary.total_own_spend)}</CardTitle>
+                  </CardHeader>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardDescription>Overall Utilization</CardDescription>
+                    <CardTitle className="text-2xl">{hierarchySummary.total_utilization_pct.toFixed(1)}%</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Progress value={Math.min(hierarchySummary.total_utilization_pct, 100)} className="h-2" />
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Tree View */}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle>Cost Center Hierarchy</CardTitle>
+                    <CardDescription>Tree view with rolled-up spend and budget utilization</CardDescription>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={expandAll}>Expand All</Button>
+                    <Button variant="outline" size="sm" onClick={collapseAll}>Collapse All</Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {hierarchyTree.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8">No hierarchy data available.</p>
+                  ) : (
+                    <div className="space-y-0">
+                      {/* Header row */}
+                      <div className="grid grid-cols-12 gap-2 px-3 py-2 text-xs font-medium text-muted-foreground border-b">
+                        <div className="col-span-4">Cost Center</div>
+                        <div className="col-span-1 text-right">Own Spend</div>
+                        <div className="col-span-2 text-right">Rolled-up Spend</div>
+                        <div className="col-span-1 text-right">Budget</div>
+                        <div className="col-span-3">Utilization</div>
+                        <div className="col-span-1 text-center">Status</div>
+                      </div>
+                      {hierarchyTree.map(node => (
+                        <HierarchyTreeNode
+                          key={node.id}
+                          node={node}
+                          depth={0}
+                          expandedNodes={expandedNodes}
+                          toggleNode={toggleNode}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+function HierarchyTreeNode({
+  node,
+  depth,
+  expandedNodes,
+  toggleNode,
+}: {
+  node: HierarchyNode;
+  depth: number;
+  expandedNodes: Set<string>;
+  toggleNode: (id: string) => void;
+}) {
+  const isExpanded = expandedNodes.has(node.id);
+  const hasChildren = node.children.length > 0;
+  const statusColor =
+    node.status === 'WITHIN_BUDGET'
+      ? 'bg-green-100 text-green-800'
+      : node.status === 'WARNING'
+        ? 'bg-yellow-100 text-yellow-800'
+        : 'bg-red-100 text-red-800';
+
+  const statusLabel =
+    node.status === 'WITHIN_BUDGET'
+      ? 'OK'
+      : node.status === 'WARNING'
+        ? 'Warn'
+        : 'Over';
+
+  return (
+    <>
+      <div
+        className="grid grid-cols-12 gap-2 items-center px-3 py-2 hover:bg-muted/50 border-b border-muted/30"
+      >
+        {/* Name + code with indentation */}
+        <div className="col-span-4 flex items-center" style={{ paddingLeft: `${depth * 24}px` }}>
+          {hasChildren ? (
+            <button
+              onClick={() => toggleNode(node.id)}
+              className="mr-1 p-0.5 rounded hover:bg-muted"
+            >
+              {isExpanded ? (
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              )}
+            </button>
+          ) : (
+            <span className="mr-1 w-5" />
+          )}
+          <div className="min-w-0">
+            <span className="font-medium text-sm truncate">{node.name}</span>
+            <span className="ml-2 text-xs text-muted-foreground">{node.code}</span>
+          </div>
+        </div>
+
+        {/* Own spend */}
+        <div className="col-span-1 text-right text-sm">
+          {formatCurrency(node.own_spend)}
+        </div>
+
+        {/* Rolled-up spend */}
+        <div className="col-span-2 text-right text-sm font-medium">
+          {formatCurrency(node.rolled_up_spend)}
+        </div>
+
+        {/* Budget */}
+        <div className="col-span-1 text-right text-sm text-muted-foreground">
+          {formatCurrency(node.annual_budget)}
+        </div>
+
+        {/* Utilization bar */}
+        <div className="col-span-3 flex items-center gap-2">
+          <Progress value={Math.min(node.utilization_pct, 100)} className="h-2 flex-1" />
+          <span className="text-xs text-muted-foreground w-10 text-right">
+            {node.utilization_pct.toFixed(0)}%
+          </span>
+        </div>
+
+        {/* Status badge */}
+        <div className="col-span-1 text-center">
+          <Badge variant="outline" className={`text-xs ${statusColor}`}>
+            {statusLabel}
+          </Badge>
+        </div>
+      </div>
+
+      {/* Render children if expanded */}
+      {hasChildren && isExpanded && (
+        <>
+          {node.children.map(child => (
+            <HierarchyTreeNode
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              expandedNodes={expandedNodes}
+              toggleNode={toggleNode}
+            />
+          ))}
+        </>
+      )}
+    </>
   );
 }
