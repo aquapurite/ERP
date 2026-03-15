@@ -375,9 +375,171 @@ class CostCenter(Base):
         "CostCenter",
         remote_side=[id]
     )
+    budgets: Mapped[List["CostCenterBudget"]] = relationship(
+        "CostCenterBudget",
+        back_populates="cost_center",
+        cascade="all, delete-orphan"
+    )
+    user_assignments: Mapped[List["UserCostCenter"]] = relationship(
+        "UserCostCenter",
+        back_populates="cost_center",
+        cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<CostCenter(code='{self.code}', name='{self.name}')>"
+
+
+class CostCenterBudget(Base):
+    """
+    Period-based budget for cost centers (monthly/quarterly).
+    SAP-style period budget allocation.
+    """
+    __tablename__ = "cost_center_budgets"
+    __table_args__ = (
+        UniqueConstraint("cost_center_id", "fiscal_year", "period_key", name="uq_ccb_cc_fy_pk"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    cost_center_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cost_centers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    fiscal_year: Mapped[str] = mapped_column(String(10), nullable=False)
+    period_type: Mapped[str] = mapped_column(String(20), nullable=False, default="MONTHLY")
+    period_key: Mapped[str] = mapped_column(
+        String(10),
+        nullable=False,
+        comment="e.g. 2026-01, 2026-02"
+    )
+    budget_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=Decimal("0"))
+    actual_spend: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=Decimal("0"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+    # Relationships
+    cost_center: Mapped["CostCenter"] = relationship("CostCenter", back_populates="budgets")
+
+    def __repr__(self) -> str:
+        return f"<CostCenterBudget(cc={self.cost_center_id}, period={self.period_key}, budget={self.budget_amount})>"
+
+
+class InternalOrder(Base):
+    """
+    Internal Orders for project cost tracking (SAP-style).
+    Tracks budgets and actual spend per project/maintenance activity.
+    """
+    __tablename__ = "internal_orders"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    order_number: Mapped[str] = mapped_column(String(30), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    order_type: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="PROJECT",
+        comment="PROJECT, MAINTENANCE, MARKETING, OTHER"
+    )
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="ACTIVE",
+        comment="ACTIVE, COMPLETED, CLOSED"
+    )
+    cost_center_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cost_centers.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    responsible_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    budget_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"))
+    actual_spend: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"))
+    start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+    # Relationships
+    cost_center: Mapped[Optional["CostCenter"]] = relationship("CostCenter")
+    responsible_user: Mapped[Optional["User"]] = relationship("User")
+
+    def __repr__(self) -> str:
+        return f"<InternalOrder(number='{self.order_number}', name='{self.name}')>"
+
+
+class UserCostCenter(Base):
+    """
+    Cost center access control - maps users to cost centers they can view/post to.
+    """
+    __tablename__ = "user_cost_centers"
+    __table_args__ = (
+        UniqueConstraint("user_id", "cost_center_id", name="uq_user_cost_center"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    cost_center_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cost_centers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    can_view: Mapped[bool] = mapped_column(Boolean, default=True)
+    can_post: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+    # Relationships
+    user: Mapped["User"] = relationship("User")
+    cost_center: Mapped["CostCenter"] = relationship("CostCenter", back_populates="user_assignments")
+
+    def __repr__(self) -> str:
+        return f"<UserCostCenter(user={self.user_id}, cc={self.cost_center_id})>"
 
 
 class JournalEntry(Base):
@@ -608,6 +770,13 @@ class JournalEntryLine(Base):
         nullable=True
     )
 
+    # Internal Order (optional - for project cost tracking)
+    internal_order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("internal_orders.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
     # Description
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
@@ -628,6 +797,7 @@ class JournalEntryLine(Base):
     )
     account: Mapped["ChartOfAccount"] = relationship("ChartOfAccount")
     cost_center: Mapped[Optional["CostCenter"]] = relationship("CostCenter")
+    internal_order: Mapped[Optional["InternalOrder"]] = relationship("InternalOrder")
 
     @property
     def amount(self) -> Decimal:
@@ -708,6 +878,13 @@ class GeneralLedger(Base):
         nullable=True
     )
 
+    # Internal Order (optional - for project cost tracking)
+    internal_order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("internal_orders.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
     # Channel (for channel-wise P&L reporting)
     channel_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
@@ -732,6 +909,7 @@ class GeneralLedger(Base):
     journal_entry: Mapped["JournalEntry"] = relationship("JournalEntry")
     period: Mapped["FinancialPeriod"] = relationship("FinancialPeriod")
     channel: Mapped[Optional["SalesChannel"]] = relationship("SalesChannel")
+    internal_order: Mapped[Optional["InternalOrder"]] = relationship("InternalOrder")
 
     def __repr__(self) -> str:
         return f"<GeneralLedger(account={self.account_id}, balance={self.running_balance})>"

@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from app.models.billing import TaxInvoice, InvoiceItem, CreditDebitNote
     from app.models.customer import Customer
     from app.models.transporter import Transporter
+    from app.models.accounting import InternalOrder
 
 
 # ==================== Enums ====================
@@ -1732,6 +1733,12 @@ class VendorInvoiceExpenseLine(Base):
         nullable=True,
         comment="Cost center for this expense line (SAP-style per-line CC)"
     )
+    internal_order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("internal_orders.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Internal order for project cost tracking"
+    )
     gst_rate: Mapped[Decimal] = mapped_column(
         Numeric(5, 2),
         default=Decimal("18"),
@@ -1763,6 +1770,7 @@ class VendorInvoiceExpenseLine(Base):
     )
     gl_account: Mapped["ChartOfAccount"] = relationship("ChartOfAccount")
     cost_center: Mapped[Optional["CostCenter"]] = relationship("CostCenter")
+    internal_order: Mapped[Optional["InternalOrder"]] = relationship("InternalOrder")
 
     def __repr__(self) -> str:
         return f"<VendorInvoiceExpenseLine(id={self.id}, amount={self.amount})>"

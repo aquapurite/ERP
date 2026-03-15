@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.models.accounting import (
     ChartOfAccount, AccountType, AccountSubType,
     FinancialPeriod, FinancialPeriodStatus as PeriodStatus,
-    CostCenter,
+    CostCenter, CostCenterBudget, InternalOrder, UserCostCenter,
     JournalEntry, JournalEntryLine, JournalEntryStatus as JournalStatus,
     GeneralLedger,
     TaxConfiguration,
@@ -1411,6 +1411,604 @@ async def delete_cost_center(
     await db.commit()
 
     return None
+
+
+# ==================== Cost Center Budgets (Gap 6) ====================
+
+class BudgetLineInput(BaseModel):
+    period_key: str
+    budget_amount: Decimal
+
+
+class BudgetLineResponse(BaseModel):
+    id: Optional[str] = None
+    period_key: str
+    budget_amount: Decimal
+    actual_spend: Decimal = Decimal("0")
+    utilization_pct: float = 0
+
+
+@router.post(
+    "/cost-centers/{cost_center_id}/budgets",
+    dependencies=[Depends(require_permissions("cost_centers:update"))]
+)
+async def set_cost_center_budgets(
+    cost_center_id: UUID,
+    fiscal_year: str = Query(..., description="e.g. 2025-26"),
+    budgets: List[BudgetLineInput] = [],
+    db: DB = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Set monthly budgets for a cost center."""
+    # Verify cost center exists
+    result = await db.execute(
+        select(CostCenter).where(CostCenter.id == cost_center_id)
+    )
+    cc = result.scalar_one_or_none()
+    if not cc:
+        raise HTTPException(status_code=404, detail="Cost center not found")
+
+    created = []
+    for b in budgets:
+        # Upsert: check if exists
+        existing = await db.execute(
+            select(CostCenterBudget).where(
+                and_(
+                    CostCenterBudget.cost_center_id == cost_center_id,
+                    CostCenterBudget.fiscal_year == fiscal_year,
+                    CostCenterBudget.period_key == b.period_key,
+                )
+            )
+        )
+        budget_row = existing.scalar_one_or_none()
+        if budget_row:
+            budget_row.budget_amount = b.budget_amount
+            budget_row.updated_at = datetime.now(timezone.utc)
+        else:
+            budget_row = CostCenterBudget(
+                cost_center_id=cost_center_id,
+                fiscal_year=fiscal_year,
+                period_key=b.period_key,
+                budget_amount=b.budget_amount,
+            )
+            db.add(budget_row)
+        created.append(budget_row)
+
+    await db.commit()
+    return {"message": f"Set {len(created)} budget periods for FY {fiscal_year}"}
+
+
+@router.get(
+    "/cost-centers/{cost_center_id}/budgets",
+    dependencies=[Depends(require_permissions("cost_centers:view"))]
+)
+async def get_cost_center_budgets(
+    cost_center_id: UUID,
+    fiscal_year: str = Query(..., description="e.g. 2025-26"),
+    db: DB = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Get budget vs actual by period for a cost center."""
+    result = await db.execute(
+        select(CostCenterBudget).where(
+            and_(
+                CostCenterBudget.cost_center_id == cost_center_id,
+                CostCenterBudget.fiscal_year == fiscal_year,
+            )
+        ).order_by(CostCenterBudget.period_key)
+    )
+    budgets = result.scalars().all()
+
+    items = []
+    total_budget = Decimal("0")
+    total_actual = Decimal("0")
+    for b in budgets:
+        budget_amt = b.budget_amount or Decimal("0")
+        actual_amt = b.actual_spend or Decimal("0")
+        util = float(actual_amt / budget_amt * 100) if budget_amt > 0 else 0
+        total_budget += budget_amt
+        total_actual += actual_amt
+        items.append({
+            "id": str(b.id),
+            "period_key": b.period_key,
+            "budget_amount": float(budget_amt),
+            "actual_spend": float(actual_amt),
+            "utilization_pct": round(util, 1),
+        })
+
+    return {
+        "fiscal_year": fiscal_year,
+        "cost_center_id": str(cost_center_id),
+        "total_budget": float(total_budget),
+        "total_actual": float(total_actual),
+        "total_utilization_pct": round(float(total_actual / total_budget * 100) if total_budget > 0 else 0, 1),
+        "periods": items,
+    }
+
+
+# ==================== Cost Center Expense Report (Gap 8) ====================
+
+@router.get(
+    "/cost-centers/expense-report",
+    dependencies=[Depends(require_permissions("cost_centers:view"))]
+)
+async def cost_center_expense_report(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    fiscal_year: Optional[str] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+):
+    """
+    Returns expense breakdown by cost center with GL account detail.
+    """
+    # Build date filter
+    date_filters = []
+    if start_date:
+        date_filters.append(GeneralLedger.transaction_date >= start_date)
+    if end_date:
+        date_filters.append(GeneralLedger.transaction_date <= end_date)
+
+    # Get all active cost centers
+    cc_result = await db.execute(
+        select(CostCenter).where(CostCenter.is_active == True).order_by(CostCenter.code)
+    )
+    cost_centers = cc_result.scalars().all()
+
+    report = []
+    for cc in cost_centers:
+        # Get expense GL entries for this cost center (debit on EXPENSE accounts)
+        gl_query = (
+            select(
+                ChartOfAccount.account_code,
+                ChartOfAccount.account_name,
+                func.sum(GeneralLedger.debit_amount).label("total_debit"),
+            )
+            .join(ChartOfAccount, GeneralLedger.account_id == ChartOfAccount.id)
+            .where(
+                and_(
+                    GeneralLedger.cost_center_id == cc.id,
+                    ChartOfAccount.account_type == "EXPENSE",
+                    GeneralLedger.debit_amount > 0,
+                    *date_filters,
+                )
+            )
+            .group_by(ChartOfAccount.account_code, ChartOfAccount.account_name)
+            .order_by(ChartOfAccount.account_code)
+        )
+        gl_result = await db.execute(gl_query)
+        gl_rows = gl_result.all()
+
+        total_spend = sum(row.total_debit or Decimal("0") for row in gl_rows)
+        budget = cc.annual_budget or Decimal("0")
+        util_pct = float(total_spend / budget * 100) if budget > 0 else 0
+
+        breakdown = [
+            {
+                "account_code": row.account_code,
+                "account_name": row.account_name,
+                "total_amount": float(row.total_debit or 0),
+            }
+            for row in gl_rows
+        ]
+
+        status_label = "WITHIN_BUDGET"
+        if budget > 0 and total_spend > budget:
+            status_label = "OVER_BUDGET"
+        elif budget > 0 and total_spend > budget * Decimal("0.9"):
+            status_label = "WARNING"
+
+        report.append({
+            "cost_center_id": str(cc.id),
+            "code": cc.code,
+            "name": cc.name,
+            "annual_budget": float(budget),
+            "total_spend": float(total_spend),
+            "budget_utilization_pct": round(util_pct, 1),
+            "status": status_label,
+            "gl_breakdown": breakdown,
+        })
+
+    return {"items": report, "total": len(report)}
+
+
+# ==================== Internal Orders (Gap 9) ====================
+
+class InternalOrderCreate(BaseModel):
+    order_number: str
+    name: str
+    description: Optional[str] = None
+    order_type: str = "PROJECT"
+    cost_center_id: Optional[UUID] = None
+    responsible_user_id: Optional[UUID] = None
+    budget_amount: Decimal = Decimal("0")
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+
+
+class InternalOrderUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    order_type: Optional[str] = None
+    status: Optional[str] = None
+    cost_center_id: Optional[UUID] = None
+    responsible_user_id: Optional[UUID] = None
+    budget_amount: Optional[Decimal] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+
+
+@router.post(
+    "/internal-orders",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_permissions("cost_centers:create"))]
+)
+async def create_internal_order(
+    io_in: InternalOrderCreate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Create a new internal order for project cost tracking."""
+    io = InternalOrder(
+        order_number=io_in.order_number,
+        name=io_in.name,
+        description=io_in.description,
+        order_type=io_in.order_type,
+        cost_center_id=io_in.cost_center_id,
+        responsible_user_id=io_in.responsible_user_id,
+        budget_amount=io_in.budget_amount,
+        start_date=io_in.start_date,
+        end_date=io_in.end_date,
+    )
+    db.add(io)
+    await db.commit()
+    await db.refresh(io)
+    return {
+        "id": str(io.id),
+        "order_number": io.order_number,
+        "name": io.name,
+        "description": io.description,
+        "order_type": io.order_type,
+        "status": io.status,
+        "cost_center_id": str(io.cost_center_id) if io.cost_center_id else None,
+        "responsible_user_id": str(io.responsible_user_id) if io.responsible_user_id else None,
+        "budget_amount": float(io.budget_amount),
+        "actual_spend": float(io.actual_spend),
+        "start_date": str(io.start_date) if io.start_date else None,
+        "end_date": str(io.end_date) if io.end_date else None,
+        "created_at": io.created_at.isoformat(),
+    }
+
+
+@router.get(
+    "/internal-orders",
+    dependencies=[Depends(require_permissions("cost_centers:view"))]
+)
+async def list_internal_orders(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    status_filter: Optional[str] = Query(None, alias="status"),
+    cost_center_id: Optional[UUID] = None,
+):
+    """List internal orders with optional filters."""
+    query = select(InternalOrder)
+    if status_filter:
+        query = query.where(InternalOrder.status == status_filter)
+    if cost_center_id:
+        query = query.where(InternalOrder.cost_center_id == cost_center_id)
+    query = query.order_by(InternalOrder.order_number)
+
+    result = await db.execute(query)
+    orders = result.scalars().all()
+
+    return {
+        "items": [
+            {
+                "id": str(o.id),
+                "order_number": o.order_number,
+                "name": o.name,
+                "description": o.description,
+                "order_type": o.order_type,
+                "status": o.status,
+                "cost_center_id": str(o.cost_center_id) if o.cost_center_id else None,
+                "responsible_user_id": str(o.responsible_user_id) if o.responsible_user_id else None,
+                "budget_amount": float(o.budget_amount or 0),
+                "actual_spend": float(o.actual_spend or 0),
+                "start_date": str(o.start_date) if o.start_date else None,
+                "end_date": str(o.end_date) if o.end_date else None,
+                "created_at": o.created_at.isoformat(),
+            }
+            for o in orders
+        ],
+        "total": len(orders),
+    }
+
+
+@router.get(
+    "/internal-orders/{order_id}",
+    dependencies=[Depends(require_permissions("cost_centers:view"))]
+)
+async def get_internal_order(
+    order_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Get internal order detail with spend summary."""
+    result = await db.execute(
+        select(InternalOrder).where(InternalOrder.id == order_id)
+    )
+    io = result.scalar_one_or_none()
+    if not io:
+        raise HTTPException(status_code=404, detail="Internal order not found")
+
+    return {
+        "id": str(io.id),
+        "order_number": io.order_number,
+        "name": io.name,
+        "description": io.description,
+        "order_type": io.order_type,
+        "status": io.status,
+        "cost_center_id": str(io.cost_center_id) if io.cost_center_id else None,
+        "responsible_user_id": str(io.responsible_user_id) if io.responsible_user_id else None,
+        "budget_amount": float(io.budget_amount or 0),
+        "actual_spend": float(io.actual_spend or 0),
+        "start_date": str(io.start_date) if io.start_date else None,
+        "end_date": str(io.end_date) if io.end_date else None,
+        "created_at": io.created_at.isoformat(),
+        "updated_at": io.updated_at.isoformat(),
+    }
+
+
+@router.put(
+    "/internal-orders/{order_id}",
+    dependencies=[Depends(require_permissions("cost_centers:update"))]
+)
+async def update_internal_order(
+    order_id: UUID,
+    io_in: InternalOrderUpdate,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Update an internal order."""
+    result = await db.execute(
+        select(InternalOrder).where(InternalOrder.id == order_id)
+    )
+    io = result.scalar_one_or_none()
+    if not io:
+        raise HTTPException(status_code=404, detail="Internal order not found")
+
+    update_data = io_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(io, field, value)
+    io.updated_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    await db.refresh(io)
+
+    return {
+        "id": str(io.id),
+        "order_number": io.order_number,
+        "name": io.name,
+        "description": io.description,
+        "order_type": io.order_type,
+        "status": io.status,
+        "cost_center_id": str(io.cost_center_id) if io.cost_center_id else None,
+        "responsible_user_id": str(io.responsible_user_id) if io.responsible_user_id else None,
+        "budget_amount": float(io.budget_amount or 0),
+        "actual_spend": float(io.actual_spend or 0),
+        "start_date": str(io.start_date) if io.start_date else None,
+        "end_date": str(io.end_date) if io.end_date else None,
+        "created_at": io.created_at.isoformat(),
+        "updated_at": io.updated_at.isoformat(),
+    }
+
+
+@router.delete(
+    "/internal-orders/{order_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permissions("cost_centers:delete"))]
+)
+async def delete_internal_order(
+    order_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete an internal order (only if no spend)."""
+    result = await db.execute(
+        select(InternalOrder).where(InternalOrder.id == order_id)
+    )
+    io = result.scalar_one_or_none()
+    if not io:
+        raise HTTPException(status_code=404, detail="Internal order not found")
+
+    if io.actual_spend and io.actual_spend > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete internal order with actual spend of {io.actual_spend}"
+        )
+
+    await db.delete(io)
+    await db.commit()
+    return None
+
+
+# ==================== Cost Center Access Control (Gap 10) ====================
+
+class AssignUsersInput(BaseModel):
+    user_ids: List[UUID]
+    can_view: bool = True
+    can_post: bool = True
+
+
+@router.post(
+    "/cost-centers/{cost_center_id}/assign-users",
+    dependencies=[Depends(require_permissions("cost_centers:update"))]
+)
+async def assign_users_to_cost_center(
+    cost_center_id: UUID,
+    body: AssignUsersInput,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Assign users to a cost center."""
+    # Verify cost center exists
+    cc = await db.execute(
+        select(CostCenter).where(CostCenter.id == cost_center_id)
+    )
+    if not cc.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Cost center not found")
+
+    added = 0
+    for uid in body.user_ids:
+        # Check if already assigned
+        existing = await db.execute(
+            select(UserCostCenter).where(
+                and_(
+                    UserCostCenter.user_id == uid,
+                    UserCostCenter.cost_center_id == cost_center_id,
+                )
+            )
+        )
+        if existing.scalar_one_or_none():
+            continue
+        uc = UserCostCenter(
+            user_id=uid,
+            cost_center_id=cost_center_id,
+            can_view=body.can_view,
+            can_post=body.can_post,
+        )
+        db.add(uc)
+        added += 1
+
+    await db.commit()
+    return {"message": f"Assigned {added} users to cost center"}
+
+
+@router.get(
+    "/cost-centers/{cost_center_id}/users",
+    dependencies=[Depends(require_permissions("cost_centers:view"))]
+)
+async def get_cost_center_users(
+    cost_center_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """List users assigned to a cost center."""
+    result = await db.execute(
+        select(UserCostCenter, User)
+        .join(User, UserCostCenter.user_id == User.id)
+        .where(UserCostCenter.cost_center_id == cost_center_id)
+        .order_by(User.full_name)
+    )
+    rows = result.all()
+
+    return {
+        "items": [
+            {
+                "id": str(uc.id),
+                "user_id": str(uc.user_id),
+                "user_name": u.full_name if hasattr(u, 'full_name') else u.email,
+                "user_email": u.email,
+                "can_view": uc.can_view,
+                "can_post": uc.can_post,
+                "created_at": uc.created_at.isoformat(),
+            }
+            for uc, u in rows
+        ],
+        "total": len(rows),
+    }
+
+
+@router.delete(
+    "/cost-centers/{cost_center_id}/users/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_permissions("cost_centers:update"))]
+)
+async def remove_user_from_cost_center(
+    cost_center_id: UUID,
+    user_id: UUID,
+    db: DB,
+    current_user: User = Depends(get_current_user),
+):
+    """Remove user assignment from cost center."""
+    result = await db.execute(
+        select(UserCostCenter).where(
+            and_(
+                UserCostCenter.user_id == user_id,
+                UserCostCenter.cost_center_id == cost_center_id,
+            )
+        )
+    )
+    uc = result.scalar_one_or_none()
+    if not uc:
+        raise HTTPException(status_code=404, detail="User assignment not found")
+
+    await db.delete(uc)
+    await db.commit()
+    return None
+
+
+@router.get(
+    "/cost-centers/user-assignments",
+    dependencies=[Depends(require_permissions("cost_centers:view"))]
+)
+async def get_user_cost_center_assignments(
+    db: DB,
+    current_user: User = Depends(get_current_user),
+    user_id: Optional[UUID] = None,
+):
+    """Get cost center assignments for a user (or current user). Super admins see all."""
+    target_user_id = user_id or current_user.id
+
+    # Check if super admin
+    is_super = False
+    if hasattr(current_user, 'roles'):
+        for role in current_user.roles:
+            if hasattr(role, 'level') and role.level == 'SUPER_ADMIN':
+                is_super = True
+                break
+
+    if is_super:
+        # Return all cost centers
+        result = await db.execute(
+            select(CostCenter).where(CostCenter.is_active == True).order_by(CostCenter.code)
+        )
+        ccs = result.scalars().all()
+        return {
+            "items": [
+                {"cost_center_id": str(cc.id), "code": cc.code, "name": cc.name, "can_view": True, "can_post": True}
+                for cc in ccs
+            ],
+            "is_super_admin": True,
+        }
+
+    # Regular user: return assigned cost centers
+    result = await db.execute(
+        select(UserCostCenter, CostCenter)
+        .join(CostCenter, UserCostCenter.cost_center_id == CostCenter.id)
+        .where(
+            and_(
+                UserCostCenter.user_id == target_user_id,
+                CostCenter.is_active == True,
+            )
+        )
+        .order_by(CostCenter.code)
+    )
+    rows = result.all()
+
+    return {
+        "items": [
+            {
+                "cost_center_id": str(cc.id),
+                "code": cc.code,
+                "name": cc.name,
+                "can_view": uc.can_view,
+                "can_post": uc.can_post,
+            }
+            for uc, cc in rows
+        ],
+        "is_super_admin": False,
+    }
 
 
 # ==================== Journal Entries ====================

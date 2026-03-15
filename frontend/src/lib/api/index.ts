@@ -2263,6 +2263,83 @@ export const costCentersApi = {
   delete: async (id: string) => {
     await apiClient.delete(`/accounting/cost-centers/${id}`);
   },
+  // Gap 6: Period-based budgets
+  setBudgets: async (id: string, fiscalYear: string, budgets: { period_key: string; budget_amount: number }[]) => {
+    const { data } = await apiClient.post(`/accounting/cost-centers/${id}/budgets?fiscal_year=${encodeURIComponent(fiscalYear)}`, budgets);
+    return data;
+  },
+  getBudgets: async (id: string, fiscalYear: string) => {
+    const { data } = await apiClient.get(`/accounting/cost-centers/${id}/budgets`, { params: { fiscal_year: fiscalYear } });
+    return data;
+  },
+  // Gap 8: Expense report
+  getExpenseReport: async (params?: { fiscal_year?: string; start_date?: string; end_date?: string }) => {
+    const { data } = await apiClient.get('/accounting/cost-centers/expense-report', { params });
+    return data;
+  },
+  // Gap 10: User assignments
+  assignUsers: async (id: string, userIds: string[], canView?: boolean, canPost?: boolean) => {
+    const { data } = await apiClient.post(`/accounting/cost-centers/${id}/assign-users`, {
+      user_ids: userIds,
+      can_view: canView ?? true,
+      can_post: canPost ?? true,
+    });
+    return data;
+  },
+  getUsers: async (id: string) => {
+    const { data } = await apiClient.get(`/accounting/cost-centers/${id}/users`);
+    return data;
+  },
+  removeUser: async (ccId: string, userId: string) => {
+    await apiClient.delete(`/accounting/cost-centers/${ccId}/users/${userId}`);
+  },
+  getUserAssignments: async (userId?: string) => {
+    const { data } = await apiClient.get('/accounting/cost-centers/user-assignments', { params: userId ? { user_id: userId } : {} });
+    return data;
+  },
+};
+
+// Internal Orders API (Gap 9)
+export const internalOrdersApi = {
+  list: async (params?: { status?: string; cost_center_id?: string }) => {
+    const { data } = await apiClient.get('/accounting/internal-orders', { params });
+    return data;
+  },
+  getById: async (id: string) => {
+    const { data } = await apiClient.get(`/accounting/internal-orders/${id}`);
+    return data;
+  },
+  create: async (order: {
+    order_number: string;
+    name: string;
+    description?: string;
+    order_type?: string;
+    cost_center_id?: string;
+    responsible_user_id?: string;
+    budget_amount?: number;
+    start_date?: string;
+    end_date?: string;
+  }) => {
+    const { data } = await apiClient.post('/accounting/internal-orders', order);
+    return data;
+  },
+  update: async (id: string, order: {
+    name?: string;
+    description?: string;
+    order_type?: string;
+    status?: string;
+    cost_center_id?: string;
+    responsible_user_id?: string;
+    budget_amount?: number;
+    start_date?: string;
+    end_date?: string;
+  }) => {
+    const { data } = await apiClient.put(`/accounting/internal-orders/${id}`, order);
+    return data;
+  },
+  delete: async (id: string) => {
+    await apiClient.delete(`/accounting/internal-orders/${id}`);
+  },
 };
 
 // Journal Entries API
