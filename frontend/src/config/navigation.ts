@@ -180,10 +180,18 @@ export const navigation: NavItem[] = [
       // Channels
       { title: 'Sales Channels', href: '/dashboard/channels', icon: Network, permissions: ['ORDERS_VIEW'] },
       { title: 'Marketplaces', href: '/dashboard/channels/marketplaces', icon: Store, permissions: ['ORDERS_VIEW'] },
+      { title: 'Channel Orders', href: '/dashboard/channels/orders', icon: ShoppingCart, permissions: ['ORDERS_VIEW'] },
       { title: 'Channel Pricing', href: '/dashboard/channels/pricing', icon: DollarSign, permissions: ['ORDERS_VIEW'] },
+      { title: 'Pricing Comparison', href: '/dashboard/channels/pricing/compare', icon: Scale, permissions: ['ORDERS_VIEW'] },
+      { title: 'Profitability', href: '/dashboard/channels/pricing/profitability', icon: TrendingUp, permissions: ['ORDERS_VIEW'] },
+      { title: 'Channel Promotions', href: '/dashboard/channels/pricing/promotions', icon: BadgePercent, permissions: ['ORDERS_VIEW'] },
+      { title: 'Channel Inventory', href: '/dashboard/channels/inventory', icon: Boxes, permissions: ['ORDERS_VIEW'] },
+      { title: 'Channel Inventory Dashboard', href: '/dashboard/channels/inventory/dashboard', icon: BarChart3, permissions: ['ORDERS_VIEW'] },
+      { title: 'Channel Reports', href: '/dashboard/channels/reports', icon: FileText, permissions: ['ORDERS_VIEW'] },
       // Distribution Network
       { title: 'Dealers', href: '/dashboard/distribution/dealers', icon: Handshake, permissions: ['ORDERS_VIEW'] },
       { title: 'Franchisees', href: '/dashboard/distribution/franchisees', icon: Building2, permissions: ['ORDERS_VIEW'] },
+      { title: 'Franchisee Serviceability', href: '/dashboard/distribution/franchisee-serviceability', icon: MapPin, permissions: ['ORDERS_VIEW'] },
       { title: 'Pricing Tiers', href: '/dashboard/distribution/pricing-tiers', icon: Layers, permissions: ['ORDERS_VIEW'] },
       // Promotions
       { title: 'Promotions', href: '/dashboard/marketing/promotions', icon: BadgePercent, permissions: ['MARKETING_VIEW'] },
@@ -285,6 +293,9 @@ export const navigation: NavItem[] = [
       { title: 'Rate Cards - FTL', href: '/dashboard/logistics/rate-cards/ftl', permissions: ['LOGISTICS_VIEW'] },
       { title: 'Serviceability', href: '/dashboard/logistics/serviceability', icon: MapPin, permissions: ['LOGISTICS_VIEW'] },
       { title: 'SLA Dashboard', href: '/dashboard/logistics/sla-dashboard', icon: Gauge, permissions: ['LOGISTICS_VIEW'] },
+      { title: 'Allocation Logs', href: '/dashboard/logistics/allocation-logs', icon: History, permissions: ['LOGISTICS_VIEW'] },
+      { title: 'Shipping Calculator', href: '/dashboard/logistics/calculator', icon: Calculator, permissions: ['LOGISTICS_VIEW'] },
+      { title: 'Carrier Performance', href: '/dashboard/logistics/carriers/performance', icon: BarChart3, permissions: ['LOGISTICS_VIEW'] },
       { title: 'OMS Sync', href: '/dashboard/logistics/oms-sync', icon: Zap, permissions: ['LOGISTICS_VIEW'] },
       { title: 'Fulfillment Partners', href: '/dashboard/logistics/fulfillment-partners', icon: Handshake, permissions: ['LOGISTICS_VIEW'] },
       { title: 'CJDQuick Settings', href: '/dashboard/logistics/cjdquick-settings', icon: Settings, permissions: ['LOGISTICS_VIEW'] },
